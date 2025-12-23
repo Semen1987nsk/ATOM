@@ -48,6 +48,121 @@ def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Di
         "recommended_risk_pct": round(float(optimal_f * 10), 2) # Упрощенная рекомендация
     }
 
+def calculate_z_score(trades_pnl: List[float]) -> Dict:
+    """
+    Расчет Z-Score (Serial Correlation) для проверки зависимости сделок.
+    """
+    if not trades_pnl or len(trades_pnl) < 30:
+        return {
+            "z_score": 0,
+            "verdict": "Недостаточно данных (нужно > 30)",
+            "confidence": "Low"
+        }
+
+    # 1. Определяем последовательность выигрышей (W) и проигрышей (L)
+    # 0 - убыток, 1 - прибыль
+    sequence = [1 if pnl > 0 else 0 for pnl in trades_pnl if pnl != 0]
+    
+    n = len(sequence)
+    if n < 2:
+        return {"z_score": 0, "verdict": "Мало сделок", "confidence": "None"}
+
+    wins = sequence.count(1)
+    losses = sequence.count(0)
+
+    # 2. Считаем количество серий (Runs)
+    # Серия - это последовательность одинаковых результатов (например, +++ или --)
+    runs = 1
+    for i in range(1, n):
+        if sequence[i] != sequence[i-1]:
+            runs += 1
+
+    # 3. Расчет ожидаемого количества серий (Expected Runs)
+    # E(R) = 2*W*L / N + 1
+    expected_runs = (2 * wins * losses) / n + 1
+
+    # 4. Расчет стандартного отклонения серий
+    # StdDev = sqrt( (2*W*L * (2*W*L - N)) / (N^2 * (N-1)) )
+    numerator = 2 * wins * losses * (2 * wins * losses - n)
+    denominator = (n ** 2) * (n - 1)
+    
+    if denominator == 0:
+        return {"z_score": 0, "verdict": "Ошибка расчета", "confidence": "None"}
+        
+    std_dev = np.sqrt(numerator / denominator)
+
+    # 5. Z-Score
+    # Z = (Runs - Expected Runs) / StdDev
+    # Используем поправку на непрерывность (0.5)
+    if runs > expected_runs:
+        z = (runs - expected_runs - 0.5) / std_dev
+    else:
+        z = (runs - expected_runs + 0.5) / std_dev
+
+    z = float(z)
+    
+    # Интерпретация
+    if z > 1.96:
+        verdict = "Отрицательная зависимость (Пила)" # Много смен знака -> Z положительный? 
+        # Стоп. В формуле (R - E) / sigma:
+        # Если R (фактических серий) БОЛЬШЕ E (ожидаемых), значит знаки меняются ЧАСТО -> Пила. Z > 0.
+        # Если R МЕНЬШЕ E, значит знаки меняются РЕДКО -> Тренды (Streaks). Z < 0.
+        verdict = "Пила (Чередование)"
+        desc = "Прибыль часто сменяется убытком. Optimal f работает хуже."
+    elif z < -1.96:
+        verdict = "Положительная зависимость (Серии)"
+        desc = "Прибыли идут сериями, убытки тоже. Опасно для мартингейла."
+    else:
+        verdict = "Случайное распределение"
+        desc = "Сделки независимы. Optimal f работает корректно."
+
+    return {
+        "z_score": round(z, 2),
+        "verdict": verdict,
+        "description": desc,
+        "runs": runs,
+        "expected_runs": round(expected_runs, 1)
+    }
+
+def calculate_sqn(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
+    """
+    Расчет SQN (System Quality Number) по Ван Тарпу.
+    SQN = (Expectancy / StdDev) * sqrt(N)
+    Используем R-multiples для расчета.
+    """
+    if not trades_pnl or len(trades_pnl) < 2:
+        return {"sqn": 0, "rating": "Недостаточно данных"}
+
+    # Расчет R-multiples
+    r_multiples = []
+    for pnl, risk in zip(trades_pnl, trades_risk):
+        if risk == 0:
+            r_multiples.append(0)
+        else:
+            r_multiples.append(pnl / risk)
+            
+    r_array = np.array(r_multiples)
+    
+    avg_r = np.mean(r_array)
+    std_dev_r = np.std(r_array, ddof=1) # Стандартное отклонение выборки
+    
+    if std_dev_r == 0:
+        return {"sqn": 0, "rating": "Стабильно (StdDev=0)"}
+        
+    n = len(trades_pnl)
+    sqn = (avg_r / std_dev_r) * np.sqrt(n)
+    
+    # Шкала Ван Тарпа
+    if sqn < 1.6: rating = "Poor (Слабая)"
+    elif sqn < 2.0: rating = "Average (Средняя)"
+    elif sqn < 2.5: rating = "Good (Хорошая)"
+    elif sqn < 3.0: rating = "Excellent (Отличная)"
+    elif sqn < 5.0: rating = "Superb (Превосходная)"
+    elif sqn < 7.0: rating = "Holy Grail (Грааль)"
+    else: rating = "Holy Grail++"
+    
+    return {"sqn": round(float(sqn), 2), "rating": rating}
+
 def analyze_mae_mfe(trades):
     """
     Анализирует MAE/MFE для списка сделок.

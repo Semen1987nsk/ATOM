@@ -65,5 +65,7 @@ class Trade(Base):
     setup_name = Column(String) # Название стратегии
     emotions = Column(String)
     notes = Column(String)
+    tags = Column(JSON, default=[]) # Теги сделки (напр. ["FOMO", "Trend"])
+    ai_analysis = Column(JSON) # Результат анализа от AI
     
     account = relationship("Account", back_populates="trades")
