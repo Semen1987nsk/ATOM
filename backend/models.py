@@ -44,6 +44,7 @@ class Trade(Base):
     # Вход и выход
     entry_price = Column(Numeric(precision=18, scale=8), nullable=False)
     exit_price = Column(Numeric(precision=18, scale=8))
+    exit_reason = Column(String) # Причина выхода (Strategy, Time, Panic, etc.)
     quantity = Column(Numeric(precision=18, scale=8), nullable=False)
     entry_at = Column(DateTime, nullable=False)
     exit_at = Column(DateTime)
@@ -63,6 +64,7 @@ class Trade(Base):
     
     # Метаданные
     setup_name = Column(String) # Название стратегии
+    timeframe = Column(String) # Таймфрейм (1m, 5m, 1H, 4H, 1D)
     emotions = Column(String)
     notes = Column(String)
     tags = Column(JSON, default=[]) # Теги сделки (напр. ["FOMO", "Trend"])

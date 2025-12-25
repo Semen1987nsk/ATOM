@@ -38,6 +38,10 @@ interface DashboardData {
     verdict: string;
     description: string;
   };
+  profit_factor: number;
+  r_expectancy: number;
+  recovery_factor: number;
+  ahpr: number;
   mae_mfe_analysis: {
     avg_mae_ratio: number;
     avg_mfe_ratio: number;
@@ -97,6 +101,8 @@ export default function Home() {
     const exitPrice = prompt('Enter Exit Price:');
     if (!exitPrice) return;
 
+    const exitReason = prompt('Enter Exit Reason (Strategy, Time, Panic, etc.):') || 'Manual';
+
     try {
       const response = await fetch(getApiUrl(`/trades/${tradeId}/close`), {
         method: 'PATCH',
@@ -104,6 +110,7 @@ export default function Home() {
         body: JSON.stringify({
           exit_price: parseFloat(exitPrice),
           exit_at: new Date().toISOString(),
+          exit_reason: exitReason,
           mae_price: parseFloat(exitPrice) * 0.98, // Mock MAE for now
           mfe_price: parseFloat(exitPrice) * 1.02  // Mock MFE for now
         }),
@@ -228,6 +235,34 @@ export default function Home() {
           description={stats?.z_score?.verdict || "Calculating..."}
           icon={<GitGraph size={18} />}
           tooltipText={stats?.z_score?.description || "Z-Score показывает зависимость между сделками. > 1.96: Пила (чередование). < -1.96: Серии (тренды). Около 0: Случайность."}
+        />
+        <StatsCard 
+          title="Profit Factor" 
+          value={stats?.profit_factor || 0} 
+          description="Gross Profit / Gross Loss"
+          icon={<TrendingUp size={18} />}
+          tooltipText="Отношение общей прибыли к общему убытку. > 1.5 — хорошо, > 2.0 — отлично. Если < 1.0 — система убыточна."
+        />
+        <StatsCard 
+          title="R-Expectancy" 
+          value={`${stats?.r_expectancy || 0}R`} 
+          description="Avg Return per 1R Risk"
+          icon={<Target size={18} />}
+          tooltipText="Матожидание в R (рисках). Показывает, сколько вы зарабатываете на каждый доллар риска. 0.5R означает $50 прибыли на $100 риска."
+        />
+        <StatsCard 
+          title="Recovery Factor" 
+          value={stats?.recovery_factor || 0} 
+          description="Net Profit / Max Drawdown"
+          icon={<Activity size={18} />}
+          tooltipText="Фактор восстановления. Показывает, насколько быстро система выходит из просадок. Чем выше, тем лучше. > 3.0 — отличная устойчивость."
+        />
+        <StatsCard 
+          title="AHPR" 
+          value={stats?.ahpr || 0} 
+          description="Avg Holding Period Return"
+          icon={<TrendingUp size={18} />}
+          tooltipText="Средняя доходность за период удержания (Geometric Mean). Если 1.05, то +5% за сделку. Ключ к сложному проценту."
         />
       </div>
 

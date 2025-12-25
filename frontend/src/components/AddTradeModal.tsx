@@ -20,6 +20,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
     take_profit: '',
     risk_amount: '',
     setup_name: '',
+    timeframe: '1D',
     notes: '',
     tags: ''
   });
@@ -97,6 +98,22 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Timeframe</label>
+              <select 
+                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                value={formData.timeframe}
+                onChange={e => setFormData({...formData, timeframe: e.target.value})}
+              >
+                <option value="1m">1m</option>
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1H">1H</option>
+                <option value="4H">4H</option>
+                <option value="1D">1D</option>
+                <option value="1W">1W</option>
+              </select>
+            </div>
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Entry Price</label>
               <input 

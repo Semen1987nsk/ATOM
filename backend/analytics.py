@@ -163,6 +163,54 @@ def calculate_sqn(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
     
     return {"sqn": round(float(sqn), 2), "rating": rating}
 
+def calculate_advanced_stats(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
+    """
+    Расчет дополнительных метрик: Profit Factor, R-Expectancy, Recovery Factor.
+    """
+    if not trades_pnl:
+        return {
+            "profit_factor": 0,
+            "r_expectancy": 0,
+            "recovery_factor": 0
+        }
+
+    # 1. Profit Factor
+    gross_profit = sum(p for p in trades_pnl if p > 0)
+    gross_loss = abs(sum(p for p in trades_pnl if p < 0))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss != 0 else 99.99
+
+    # 2. R-Expectancy
+    r_multiples = []
+    for pnl, risk in zip(trades_pnl, trades_risk):
+        if risk > 0:
+            r_multiples.append(pnl / risk)
+        else:
+            r_multiples.append(0)
+    
+    r_expectancy = round(float(np.mean(r_multiples)), 2) if r_multiples else 0
+
+    # 3. Recovery Factor
+    running_balance = 0
+    max_drawdown = 0
+    peak = 0
+    
+    for pnl in trades_pnl:
+        running_balance += pnl
+        if running_balance > peak:
+            peak = running_balance
+        drawdown = peak - running_balance
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+            
+    net_profit = sum(trades_pnl)
+    recovery_factor = round(net_profit / max_drawdown, 2) if max_drawdown > 0 else (99.99 if net_profit > 0 else 0)
+
+    return {
+        "profit_factor": profit_factor,
+        "r_expectancy": r_expectancy,
+        "recovery_factor": recovery_factor
+    }
+
 def analyze_mae_mfe(trades):
     """
     Анализирует MAE/MFE для списка сделок.

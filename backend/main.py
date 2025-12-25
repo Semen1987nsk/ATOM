@@ -130,6 +130,7 @@ async def close_trade(trade_id: int, trade_close: schemas.TradeClose, db: Sessio
     # Обновляем данные закрытия
     db_trade.exit_price = trade_close.exit_price
     db_trade.exit_at = trade_close.exit_at
+    db_trade.exit_reason = trade_close.exit_reason
     db_trade.mae_price = trade_close.mae_price
     db_trade.mfe_price = trade_close.mfe_price
     
@@ -184,6 +185,9 @@ def get_stats(db: Session = Depends(database.get_db)):
     # Расчет Z-Score
     z_score_data = analytics.calculate_z_score(pnls)
     
+    # Расчет Advanced Stats
+    adv_stats = analytics.calculate_advanced_stats(pnls, risks)
+
     # Анализ MAE/MFE
     mae_mfe_data = analytics.analyze_mae_mfe(trades)
     
@@ -231,6 +235,10 @@ def get_stats(db: Session = Depends(database.get_db)):
         "optimal_f": opt_f_data.get("optimal_f", 0),
         "sqn": sqn_data,
         "z_score": z_score_data,
+        "profit_factor": adv_stats.get("profit_factor", 0),
+        "r_expectancy": adv_stats.get("r_expectancy", 0),
+        "recovery_factor": adv_stats.get("recovery_factor", 0),
+        "ahpr": opt_f_data.get("geometric_mean", 0), # Используем Geometric Mean как AHPR
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
         "tag_stats": tag_stats

@@ -14,6 +14,8 @@ class TradeBase(BaseModel):
     take_profit: Optional[float] = None
     risk_amount: Optional[float] = None
     setup_name: Optional[str] = None
+    timeframe: Optional[str] = None
+    exit_reason: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[list[str]] = []
 
@@ -23,6 +25,7 @@ class TradeCreate(TradeBase):
 class TradeClose(BaseModel):
     exit_price: float
     exit_at: datetime
+    exit_reason: Optional[str] = None
     mae_price: Optional[float] = None
     mfe_price: Optional[float] = None
 
@@ -47,6 +50,10 @@ class DashboardStats(BaseModel):
     optimal_f: float
     sqn: Optional[dict] = None
     z_score: Optional[dict] = None
+    profit_factor: float = 0
+    r_expectancy: float = 0
+    recovery_factor: float = 0
+    ahpr: float = 0
     mae_mfe_analysis: Optional[dict] = None
     equity_curve: List[dict] = [] # Данные для графика: [{"date": "...", "balance": ...}]
     tag_stats: List[dict] = [] # Статистика по тегам: [{"tag": "...", "pnl": ..., "win_rate": ...}]
