@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,7 @@ import models
 import schemas
 import analytics
 import ai_service
+import import_service
 import csv
 import io
 from fastapi.responses import StreamingResponse
@@ -80,8 +81,29 @@ def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_
     db.refresh(db_trade)
     return db_trade
 
+@app.post("/trades/import")
+async def import_trades(file: UploadFile = File(...), db: Session = Depends(database.get_db)):
+    contents = await file.read()
+    try:
+        trades_data = import_service.parse_trade_file(contents, file.filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    imported_count = 0
+    for trade_dict in trades_data:
+        # Добавляем account_id (пока хардкод 1, как и везде)
+        trade_dict["account_id"] = 1
+        
+        # Создаем модель
+        db_trade = models.Trade(**trade_dict)
+        db.add(db_trade)
+        imported_count += 1
+    
+    db.commit()
+    return {"message": f"Successfully imported {imported_count} trades"}
+
 @app.get("/trades/", response_model=list[schemas.Trade])
-def read_trades(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
+def read_trades(skip: int = 0, limit: int = 5000, db: Session = Depends(database.get_db)):
     trades = db.query(models.Trade).offset(skip).limit(limit).all()
     return trades
 

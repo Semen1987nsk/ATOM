@@ -6,15 +6,20 @@ import models
 
 class TradeBase(BaseModel):
     symbol: str
+    asset_name: Optional[str] = None
+    asset_type: Optional[str] = None
     direction: models.TradeDirection
     entry_price: float
     quantity: float
+    leverage: Optional[float] = 1.0
     entry_at: datetime
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     risk_amount: Optional[float] = None
     setup_name: Optional[str] = None
     timeframe: Optional[str] = None
+    news_event: Optional[str] = None
+    screenshot_url: Optional[str] = None
     exit_reason: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[list[str]] = []

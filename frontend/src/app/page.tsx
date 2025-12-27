@@ -4,16 +4,21 @@ import { useEffect, useState } from 'react';
 import { StatsCard } from '@/components/StatsCard';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import Link from 'next/link';
-import { Activity, TrendingUp, Target, Zap, AlertTriangle, Plus, Lock, Download, Trash2, BookOpen, GitGraph } from 'lucide-react';
+import { Activity, TrendingUp, Target, Zap, AlertTriangle, Plus, Lock, Download, Upload, Trash2, BookOpen, GitGraph, History } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 interface Trade {
   id: number;
   symbol: string;
+  asset_name?: string;
+  asset_type?: string;
   direction: string;
   pnl: number | null;
+  commission?: number;
   entry_price: number;
   quantity: number;
+  setup_name?: string;
+  timeframe?: string;
   tags?: string[];
   ai_analysis?: {
     verdict: string;
@@ -135,6 +140,36 @@ export default function Home() {
     }
   };
 
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      addLog('Uploading trade data...');
+      const response = await fetch(getApiUrl('/trades/import'), {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        addLog(result.message);
+        fetchData();
+      } else {
+        const err = await response.json();
+        addLog(`ERROR: ${err.detail}`);
+      }
+    } catch (error) {
+      console.error('Import failed:', error);
+      addLog('ERROR: Import failed');
+    }
+    // Reset input
+    e.target.value = '';
+  };
+
   const handleDelete = async (tradeId: number) => {
     if (!confirm('Are you sure you want to delete this trade?')) return;
     try {
@@ -160,7 +195,7 @@ export default function Home() {
       <header className="mb-12 flex justify-between items-start">
         <div>
           <h1 className="text-4xl font-black tracking-tighter mb-2 italic">
-            ATOM <span className="text-accent">TERMINAL</span>
+            Set<span className="text-accent">Up</span>
           </h1>
           <p className="text-xs font-mono opacity-50 uppercase tracking-[0.2em]">
             AI-Powered Trading Intelligence System v1.0.4
@@ -168,12 +203,24 @@ export default function Home() {
         </div>
         <div className="flex gap-4">
           <Link 
+            href="/history"
+            className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest text-accent"
+          >
+            <History size={14} />
+            Trade History
+          </Link>
+          <Link 
             href="/manual"
             className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest text-accent"
           >
             <BookOpen size={14} />
             System Manual
           </Link>
+          <label className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest cursor-pointer">
+            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
+            <Upload size={14} />
+            Import Data
+          </label>
           <button 
             onClick={handleExport}
             className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest"
@@ -321,50 +368,39 @@ export default function Home() {
                 <Activity size={16} className="text-accent" />
                 Recent Trades & AI Analysis
               </h2>
-              <div className="flex gap-2 overflow-x-auto max-w-[300px] no-scrollbar">
-                <button 
-                  onClick={() => setSelectedTag(null)}
-                  className={`text-[9px] font-mono px-2 py-1 border ${!selectedTag ? 'border-accent text-accent' : 'border-border opacity-50'}`}
-                >
-                  ALL
-                </button>
-                {allTags.map(tag => (
-                  <button 
-                    key={tag}
-                    onClick={() => setSelectedTag(tag)}
-                    className={`text-[9px] font-mono px-2 py-1 border ${selectedTag === tag ? 'border-accent text-accent' : 'border-border opacity-50'}`}
-                  >
-                    #{tag.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+              <Link href="/history" className="text-[10px] font-mono text-accent hover:underline">
+                VIEW ALL
+              </Link>
             </div>
             <div className="space-y-4">
               {filteredTrades.length === 0 ? (
                 <div className="text-center py-8 opacity-30 font-mono">NO TRADES MATCHING FILTER</div>
               ) : (
-                filteredTrades.map((trade) => (
+                filteredTrades.slice(0, 5).map((trade) => ( // Show only last 5 trades
                   <div key={trade.id} className="border-b border-border pb-4 last:border-0">
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-3">
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                           {trade.direction.toUpperCase()}
                         </span>
-                        <span className="font-bold">{trade.symbol}</span>
+                        <div>
+                          <span className="font-bold">{trade.symbol}</span>
+                          {trade.asset_name && <span className="text-[10px] text-gray-500 ml-2">{trade.asset_name}</span>}
+                          {trade.asset_type && <span className="text-[9px] border border-gray-700 rounded px-1 ml-2 text-gray-400">{trade.asset_type}</span>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {trade.pnl !== null ? (
-                          <span className={Number(trade.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            {Number(trade.pnl) >= 0 ? '+' : ''}{Number(trade.pnl).toFixed(2)}
-                          </span>
-                        ) : (
-                          <button 
-                            onClick={() => handleCloseTrade(trade.id)}
-                            className="text-[10px] font-mono border border-accent text-accent px-2 py-1 hover:bg-accent hover:text-black transition-colors"
-                          >
-                            CLOSE POSITION
-                          </button>
-                        )}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                           {trade.pnl !== null ? (
+                            <span className={`block font-bold ${Number(trade.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {Number(trade.pnl) >= 0 ? '+' : ''}{Number(trade.pnl).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-accent">OPEN</span>
+                          )}
+                          {trade.commission && <div className="text-[9px] text-gray-500">Comm: {trade.commission.toFixed(2)}</div>}
+                        </div>
+                        
                         <button 
                           onClick={() => handleDelete(trade.id)}
                           className="text-red-500/50 hover:text-red-500 transition-colors p-1"
@@ -374,15 +410,23 @@ export default function Home() {
                       </div>
                     </div>
                     
-                    {trade.tags && trade.tags.length > 0 && (
-                      <div className="flex gap-2 mb-2">
-                        {trade.tags.map(tag => (
+                    <div className="flex flex-wrap gap-2 mb-2 items-center">
+                      {trade.setup_name && (
+                         <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">
+                           Setup: {trade.setup_name}
+                         </span>
+                      )}
+                      {trade.timeframe && (
+                         <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded">
+                           TF: {trade.timeframe}
+                         </span>
+                      )}
+                      {trade.tags && trade.tags.length > 0 && trade.tags.map(tag => (
                           <span key={tag} className="text-[9px] font-mono border border-border px-1.5 opacity-50">
                             #{tag.toUpperCase()}
                           </span>
                         ))}
-                      </div>
-                    )}
+                    </div>
 
                     {trade.ai_analysis && (
                       <div className="bg-white/5 p-3 rounded text-xs">

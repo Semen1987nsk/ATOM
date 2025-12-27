@@ -2,13 +2,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Путь к файлу базы данных SQLite
-SQLALCHEMY_DATABASE_URL = "sqlite:///./atom.db"
+# Читаем URL из переменной окружения, иначе используем SQLite
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./atom.db")
 
-# Создаем движок
-# check_same_thread=False нужен только для SQLite
+# Настройка аргументов подключения
+connect_args = {}
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL, connect_args=connect_args
 )
 
 # Создаем сессию для работы с БД

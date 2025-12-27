@@ -45,27 +45,27 @@ export default function Manual() {
             </div>
 
             <div>
-              <h3 className="text-white font-bold mb-2 text-lg">Как это работает в ATOM?</h3>
+              <h3 className="text-white font-bold mb-2 text-lg">Как это работает в SetUp?</h3>
               <p>
-                ATOM анализирует историю ваших сделок (ваши победы и поражения) и вычисляет этот идеальный процент риска именно для ВАШЕЙ стратегии.
+                SetUp анализирует историю ваших сделок (ваши победы и поражения) и вычисляет этот идеальный процент риска именно для ВАШЕЙ стратегии.
               </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6 bg-black/40 p-4 rounded border border-white/5">
               <div>
-                <h4 className="text-accent font-mono text-xs uppercase mb-2">Трейдер "Интуиция" (Риск 2%)</h4>
+                <h4 className="text-accent font-mono text-xs uppercase mb-2">Трейдер &quot;Интуиция&quot; (Риск 2%)</h4>
                 <p className="text-xs">Торгует фиксированным лотом. За год превращает $10,000 в $15,000. Неплохо, но линейно.</p>
               </div>
               <div>
-                <h4 className="text-accent font-mono text-xs uppercase mb-2">Трейдер "ATOM" (Optimal f = 14%)</h4>
+                <h4 className="text-accent font-mono text-xs uppercase mb-2">Трейдер &quot;SetUp&quot; (Optimal f = 14%)</h4>
                 <p className="text-xs">Использует сложный процент. За тот же год, на тех же сделках, превращает $10,000 в $48,000. Это сила геометрии.</p>
               </div>
             </div>
 
             <div className="bg-red-500/10 p-4 border-l-2 border-red-500 font-mono text-xs mt-4">
-              <strong className="text-red-400">ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ:</strong> Торговля на полном Optimal f (1.0) — это "американские горки". Просадки могут достигать 70%. 
+              <strong className="text-red-400">ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ:</strong> Торговля на полном Optimal f (1.0) — это &quot;американские горки&quot;. Просадки могут достигать 70%. 
               <br/><br/>
-              Мы рекомендуем использовать <strong>Fractional f (Дробный f)</strong>. Например, если ATOM говорит, что Optimal f = 0.20 (20%), торгуйте с риском 10% (Half-Kelly). Вы получите 75% от максимальной доходности, но с вдвое меньшими нервами.
+              Мы рекомендуем использовать <strong>Fractional f (Дробный f)</strong>. Например, если SetUp говорит, что Optimal f = 0.20 (20%), торгуйте с риском 10% (Half-Kelly). Вы получите 75% от максимальной доходности, но с вдвое меньшими нервами.
             </div>
           </div>
         </section>
@@ -91,7 +91,7 @@ export default function Manual() {
                 <li><strong>Высокий SQN</strong>: Вы летите бизнес-классом. Тихо, спокойно, быстро.</li>
               </ul>
               <p className="mt-2">
-                SQN измеряет соотношение вашей прибыли к "тряске" (волатильности результатов). Чем выше SQN, тем стабильнее растет график доходности.
+                SQN измеряет соотношение вашей прибыли к &quot;тряске&quot; (волатильности результатов). Чем выше SQN, тем стабильнее растет график доходности.
               </p>
             </div>
 
@@ -141,7 +141,7 @@ export default function Manual() {
               <div className="bg-black/40 p-4 rounded border border-white/5 flex flex-col">
                 <h4 className="text-green-400 font-bold mb-2 text-sm">Z &lt; -1.96 (Стрики)</h4>
                 <p className="opacity-70 mb-4 flex-grow">
-                  "Победы притягивают победы". У вас бывают длинные белые и черные полосы.
+                  &quot;Победы притягивают победы&quot;. У вас бывают длинные белые и черные полосы.
                 </p>
                 <div className="bg-green-500/10 p-2 rounded border border-green-500/30">
                   <strong className="text-green-400 block mb-1">Совет:</strong>
@@ -163,7 +163,7 @@ export default function Manual() {
               <div className="bg-black/40 p-4 rounded border border-white/5 flex flex-col">
                 <h4 className="text-red-400 font-bold mb-2 text-sm">Z &gt; 1.96 (Пила)</h4>
                 <p className="opacity-70 mb-4 flex-grow">
-                  "Плюс-минус-плюс". Результаты постоянно чередуются.
+                  &quot;Плюс-минус-плюс&quot;. Результаты постоянно чередуются.
                 </p>
                 <div className="bg-red-500/10 p-2 rounded border border-red-500/30">
                   <strong className="text-red-400 block mb-1">Совет:</strong>
@@ -314,7 +314,7 @@ export default function Manual() {
                 <div className="bg-black/40 p-3 rounded border border-white/5 text-xs">
                   <strong>Пример:</strong> Вы выходите из сделки с прибылью $200. Но MFE показывает, что цена доходила до $500, прежде чем развернуться.
                   <br/><br/>
-                  <strong>Вывод:</strong> Вы &quot;пересиживаете&quot; или слишком рано выходите. ATOM подскажет, где статистически лучше фиксировать прибыль.
+                  <strong>Вывод:</strong> Вы &quot;пересиживаете&quot; или слишком рано выходите. SetUp подскажет, где статистически лучше фиксировать прибыль.
                 </div>
               </div>
             </div>
@@ -334,7 +334,7 @@ export default function Manual() {
             
             <p>
               Вы можете думать, что плохо торгуете &quot;Шорты&quot;. Но данные могут показать, что вы теряете деньги только когда торгуете &quot;Шорты&quot; + &quot;На новостях&quot; (#NEWS).
-              Система тегов ATOM превращает вашу психологию в сухие цифры.
+              Система тегов SetUp превращает вашу психологию в сухие цифры.
             </p>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 font-mono text-xs mt-2">
