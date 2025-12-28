@@ -36,6 +36,8 @@ class TradeManager:
         new_trade['exit_at'] = None
         new_trade['exit_price'] = None
         new_trade['exit_reason'] = None
+        new_trade['entry_commission'] = trade_data['commission'] # Store initial commission as entry commission
+        new_trade['exit_commission'] = 0
         
         if new_trade['symbol'] not in self.open_trades:
             self.open_trades[new_trade['symbol']] = []
@@ -67,7 +69,14 @@ class TradeManager:
                 ratio = close_qty / open_trade['quantity']
                 exit_ratio = close_qty / exit_trade['quantity']
                 
-                closed_part['commission'] = (open_trade['commission'] * ratio) + (exit_trade['commission'] * exit_ratio)
+                # Split commissions
+                entry_comm = open_trade['commission'] * ratio
+                exit_comm = exit_trade['commission'] * exit_ratio
+                
+                closed_part['entry_commission'] = entry_comm
+                closed_part['exit_commission'] = exit_comm
+                closed_part['commission'] = entry_comm + exit_comm
+                
                 closed_part['swap'] = (open_trade.get('swap', 0) * ratio) + (exit_trade.get('swap', 0) * exit_ratio)
                 
                 # Precise PnL using Deal Sum if available
@@ -109,7 +118,14 @@ class TradeManager:
                 
                 exit_ratio = close_qty / exit_trade['quantity']
                 
-                open_trade['commission'] += (exit_trade['commission'] * exit_ratio)
+                # Split commissions
+                entry_comm = open_trade['commission'] # Full entry comm
+                exit_comm = exit_trade['commission'] * exit_ratio
+                
+                open_trade['entry_commission'] = entry_comm
+                open_trade['exit_commission'] = exit_comm
+                open_trade['commission'] = entry_comm + exit_comm
+                
                 open_trade['swap'] += (exit_trade.get('swap', 0) * exit_ratio)
                 
                 # Precise PnL using Deal Sum if available

@@ -45,9 +45,9 @@ export default function Manual() {
             </div>
 
             <div>
-              <h3 className="text-white font-bold mb-2 text-lg">Как это работает в SetUp?</h3>
+              <h3 className="text-white font-bold mb-2 text-lg">Как это работает в ATOM?</h3>
               <p>
-                SetUp анализирует историю ваших сделок (ваши победы и поражения) и вычисляет этот идеальный процент риска именно для ВАШЕЙ стратегии.
+                ATOM анализирует историю ваших сделок (ваши победы и поражения) и вычисляет этот идеальный процент риска именно для ВАШЕЙ стратегии.
               </p>
             </div>
 
@@ -57,7 +57,7 @@ export default function Manual() {
                 <p className="text-xs">Торгует фиксированным лотом. За год превращает $10,000 в $15,000. Неплохо, но линейно.</p>
               </div>
               <div>
-                <h4 className="text-accent font-mono text-xs uppercase mb-2">Трейдер &quot;SetUp&quot; (Optimal f = 14%)</h4>
+                <h4 className="text-accent font-mono text-xs uppercase mb-2">Трейдер &quot;ATOM&quot; (Optimal f = 14%)</h4>
                 <p className="text-xs">Использует сложный процент. За тот же год, на тех же сделках, превращает $10,000 в $48,000. Это сила геометрии.</p>
               </div>
             </div>
@@ -65,7 +65,7 @@ export default function Manual() {
             <div className="bg-red-500/10 p-4 border-l-2 border-red-500 font-mono text-xs mt-4">
               <strong className="text-red-400">ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ:</strong> Торговля на полном Optimal f (1.0) — это &quot;американские горки&quot;. Просадки могут достигать 70%. 
               <br/><br/>
-              Мы рекомендуем использовать <strong>Fractional f (Дробный f)</strong>. Например, если SetUp говорит, что Optimal f = 0.20 (20%), торгуйте с риском 10% (Half-Kelly). Вы получите 75% от максимальной доходности, но с вдвое меньшими нервами.
+              Мы рекомендуем использовать <strong>Fractional f (Дробный f)</strong>. Например, если ATOM говорит, что Optimal f = 0.20 (20%), торгуйте с риском 10% (Half-Kelly). Вы получите 75% от максимальной доходности, но с вдвое меньшими нервами.
             </div>
           </div>
         </section>
@@ -314,7 +314,7 @@ export default function Manual() {
                 <div className="bg-black/40 p-3 rounded border border-white/5 text-xs">
                   <strong>Пример:</strong> Вы выходите из сделки с прибылью $200. Но MFE показывает, что цена доходила до $500, прежде чем развернуться.
                   <br/><br/>
-                  <strong>Вывод:</strong> Вы &quot;пересиживаете&quot; или слишком рано выходите. SetUp подскажет, где статистически лучше фиксировать прибыль.
+                  <strong>Вывод:</strong> Вы &quot;пересиживаете&quot; или слишком рано выходите. ATOM подскажет, где статистически лучше фиксировать прибыль.
                 </div>
               </div>
             </div>
@@ -334,7 +334,7 @@ export default function Manual() {
             
             <p>
               Вы можете думать, что плохо торгуете &quot;Шорты&quot;. Но данные могут показать, что вы теряете деньги только когда торгуете &quot;Шорты&quot; + &quot;На новостях&quot; (#NEWS).
-              Система тегов SetUp превращает вашу психологию в сухие цифры.
+              Система тегов ATOM превращает вашу психологию в сухие цифры.
             </p>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 font-mono text-xs mt-2">

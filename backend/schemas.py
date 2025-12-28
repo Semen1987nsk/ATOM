@@ -23,6 +23,9 @@ class TradeBase(BaseModel):
     exit_reason: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[list[str]] = []
+    commission: Optional[float] = 0
+    entry_commission: Optional[float] = 0
+    exit_commission: Optional[float] = 0
     swap: Optional[float] = 0
     confidence: Optional[int] = Field(None, ge=1, le=10)
 
@@ -56,6 +59,8 @@ class TradeUpdate(BaseModel):
     notes: Optional[str] = None
     tags: Optional[list[str]] = None
     commission: Optional[float] = None
+    entry_commission: Optional[float] = None
+    exit_commission: Optional[float] = None
     swap: Optional[float] = None
     confidence: Optional[int] = Field(None, ge=1, le=10)
 
@@ -85,6 +90,24 @@ class DashboardStats(BaseModel):
     r_expectancy: float = 0
     recovery_factor: float = 0
     ahpr: float = 0
+    sortino_ratio: float = 0
+    max_drawdown_pct: float = 0
+    max_drawdown_abs: float = 0
+    current_drawdown_pct: float = 0
+    avg_win: float = 0
+    avg_loss: float = 0
+    largest_win: float = 0
+    largest_loss: float = 0
+    max_win_streak: int = 0
+    max_loss_streak: int = 0
+    current_streak: int = 0
+    current_streak_type: Optional[str] = None
+    tail_ratio: float = 0
+    risk_of_ruin: Optional[dict] = None
+    r_distribution: Optional[dict] = None
+    trade_duration: Optional[dict] = None
+    monte_carlo: Optional[dict] = None
+    time_patterns: Optional[dict] = None
     mae_mfe_analysis: Optional[dict] = None
     equity_curve: List[dict] = [] # Данные для графика: [{"date": "...", "balance": ...}]
     tag_stats: List[dict] = [] # Статистика по тегам: [{"tag": "...", "pnl": ..., "win_rate": ...}]

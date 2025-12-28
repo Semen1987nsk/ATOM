@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,9 +9,18 @@ import schemas
 import analytics
 import ai_service
 import import_service
+import market_service
 import csv
 import io
 from fastapi.responses import StreamingResponse
+from logger import get_logger
+from datetime import datetime, timedelta
+from typing import Optional
+
+log = get_logger("api")
+
+# Инициализируем сервисы
+market_data_service = market_service.MarketService()
 
 # Инициализируем базу данных при запуске
 database.init_db()
@@ -58,9 +67,10 @@ async def redoc_html():
 
 @app.on_event("startup")
 async def startup_event():
-    print("Registered routes:")
+    log.info("🚀 ATOM API Starting...")
+    log.debug("Registered routes:")
     for route in app.routes:
-        print(f" - {route.path} ({route.name})")
+        log.debug(f"  → {route.path} ({route.name})")
 
 @app.get("/test-docs", include_in_schema=False)
 async def custom_docs():
@@ -72,14 +82,135 @@ async def read_root():
 
 @app.post("/trades/", response_model=schemas.Trade)
 def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_db)):
-    # 1. Создаем объект модели SQLAlchemy
-    db_trade = models.Trade(**trade.model_dump())
-    
-    # 2. Сохраняем в базу
-    db.add(db_trade)
-    db.commit()
-    db.refresh(db_trade)
-    return db_trade
+    # 1. Check for existing open trades for this symbol
+    open_trades = db.query(models.Trade).filter(
+        models.Trade.symbol == trade.symbol,
+        models.Trade.exit_at == None
+    ).order_by(models.Trade.entry_at).all()
+
+    # 2. Determine if this is a closing operation
+    is_closing = False
+    if open_trades:
+        # Check direction of the first open trade
+        if open_trades[0].direction != trade.direction:
+            is_closing = True
+
+    if is_closing:
+        qty_to_close = float(trade.quantity)
+        last_modified_trade = None
+        
+        # We iterate through open trades (FIFO)
+        for open_trade in open_trades:
+            if qty_to_close <= 0:
+                break
+            
+            available_qty = float(open_trade.quantity)
+            
+            if qty_to_close >= available_qty:
+                # Full close of this open trade
+                open_trade.exit_price = trade.entry_price
+                open_trade.exit_at = trade.entry_at
+                open_trade.exit_reason = trade.setup_name or "Manual Close"
+                
+                # Calculate PnL
+                if open_trade.direction == models.TradeDirection.LONG:
+                    open_trade.pnl = (float(open_trade.exit_price) - float(open_trade.entry_price)) * float(open_trade.quantity)
+                else:
+                    open_trade.pnl = (float(open_trade.entry_price) - float(open_trade.exit_price)) * float(open_trade.quantity)
+                
+                # Commission handling
+                ratio = available_qty / float(trade.quantity)
+                exit_comm = (trade.commission or 0) * ratio
+                open_trade.exit_commission = exit_comm
+                open_trade.commission = float(open_trade.commission or 0) + exit_comm
+                open_trade.net_pnl = open_trade.pnl - open_trade.commission - float(open_trade.swap or 0)
+
+                qty_to_close -= available_qty
+                last_modified_trade = open_trade
+                
+            else:
+                # Partial close - Split the trade
+                # Create new "Closed" trade
+                closed_trade = models.Trade(
+                    account_id=open_trade.account_id,
+                    symbol=open_trade.symbol,
+                    asset_name=open_trade.asset_name,
+                    asset_type=open_trade.asset_type,
+                    direction=open_trade.direction,
+                    entry_price=open_trade.entry_price,
+                    quantity=qty_to_close,
+                    entry_at=open_trade.entry_at,
+                    setup_name=open_trade.setup_name,
+                    notes=open_trade.notes,
+                    tags=open_trade.tags
+                )
+                
+                # Split Entry Commission
+                ratio = qty_to_close / available_qty
+                part_entry_comm = float(open_trade.entry_commission or 0) * ratio
+                closed_trade.entry_commission = part_entry_comm
+                
+                # Update original trade's entry commission
+                open_trade.entry_commission = float(open_trade.entry_commission or 0) - part_entry_comm
+                open_trade.commission = float(open_trade.commission or 0) - part_entry_comm
+                
+                # Exit details for closed trade
+                closed_trade.exit_price = trade.entry_price
+                closed_trade.exit_at = trade.entry_at
+                closed_trade.exit_reason = trade.setup_name or "Manual Partial Close"
+                
+                # Exit Commission
+                total_close_qty = float(trade.quantity)
+                exit_comm_ratio = qty_to_close / total_close_qty
+                exit_comm = (trade.commission or 0) * exit_comm_ratio
+                
+                closed_trade.exit_commission = exit_comm
+                closed_trade.commission = closed_trade.entry_commission + exit_comm
+                
+                # Calculate PnL
+                if closed_trade.direction == models.TradeDirection.LONG:
+                    closed_trade.pnl = (float(closed_trade.exit_price) - float(closed_trade.entry_price)) * float(closed_trade.quantity)
+                else:
+                    closed_trade.pnl = (float(closed_trade.entry_price) - float(closed_trade.exit_price)) * float(closed_trade.quantity)
+                
+                closed_trade.net_pnl = closed_trade.pnl - closed_trade.commission
+                
+                db.add(closed_trade)
+                
+                # Update original trade
+                open_trade.quantity = float(open_trade.quantity) - qty_to_close
+                
+                qty_to_close = 0
+                last_modified_trade = closed_trade
+        
+        # If quantity remains, create a new trade (Flip)
+        if qty_to_close > 0:
+            remainder_trade_data = trade.model_dump()
+            remainder_trade = models.Trade(**remainder_trade_data)
+            remainder_trade.quantity = qty_to_close
+            
+            total_qty = float(trade.quantity)
+            rem_ratio = qty_to_close / total_qty
+            remainder_trade.commission = (trade.commission or 0) * rem_ratio
+            remainder_trade.entry_commission = remainder_trade.commission
+            
+            db.add(remainder_trade)
+            last_modified_trade = remainder_trade
+            
+        db.commit()
+        if last_modified_trade:
+            db.refresh(last_modified_trade)
+            return last_modified_trade
+        return open_trades[0]
+
+    else:
+        # Standard New Trade
+        db_trade = models.Trade(**trade.model_dump())
+        db_trade.entry_commission = db_trade.commission
+        db.add(db_trade)
+        db.commit()
+        db.refresh(db_trade)
+        return db_trade
 
 @app.post("/trades/import")
 async def import_trades(file: UploadFile = File(...), db: Session = Depends(database.get_db)):
@@ -192,9 +323,130 @@ async def close_trade(trade_id: int, trade_close: schemas.TradeClose, db: Sessio
     db.refresh(db_trade)
     return db_trade
 
-@app.get("/stats/", response_model=schemas.DashboardStats)
-def get_stats(db: Session = Depends(database.get_db)):
+@app.get("/trades/unrealized-pnl")
+def get_unrealized_pnl(db: Session = Depends(database.get_db)):
+    # 1. Get all open trades
+    open_trades = db.query(models.Trade).filter(models.Trade.exit_at == None).all()
+    if not open_trades:
+        return []
+    
+    # 2. Get unique tickers
+    tickers = list(set(t.symbol for t in open_trades))
+    
+    # 3. Fetch current prices
+    current_prices = market_data_service.get_current_prices(tickers)
+    
+    results = []
+    for trade in open_trades:
+        current_price = current_prices.get(trade.symbol)
+        if current_price:
+            if trade.direction == models.TradeDirection.LONG:
+                pnl = (current_price - float(trade.entry_price)) * float(trade.quantity)
+            else:
+                pnl = (float(trade.entry_price) - current_price) * float(trade.quantity)
+            
+            results.append({
+                "trade_id": trade.id,
+                "symbol": trade.symbol,
+                "current_price": current_price,
+                "unrealized_pnl": pnl
+            })
+            
+    return results
+
+@app.get("/tags/")
+def get_all_tags(db: Session = Depends(database.get_db)):
+    """Get all unique tags used in trades with their statistics."""
     trades = db.query(models.Trade).filter(models.Trade.pnl != None).all()
+    
+    tag_stats = {}
+    for t in trades:
+        if not t.tags:
+            continue
+        for tag in t.tags:
+            tag_lower = tag.lower()
+            if tag_lower not in tag_stats:
+                tag_stats[tag_lower] = {"tag": tag_lower, "count": 0, "pnl": 0, "wins": 0}
+            tag_stats[tag_lower]["count"] += 1
+            tag_stats[tag_lower]["pnl"] += float(t.pnl or 0)
+            if t.pnl and t.pnl > 0:
+                tag_stats[tag_lower]["wins"] += 1
+    
+    result = []
+    for tag, data in tag_stats.items():
+        result.append({
+            "tag": data["tag"],
+            "count": data["count"],
+            "pnl": round(data["pnl"], 2),
+            "win_rate": round((data["wins"] / data["count"]) * 100, 1) if data["count"] > 0 else 0
+        })
+    
+    return sorted(result, key=lambda x: x["count"], reverse=True)
+
+@app.get("/stats/", response_model=schemas.DashboardStats)
+def get_stats(
+    period: Optional[str] = Query(None, description="Period filter: all, today, week, month, 3months, year, custom"),
+    start_date: Optional[str] = Query(None, description="Start date for custom period (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date for custom period (YYYY-MM-DD)"),
+    tag: Optional[str] = Query(None, description="Filter by tag"),
+    limit: Optional[int] = Query(None, description="Limit to last N trades"),
+    db: Session = Depends(database.get_db)
+):
+    """Get trading statistics with optional filters: time period, tag, and trade count limit."""
+    
+    # Build date filter
+    date_filter = None
+    now = datetime.utcnow()
+    
+    if period == "today":
+        date_filter = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        date_filter = now - timedelta(days=7)
+    elif period == "month":
+        date_filter = now - timedelta(days=30)
+    elif period == "3months":
+        date_filter = now - timedelta(days=90)
+    elif period == "year":
+        date_filter = now - timedelta(days=365)
+    elif period == "custom" and start_date:
+        try:
+            date_filter = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            pass
+    
+    # Query trades with filter
+    query = db.query(models.Trade).filter(models.Trade.pnl != None)
+    
+    if date_filter:
+        # Filter by exit_at or entry_at
+        query = query.filter(
+            (models.Trade.exit_at >= date_filter) | 
+            ((models.Trade.exit_at == None) & (models.Trade.entry_at >= date_filter))
+        )
+    
+    if period == "custom" and end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(
+                (models.Trade.exit_at < end_dt) | 
+                ((models.Trade.exit_at == None) & (models.Trade.entry_at < end_dt))
+            )
+        except ValueError:
+            pass
+    
+    # Get trades first, then apply tag filter and limit in Python
+    all_trades = query.order_by(models.Trade.exit_at.desc()).all()
+    
+    # Filter by tag if specified
+    if tag:
+        tag_lower = tag.lower()
+        all_trades = [t for t in all_trades if t.tags and any(tg.lower() == tag_lower for tg in t.tags)]
+    
+    # Apply limit (last N trades)
+    if limit and limit > 0:
+        all_trades = all_trades[:limit]
+    
+    trades = all_trades
     
     total_trades = len(trades)
     if total_trades == 0:
@@ -262,6 +514,25 @@ def get_stats(db: Session = Depends(database.get_db)):
         })
     # Сортируем по PnL (от лучших к худшим)
     tag_stats = sorted(tag_stats, key=lambda x: x["pnl"], reverse=True)
+    
+    # Расчет дополнительных метрик
+    sortino_data = analytics.calculate_sharpe_sortino(pnls)
+    drawdown_data = analytics.calculate_drawdown_stats(pnls)
+    win_loss_data = analytics.calculate_win_loss_stats(pnls)
+    streaks_data = analytics.calculate_streaks(pnls)
+    tail_ratio_data = analytics.calculate_tail_ratio(pnls)
+    r_distribution_data = analytics.calculate_r_distribution(pnls, risks)
+    trade_duration_data = analytics.calculate_trade_duration(trades)
+    
+    # Monte Carlo и Time Patterns
+    monte_carlo_data = analytics.monte_carlo_simulation(pnls)
+    time_patterns_data = analytics.analyze_time_patterns(trades)
+    
+    # Risk of Ruin
+    avg_win = win_loss_data.get("avg_win", 0)
+    avg_loss = abs(win_loss_data.get("avg_loss", 1))
+    payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 1
+    risk_of_ruin_data = analytics.calculate_risk_of_ruin(win_rate / 100, payoff_ratio)
 
     return {
         "total_pnl": total_pnl,
@@ -274,7 +545,25 @@ def get_stats(db: Session = Depends(database.get_db)):
         "profit_factor": adv_stats.get("profit_factor", 0),
         "r_expectancy": adv_stats.get("r_expectancy", 0),
         "recovery_factor": adv_stats.get("recovery_factor", 0),
-        "ahpr": opt_f_data.get("geometric_mean", 0), # Используем Geometric Mean как AHPR
+        "ahpr": opt_f_data.get("geometric_mean", 0),
+        "sortino_ratio": sortino_data.get("sortino_ratio", 0),
+        "max_drawdown_pct": drawdown_data.get("max_drawdown_pct", 0),
+        "max_drawdown_abs": drawdown_data.get("max_drawdown_abs", 0),
+        "current_drawdown_pct": drawdown_data.get("current_drawdown_pct", 0),
+        "avg_win": win_loss_data.get("avg_win", 0),
+        "avg_loss": win_loss_data.get("avg_loss", 0),
+        "largest_win": win_loss_data.get("largest_win", 0),
+        "largest_loss": win_loss_data.get("largest_loss", 0),
+        "max_win_streak": streaks_data.get("max_win_streak", 0),
+        "max_loss_streak": streaks_data.get("max_loss_streak", 0),
+        "current_streak": streaks_data.get("current_streak", 0),
+        "current_streak_type": streaks_data.get("current_streak_type"),
+        "tail_ratio": tail_ratio_data.get("tail_ratio", 0),
+        "risk_of_ruin": risk_of_ruin_data,
+        "r_distribution": r_distribution_data,
+        "trade_duration": trade_duration_data,
+        "monte_carlo": monte_carlo_data,
+        "time_patterns": time_patterns_data,
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
         "tag_stats": tag_stats

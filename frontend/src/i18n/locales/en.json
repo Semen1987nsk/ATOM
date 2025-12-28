@@ -1,0 +1,229 @@
+{
+  "app": {
+    "title": "ATOM",
+    "subtitle": "AI-Powered Trading Intelligence System v1.0.4",
+    "loading": "Loading..."
+  },
+  "period": {
+    "all": "All Time",
+    "today": "Today",
+    "week": "7 Days",
+    "month": "30 Days",
+    "3months": "3 Months",
+    "year": "Year",
+    "custom": "Custom"
+  },
+  "nav": {
+    "tradeHistory": "Trade History",
+    "systemManual": "System Manual",
+    "importData": "Import Data",
+    "exportCsv": "Export CSV",
+    "logPosition": "Log Position"
+  },
+  "stats": {
+    "totalPnl": {
+      "title": "Total PnL",
+      "description": "Net profit after commissions",
+      "tooltip": "Net profit or loss on all closed trades including commissions. The main indicator of financial performance."
+    },
+    "winRate": {
+      "title": "Win Rate",
+      "description": "{profitable} of {total} trades",
+      "tooltip": "Percentage of profitable trades. Formula: (Profitable / Total) * 100. For trend strategies 30-40% is normal, for scalping >50%."
+    },
+    "optimalF": {
+      "title": "Optimal f",
+      "description": "Vince's risk model",
+      "tooltip": "Ralph Vince's model. Shows the optimal fraction of capital to risk per trade to maximize geometric growth of the account."
+    },
+    "sqn": {
+      "title": "System Quality (SQN)",
+      "description": "Calculating...",
+      "tooltip": "System Quality Number (Van Tharp). Evaluates system quality. SQN = (Expectancy / StdDev) * sqrt(N). >2.0 — good, >3.0 — excellent."
+    },
+    "zScore": {
+      "title": "Z-Score (Serial)",
+      "description": "Calculating...",
+      "tooltip": "Z-Score shows dependency between trades. > 1.96: Alternating. < -1.96: Trending. Near 0: Random."
+    },
+    "profitFactor": {
+      "title": "Profit Factor",
+      "description": "Gross Profit / Gross Loss",
+      "tooltip": "Ratio of total profit to total loss. > 1.5 — good, > 2.0 — excellent. If < 1.0 — system is unprofitable."
+    },
+    "rExpectancy": {
+      "title": "R-Expectancy",
+      "description": "Avg Return per 1R Risk",
+      "tooltip": "Expected value in R (risks). Shows how much you earn per dollar of risk. 0.5R means $50 profit per $100 risk."
+    },
+    "recoveryFactor": {
+      "title": "Recovery Factor",
+      "description": "Net Profit / Max Drawdown",
+      "tooltip": "Recovery factor. Shows how quickly the system recovers from drawdowns. Higher is better. > 3.0 — excellent resilience."
+    },
+    "ahpr": {
+      "title": "AHPR",
+      "description": "Avg Holding Period Return",
+      "tooltip": "Average holding period return (Geometric Mean). If 1.05, then +5% per trade. Key to compound interest."
+    },
+    "sortinoRatio": {
+      "title": "Sortino Ratio",
+      "description": "Downside risk adjusted",
+      "tooltip": "Sortino ratio. Unlike Sharpe, it only accounts for downside volatility. > 2.0 — excellent, > 1.0 — good."
+    },
+    "maxDrawdown": {
+      "title": "Max Drawdown",
+      "description": "${amount} absolute",
+      "tooltip": "Maximum drawdown. Largest drop in capital from peak to trough. Critical risk indicator."
+    },
+    "currentDrawdown": {
+      "title": "Current Drawdown",
+      "description": "From equity peak",
+      "tooltip": "Current drawdown from historical equity peak. If > 10% — consider reviewing risks."
+    },
+    "tailRatio": {
+      "title": "Tail Ratio",
+      "description": "Top 10% wins / losses",
+      "tooltip": "Ratio of extreme outcomes: top 10% profits to top 10% losses. > 1.0 — tails in your favor."
+    },
+    "winStreak": {
+      "title": "Win Streak",
+      "description": "Current: {current}",
+      "tooltip": "Maximum consecutive winning trades. Helps assess system stability."
+    },
+    "lossStreak": {
+      "title": "Loss Streak",
+      "description": "Max consecutive losses",
+      "tooltip": "Maximum consecutive losing trades. Critical for trader psychology. > 5 — check your strategy."
+    },
+    "avgWinLoss": {
+      "title": "Avg Win / Loss",
+      "description": "Loss: ${amount}",
+      "tooltip": "Average winning and losing trade. Win/Loss ratio should be > 1.5 for a stable system."
+    }
+  },
+  "advancedStats": {
+    "title": "Advanced Risk Analytics",
+    "ror20": {
+      "title": "Risk of Ruin (20%)",
+      "description": "Probability of 20% loss",
+      "tooltip": "Probability of losing 20% of account. < 5% — excellent, > 20% — high risk of ruin."
+    },
+    "ror50": {
+      "title": "Risk of Ruin (50%)",
+      "description": "Probability of 50% loss",
+      "tooltip": "Probability of losing half the account. Should be < 1% for conservative trading."
+    },
+    "monteCarlo5": {
+      "title": "Monte Carlo 5th %",
+      "description": "Worst case scenario",
+      "tooltip": "5th percentile of 1000 simulations. Worst expected outcome with 95% probability. Bootstrap analysis."
+    },
+    "monteCarloMedian": {
+      "title": "Monte Carlo Median",
+      "description": "Expected median return",
+      "tooltip": "Median result from 1000 simulations. Realistic expectation if current trading system is maintained."
+    },
+    "rDistribution": {
+      "title": "R-Distribution >1R",
+      "description": ">2R: {pct}%",
+      "tooltip": "Percentage of trades with result > 1R and > 2R. Shows ability to let trades run."
+    },
+    "tradeDuration": {
+      "title": "Avg Trade Duration",
+      "description": "Win: {win}h / Loss: {loss}h",
+      "tooltip": "Average time in trade. If you hold losses longer than profits — discipline problem."
+    },
+    "bestDay": {
+      "title": "Best Day",
+      "description": "PnL: ${amount}",
+      "tooltip": "Day of week with best total profit. Use to optimize trading schedule."
+    },
+    "maeMfe": {
+      "title": "MAE/MFE Ratio",
+      "description": "MFE: {mfe}",
+      "tooltip": "MAE — max adverse excursion, MFE — max favorable excursion. Low MAE = good entries."
+    }
+  },
+  "charts": {
+    "equityCurve": "Equity Curve",
+    "recentTrades": "Recent Trades & AI Analysis",
+    "viewAll": "VIEW ALL",
+    "noTrades": "NO TRADES MATCHING FILTER"
+  },
+  "trades": {
+    "open": "OPEN",
+    "long": "LONG",
+    "short": "SHORT",
+    "commission": "Comm",
+    "setup": "Setup",
+    "timeframe": "TF",
+    "closeTrade": "Close trade",
+    "deleteTrade": "Delete trade"
+  },
+  "ai": {
+    "verdict": "AI Verdict",
+    "score": "Score"
+  },
+  "logs": {
+    "title": "System Logs",
+    "synchronized": "System data synchronized",
+    "syncFailed": "ERROR: Sync failed",
+    "positionClosed": "Position closed",
+    "closeFailed": "ERROR: Close failed",
+    "exporting": "Exporting CSV data...",
+    "exportFailed": "ERROR: Export failed",
+    "uploading": "Uploading trade data...",
+    "importFailed": "ERROR: Import failed",
+    "tradePurged": "Trade purged from database",
+    "purgeFailed": "ERROR: Purge failed",
+    "newPosition": "New position initialized"
+  },
+  "tagStats": {
+    "title": "Performance by Tag",
+    "noTags": "No trades with tags"
+  },
+  "modal": {
+    "addTrade": {
+      "title": "Add Trade",
+      "symbol": "Symbol",
+      "direction": "Direction",
+      "entryPrice": "Entry Price",
+      "quantity": "Quantity",
+      "stopLoss": "Stop Loss",
+      "takeProfit": "Take Profit",
+      "tags": "Tags",
+      "submit": "Add"
+    },
+    "closeTrade": {
+      "title": "Close Trade",
+      "exitPrice": "Exit Price",
+      "exitReason": "Exit Reason",
+      "submit": "Close"
+    }
+  },
+  "filters": {
+    "title": "Filters",
+    "allTags": "All tags",
+    "allTrades": "All trades",
+    "last": "Last",
+    "reset": "Reset",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "optional": "optional",
+    "apply": "Apply"
+  },
+  "days": {
+    "Monday": "Monday",
+    "Tuesday": "Tuesday",
+    "Wednesday": "Wednesday",
+    "Thursday": "Thursday",
+    "Friday": "Friday",
+    "Saturday": "Saturday",
+    "Sunday": "Sunday"
+  },
+  "language": {
+    "switch": "Русский",
+    "current": "English"
+  }
+}

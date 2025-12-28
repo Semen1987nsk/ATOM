@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
@@ -25,7 +25,7 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     name = Column(String, nullable=False)
     balance = Column(Numeric(precision=18, scale=8), default=0)
     currency = Column(String, default="RUB")
@@ -35,9 +35,18 @@ class Account(Base):
 
 class Trade(Base):
     __tablename__ = "trades"
+    
+    # Составные индексы для оптимизации частых запросов
+    __table_args__ = (
+        Index('ix_trades_account_symbol', 'account_id', 'symbol'),
+        Index('ix_trades_symbol_entry_at', 'symbol', 'entry_at'),
+        Index('ix_trades_entry_at', 'entry_at'),
+        Index('ix_trades_exit_at', 'exit_at'),
+        Index('ix_trades_direction', 'direction'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"))
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
     symbol = Column(String, index=True, nullable=False)
     asset_name = Column(String) # Полное название (напр. "АФК Система")
     asset_type = Column(String) # Тип (Stock, Futures, Bond, Currency)
@@ -65,6 +74,8 @@ class Trade(Base):
     pnl = Column(Numeric(precision=18, scale=8))
     net_pnl = Column(Numeric(precision=18, scale=8)) # Чистая прибыль (PnL - Comm - Swap)
     commission = Column(Numeric(precision=18, scale=8), default=0)
+    entry_commission = Column(Numeric(precision=18, scale=8), default=0)
+    exit_commission = Column(Numeric(precision=18, scale=8), default=0)
     swap = Column(Numeric(precision=18, scale=8), default=0) # Плата за перенос позиции
     
     # Метаданные

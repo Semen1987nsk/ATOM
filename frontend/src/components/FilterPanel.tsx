@@ -1,0 +1,320 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Calendar, Tag, Hash, ChevronDown, X, Filter, RotateCcw } from 'lucide-react';
+import { useLanguage } from '@/i18n/LanguageContext';
+
+export type Period = 'all' | 'today' | 'week' | 'month' | '3months' | 'year' | 'custom';
+
+interface TagInfo {
+  tag: string;
+  count: number;
+  pnl: number;
+  win_rate: number;
+}
+
+export interface Filters {
+  period: Period;
+  startDate?: string;
+  endDate?: string;
+  tag?: string;
+  limit?: number;
+}
+
+interface FilterPanelProps {
+  filters: Filters;
+  onChange: (filters: Filters) => void;
+  getApiUrl: (path: string) => string;
+}
+
+const LIMIT_OPTIONS = [
+  { value: undefined, label: 'all' },
+  { value: 10, label: '10' },
+  { value: 20, label: '20' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+];
+
+export const FilterPanel: React.FC<FilterPanelProps> = ({ 
+  filters, 
+  onChange,
+  getApiUrl
+}) => {
+  const { t } = useLanguage();
+  const [tags, setTags] = useState<TagInfo[]>([]);
+  const [openDropdown, setOpenDropdown] = useState<'period' | 'tag' | 'limit' | null>(null);
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  const [customStart, setCustomStart] = useState(filters.startDate || '');
+  const [customEnd, setCustomEnd] = useState(filters.endDate || '');
+
+  // Fetch available tags
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        const res = await fetch(getApiUrl('/tags/'));
+        if (res.ok) {
+          const data = await res.json();
+          setTags(data);
+        }
+      } catch (e) {
+        console.error('Failed to fetch tags:', e);
+      }
+    };
+    fetchTags();
+  }, [getApiUrl]);
+
+  const periods: { value: Period; label: string }[] = [
+    { value: 'all', label: t.period?.all || 'All time' },
+    { value: 'today', label: t.period?.today || 'Today' },
+    { value: 'week', label: t.period?.week || 'Week' },
+    { value: 'month', label: t.period?.month || 'Month' },
+    { value: '3months', label: t.period?.['3months'] || '3 Months' },
+    { value: 'year', label: t.period?.year || 'Year' },
+    { value: 'custom', label: t.period?.custom || 'Custom' },
+  ];
+
+  const handlePeriodSelect = (period: Period) => {
+    if (period === 'custom') {
+      setShowCustomDate(true);
+      setOpenDropdown(null);
+    } else {
+      onChange({ ...filters, period, startDate: undefined, endDate: undefined });
+      setOpenDropdown(null);
+    }
+  };
+
+  const handleCustomApply = () => {
+    if (customStart) {
+      onChange({ 
+        ...filters, 
+        period: 'custom', 
+        startDate: customStart, 
+        endDate: customEnd || undefined 
+      });
+      setShowCustomDate(false);
+    }
+  };
+
+  const handleTagSelect = (tag?: string) => {
+    onChange({ ...filters, tag });
+    setOpenDropdown(null);
+  };
+
+  const handleLimitSelect = (limit?: number) => {
+    onChange({ ...filters, limit });
+    setOpenDropdown(null);
+  };
+
+  const handleReset = () => {
+    onChange({ period: 'all', tag: undefined, limit: undefined, startDate: undefined, endDate: undefined });
+    setCustomStart('');
+    setCustomEnd('');
+  };
+
+  const hasActiveFilters = filters.period !== 'all' || filters.tag || filters.limit;
+
+  const getPeriodLabel = () => {
+    if (filters.period === 'custom' && filters.startDate) {
+      return `${filters.startDate}${filters.endDate ? ' → ' + filters.endDate : ''}`;
+    }
+    return periods.find(p => p.value === filters.period)?.label || t.period?.all || 'All';
+  };
+
+  const getTagLabel = () => {
+    if (filters.tag) {
+      const tagInfo = tags.find(t => t.tag === filters.tag);
+      return tagInfo ? `#${tagInfo.tag} (${tagInfo.count})` : `#${filters.tag}`;
+    }
+    return t.filters?.allTags || 'All tags';
+  };
+
+  const getLimitLabel = () => {
+    if (filters.limit) {
+      return `${t.filters?.last || 'Last'} ${filters.limit}`;
+    }
+    return t.filters?.allTrades || 'All trades';
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 text-accent mr-2">
+        <Filter size={14} />
+        <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">
+          {t.filters?.title || 'Filters'}
+        </span>
+      </div>
+
+      {/* Period Selector */}
+      <div className="relative">
+        <button
+          onClick={() => setOpenDropdown(openDropdown === 'period' ? null : 'period')}
+          className={`flex items-center gap-2 bg-surface border px-3 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest ${
+            filters.period !== 'all' ? 'border-accent text-accent' : 'border-border'
+          }`}
+        >
+          <Calendar size={14} />
+          <span className="max-w-[120px] truncate">{getPeriodLabel()}</span>
+          <ChevronDown size={12} className={`transition-transform ${openDropdown === 'period' ? 'rotate-180' : ''}`} />
+        </button>
+
+        {openDropdown === 'period' && (
+          <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[150px]">
+            {periods.map((period) => (
+              <button
+                key={period.value}
+                onClick={() => handlePeriodSelect(period.value)}
+                className={`w-full text-left px-4 py-2 text-xs font-mono hover:bg-accent/10 transition-colors ${
+                  filters.period === period.value ? 'text-accent bg-accent/5' : ''
+                }`}
+              >
+                {period.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tag Selector */}
+      <div className="relative">
+        <button
+          onClick={() => setOpenDropdown(openDropdown === 'tag' ? null : 'tag')}
+          className={`flex items-center gap-2 bg-surface border px-3 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest ${
+            filters.tag ? 'border-accent text-accent' : 'border-border'
+          }`}
+        >
+          <Tag size={14} />
+          <span className="max-w-[100px] truncate">{getTagLabel()}</span>
+          <ChevronDown size={12} className={`transition-transform ${openDropdown === 'tag' ? 'rotate-180' : ''}`} />
+        </button>
+
+        {openDropdown === 'tag' && (
+          <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[180px] max-h-[300px] overflow-y-auto">
+            <button
+              onClick={() => handleTagSelect(undefined)}
+              className={`w-full text-left px-4 py-2 text-xs font-mono hover:bg-accent/10 transition-colors ${
+                !filters.tag ? 'text-accent bg-accent/5' : ''
+              }`}
+            >
+              {t.filters?.allTags || 'All tags'}
+            </button>
+            {tags.map((tag) => (
+              <button
+                key={tag.tag}
+                onClick={() => handleTagSelect(tag.tag)}
+                className={`w-full text-left px-4 py-2 text-xs font-mono hover:bg-accent/10 transition-colors flex justify-between items-center ${
+                  filters.tag === tag.tag ? 'text-accent bg-accent/5' : ''
+                }`}
+              >
+                <span>#{tag.tag}</span>
+                <span className={`text-[10px] ${tag.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {tag.count} • {tag.pnl >= 0 ? '+' : ''}{tag.pnl.toFixed(0)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Limit Selector */}
+      <div className="relative">
+        <button
+          onClick={() => setOpenDropdown(openDropdown === 'limit' ? null : 'limit')}
+          className={`flex items-center gap-2 bg-surface border px-3 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest ${
+            filters.limit ? 'border-accent text-accent' : 'border-border'
+          }`}
+        >
+          <Hash size={14} />
+          <span>{getLimitLabel()}</span>
+          <ChevronDown size={12} className={`transition-transform ${openDropdown === 'limit' ? 'rotate-180' : ''}`} />
+        </button>
+
+        {openDropdown === 'limit' && (
+          <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[120px]">
+            {LIMIT_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => handleLimitSelect(opt.value)}
+                className={`w-full text-left px-4 py-2 text-xs font-mono hover:bg-accent/10 transition-colors ${
+                  filters.limit === opt.value ? 'text-accent bg-accent/5' : ''
+                }`}
+              >
+                {opt.value ? `${t.filters?.last || 'Last'} ${opt.value}` : (t.filters?.allTrades || 'All trades')}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Reset Button */}
+      {hasActiveFilters && (
+        <button
+          onClick={handleReset}
+          className="flex items-center gap-1 px-3 py-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
+          title={t.filters?.reset || 'Reset filters'}
+        >
+          <RotateCcw size={14} />
+          <span className="hidden sm:inline">{t.filters?.reset || 'Reset'}</span>
+        </button>
+      )}
+
+      {/* Custom Date Modal */}
+      {showCustomDate && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative border border-border">
+            <button 
+              onClick={() => setShowCustomDate(false)} 
+              className="absolute top-4 right-4 opacity-50 hover:opacity-100"
+            >
+              <X size={20} />
+            </button>
+            
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <Calendar size={18} className="text-accent" />
+              {t.period?.custom || 'Custom Period'}
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  {t.filters?.startDate || 'Start Date'}
+                </label>
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="w-full bg-surface border border-border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  {t.filters?.endDate || 'End Date'} ({t.filters?.optional || 'optional'})
+                </label>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="w-full bg-surface border border-border px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                onClick={handleCustomApply}
+                disabled={!customStart}
+                className="w-full bg-accent text-black font-bold py-2 hover:bg-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t.filters?.apply || 'Apply'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close dropdown on outside click */}
+      {openDropdown && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setOpenDropdown(null)}
+        />
+      )}
+    </div>
+  );
+};
