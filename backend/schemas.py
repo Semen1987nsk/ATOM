@@ -23,6 +23,8 @@ class TradeBase(BaseModel):
     exit_reason: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[list[str]] = []
+    swap: Optional[float] = 0
+    confidence: Optional[int] = Field(None, ge=1, le=10)
 
 class TradeCreate(TradeBase):
     account_id: int
@@ -34,12 +36,36 @@ class TradeClose(BaseModel):
     mae_price: Optional[float] = None
     mfe_price: Optional[float] = None
 
+class TradeUpdate(BaseModel):
+    symbol: Optional[str] = None
+    asset_name: Optional[str] = None
+    asset_type: Optional[str] = None
+    direction: Optional[models.TradeDirection] = None
+    entry_price: Optional[float] = None
+    quantity: Optional[float] = None
+    leverage: Optional[float] = None
+    entry_at: Optional[datetime] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    risk_amount: Optional[float] = None
+    setup_name: Optional[str] = None
+    timeframe: Optional[str] = None
+    news_event: Optional[str] = None
+    screenshot_url: Optional[str] = None
+    exit_reason: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[list[str]] = None
+    commission: Optional[float] = None
+    swap: Optional[float] = None
+    confidence: Optional[int] = Field(None, ge=1, le=10)
+
 class Trade(TradeBase):
     id: int
     account_id: int
     exit_price: Optional[float] = None
     exit_at: Optional[datetime] = None
     pnl: Optional[float] = None
+    net_pnl: Optional[float] = None
     mae_price: Optional[float] = None
     mfe_price: Optional[float] = None
     ai_analysis: Optional[dict] = None

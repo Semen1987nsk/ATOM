@@ -117,13 +117,13 @@ def export_trades(db: Session = Depends(database.get_db)):
     # Заголовки
     writer.writerow([
         "ID", "Symbol", "Direction", "Entry Price", "Exit Price", 
-        "Quantity", "PnL", "Entry At", "Exit At", "Tags", "Notes"
+        "Quantity", "PnL", "Net PnL", "Commission", "Swap", "Entry At", "Exit At", "Tags", "Notes"
     ])
     
     for t in trades:
         writer.writerow([
             t.id, t.symbol, t.direction.value, t.entry_price, t.exit_price,
-            t.quantity, t.pnl, t.entry_at, t.exit_at, 
+            t.quantity, t.pnl, t.net_pnl, t.commission, t.swap, t.entry_at, t.exit_at, 
             ", ".join(t.tags) if t.tags else "", t.notes
         ])
     
@@ -133,6 +133,20 @@ def export_trades(db: Session = Depends(database.get_db)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=atom_trades_export.csv"}
     )
+
+@app.patch("/trades/{trade_id}", response_model=schemas.Trade)
+def update_trade(trade_id: int, trade_update: schemas.TradeUpdate, db: Session = Depends(database.get_db)):
+    db_trade = db.query(models.Trade).filter(models.Trade.id == trade_id).first()
+    if not db_trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    
+    update_data = trade_update.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_trade, key, value)
+    
+    db.commit()
+    db.refresh(db_trade)
+    return db_trade
 
 @app.delete("/trades/{trade_id}")
 def delete_trade(trade_id: int, db: Session = Depends(database.get_db)):

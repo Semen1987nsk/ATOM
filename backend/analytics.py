@@ -262,3 +262,91 @@ def analyze_mae_mfe(trades):
         "avg_mfe_ratio": round(sum(mfe_ratios)/len(mfe_ratios), 2) if mfe_ratios else 0,
         "recommendations": recommendations if recommendations else ["Продолжайте торговать, пока паттерны не выявлены."]
     }
+
+def calculate_stats(trades):
+    if not trades:
+        return {
+            "total_pnl": 0,
+            "win_rate": 0,
+            "total_trades": 0,
+            "profitable_trades": 0,
+            "optimal_f": 0,
+            "sqn": None,
+            "z_score": None,
+            "profit_factor": 0,
+            "r_expectancy": 0,
+            "recovery_factor": 0,
+            "ahpr": 0,
+            "mae_mfe_analysis": None,
+            "equity_curve": [],
+            "tag_stats": []
+        }
+
+    # Use net_pnl if available, else pnl
+    trades_pnl = [float(t.net_pnl if t.net_pnl is not None else t.pnl) for t in trades if t.pnl is not None]
+    trades_risk = [float(t.risk_amount) if t.risk_amount else 0 for t in trades if t.pnl is not None]
+    
+    total_pnl = sum(trades_pnl)
+    total_trades = len(trades_pnl)
+    profitable_trades = len([p for p in trades_pnl if p > 0])
+    win_rate = (profitable_trades / total_trades * 100) if total_trades > 0 else 0
+    
+    # Helper stats
+    optimal_f_res = calculate_optimal_f(trades_pnl, trades_risk)
+    z_score_res = calculate_z_score(trades_pnl)
+    sqn_res = calculate_sqn(trades_pnl, trades_risk)
+    advanced_stats = calculate_advanced_stats(trades_pnl, trades_risk)
+    mae_mfe_res = analyze_mae_mfe(trades)
+    
+    # Equity Curve
+    equity_curve = []
+    balance = 0
+    # Sort trades by exit_at or entry_at to ensure correct curve
+    sorted_trades = sorted(trades, key=lambda x: x.exit_at if x.exit_at else x.entry_at)
+    
+    for t in sorted_trades:
+        if t.pnl is None: continue
+        pnl = float(t.net_pnl if t.net_pnl is not None else t.pnl)
+        balance += pnl
+        date_str = t.exit_at.isoformat() if t.exit_at else t.entry_at.isoformat()
+        equity_curve.append({"date": date_str, "balance": balance})
+        
+    # Tag Stats
+    tag_stats_map = {}
+    for t in trades:
+        if t.pnl is None: continue
+        pnl = float(t.net_pnl if t.net_pnl is not None else t.pnl)
+        if t.tags:
+            for tag in t.tags:
+                if tag not in tag_stats_map:
+                    tag_stats_map[tag] = {"pnl": 0, "wins": 0, "count": 0}
+                tag_stats_map[tag]["pnl"] += pnl
+                tag_stats_map[tag]["count"] += 1
+                if pnl > 0:
+                    tag_stats_map[tag]["wins"] += 1
+                    
+    tag_stats = []
+    for tag, data in tag_stats_map.items():
+        tag_stats.append({
+            "tag": tag,
+            "pnl": round(data["pnl"], 2),
+            "win_rate": round((data["wins"] / data["count"] * 100), 2) if data["count"] > 0 else 0,
+            "count": data["count"]
+        })
+        
+    return {
+        "total_pnl": round(total_pnl, 2),
+        "win_rate": round(win_rate, 2),
+        "total_trades": total_trades,
+        "profitable_trades": profitable_trades,
+        "optimal_f": optimal_f_res["optimal_f"],
+        "sqn": sqn_res,
+        "z_score": z_score_res,
+        "profit_factor": advanced_stats["profit_factor"],
+        "r_expectancy": advanced_stats["r_expectancy"],
+        "recovery_factor": advanced_stats["recovery_factor"],
+        "ahpr": optimal_f_res.get("geometric_mean", 0),
+        "mae_mfe_analysis": mae_mfe_res,
+        "equity_curve": equity_curve,
+        "tag_stats": tag_stats
+    }

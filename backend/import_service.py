@@ -5,69 +5,144 @@ from typing import List, Dict, Optional
 import models
 import re
 
-class Inventory:
+class TradeManager:
     def __init__(self):
-        self.positions = {} # {symbol: {'qty': float, 'avg_price': float}}
+        self.open_trades = {} # {symbol: [trade_dict, ...]}
+        self.completed_trades = [] # List of trade dicts to be saved
 
-    def process_trade(self, symbol: str, direction: models.TradeDirection, qty: float, price: float) -> Optional[float]:
-        if symbol not in self.positions:
-            self.positions[symbol] = {'qty': 0.0, 'avg_price': 0.0}
+    def process_trade(self, trade_data: Dict):
+        symbol = trade_data['symbol']
+        direction = trade_data['direction']
         
-        pos = self.positions[symbol]
-        current_qty = pos['qty']
-        pnl = None
-
-        if direction == models.TradeDirection.LONG:
-            # BUY
-            if current_qty < 0:
-                # Covering a Short position
-                covered_qty = min(abs(current_qty), qty)
-                
-                # Short PnL = (Sell Price - Buy Price) * Qty
-                # Entry (Sell) was avg_price. Exit (Buy) is price.
-                pnl = (pos['avg_price'] - price) * covered_qty
-                
-                # Update position
-                remaining_buy = qty - covered_qty
-                pos['qty'] += covered_qty # Move towards 0 (e.g. -10 + 10 = 0)
-                
-                if remaining_buy > 0:
-                    # Flipped to Long
-                    pos['qty'] = remaining_buy
-                    pos['avg_price'] = price
+        # Check if we have open trades for this symbol
+        if symbol in self.open_trades and self.open_trades[symbol]:
+            # Check if direction is opposite to the first open trade
+            first_open = self.open_trades[symbol][0]
+            if first_open['direction'] != direction:
+                # This is a CLOSING trade (Exit)
+                self._close_trade(trade_data)
             else:
-                # Adding to Long position
-                total_cost = current_qty * pos['avg_price'] + qty * price
-                new_qty = current_qty + qty
-                pos['avg_price'] = total_cost / new_qty if new_qty != 0 else 0
-                pos['qty'] = new_qty
+                # Same direction -> Adding to position (Entry)
+                self._add_trade(trade_data)
+        else:
+            # No open trades -> New Entry
+            self._add_trade(trade_data)
 
-        elif direction == models.TradeDirection.SHORT:
-            # SELL
-            if current_qty > 0:
-                # Closing a Long position
-                closed_qty = min(current_qty, qty)
+    def _add_trade(self, trade_data):
+        # Create a new trade record
+        new_trade = trade_data.copy()
+        new_trade['pnl'] = None
+        new_trade['net_pnl'] = None
+        new_trade['exit_at'] = None
+        new_trade['exit_price'] = None
+        new_trade['exit_reason'] = None
+        
+        if new_trade['symbol'] not in self.open_trades:
+            self.open_trades[new_trade['symbol']] = []
+        
+        self.open_trades[new_trade['symbol']].append(new_trade)
+        self.completed_trades.append(new_trade)
+        
+    def _close_trade(self, exit_trade):
+        # FIFO logic
+        symbol = exit_trade['symbol']
+        remaining_qty = exit_trade['quantity']
+        
+        while remaining_qty > 0 and self.open_trades[symbol]:
+            open_trade = self.open_trades[symbol][0]
+            
+            # How much can we close?
+            # Note: We assume quantity is always positive in the dict
+            close_qty = min(remaining_qty, open_trade['quantity'])
+            
+            if close_qty < open_trade['quantity']:
+                # Partial Close
+                # Create a copy for the closed part
+                closed_part = open_trade.copy()
+                closed_part['quantity'] = close_qty
+                closed_part['exit_at'] = exit_trade['entry_at']
+                closed_part['exit_price'] = exit_trade['entry_price']
                 
-                # Long PnL = (Sell Price - Buy Price) * Qty
-                pnl = (price - pos['avg_price']) * closed_qty
+                # Proportional calculations
+                ratio = close_qty / open_trade['quantity']
+                exit_ratio = close_qty / exit_trade['quantity']
                 
-                # Update position
-                remaining_sell = qty - closed_qty
-                pos['qty'] -= closed_qty
+                closed_part['commission'] = (open_trade['commission'] * ratio) + (exit_trade['commission'] * exit_ratio)
+                closed_part['swap'] = (open_trade.get('swap', 0) * ratio) + (exit_trade.get('swap', 0) * exit_ratio)
                 
-                if remaining_sell > 0:
-                    # Flipped to Short
-                    pos['qty'] = -remaining_sell
-                    pos['avg_price'] = price
+                # Precise PnL using Deal Sum if available
+                entry_deal_sum = open_trade.get('deal_sum', 0) * ratio
+                exit_deal_sum = exit_trade.get('deal_sum', 0) * exit_ratio
+                
+                if entry_deal_sum and exit_deal_sum:
+                    if open_trade['direction'] == models.TradeDirection.LONG:
+                        pnl = exit_deal_sum - entry_deal_sum
+                    else:
+                        pnl = entry_deal_sum - exit_deal_sum
+                else:
+                    # Fallback to price-based calculation
+                    if open_trade['direction'] == models.TradeDirection.LONG:
+                        pnl = (closed_part['exit_price'] - closed_part['entry_price']) * close_qty
+                    else:
+                        pnl = (closed_part['entry_price'] - closed_part['exit_price']) * close_qty
+                
+                closed_part['pnl'] = pnl
+                closed_part['net_pnl'] = pnl - closed_part['commission'] - closed_part.get('swap', 0)
+                closed_part['exit_reason'] = "Manual"
+                
+                # Update the original open trade (reduce qty)
+                open_trade['quantity'] -= close_qty
+                open_trade['commission'] -= (open_trade['commission'] * ratio) 
+                open_trade['swap'] -= (open_trade.get('swap', 0) * ratio)
+                if 'deal_sum' in open_trade:
+                    open_trade['deal_sum'] -= entry_deal_sum
+                
+                # Add the closed part to completed_trades (it's a new split trade)
+                self.completed_trades.append(closed_part)
+                
+                remaining_qty = 0
+                
             else:
-                # Adding to Short position (qty is negative or 0)
-                current_abs_qty = abs(current_qty)
-                total_val = current_abs_qty * pos['avg_price'] + qty * price
-                new_abs_qty = current_abs_qty + qty
-                pos['avg_price'] = total_val / new_abs_qty if new_abs_qty != 0 else 0
-                pos['qty'] -= qty # Make it more negative
+                # Full Close (or Over-Close)
+                open_trade['exit_at'] = exit_trade['entry_at']
+                open_trade['exit_price'] = exit_trade['entry_price']
+                
+                exit_ratio = close_qty / exit_trade['quantity']
+                
+                open_trade['commission'] += (exit_trade['commission'] * exit_ratio)
+                open_trade['swap'] += (exit_trade.get('swap', 0) * exit_ratio)
+                
+                # Precise PnL using Deal Sum if available
+                entry_deal_sum = open_trade.get('deal_sum', 0)
+                exit_deal_sum = exit_trade.get('deal_sum', 0) * exit_ratio
+                
+                if entry_deal_sum and exit_deal_sum:
+                    if open_trade['direction'] == models.TradeDirection.LONG:
+                        pnl = exit_deal_sum - entry_deal_sum
+                    else:
+                        pnl = entry_deal_sum - exit_deal_sum
+                else:
+                    if open_trade['direction'] == models.TradeDirection.LONG:
+                        pnl = (open_trade['exit_price'] - open_trade['entry_price']) * close_qty
+                    else:
+                        pnl = (open_trade['entry_price'] - open_trade['exit_price']) * close_qty
+                
+                open_trade['pnl'] = pnl
+                open_trade['net_pnl'] = pnl - open_trade['commission'] - open_trade.get('swap', 0)
+                open_trade['exit_reason'] = "Manual"
+                
+                self.open_trades[symbol].pop(0) # Remove from open
+                remaining_qty -= close_qty
 
-        return pnl
+        # If there is still remaining quantity, it means we flipped position
+        if remaining_qty > 0:
+            # Create a new entry for the remaining quantity
+            new_entry = exit_trade.copy()
+            new_entry['quantity'] = remaining_qty
+            # Adjust commission for the new entry part
+            new_entry['commission'] = exit_trade['commission'] * (remaining_qty / exit_trade['quantity'])
+            new_entry['swap'] = exit_trade.get('swap', 0) * (remaining_qty / exit_trade['quantity'])
+            self._add_trade(new_entry)
 
 def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
     # Read Excel, finding the header row
@@ -86,14 +161,15 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
     # Reload with correct header
     df = pd.read_excel(io.BytesIO(contents), header=start_row)
     
-    trades = []
-    inventory = Inventory()
+    manager = TradeManager()
     
-    # Iterate through rows
+    # 1. Extract raw rows
+    raw_trades = []
+    
     for _, row in df.iterrows():
         try:
-            # Extract fields using column names (which might contain newlines)
-            cols = {c.replace('\n', ' ').strip(): c for c in df.columns}
+            # Normalize column names: replace newlines and multiple spaces with single space
+            cols = { " ".join(str(c).replace('\n', ' ').split()): c for c in df.columns }
             
             date_val = row[cols.get('Дата заключения', 'Дата заключения')]
             time_val = row[cols.get('Время', 'Время')]
@@ -102,15 +178,18 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             qty_val = row[cols.get('Количество', 'Количество')]
             deal_sum_val = row[cols.get('Сумма сделки', 'Сумма сделки')]
             
-            # Try to get Asset Name
-            asset_name = row.get(cols.get('Сокращенное наименование', 'Сокращенное наименование'), None)
-            if pd.isna(asset_name):
-                 asset_name = row.get(cols.get('Наименование', 'Наименование'), None)
+            # Asset Name: Try 'Сокращенное наименование', 'Наименование', 'Наименование актива'
+            asset_name = None
+            for key in ['Сокращенное наименование', 'Наименование', 'Наименование актива']:
+                if key in cols:
+                    val = row[cols[key]]
+                    if pd.notna(val):
+                        asset_name = val
+                        break
             
             if pd.isna(date_val) or pd.isna(symbol_val):
                 continue
                 
-            # Parse Date/Time
             if isinstance(date_val, str):
                 date_str = date_val
             else:
@@ -123,10 +202,7 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
                 
             entry_at = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M:%S")
             
-            # Parse Side
             side_str = str(side_val).lower()
-            
-            # Filter REPO/Swap
             if 'репо' in side_str or 'рпс' in side_str:
                 continue
                 
@@ -140,57 +216,106 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             symbol = str(symbol_val).strip()
             quantity = float(qty_val)
             
-            # Infer Asset Type
-            asset_type = "Stock" # Default
-            if re.search(r'[A-Z]{2,4}[A-Z0-9]\d', symbol): # e.g. RIZ5, SiH5
-                asset_type = "Futures"
-            
-            # Calculate Effective Price in RUB (Deal Sum / Quantity)
-            # This handles Futures (points -> rub) and Bonds (clean price -> dirty price) correctly
-            if pd.notna(deal_sum_val):
-                deal_sum = float(deal_sum_val)
-                if quantity != 0:
-                    price = deal_sum / quantity
-                else:
-                    price = 0.0
-            else:
-                # Fallback to 'Цена за единицу' if Deal Sum is missing (unlikely for valid trades)
-                price = float(row[cols.get('Цена за единицу', 'Цена за единицу')])
-
-            # Calculate Total Commission
+            # Commissions
             comm_broker = row.get(cols.get('Комиссия брокера', 'Комиссия брокера'), 0)
-            comm_exchange = row.get(cols.get('Комиссия биржи', 'Комиссия биржи'), 0)
-            comm_clear = row.get(cols.get('Комиссия клир. центра', 'Комиссия клир. центра'), 0)
             
             def parse_comm(val):
                 try: return abs(float(val)) if pd.notna(val) else 0.0
                 except: return 0.0
-                
-            commission = parse_comm(comm_broker) + parse_comm(comm_exchange) + parse_comm(comm_clear)
             
-            # PnL Logic
-            pnl = inventory.process_trade(symbol, direction, quantity, price)
-                
-            trades.append({
-                "symbol": symbol,
-                "asset_name": str(asset_name) if asset_name else None,
-                "asset_type": asset_type,
-                "direction": direction,
-                "entry_price": price,
-                "quantity": quantity,
+            # User correction: Broker commission already includes exchange and clearing fees
+            commission = parse_comm(comm_broker)
+            
+            # Swap / Rollover
+            swap_val = row.get(cols.get('Плата за перенос позиций', 'Плата за перенос позиций'), 0)
+            if pd.isna(swap_val) or swap_val == 0:
+                 swap_val = row.get(cols.get('Своп', 'Своп'), 0)
+            swap = parse_comm(swap_val)
+
+            # Deal Sum (for price calc)
+            deal_sum = 0.0
+            if pd.notna(deal_sum_val):
+                deal_sum = float(deal_sum_val)
+            
+            # Fallback price if deal_sum is 0 (unlikely but possible)
+            price_per_unit = float(row[cols.get('Цена за единицу', 'Цена за единицу')]) if pd.notna(row.get(cols.get('Цена за единицу', 'Цена за единицу'))) else 0.0
+
+            raw_trades.append({
                 "entry_at": entry_at,
-                "pnl": pnl,
+                "symbol": symbol,
+                "direction": direction,
+                "quantity": quantity,
+                "deal_sum": deal_sum,
                 "commission": commission,
-                "notes": "Imported from Tinkoff Excel",
-                "tags": ["Tinkoff", "Imported"]
+                "swap": swap,
+                "asset_name": str(asset_name) if asset_name else None,
+                "price_per_unit": price_per_unit
             })
-            
+
         except Exception as e:
-            # Skip bad rows
             print(f"Error parsing row {row.name}: {e}")
             continue
+
+    # 2. Group by (entry_at, symbol, direction)
+    # Since the file is chronological, we can just iterate and coalesce consecutive matches
+    grouped_trades = []
+    if raw_trades:
+        current_group = raw_trades[0]
+        
+        for next_trade in raw_trades[1:]:
+            if (next_trade['entry_at'] == current_group['entry_at'] and 
+                next_trade['symbol'] == current_group['symbol'] and 
+                next_trade['direction'] == current_group['direction']):
+                
+                # Merge
+                current_group['quantity'] += next_trade['quantity']
+                current_group['deal_sum'] += next_trade['deal_sum']
+                current_group['commission'] += next_trade['commission']
+                current_group['swap'] += next_trade['swap']
+                # Asset name - keep first non-null
+                if not current_group['asset_name'] and next_trade['asset_name']:
+                    current_group['asset_name'] = next_trade['asset_name']
+            else:
+                grouped_trades.append(current_group)
+                current_group = next_trade
+        grouped_trades.append(current_group)
+
+    # 3. Process grouped trades through TradeManager
+    for t in grouped_trades:
+        symbol = t['symbol']
+        direction = t['direction']
+        quantity = t['quantity']
+        deal_sum = t['deal_sum']
+        
+        # Calculate weighted price
+        if quantity != 0 and deal_sum != 0:
+            price = deal_sum / quantity
+        else:
+            price = t['price_per_unit']
+
+        # Infer Asset Type
+        asset_type = "Stock"
+        if re.search(r'[A-Z]{2,4}[A-Z0-9]\d', symbol):
+            asset_type = "Futures"
+
+        trade_data = {
+            "symbol": symbol,
+            "asset_name": t['asset_name'],
+            "asset_type": asset_type,
+            "direction": direction,
+            "entry_price": price,
+            "quantity": quantity,
+            "deal_sum": deal_sum, # Pass deal_sum for precise PnL calc
+            "entry_at": t['entry_at'],
+            "commission": t['commission'],
+            "swap": t['swap'],
+            "notes": "Imported from Tinkoff Excel",
+            "tags": ["Tinkoff", "Imported"]
+        }
+        
+        manager.process_trade(trade_data)
             
-    return trades
+    return manager.completed_trades
 
 def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     """
@@ -289,6 +414,7 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
                 "quantity": quantity,
                 "entry_at": entry_at,
                 "pnl": pnl,
+                "net_pnl": pnl, # Assuming generic import PnL is Net? Or Gross? Let's assume Gross for now and calc Net if fee exists
                 "notes": f"Imported from {filename}",
                 "tags": ["Imported"]
             }

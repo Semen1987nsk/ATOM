@@ -63,7 +63,9 @@ class Trade(Base):
     
     # Результат
     pnl = Column(Numeric(precision=18, scale=8))
+    net_pnl = Column(Numeric(precision=18, scale=8)) # Чистая прибыль (PnL - Comm - Swap)
     commission = Column(Numeric(precision=18, scale=8), default=0)
+    swap = Column(Numeric(precision=18, scale=8), default=0) # Плата за перенос позиции
     
     # Метаданные
     setup_name = Column(String) # Название стратегии (Тактика)
@@ -71,6 +73,7 @@ class Trade(Base):
     news_event = Column(String) # Событие рядом (напр. "Отчетность", "Ставка ЦБ")
     screenshot_url = Column(String) # Ссылка на скриншот графика
     emotions = Column(String)
+    confidence = Column(Integer) # Уверенность при входе (1-10)
     notes = Column(String)
     tags = Column(JSON, default=[]) # Теги сделки (напр. ["FOMO", "Trend"])
     ai_analysis = Column(JSON) # Результат анализа от AI

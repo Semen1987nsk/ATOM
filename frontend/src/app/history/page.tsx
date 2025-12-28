@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Zap, Download, Upload, Plus, Filter } from 'lucide-react';
+import { ArrowLeft, Trash2, Zap, Download, Upload, Plus, Filter, Edit2 } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
+import { EditTradeModal } from '@/components/EditTradeModal';
 
 interface Trade {
   id: number;
@@ -12,14 +13,23 @@ interface Trade {
   asset_type?: string;
   direction: string;
   pnl: number | null;
+  net_pnl?: number | null;
   commission?: number;
+  swap?: number;
   leverage?: number;
+  confidence?: number;
   entry_price: number;
   quantity: number;
   entry_at: string;
   exit_at?: string;
   setup_name?: string;
   timeframe?: string;
+  notes?: string;
+  stop_loss?: number;
+  take_profit?: number;
+  risk_amount?: number;
+  news_event?: string;
+  screenshot_url?: string;
   tags?: string[];
   ai_analysis?: {
     verdict: string;
@@ -35,6 +45,8 @@ export default function HistoryPage() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'LONG' | 'SHORT'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
 
   const getApiUrl = (path: string) => {
     if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
@@ -84,6 +96,11 @@ export default function HistoryPage() {
     } catch (error) {
       console.error('Failed to close trade:', error);
     }
+  };
+
+  const handleEdit = (trade: Trade) => {
+    setSelectedTrade(trade);
+    setIsEditModalOpen(true);
   };
 
   const handleDelete = async (tradeId: number) => {
@@ -170,6 +187,13 @@ export default function HistoryPage() {
         onSuccess={() => fetchTrades()} 
       />
 
+      <EditTradeModal 
+        isOpen={isEditModalOpen} 
+        onClose={() => setIsEditModalOpen(false)} 
+        onSuccess={() => fetchTrades()} 
+        trade={selectedTrade}
+      />
+
       <div className="cyber-card p-6">
         <div className="flex flex-wrap gap-4 mb-6 items-center">
           {/* Direction Filter */}
@@ -223,76 +247,116 @@ export default function HistoryPage() {
             <thead>
               <tr className="text-[10px] font-mono uppercase opacity-50 border-b border-border">
                 <th className="pb-2 pl-2">Date</th>
+                <th className="pb-2">Date</th>
                 <th className="pb-2">Symbol</th>
-                <th className="pb-2">Type</th>
                 <th className="pb-2">Side</th>
-                <th className="pb-2">Setup</th>
-                <th className="pb-2">TF</th>
-                <th className="pb-2">Entry</th>
+                <th className="pb-2">Price</th>
                 <th className="pb-2">Qty</th>
-                <th className="pb-2">PnL</th>
                 <th className="pb-2">Comm</th>
+                <th className="pb-2">Swap</th>
+                <th className="pb-2">PnL</th>
+                <th className="pb-2">Net PnL</th>
                 <th className="pb-2">Tags</th>
                 <th className="pb-2 text-right pr-2">Actions</th>
               </tr>
             </thead>
             <tbody className="text-sm">
               {filteredTrades.map((trade) => (
-                <tr key={trade.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
-                  <td className="py-3 pl-2 font-mono text-xs opacity-70">
-                    {new Date(trade.entry_at).toLocaleDateString()} <span className="opacity-50 text-[10px]">{new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                  </td>
-                  <td className="py-3 font-bold">
-                    {trade.symbol}
-                    {trade.asset_name && <div className="text-[9px] font-normal opacity-50">{trade.asset_name}</div>}
-                  </td>
-                  <td className="py-3 text-xs opacity-70">{trade.asset_type || '-'}</td>
-                  <td className="py-3">
-                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                      {trade.direction.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="py-3 text-xs">{trade.setup_name || '-'}</td>
-                  <td className="py-3 text-xs font-mono">{trade.timeframe || '-'}</td>
-                  <td className="py-3 font-mono">{trade.entry_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</td>
-                  <td className="py-3 font-mono">{trade.quantity}</td>
-                  <td className="py-3 font-mono font-bold">
-                    {trade.pnl !== null ? (
-                      <span className={Number(trade.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}>
-                        {Number(trade.pnl) >= 0 ? '+' : ''}{Number(trade.pnl).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' })}
-                      </span>
-                    ) : (
-                      <span className="opacity-30">-</span>
-                    )}
-                  </td>
-                  <td className="py-3 font-mono text-xs opacity-70">
-                    {trade.commission ? trade.commission.toFixed(2) : '-'}
-                  </td>
-                  <td className="py-3">
-                    <div className="flex gap-1 flex-wrap">
-                      {trade.tags?.map(tag => (
-                        <span key={tag} className="text-[9px] font-mono border border-border px-1 opacity-50">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-3 text-right pr-2">
-                    <div className="flex justify-end gap-2">
-                      {trade.pnl === null && (
-                        <button 
-                          onClick={() => handleCloseTrade(trade.id)}
-                          className="text-[10px] font-mono border border-accent text-accent px-2 py-1 hover:bg-accent hover:text-black transition-colors"
-                        >
-                          CLOSE
-                        </button>
+                <tr key={trade.id} className="border-b border-border/50 hover:bg-white/5 transition-colors group">
+                  <td colSpan={11} className="p-0 border-none">
+                    <div className="flex flex-col w-full">
+                      {/* Row 1: Entry */}
+                      <div className="flex items-center py-2 px-2 border-b border-white/5 bg-white/[0.02]">
+                        <div className="w-[10%] font-mono text-xs opacity-70">
+                          {new Date(trade.entry_at).toLocaleDateString()} <span className="opacity-50 text-[10px]">{new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div className="w-[10%] font-bold">
+                          {trade.symbol}
+                        </div>
+                        <div className="w-[8%]">
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                            {trade.direction.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="w-[10%] font-mono">{trade.entry_price.toLocaleString('ru-RU', { maximumFractionDigits: 4 })}</div>
+                        <div className="w-[8%] font-mono">{trade.quantity}</div>
+                        <div className="w-[8%] opacity-30">-</div>
+                        <div className="w-[8%] opacity-30">-</div>
+                        <div className="w-[10%] opacity-30">-</div>
+                        <div className="w-[10%] opacity-30">-</div>
+                        <div className="w-[10%]">
+                           <div className="flex gap-1 flex-wrap">
+                            {trade.tags?.map(tag => (
+                              <span key={tag} className="text-[9px] font-mono border border-border px-1 opacity-50">
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="w-[8%] text-right">
+                           <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={() => handleEdit(trade)}
+                                className="text-accent/50 hover:text-accent transition-colors p-1"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(trade.id)}
+                                className="text-red-500/50 hover:text-red-500 transition-colors p-1"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Exit (if closed) */}
+                      {trade.exit_at && (
+                        <div className="flex items-center py-2 px-2 bg-white/[0.04]">
+                          <div className="w-[10%] font-mono text-xs opacity-70 pl-4 border-l-2 border-accent/20">
+                            {new Date(trade.exit_at).toLocaleDateString()} <span className="opacity-50 text-[10px]">{new Date(trade.exit_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          </div>
+                          <div className="w-[10%] opacity-50 text-[10px]">
+                            EXIT
+                          </div>
+                          <div className="w-[8%]">
+                             <span className={`text-[10px] font-mono px-2 py-0.5 rounded opacity-50 ${trade.direction === 'long' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                              {trade.direction === 'long' ? 'SELL' : 'BUY'}
+                            </span>
+                          </div>
+                          <div className="w-[10%] font-mono">{trade.exit_price?.toLocaleString('ru-RU', { maximumFractionDigits: 4 })}</div>
+                          <div className="w-[8%] font-mono opacity-50">{trade.quantity}</div>
+                          <div className="w-[8%] font-mono text-xs opacity-70 text-red-400/70">
+                            -{trade.commission ? trade.commission.toFixed(2) : '0'}
+                          </div>
+                          <div className="w-[8%] font-mono text-xs opacity-70 text-red-400/70">
+                            -{trade.swap ? trade.swap.toFixed(2) : '0'}
+                          </div>
+                          <div className="w-[10%] font-mono font-bold">
+                            {trade.pnl !== null ? (
+                              <span className={Number(trade.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                {Number(trade.pnl) >= 0 ? '+' : ''}{Number(trade.pnl).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' })}
+                              </span>
+                            ) : '-'}
+                          </div>
+                          <div className="w-[10%] font-mono font-bold">
+                            {trade.net_pnl !== null && trade.net_pnl !== undefined ? (
+                              <span className={Number(trade.net_pnl) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                {Number(trade.net_pnl) >= 0 ? '+' : ''}{Number(trade.net_pnl).toLocaleString('ru-RU', { style: 'currency', currency: 'RUB' })}
+                              </span>
+                            ) : '-'}
+                          </div>
+                          <div className="w-[10%]">
+                             {trade.confidence && (
+                               <span className="text-[9px] font-mono text-accent border border-accent/30 px-1 rounded">
+                                 Conf: {trade.confidence}/10
+                               </span>
+                             )}
+                          </div>
+                          <div className="w-[8%]"></div>
+                        </div>
                       )}
-                      <button 
-                        onClick={() => handleDelete(trade.id)}
-                        className="text-red-500/50 hover:text-red-500 transition-colors p-1"
-                      >
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   </td>
                 </tr>
