@@ -221,7 +221,20 @@ async def import_trades(file: UploadFile = File(...), db: Session = Depends(data
         raise HTTPException(status_code=400, detail=str(e))
     
     imported_count = 0
+    skipped_count = 0
+    
     for trade_dict in trades_data:
+        # Проверка дубликатов: symbol + direction + entry_at
+        existing = db.query(models.Trade).filter(
+            models.Trade.symbol == trade_dict['symbol'],
+            models.Trade.direction == trade_dict['direction'],
+            models.Trade.entry_at == trade_dict['entry_at']
+        ).first()
+        
+        if existing:
+            skipped_count += 1
+            continue
+        
         # Добавляем account_id (пока хардкод 1, как и везде)
         trade_dict["account_id"] = 1
         
@@ -231,7 +244,7 @@ async def import_trades(file: UploadFile = File(...), db: Session = Depends(data
         imported_count += 1
     
     db.commit()
-    return {"message": f"Successfully imported {imported_count} trades"}
+    return {"message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}"}
 
 @app.get("/trades/", response_model=list[schemas.Trade])
 def read_trades(skip: int = 0, limit: int = 5000, db: Session = Depends(database.get_db)):
@@ -333,17 +346,33 @@ def get_unrealized_pnl(db: Session = Depends(database.get_db)):
     # 2. Get unique tickers
     tickers = list(set(t.symbol for t in open_trades))
     
-    # 3. Fetch current prices
+    # 3. Fetch current prices and futures specs
     current_prices = market_data_service.get_current_prices(tickers)
+    futures_specs = market_data_service.get_futures_specs(tickers)
     
     results = []
     for trade in open_trades:
         current_price = current_prices.get(trade.symbol)
         if current_price:
-            if trade.direction == models.TradeDirection.LONG:
-                pnl = (current_price - float(trade.entry_price)) * float(trade.quantity)
+            entry_price = float(trade.entry_price)
+            quantity = float(trade.quantity)
+            
+            # Check if this is a futures contract with special pricing
+            spec = futures_specs.get(trade.symbol)
+            if spec and spec.get('stepprice') and spec.get('minstep'):
+                # For futures: P&L = (current - entry) * stepprice / minstep * quantity
+                stepprice = spec['stepprice']
+                minstep = spec['minstep']
+                price_diff = current_price - entry_price
+                if trade.direction == models.TradeDirection.SHORT:
+                    price_diff = -price_diff
+                pnl = price_diff * (stepprice / minstep) * quantity
             else:
-                pnl = (float(trade.entry_price) - current_price) * float(trade.quantity)
+                # For stocks: simple calculation
+                if trade.direction == models.TradeDirection.LONG:
+                    pnl = (current_price - entry_price) * quantity
+                else:
+                    pnl = (entry_price - current_price) * quantity
             
             results.append({
                 "trade_id": trade.id,
@@ -390,6 +419,7 @@ def get_stats(
     end_date: Optional[str] = Query(None, description="End date for custom period (YYYY-MM-DD)"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
     limit: Optional[int] = Query(None, description="Limit to last N trades"),
+    initial_deposit: Optional[float] = Query(None, description="Initial deposit for ROI calculation"),
     db: Session = Depends(database.get_db)
 ):
     """Get trading statistics with optional filters: time period, tag, and trade count limit."""
@@ -458,12 +488,16 @@ def get_stats(
             "optimal_f": 0
         }
     
-    total_pnl = float(sum(t.pnl for t in trades))
-    profitable_trades = len([t for t in trades if t.pnl > 0])
+    # Use net_pnl if available, else pnl
+    def get_pnl(t):
+        return float(t.net_pnl if t.net_pnl is not None else t.pnl)
+    
+    total_pnl = sum(get_pnl(t) for t in trades)
+    profitable_trades = len([t for t in trades if get_pnl(t) > 0])
     win_rate = (profitable_trades / total_trades) * 100
     
     # Расчет Optimal f
-    pnls = [float(t.pnl) for t in trades]
+    pnls = [get_pnl(t) for t in trades]
     risks = [float(t.risk_amount) if t.risk_amount else float(abs(t.pnl)) for t in trades]
     opt_f_data = analytics.calculate_optimal_f(pnls, risks)
     
@@ -479,12 +513,13 @@ def get_stats(
     # Анализ MAE/MFE
     mae_mfe_data = analytics.analyze_mae_mfe(trades)
     
-    # Расчет кривой эквити
+    # Расчет кривой эквити (требует хронологического порядка)
     sorted_trades = sorted(trades, key=lambda x: x.exit_at if x.exit_at else x.entry_at)
+    pnls_sorted = [get_pnl(t) for t in sorted_trades]  # PnL в хронологическом порядке
     equity_curve = []
     current_balance = 0
     for t in sorted_trades:
-        current_balance += float(t.pnl)
+        current_balance += get_pnl(t)
         equity_curve.append({
             "date": (t.exit_at if t.exit_at else t.entry_at).strftime("%Y-%m-%d %H:%M"),
             "balance": round(current_balance, 2)
@@ -496,13 +531,13 @@ def get_stats(
         if not t.tags:
             continue
         for tag in t.tags:
-            tag = tag.lower()
-            if tag not in tag_performance:
-                tag_performance[tag] = {"pnl": 0, "total": 0, "wins": 0}
-            tag_performance[tag]["pnl"] += float(t.pnl)
-            tag_performance[tag]["total"] += 1
-            if t.pnl > 0:
-                tag_performance[tag]["wins"] += 1
+            tag_name = tag.lower()
+            if tag_name not in tag_performance:
+                tag_performance[tag_name] = {"pnl": 0, "total": 0, "wins": 0}
+            tag_performance[tag_name]["pnl"] += get_pnl(t)
+            tag_performance[tag_name]["total"] += 1
+            if get_pnl(t) > 0:
+                tag_performance[tag_name]["wins"] += 1
     
     tag_stats = []
     for tag, data in tag_performance.items():
@@ -516,10 +551,11 @@ def get_stats(
     tag_stats = sorted(tag_stats, key=lambda x: x["pnl"], reverse=True)
     
     # Расчет дополнительных метрик
+    # Важно: drawdown и streaks требуют хронологического порядка (pnls_sorted)
     sortino_data = analytics.calculate_sharpe_sortino(pnls)
-    drawdown_data = analytics.calculate_drawdown_stats(pnls)
+    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted)  # Используем хронологический порядок
     win_loss_data = analytics.calculate_win_loss_stats(pnls)
-    streaks_data = analytics.calculate_streaks(pnls)
+    streaks_data = analytics.calculate_streaks(pnls_sorted)  # Используем хронологический порядок
     tail_ratio_data = analytics.calculate_tail_ratio(pnls)
     r_distribution_data = analytics.calculate_r_distribution(pnls, risks)
     trade_duration_data = analytics.calculate_trade_duration(trades)
@@ -545,7 +581,8 @@ def get_stats(
         "profit_factor": adv_stats.get("profit_factor", 0),
         "r_expectancy": adv_stats.get("r_expectancy", 0),
         "recovery_factor": adv_stats.get("recovery_factor", 0),
-        "ahpr": opt_f_data.get("geometric_mean", 0),
+        "total_roi": round((total_pnl / initial_deposit * 100), 2) if initial_deposit and initial_deposit > 0 else 0,
+        "expected_ghpr": opt_f_data.get("geometric_mean", 0),
         "sortino_ratio": sortino_data.get("sortino_ratio", 0),
         "max_drawdown_pct": drawdown_data.get("max_drawdown_pct", 0),
         "max_drawdown_abs": drawdown_data.get("max_drawdown_abs", 0),

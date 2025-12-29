@@ -53,7 +53,8 @@ interface DashboardData {
   profit_factor: number;
   r_expectancy: number;
   recovery_factor: number;
-  ahpr: number;
+  total_roi: number;
+  expected_ghpr: number;
   sortino_ratio: number;
   max_drawdown_pct: number;
   max_drawdown_abs: number;
@@ -165,6 +166,11 @@ export default function Home() {
         params.append('limit', f.limit.toString());
       }
       
+      // Initial deposit for ROI calculation
+      if (settings.initialDeposit && settings.initialDeposit > 0) {
+        params.append('initial_deposit', settings.initialDeposit.toString());
+      }
+      
       if (params.toString()) {
         statsUrl += '?' + params.toString();
       }
@@ -184,7 +190,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [filters, t.logs.synchronized, t.logs.syncFailed]);
+  }, [filters, settings.initialDeposit, t.logs.synchronized, t.logs.syncFailed]);
 
   useEffect(() => {
     setMounted(true);
@@ -444,11 +450,19 @@ export default function Home() {
           tooltipText={t.stats.recoveryFactor.tooltip}
         />
         <StatsCard 
-          title={t.stats.ahpr.title} 
-          value={stats?.ahpr || 0} 
-          description={t.stats.ahpr.description}
+          title={t.stats.totalRoi.title} 
+          value={`${stats?.total_roi?.toFixed(2) || 0}%`} 
+          description={t.stats.totalRoi.description}
+          trend={stats?.total_roi && stats.total_roi > 0 ? 'up' : stats?.total_roi && stats.total_roi < 0 ? 'down' : undefined}
+          icon={<Wallet size={18} />}
+          tooltipText={t.stats.totalRoi.tooltip}
+        />
+        <StatsCard 
+          title={t.stats.expectedGhpr.title} 
+          value={stats?.expected_ghpr || 0} 
+          description={t.stats.expectedGhpr.description}
           icon={<TrendingUp size={18} />}
-          tooltipText={t.stats.ahpr.tooltip}
+          tooltipText={t.stats.expectedGhpr.tooltip}
         />
         <StatsCard 
           title={t.stats.sortinoRatio.title} 
@@ -513,23 +527,23 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard 
             title={t.advancedStats.ror20.title}
-            value={`${((stats?.risk_of_ruin?.ror_20pct || 0) * 100).toFixed(1)}%`} 
+            value={`${(stats?.risk_of_ruin?.ror_20pct || 0).toFixed(1)}%`} 
             description={t.advancedStats.ror20.description}
-            trend={stats?.risk_of_ruin?.ror_20pct && stats.risk_of_ruin.ror_20pct > 0.1 ? 'down' : undefined}
+            trend={stats?.risk_of_ruin?.ror_20pct && stats.risk_of_ruin.ror_20pct > 10 ? 'down' : undefined}
             icon={<Skull size={18} />}
             tooltipText={t.advancedStats.ror20.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.ror50.title}
-            value={`${((stats?.risk_of_ruin?.ror_50pct || 0) * 100).toFixed(2)}%`} 
+            value={`${(stats?.risk_of_ruin?.ror_50pct || 0).toFixed(1)}%`} 
             description={t.advancedStats.ror50.description}
-            trend={stats?.risk_of_ruin?.ror_50pct && stats.risk_of_ruin.ror_50pct > 0.01 ? 'down' : undefined}
+            trend={stats?.risk_of_ruin?.ror_50pct && stats.risk_of_ruin.ror_50pct > 1 ? 'down' : undefined}
             icon={<Skull size={18} />}
             tooltipText={t.advancedStats.ror50.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.monteCarlo5.title}
-            value={`${((stats?.monte_carlo?.worst_case_5pct || 0) * 100).toFixed(1)}%`} 
+            value={formatCurrency(stats?.monte_carlo?.worst_case_5pct || 0)} 
             description={t.advancedStats.monteCarlo5.description}
             trend="down"
             icon={<Dice5 size={18} />}
@@ -537,7 +551,7 @@ export default function Home() {
           />
           <StatsCard 
             title={t.advancedStats.monteCarloMedian.title}
-            value={`${((stats?.monte_carlo?.median_return || 0) * 100).toFixed(1)}%`} 
+            value={formatCurrency(stats?.monte_carlo?.median_return || 0)} 
             description={t.advancedStats.monteCarloMedian.description}
             trend={stats?.monte_carlo?.median_return && stats.monte_carlo.median_return > 0 ? 'up' : 'down'}
             icon={<LineChartIcon size={18} />}

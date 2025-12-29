@@ -32,7 +32,8 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
     notes: '',
     tags: '',
     exit_reason: '',
-    confidence: ''
+    confidence: '',
+    entry_reason: ''
   });
 
   useEffect(() => {
@@ -58,7 +59,8 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
         notes: trade.notes || '',
         tags: trade.tags ? trade.tags.join(', ') : '',
         exit_reason: trade.exit_reason || '',
-        confidence: trade.confidence?.toString() || ''
+        confidence: trade.confidence?.toString() || '',
+        entry_reason: trade.entry_reason || ''
       });
     }
   }, [trade]);
@@ -285,6 +287,16 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
               />
               <span className="font-mono text-accent w-6 text-center">{formData.confidence || '-'}</span>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">📝 Причина входа (для ИИ анализа)</label>
+            <textarea 
+              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none h-20"
+              placeholder="Опишите логику входа в сделку: сигналы, паттерны, уровни, новости..."
+              value={formData.entry_reason}
+              onChange={e => setFormData({...formData, entry_reason: e.target.value})}
+            />
           </div>
 
           <div>

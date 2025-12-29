@@ -55,6 +55,7 @@ class Trade(Base):
     # Вход и выход
     entry_price = Column(Numeric(precision=18, scale=8), nullable=False)
     exit_price = Column(Numeric(precision=18, scale=8))
+    entry_reason = Column(String) # Причина/логика входа (для ИИ анализа)
     exit_reason = Column(String) # Причина выхода (Strategy, Time, Panic, etc.)
     quantity = Column(Numeric(precision=18, scale=8), nullable=False)
     leverage = Column(Float, default=1.0) # Плечо
@@ -88,5 +89,14 @@ class Trade(Base):
     notes = Column(String)
     tags = Column(JSON, default=[]) # Теги сделки (напр. ["FOMO", "Trend"])
     ai_analysis = Column(JSON) # Результат анализа от AI
+    
+    # Новые поля для группировки и аналитики
+    currency = Column(String, default="RUB") # Валюта сделки
+    position_id = Column(Integer, index=True) # ID позиции (группирует операции)
+    operations = Column(JSON, default=[]) # Детали операций для аккордеона
+    # Пример: [{"type": "entry", "price": 14.117, "qty": 7000, "time": "09:50:45", "commission": 50}]
+    
+    r_multiple = Column(Float) # PnL / Risk = сколько "R" заработал
+    holding_time_minutes = Column(Integer) # Время удержания позиции в минутах
     
     account = relationship("Account", back_populates="trades")

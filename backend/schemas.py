@@ -20,6 +20,7 @@ class TradeBase(BaseModel):
     timeframe: Optional[str] = None
     news_event: Optional[str] = None
     screenshot_url: Optional[str] = None
+    entry_reason: Optional[str] = None  # Причина/логика входа
     exit_reason: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[list[str]] = []
@@ -28,6 +29,9 @@ class TradeBase(BaseModel):
     exit_commission: Optional[float] = 0
     swap: Optional[float] = 0
     confidence: Optional[int] = Field(None, ge=1, le=10)
+    # Новые поля
+    currency: Optional[str] = "RUB"
+    operations: Optional[list] = []  # Детали операций для аккордеона
 
 class TradeCreate(TradeBase):
     account_id: int
@@ -55,6 +59,7 @@ class TradeUpdate(BaseModel):
     timeframe: Optional[str] = None
     news_event: Optional[str] = None
     screenshot_url: Optional[str] = None
+    entry_reason: Optional[str] = None
     exit_reason: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[list[str]] = None
@@ -74,6 +79,10 @@ class Trade(TradeBase):
     mae_price: Optional[float] = None
     mfe_price: Optional[float] = None
     ai_analysis: Optional[dict] = None
+    # Новые поля
+    position_id: Optional[int] = None
+    r_multiple: Optional[float] = None
+    holding_time_minutes: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -89,7 +98,8 @@ class DashboardStats(BaseModel):
     profit_factor: float = 0
     r_expectancy: float = 0
     recovery_factor: float = 0
-    ahpr: float = 0
+    total_roi: float = 0
+    expected_ghpr: float = 0
     sortino_ratio: float = 0
     max_drawdown_pct: float = 0
     max_drawdown_abs: float = 0

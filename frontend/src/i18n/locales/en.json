@@ -61,10 +61,15 @@
       "description": "Net Profit / Max Drawdown",
       "tooltip": "Recovery factor. Shows how quickly the system recovers from drawdowns. Higher is better. > 3.0 — excellent resilience."
     },
-    "ahpr": {
-      "title": "AHPR",
-      "description": "Avg Holding Period Return",
-      "tooltip": "Average holding period return (Geometric Mean). If 1.05, then +5% per trade. Key to compound interest."
+    "totalRoi": {
+      "title": "ROI",
+      "description": "Return on Deposit",
+      "tooltip": "Return on Investment. Your actual return relative to your initial deposit. Calculated as: Net PnL / Deposit × 100%."
+    },
+    "expectedGhpr": {
+      "title": "Expected GHPR",
+      "description": "At Optimal f",
+      "tooltip": "Expected GHPR (Geometric Holding Period Return) when using Optimal f. Shows your system's potential: if 1.05, then +5% per trade with optimal capital management."
     },
     "sortinoRatio": {
       "title": "Sortino Ratio",

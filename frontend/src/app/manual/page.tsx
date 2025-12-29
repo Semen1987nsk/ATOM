@@ -254,26 +254,48 @@ export default function Manual() {
               </div>
             </div>
 
-            {/* AHPR */}
+            {/* Expected GHPR */}
             <div>
               <h3 className="text-white font-bold text-lg mb-2 flex items-center gap-2">
-                4. AHPR <span className="text-xs font-mono opacity-50 bg-white/10 px-2 py-1 rounded">Average Holding Period Return</span>
+                4. Потенциальный GHPR <span className="text-xs font-mono opacity-50 bg-white/10 px-2 py-1 rounded">Geometric Holding Period Return при Optimal f</span>
               </h3>
               <p className="mb-3">
-                Средняя доходность за период удержания. Это ваш &quot;процентный двигатель&quot;. Если AHPR = 1.05, это значит, что в среднем каждая сделка увеличивает ваш капитал на 5%.
+                Ожидаемая геометрическая средняя доходность за сделку <strong>при использовании Optimal f</strong>. Это показатель потенциала вашей системы, а не текущего результата. Если GHPR = 1.05, значит при оптимальном управлении капиталом каждая сделка могла бы увеличивать капитал на 5%.
               </p>
               <div className="bg-black/40 p-4 rounded border border-white/5 text-xs">
                 <p className="mb-2">
-                  Это ключевой компонент для формулы сложного процента. Чем выше AHPR, тем агрессивнее растет ваша кривая капитала.
+                  ⚠️ Важно: это <strong>гипотетический</strong> показатель! Он показывает потенциал системы, а не ваш реальный результат. Для реальной доходности смотрите ROI.
                 </p>
                 <div className="flex gap-4">
                   <div>
-                    <span className="text-red-400 font-bold block">AHPR &lt; 1.0</span>
-                    <span className="opacity-70">Система сливает</span>
+                    <span className="text-red-400 font-bold block">GHPR &lt; 1.0</span>
+                    <span className="opacity-70">Система убыточна даже при Optimal f</span>
                   </div>
                   <div>
-                    <span className="text-accent font-bold block">AHPR &gt; 1.0</span>
-                    <span className="opacity-70">Система зарабатывает</span>
+                    <span className="text-accent font-bold block">GHPR &gt; 1.0</span>
+                    <span className="opacity-70">Система имеет положительный потенциал</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ROI */}
+            <div>
+              <h3 className="text-white font-bold text-lg mb-2 flex items-center gap-2">
+                5. ROI <span className="text-xs font-mono opacity-50 bg-white/10 px-2 py-1 rounded">Return on Investment</span>
+              </h3>
+              <p className="mb-3">
+                Реальная доходность на ваш депозит. Формула: <code className="bg-white/10 px-1 rounded">Net PnL / Начальный депозит × 100%</code>. Это ваш фактический результат.
+              </p>
+              <div className="bg-black/40 p-4 rounded border border-white/5 text-xs">
+                <div className="flex gap-4">
+                  <div>
+                    <span className="text-red-400 font-bold block">ROI &lt; 0%</span>
+                    <span className="opacity-70">Вы в убытке</span>
+                  </div>
+                  <div>
+                    <span className="text-accent font-bold block">ROI &gt; 0%</span>
+                    <span className="opacity-70">Вы в прибыли</span>
                   </div>
                 </div>
               </div>

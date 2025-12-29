@@ -34,12 +34,13 @@ def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Di
     def get_twr(f):
         # Ральф Винс использует нормализацию через худший случай
         hpr = 1 + f * (r_multiples / (-worst_case))
-        # Убираем значения <= 0 для логарифма
-        hpr = hpr[hpr > 0]
+        # Если любой HPR <= 0, это банкротство — TWR должен быть 0
+        if np.any(hpr <= 0):
+            return 0.0
         return np.prod(hpr)
 
-    # 3. Перебор f от 0.01 до 1.0 с шагом 0.01 для поиска максимума
-    f_values = np.linspace(0.01, 1.0, 100)
+    # 3. Перебор f от 0.01 до 0.99 (f=1.0 всегда даёт HPR=0 для worst case)
+    f_values = np.linspace(0.01, 0.99, 99)
     twr_values = [get_twr(f) for f in f_values]
     
     best_idx = np.argmax(twr_values)
@@ -771,7 +772,7 @@ def calculate_stats(trades):
             "z_score": None,
             "profit_factor": 0,
             "r_expectancy": 0,
-            "ahpr": 0,
+            "expected_ghpr": 0,
             "mae_mfe_analysis": None,
             "equity_curve": [],
             "tag_stats": [],
@@ -876,7 +877,7 @@ def calculate_stats(trades):
         "z_score": z_score_res,
         "profit_factor": advanced_stats["profit_factor"],
         "r_expectancy": advanced_stats["r_expectancy"],
-        "ahpr": optimal_f_res.get("geometric_mean", 0),
+        "expected_ghpr": optimal_f_res.get("geometric_mean", 0),
         "mae_mfe_analysis": mae_mfe_res,
         "equity_curve": equity_curve,
         "tag_stats": tag_stats,

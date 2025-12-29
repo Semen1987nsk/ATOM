@@ -64,3 +64,52 @@ class MarketService:
         
         log.debug(f"Retrieved {len(prices)} prices")
         return prices
+
+    def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
+        """
+        Fetches futures specifications (MINSTEP, STEPPRICE) from MOEX.
+        Returns a dictionary {ticker: {minstep: float, stepprice: float}}.
+        """
+        specs = {}
+        
+        if not tickers:
+            return {}
+        
+        # Futures securities endpoint
+        url = "https://iss.moex.com/iss/engines/futures/markets/forts/boards/RFUD/securities.json"
+        
+        try:
+            response = requests.get(url, timeout=5)
+            data = response.json()
+            
+            if 'securities' not in data:
+                return {}
+            
+            columns = data['securities']['columns']
+            rows = data['securities']['data']
+            
+            # Find indices
+            try:
+                secid_idx = columns.index('SECID')
+                minstep_idx = columns.index('MINSTEP')
+                stepprice_idx = columns.index('STEPPRICE')
+            except ValueError:
+                log.warning("Missing required columns in MOEX futures response")
+                return {}
+            
+            for row in rows:
+                ticker = row[secid_idx]
+                if ticker in tickers:
+                    minstep = row[minstep_idx]
+                    stepprice = row[stepprice_idx]
+                    if minstep is not None and stepprice is not None:
+                        specs[ticker] = {
+                            'minstep': float(minstep),
+                            'stepprice': float(stepprice)
+                        }
+        
+        except Exception as e:
+            log.warning(f"Error fetching MOEX futures specs: {e}")
+        
+        log.debug(f"Retrieved specs for {len(specs)} futures")
+        return specs
