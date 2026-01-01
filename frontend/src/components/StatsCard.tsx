@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { Info } from 'lucide-react';
+'use client';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { HelpCircle } from 'lucide-react';
 
 interface StatsCardProps {
   title: string;
@@ -8,47 +11,180 @@ interface StatsCardProps {
   trend?: 'up' | 'down';
   icon?: React.ReactNode;
   tooltipText?: string;
+  className?: string;
 }
 
-export const StatsCard: React.FC<StatsCardProps> = ({ title, value, description, trend, icon, tooltipText }) => {
-  const [showInfo, setShowInfo] = useState(false);
+// Tooltip компонент с Portal - рендерится вне DOM-дерева карточки
+const Tooltip: React.FC<{
+  text: string;
+  targetRef: React.RefObject<HTMLButtonElement | null>;
+  isVisible: boolean;
+}> = ({ text, targetRef, isVisible }) => {
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [mounted, setMounted] = useState(false);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isVisible && targetRef.current) {
+      const targetRect = targetRef.current.getBoundingClientRect();
+      const tooltipWidth = 288; // w-72 = 18rem = 288px
+      const tooltipHeight = 120; // примерная высота
+      const padding = 16;
+      
+      // Рассчитываем позицию - tooltip появляется СВЕРХУ от иконки
+      let top = targetRect.top - tooltipHeight - 12; // 12px отступ
+      let left = targetRect.left + targetRect.width / 2 - tooltipWidth / 2;
+      
+      // Если не помещается сверху (слишком близко к верху экрана)
+      // показываем СЛЕВА от карточки
+      if (top < padding) {
+        // Позиционируем слева от карточки
+        top = targetRect.top - 20;
+        left = targetRect.left - tooltipWidth - 20;
+        
+        // Если не помещается слева, показываем справа
+        if (left < padding) {
+          left = targetRect.right + 20;
+        }
+      }
+      
+      // Не выходим за правый край
+      if (left + tooltipWidth > window.innerWidth - padding) {
+        left = window.innerWidth - tooltipWidth - padding;
+      }
+      
+      // Не выходим за левый край
+      if (left < padding) {
+        left = padding;
+      }
+      
+      setPosition({ top, left });
+    }
+  }, [isVisible, targetRef]);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      ref={tooltipRef}
+      role="tooltip"
+      className={`
+        fixed w-72 p-4
+        bg-[#0a0a0a] border-2 border-accent rounded-lg 
+        shadow-[0_0_40px_rgba(0,255,159,0.5)]
+        transition-all duration-200 ease-out
+        pointer-events-none
+        ${isVisible 
+          ? 'opacity-100 visible scale-100' 
+          : 'opacity-0 invisible scale-95'
+        }
+      `}
+      style={{ 
+        top: position.top,
+        left: position.left,
+        zIndex: 99999,
+      }}
+    >
+      {/* Заголовок */}
+      <div className="flex items-center gap-2 mb-2 pb-2 border-b border-accent/30">
+        <HelpCircle size={14} className="text-accent" />
+        <span className="text-accent text-xs font-bold uppercase tracking-wider">Подсказка</span>
+      </div>
+      
+      {/* Текст */}
+      <p className="text-[13px] text-white leading-relaxed">
+        {text}
+      </p>
+    </div>,
+    document.body
+  );
+};
+
+export const StatsCard: React.FC<StatsCardProps> = ({ 
+  title, 
+  value, 
+  description, 
+  trend, 
+  icon, 
+  tooltipText, 
+  className = '' 
+}) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const helpRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div 
-      className="cyber-card p-6 flex flex-col gap-2 relative overflow-hidden group"
-      onMouseEnter={() => setShowInfo(true)}
-      onMouseLeave={() => setShowInfo(false)}
-    >
-      <div className="flex justify-between items-start">
-        <span className="text-xs font-mono uppercase tracking-wider opacity-60">{title}</span>
+    <div className={`cyber-card p-6 flex flex-col gap-2 relative group ${className}`}>
+      {/* Background glow effect on hover */}
+      <div className="absolute inset-0 overflow-hidden rounded pointer-events-none">
+        <div className="absolute -top-10 -right-10 w-24 h-24 bg-accent/0 group-hover:bg-accent/10 rounded-full blur-2xl transition-all duration-500" />
+      </div>
+      
+      {/* Trend indicator line */}
+      {trend && (
+        <div 
+          className={`absolute left-0 top-0 bottom-0 w-1 ${
+            trend === 'up' 
+              ? 'bg-gradient-to-b from-green-400 to-green-600' 
+              : 'bg-gradient-to-b from-red-400 to-red-600'
+          }`}
+        />
+      )}
+      
+      <div className="flex justify-between items-start relative z-10">
+        <span className="text-xs font-mono uppercase tracking-wider opacity-60 group-hover:opacity-80 transition-opacity">
+          {title}
+        </span>
         <div className="flex gap-2 items-center">
+          {/* Help Icon */}
           {tooltipText && (
-            <Info 
-              size={12} 
-              className={`transition-opacity duration-300 ${showInfo ? 'opacity-100 text-accent' : 'opacity-0'}`} 
-            />
+            <>
+              <button
+                ref={helpRef}
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+                onFocus={() => setShowTooltip(true)}
+                onBlur={() => setShowTooltip(false)}
+                className="text-gray-500 hover:text-accent transition-colors duration-200 focus:outline-none focus:text-accent"
+                aria-label="Показать подсказку"
+              >
+                <HelpCircle size={14} strokeWidth={1.5} />
+              </button>
+              
+              {/* Tooltip через Portal */}
+              <Tooltip 
+                text={tooltipText} 
+                targetRef={helpRef} 
+                isVisible={showTooltip} 
+              />
+            </>
           )}
-          {icon && <div className="text-accent opacity-80">{icon}</div>}
+          {icon && (
+            <div className="text-accent/60 group-hover:text-accent group-hover:scale-110 transition-all duration-300">
+              {icon}
+            </div>
+          )}
         </div>
       </div>
-      <div className="text-3xl font-bold tracking-tight text-neon">
+      
+      <div className="text-3xl font-bold tracking-tight text-neon group-hover:drop-shadow-[0_0_8px_rgba(0,255,159,0.5)] transition-all duration-300 relative z-10">
         {value}
       </div>
+      
       {description && (
-        <div className={`text-xs ${trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'opacity-40'}`}>
+        <div className={`text-xs flex items-center gap-1 ${
+          trend === 'up' ? 'text-green-400' : 
+          trend === 'down' ? 'text-red-400' : 
+          'opacity-40'
+        }`}>
+          {trend === 'up' && <span className="inline-block animate-bounce">↑</span>}
+          {trend === 'down' && <span className="inline-block animate-bounce">↓</span>}
           {description}
         </div>
       )}
-
-      {/* Cyberpunk Info Overlay */}
-      <div className={`absolute inset-0 bg-[#050505]/95 backdrop-blur-md p-5 flex flex-col justify-center border border-accent/20 transition-all duration-300 ease-out ${showInfo ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
-        <div className="text-accent font-bold mb-2 uppercase text-[10px] tracking-widest flex items-center gap-2">
-          <Info size={10} /> System Reference
-        </div>
-        <p className="text-[11px] text-gray-300 leading-relaxed font-mono border-l-2 border-accent/50 pl-3">
-          {tooltipText}
-        </p>
-      </div>
     </div>
   );
 };

@@ -110,7 +110,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                  className="input-cyber"
                 />
               </div>
               
@@ -122,7 +122,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                  className="input-cyber"
                 />
               </div>
               

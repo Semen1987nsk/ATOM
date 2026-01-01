@@ -106,13 +106,17 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative max-h-[90vh] overflow-y-auto animate-scaleIn">
+        {/* Background glow */}
+        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-accent-secondary/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
           <X size={20} />
         </button>
         
-        <h2 className="text-xl font-bold mb-6 text-neon italic">EDIT POSITION #{trade.id}</h2>
+        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">EDIT POSITION #{trade.id}</h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -120,7 +124,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Symbol</label>
               <input 
                 required
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 placeholder="BTC/USDT"
                 value={formData.symbol}
                 onChange={e => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
@@ -129,7 +133,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Asset Name</label>
               <input 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 placeholder="Bitcoin"
                 value={formData.asset_name}
                 onChange={e => setFormData({...formData, asset_name: e.target.value})}
@@ -141,7 +145,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Type</label>
               <select 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.asset_type}
                 onChange={e => setFormData({...formData, asset_type: e.target.value})}
               >
@@ -155,7 +159,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Direction</label>
               <select 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.direction}
                 onChange={e => setFormData({...formData, direction: e.target.value})}
               >
@@ -171,7 +175,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
               <input 
                 required
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.entry_price}
                 onChange={e => setFormData({...formData, entry_price: e.target.value})}
               />
@@ -181,7 +185,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
               <input 
                 required
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
               />
@@ -193,7 +197,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Leverage</label>
               <input 
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.leverage}
                 onChange={e => setFormData({...formData, leverage: e.target.value})}
               />
@@ -202,7 +206,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Commission</label>
               <input 
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.commission}
                 onChange={e => setFormData({...formData, commission: e.target.value})}
               />
@@ -213,7 +217,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Swap / Rollover</label>
             <input 
               type="number" step="any"
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+              className="input-cyber"
               value={formData.swap}
               onChange={e => setFormData({...formData, swap: e.target.value})}
             />
@@ -223,7 +227,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Setup Name</label>
               <input 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 placeholder="Breakout, Reversal..."
                 value={formData.setup_name}
                 onChange={e => setFormData({...formData, setup_name: e.target.value})}
@@ -232,7 +236,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Timeframe</label>
               <select 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.timeframe}
                 onChange={e => setFormData({...formData, timeframe: e.target.value})}
               >
@@ -250,7 +254,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Exit Reason</label>
             <select 
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+              className="input-cyber"
               value={formData.exit_reason}
               onChange={e => setFormData({...formData, exit_reason: e.target.value})}
             >
@@ -268,7 +272,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Entry Date</label>
             <input 
               type="datetime-local"
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+              className="input-cyber"
               value={formData.entry_at}
               onChange={e => setFormData({...formData, entry_at: e.target.value})}
             />
@@ -292,7 +296,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">📝 Причина входа (для ИИ анализа)</label>
             <textarea 
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none h-20"
+              className="input-cyber h-20"
               placeholder="Опишите логику входа в сделку: сигналы, паттерны, уровни, новости..."
               value={formData.entry_reason}
               onChange={e => setFormData({...formData, entry_reason: e.target.value})}
@@ -302,7 +306,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Notes</label>
             <textarea 
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none h-20"
+              className="input-cyber h-20"
               placeholder="Trade logic, emotions..."
               value={formData.notes}
               onChange={e => setFormData({...formData, notes: e.target.value})}
@@ -312,7 +316,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Tags (comma separated)</label>
             <input 
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+              className="input-cyber"
               placeholder="FOMO, NEWS, TREND"
               value={formData.tags}
               onChange={e => setFormData({...formData, tags: e.target.value})}
@@ -321,7 +325,7 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
 
           <button 
             type="submit"
-            className="w-full bg-accent text-black font-bold py-3 uppercase tracking-widest hover:bg-white transition-colors"
+            className="btn-primary w-full py-3 text-center justify-center"
           >
             Update Trade
           </button>

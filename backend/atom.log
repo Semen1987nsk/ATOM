@@ -3074,3 +3074,36 @@
 2025-12-29 13:57:24 | DEBUG   | atom.api:startup_event:73 |   → /tags/ (get_all_tags)
 2025-12-29 13:57:24 | DEBUG   | atom.api:startup_event:73 |   → /stats/ (get_stats)
 2025-12-29 13:57:24 | DEBUG   | atom.api:startup_event:73 |   → /db-check (check_db)
+2026-01-01 11:03:38 | INFO    | atom.api:startup_event:70 | 🚀 ATOM API Starting...
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:71 | Registered routes:
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /openapi.json (openapi)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /docs (custom_swagger_ui_html)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /redoc (redoc_html)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /test-docs (custom_docs)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → / (read_root)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/ (create_trade)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/import (import_trades)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/ (read_trades)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/export (export_trades)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/{trade_id} (update_trade)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/{trade_id} (delete_trade)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/{trade_id}/close (close_trade)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /trades/unrealized-pnl (get_unrealized_pnl)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /tags/ (get_all_tags)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /stats/ (get_stats)
+2026-01-01 11:03:38 | DEBUG   | atom.api:startup_event:73 |   → /db-check (check_db)
+2026-01-01 12:05:49 | DEBUG   | atom.market:get_current_prices:29 | Fetching prices for 2 tickers: ['PDH6', 'ETZ5']
+2026-01-01 12:05:53 | DEBUG   | atom.market:get_current_prices:65 | Retrieved 1 prices
+2026-01-01 12:05:54 | DEBUG   | atom.market:get_futures_specs:114 | Retrieved specs for 1 futures
+2026-01-01 12:05:56 | DEBUG   | atom.market:get_current_prices:29 | Fetching prices for 2 tickers: ['PDH6', 'ETZ5']
+2026-01-01 12:05:58 | DEBUG   | atom.market:get_current_prices:65 | Retrieved 1 prices
+2026-01-01 12:05:59 | DEBUG   | atom.market:get_futures_specs:114 | Retrieved specs for 1 futures
+2026-01-01 12:06:00 | DEBUG   | atom.market:get_current_prices:29 | Fetching prices for 2 tickers: ['PDH6', 'ETZ5']
+2026-01-01 12:06:03 | DEBUG   | atom.market:get_current_prices:65 | Retrieved 1 prices
+2026-01-01 12:06:04 | DEBUG   | atom.market:get_futures_specs:114 | Retrieved specs for 1 futures
+2026-01-01 12:06:09 | DEBUG   | atom.market:get_current_prices:29 | Fetching prices for 2 tickers: ['PDH6', 'ETZ5']
+2026-01-01 12:06:12 | DEBUG   | atom.market:get_current_prices:65 | Retrieved 1 prices
+2026-01-01 12:06:13 | DEBUG   | atom.market:get_futures_specs:114 | Retrieved specs for 1 futures
+2026-01-01 12:06:19 | DEBUG   | atom.market:get_current_prices:29 | Fetching prices for 2 tickers: ['PDH6', 'ETZ5']
+2026-01-01 12:06:22 | DEBUG   | atom.market:get_current_prices:65 | Retrieved 1 prices
+2026-01-01 12:06:23 | DEBUG   | atom.market:get_futures_specs:114 | Retrieved specs for 1 futures

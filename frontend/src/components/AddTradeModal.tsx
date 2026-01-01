@@ -73,21 +73,25 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
+        {/* Background glow */}
+        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-accent-secondary/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
           <X size={20} />
         </button>
         
-        <h2 className="text-xl font-bold mb-6 text-neon italic">LOG NEW POSITION</h2>
+        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">LOG NEW POSITION</h2>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Symbol</label>
               <input 
                 required
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 placeholder="BTC/USDT"
                 value={formData.symbol}
                 onChange={e => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
@@ -96,7 +100,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Asset Name</label>
               <input 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 placeholder="Bitcoin"
                 value={formData.asset_name}
                 onChange={e => setFormData({...formData, asset_name: e.target.value})}
@@ -108,7 +112,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Type</label>
               <select 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.asset_type}
                 onChange={e => setFormData({...formData, asset_type: e.target.value})}
               >
@@ -122,7 +126,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Direction</label>
               <select 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.direction}
                 onChange={e => setFormData({...formData, direction: e.target.value})}
               >
@@ -138,7 +142,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <input 
                 required
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.entry_price}
                 onChange={e => setFormData({...formData, entry_price: e.target.value})}
               />
@@ -148,7 +152,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <input 
                 required
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
               />
@@ -160,7 +164,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Leverage</label>
               <input 
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.leverage}
                 onChange={e => setFormData({...formData, leverage: e.target.value})}
               />
@@ -169,7 +173,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Commission</label>
               <input 
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.commission}
                 onChange={e => setFormData({...formData, commission: e.target.value})}
               />
@@ -180,7 +184,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Setup Name</label>
               <input 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 placeholder="Breakout, Reversal..."
                 value={formData.setup_name}
                 onChange={e => setFormData({...formData, setup_name: e.target.value})}
@@ -189,7 +193,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Timeframe</label>
               <select 
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.timeframe}
                 onChange={e => setFormData({...formData, timeframe: e.target.value})}
               >
@@ -209,7 +213,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Stop Loss</label>
               <input 
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.stop_loss}
                 onChange={e => setFormData({...formData, stop_loss: e.target.value})}
               />
@@ -218,7 +222,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Risk Amount ($)</label>
               <input 
                 type="number" step="any"
-                className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+                className="input-cyber"
                 value={formData.risk_amount}
                 onChange={e => setFormData({...formData, risk_amount: e.target.value})}
               />
@@ -236,14 +240,14 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
                 value={formData.confidence}
                 onChange={e => setFormData({...formData, confidence: e.target.value})}
               />
-              <span className="font-mono text-accent w-6 text-center">{formData.confidence}</span>
+              <span className="font-mono text-accent w-6 text-center font-bold">{formData.confidence}</span>
             </div>
           </div>
 
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Notes / Strategy</label>
             <textarea 
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none h-20"
+              className="input-cyber h-20 resize-none"
               placeholder="Why are you entering this trade?"
               value={formData.notes}
               onChange={e => setFormData({...formData, notes: e.target.value})}
@@ -253,7 +257,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Tags (comma separated)</label>
             <input 
-              className="w-full bg-black border border-border p-2 text-sm focus:border-accent outline-none"
+              className="input-cyber"
               placeholder="Trend, FOMO, Breakout"
               value={formData.tags}
               onChange={e => setFormData({...formData, tags: e.target.value})}
@@ -262,7 +266,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
 
           <button 
             type="submit"
-            className="w-full bg-accent text-black font-bold py-3 hover:bg-white transition-colors uppercase tracking-widest text-xs"
+            className="btn-primary w-full py-3 text-center justify-center"
           >
             Initialize Position
           </button>

@@ -295,7 +295,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-8 max-w-7xl mx-auto">
-      <header className="mb-12 flex justify-between items-start">
+      <header className="mb-12 flex justify-between items-start relative z-10">
         <div>
           <h1 className="text-4xl font-black tracking-tighter mb-2 italic">
             <span className="text-accent">ATOM</span>
@@ -315,7 +315,7 @@ export default function Home() {
             )}
           </div>
         </div>
-        <div className="flex gap-4 flex-wrap justify-end items-center">
+        <div className="flex gap-3 flex-wrap justify-end items-center">
           <FilterPanel
             filters={filters}
             onChange={handleFiltersChange}
@@ -324,7 +324,7 @@ export default function Home() {
           <div className="flex gap-2">
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center gap-2 bg-surface border border-border px-3 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest"
+              className="btn-secondary p-2.5 aspect-square"
               title="Настройки"
             >
               <Settings size={14} />
@@ -333,33 +333,33 @@ export default function Home() {
           </div>
           <Link 
             href="/history"
-            className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest text-accent"
+            className="btn-secondary flex items-center gap-2"
           >
             <History size={14} />
             {t.nav.tradeHistory}
           </Link>
           <Link 
             href="/manual"
-            className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest text-accent"
+            className="btn-secondary flex items-center gap-2"
           >
             <BookOpen size={14} />
             {t.nav.systemManual}
           </Link>
-          <label className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest cursor-pointer">
+          <label className="btn-secondary flex items-center gap-2 cursor-pointer">
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
             <Upload size={14} />
             {t.nav.importData}
           </label>
           <button 
             onClick={handleExport}
-            className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest"
+            className="btn-secondary flex items-center gap-2"
           >
             <Download size={14} />
             {t.nav.exportCsv}
           </button>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="bg-accent text-black px-6 py-2 font-bold text-xs uppercase tracking-widest hover:bg-white transition-colors flex items-center gap-2"
+            className="btn-primary flex items-center gap-2"
           >
             <Plus size={14} /> {t.nav.logPosition}
           </button>
@@ -590,69 +590,114 @@ export default function Home() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
-          <div className="cyber-card p-6">
-            <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2">
+          <div className="cyber-card p-6 relative overflow-hidden group">
+            {/* Background glow */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            
+            <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
               <Activity size={16} className="text-accent" />
               {t.charts.equityCurve}
+              <span className="ml-auto text-[10px] opacity-40">{stats?.equity_curve?.length || 0} {t.charts.dataPoints || 'points'}</span>
             </h2>
-            <div className="h-[250px] w-full">
+            <div className="h-[250px] w-full relative z-10">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={stats?.equity_curve || []}>
                   <defs>
                     <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00ff9f" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#00ff9f" stopOpacity={0}/>
+                      <stop offset="0%" stopColor="#00ff9f" stopOpacity={0.4}/>
+                      <stop offset="50%" stopColor="#00ff9f" stopOpacity={0.15}/>
+                      <stop offset="100%" stopColor="#00ff9f" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="strokeGradient" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#00ff9f" stopOpacity={0.5}/>
+                      <stop offset="50%" stopColor="#00ff9f" stopOpacity={1}/>
+                      <stop offset="100%" stopColor="#bc13fe" stopOpacity={0.8}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
                   <XAxis 
                     dataKey="date" 
-                    stroke="#444" 
+                    stroke="#333" 
                     fontSize={10} 
                     tickLine={false} 
                     axisLine={false}
                     tickFormatter={(str) => str.split(' ')[0]} 
                   />
                   <YAxis 
-                    stroke="#444" 
+                    stroke="#333" 
                     fontSize={10} 
                     tickLine={false} 
                     axisLine={false}
                     tickFormatter={(val) => `${settings.currencySymbol}${val}`}
                   />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0d0d0d', border: '1px solid #1a1a1a', fontSize: '12px' }}
+                    contentStyle={{ 
+                      backgroundColor: 'rgba(13, 13, 13, 0.95)', 
+                      border: '1px solid rgba(0, 255, 159, 0.3)', 
+                      borderRadius: '8px',
+                      boxShadow: '0 0 20px rgba(0, 255, 159, 0.1)',
+                      backdropFilter: 'blur(10px)',
+                      fontSize: '12px' 
+                    }}
                     itemStyle={{ color: '#00ff9f' }}
+                    labelStyle={{ color: '#888', marginBottom: '4px' }}
+                    cursor={{ stroke: 'rgba(0, 255, 159, 0.3)', strokeWidth: 1 }}
                   />
                   <Area 
                     type="monotone" 
                     dataKey="balance" 
-                    stroke="#00ff9f" 
+                    stroke="url(#strokeGradient)" 
                     fillOpacity={1} 
                     fill="url(#colorBalance)" 
                     strokeWidth={2}
+                    dot={false}
+                    activeDot={{ 
+                      r: 6, 
+                      fill: '#00ff9f', 
+                      stroke: '#000', 
+                      strokeWidth: 2,
+                      style: { filter: 'drop-shadow(0 0 6px rgba(0, 255, 159, 0.8))' }
+                    }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="cyber-card p-6">
+          <div className="cyber-card p-6 relative overflow-hidden">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-sm font-mono uppercase flex items-center gap-2">
                 <Activity size={16} className="text-accent" />
                 {t.charts.recentTrades}
               </h2>
-              <Link href="/history" className="text-[10px] font-mono text-accent hover:underline">
+              <Link href="/history" className="text-[10px] font-mono text-accent hover:underline flex items-center gap-1 hover:gap-2 transition-all">
                 {t.charts.viewAll}
+                <span>→</span>
               </Link>
             </div>
             <div className="space-y-4">
               {filteredTrades.length === 0 ? (
-                <div className="text-center py-8 opacity-30 font-mono">{t.charts.noTrades}</div>
+                <div className="empty-state py-12">
+                  <div className="empty-state-icon">
+                    <Activity size={32} className="text-accent/50" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">{t.charts.noTrades}</h3>
+                  <p className="text-sm opacity-50 mb-4">Начните торговать и данные появятся здесь</p>
+                  <button 
+                    onClick={() => setIsModalOpen(true)}
+                    className="btn-primary text-xs"
+                  >
+                    <Plus size={14} className="inline mr-2" />
+                    {t.nav.logPosition}
+                  </button>
+                </div>
               ) : (
-                filteredTrades.slice(0, 5).map((trade) => ( // Show only last 5 trades
-                  <div key={trade.id} className="border-b border-border pb-4 last:border-0">
+                filteredTrades.slice(0, 5).map((trade, index) => ( // Show only last 5 trades
+                  <div 
+                    key={trade.id} 
+                    className="border-b border-border pb-4 last:border-0 table-row-hover p-3 -mx-3 rounded-lg"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-3">
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -733,43 +778,69 @@ export default function Home() {
         </div>
 
         <div className="space-y-4">
-          <div className="cyber-card p-6 border-l-accent/30">
-            <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-accent" />
+          <div className="cyber-card p-6 border-l-accent/30 relative overflow-hidden group">
+            {/* Glow effect */}
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-accent/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            
+            <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
+              <AlertTriangle size={16} className="text-accent animate-pulse" />
               AI Insights
+              <span className="ml-auto badge-accent text-[8px]">LIVE</span>
             </h2>
-            <div className="space-y-4">
+            <div className="space-y-4 relative z-10">
               {stats?.mae_mfe_analysis?.recommendations.map((rec, i) => (
-                <div key={i} className="p-3 bg-accent/5 border-l-2 border-accent text-sm">
+                <div 
+                  key={i} 
+                  className="p-3 bg-accent/5 border-l-2 border-accent text-sm hover:bg-accent/10 transition-all duration-300 rounded-r-lg cursor-default"
+                  style={{ animationDelay: `${i * 0.1}s` }}
+                >
+                  <span className="opacity-30 text-[10px] mr-2">0{i + 1}</span>
                   {rec}
                 </div>
               ))}
-              <div className="p-3 bg-accent-secondary/5 border-l-2 border-accent-secondary text-sm opacity-80">
-                Optimal f: {((stats?.optimal_f || 0) * 10).toFixed(1)}%
+              <div className="p-3 bg-gradient-to-r from-accent-secondary/10 to-transparent border-l-2 border-accent-secondary text-sm rounded-r-lg">
+                <span className="text-accent-secondary font-bold">Optimal f:</span> 
+                <span className="ml-2">{((stats?.optimal_f || 0) * 10).toFixed(1)}%</span>
+                <span className="text-[10px] opacity-40 ml-2">рекомендуемый размер позиции</span>
               </div>
             </div>
           </div>
 
-          <div className="cyber-card p-6 border-l-accent-secondary/30">
-            <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2">
+          <div className="cyber-card p-6 border-l-accent-secondary/30 relative overflow-hidden group">
+            <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-accent-secondary/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            
+            <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
               <Target size={16} className="text-accent-secondary" />
               {t.tagStats.title}
+              <span className="ml-auto text-[10px] opacity-40">{stats?.tag_stats?.length || 0} tags</span>
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-3 relative z-10">
               {stats?.tag_stats.length === 0 ? (
-                <div className="text-center py-4 opacity-30 font-mono text-[10px]">{t.tagStats.noTags}</div>
+                <div className="empty-state py-8">
+                  <Target size={24} className="text-accent-secondary/30 mx-auto mb-2" />
+                  <p className="text-[10px] opacity-30 font-mono text-center">{t.tagStats.noTags}</p>
+                </div>
               ) : (
-                stats?.tag_stats.map((item) => (
-                  <div key={item.tag} className="flex justify-between items-center border-b border-border pb-2 last:border-0">
+                stats?.tag_stats.map((item, index) => (
+                  <div 
+                    key={item.tag} 
+                    className="flex justify-between items-center border-b border-border pb-2 last:border-0 hover:bg-accent-secondary/5 p-2 -mx-2 rounded-lg transition-all cursor-default"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
                     <div>
-                      <div className="text-[10px] font-mono text-accent-secondary uppercase">#{item.tag}</div>
+                      <div className="text-[10px] font-mono text-accent-secondary uppercase flex items-center gap-1">
+                        <span className="opacity-30">#</span>{item.tag}
+                      </div>
                       <div className="text-[9px] opacity-40">{item.count} trades</div>
                     </div>
                     <div className="text-right">
                       <div className={`text-xs font-bold ${Number(item.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {Number(item.pnl) >= 0 ? '+' : ''}{formatCurrency(Number(item.pnl))}
                       </div>
-                      <div className="text-[9px] opacity-60">{item.win_rate}% WR</div>
+                      <div className="text-[9px] opacity-60 flex items-center gap-1 justify-end">
+                        <div className={`w-1 h-1 rounded-full ${Number(item.win_rate) >= 50 ? 'bg-green-400' : 'bg-red-400'}`} />
+                        {item.win_rate}% WR
+                      </div>
                     </div>
                   </div>
                 ))
@@ -780,22 +851,34 @@ export default function Home() {
       </div>
 
       {/* Terminal Log */}
-      <div className="mt-8 cyber-card p-4 bg-black/50 border-t-2 border-accent/20">
-        <div className="flex items-center gap-2 mb-2 opacity-50">
+      <div className="mt-8 cyber-card p-4 bg-black/50 border-t-2 border-accent/20 relative overflow-hidden">
+        {/* Scan line animation */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/50 to-transparent animate-pulse" />
+        </div>
+        
+        <div className="flex items-center gap-2 mb-3 opacity-50">
           <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
           <span className="text-[10px] font-mono uppercase tracking-widest">{t.logs.title}</span>
+          <span className="text-[9px] opacity-50 ml-auto font-mono">{logs.length} entries</span>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 font-mono text-[10px] max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-accent/20 scrollbar-track-transparent">
           {logs.map((log, i) => (
-            <div key={i} className="font-mono text-[10px] flex gap-4">
-              <span className="opacity-30">[{log.time}]</span>
-              <span className={i === 0 ? 'text-accent' : 'opacity-60'}>
-                {i === 0 ? '> ' : '  '}{log.msg}
+            <div 
+              key={i} 
+              className={`flex gap-4 py-0.5 ${i === 0 ? 'text-accent' : 'opacity-60'} hover:opacity-100 transition-opacity`}
+            >
+              <span className="opacity-30 shrink-0">[{log.time}]</span>
+              <span className="flex-1">
+                {i === 0 && <span className="text-accent mr-1">▸</span>}
+                {log.msg}
               </span>
             </div>
           ))}
           {logs.length === 0 && (
-            <div className="font-mono text-[10px] opacity-20 italic">...</div>
+            <div className="opacity-20 italic py-4 text-center">
+              <span className="animate-pulse">_</span> Awaiting system events...
+            </div>
           )}
         </div>
       </div>

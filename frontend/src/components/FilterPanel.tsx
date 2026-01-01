@@ -259,47 +259,50 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
       {/* Custom Date Modal */}
       {showCustomDate && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative border border-border">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+          <div className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
+            {/* Background glow */}
+            <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+            
             <button 
               onClick={() => setShowCustomDate(false)} 
-              className="absolute top-4 right-4 opacity-50 hover:opacity-100"
+              className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10"
             >
               <X size={20} />
             </button>
             
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 relative z-10">
               <Calendar size={18} className="text-accent" />
               {t.period?.custom || 'Custom Period'}
             </h3>
             
-            <div className="space-y-4">
+            <div className="space-y-4 relative z-10">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">
+                <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">
                   {t.filters?.startDate || 'Start Date'}
                 </label>
                 <input
                   type="date"
                   value={customStart}
                   onChange={(e) => setCustomStart(e.target.value)}
-                  className="w-full bg-surface border border-border px-3 py-2 text-sm"
+                  className="input-cyber"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">
+                <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">
                   {t.filters?.endDate || 'End Date'} ({t.filters?.optional || 'optional'})
                 </label>
                 <input
                   type="date"
                   value={customEnd}
                   onChange={(e) => setCustomEnd(e.target.value)}
-                  className="w-full bg-surface border border-border px-3 py-2 text-sm"
+                  className="input-cyber"
                 />
               </div>
               <button
                 onClick={handleCustomApply}
                 disabled={!customStart}
-                className="w-full bg-accent text-black font-bold py-2 hover:bg-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t.filters?.apply || 'Apply'}
               </button>

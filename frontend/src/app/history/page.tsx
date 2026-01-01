@@ -283,8 +283,8 @@ export default function HistoryPage() {
             TRADE <span className="text-accent">HISTORY</span>
           </h1>
         </div>
-        <div className="flex gap-4">
-          <label className={`flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none transition-colors text-xs font-bold uppercase tracking-widest ${isImporting ? 'opacity-50 cursor-wait' : 'hover:bg-border cursor-pointer'}`}>
+        <div className="flex gap-3">
+          <label className={`btn-secondary flex items-center gap-2 ${isImporting ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}>
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} disabled={isImporting} />
             {isImporting ? (
               <>
@@ -299,20 +299,20 @@ export default function HistoryPage() {
             )}
           </label>
           {importResult && (
-            <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-none border ${importResult.includes('Ошибка') ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-green-500/20 border-green-500 text-green-400'} text-sm font-mono animate-pulse`}>
+            <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg border backdrop-blur-sm ${importResult.includes('Ошибка') ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-green-500/20 border-green-500 text-green-400'} text-sm font-mono shadow-lg`}>
               {importResult}
             </div>
           )}
           <button 
             onClick={handleExport}
-            className="flex items-center gap-2 bg-surface border border-border px-4 py-2 rounded-none hover:bg-border transition-colors text-xs font-bold uppercase tracking-widest"
+            className="btn-secondary flex items-center gap-2"
           >
             <Download size={14} />
             Export
           </button>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="bg-accent text-black px-6 py-2 font-bold text-xs uppercase tracking-widest hover:bg-white transition-colors flex items-center gap-2"
+            className="btn-primary flex items-center gap-2"
           >
             <Plus size={14} /> Log Position
           </button>

@@ -64,18 +64,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const text = t[language];
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
+        {/* Background glow */}
+        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
           <X size={20} />
         </button>
         
-        <h2 className="text-xl font-bold mb-6 text-accent italic flex items-center gap-2">
+        <h2 className="text-xl font-bold mb-6 text-accent italic flex items-center gap-2 relative z-10">
           <Settings size={20} />
           {text.title}
         </h2>
         
-        <div className="space-y-6">
+        <div className="space-y-6 relative z-10">
           {/* Deposit */}
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1 flex items-center gap-1">
@@ -86,7 +89,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               type="number"
               min="0"
               step="100"
-              className="w-full bg-black border border-border p-3 text-lg font-bold focus:border-accent outline-none"
+              className="input-cyber text-lg font-bold"
               placeholder="10000"
               value={deposit}
               onChange={e => setDeposit(e.target.value)}
@@ -125,14 +128,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 border border-border py-2 text-sm font-bold uppercase tracking-widest hover:bg-border transition-colors"
+              className="btn-secondary flex-1 justify-center"
             >
               {text.cancel}
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="flex-1 bg-accent text-black py-2 text-sm font-bold uppercase tracking-widest hover:bg-white transition-colors"
+              className="btn-primary flex-1 justify-center"
             >
               {text.save}
             </button>
