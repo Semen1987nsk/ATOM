@@ -9,15 +9,31 @@ def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Di
     trades_risk: список сумм, которыми рисковали в каждой сделке
     """
     if not trades_pnl or len(trades_pnl) < 2:
-        return {"optimal_f": 0, "expected_growth": 0, "message": "Недостаточно данных для расчета (нужно минимум 2 сделки)"}
+        return {"optimal_f": 0, "expected_growth": 0, "message": "Недостаточно данных для расчета (нужно минимум 2 сделки)", "is_valid": False}
 
     # Фильтруем сделки без указанного риска
     valid_pairs = [(pnl, risk) for pnl, risk in zip(trades_pnl, trades_risk) if risk > 0]
     if len(valid_pairs) < 2:
-        return {"optimal_f": 0, "expected_growth": 0, "message": "Недостаточно сделок с указанным риском"}
+        return {"optimal_f": 0, "expected_growth": 0, "message": "Недостаточно сделок с указанным риском", "is_valid": False}
     
     pnl_arr = np.array([p[0] for p in valid_pairs])
     risk_arr = np.array([p[1] for p in valid_pairs])
+    
+    # Проверяем profit factor - если < 1, система убыточная
+    wins = pnl_arr[pnl_arr > 0].sum() if len(pnl_arr[pnl_arr > 0]) > 0 else 0
+    losses = abs(pnl_arr[pnl_arr < 0].sum()) if len(pnl_arr[pnl_arr < 0]) > 0 else 0.01
+    profit_factor = wins / losses if losses > 0 else 0
+    
+    if profit_factor < 1.0:
+        return {
+            "optimal_f": 0, 
+            "expected_growth": 0, 
+            "message": f"⚠️ Система убыточна (PF={profit_factor:.2f}). Optimal f не применим.",
+            "is_valid": False,
+            "recommended_risk_pct": 0,
+            "moderate_risk_pct": 0,
+            "aggressive_risk_pct": 0
+        }
 
     # 1. Переводим результаты в R-multiple (результат относительно риска)
     # R = PnL / Risk. Например, заработал $200 при риске $100 -> R = 2.0
@@ -27,7 +43,8 @@ def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Di
     worst_case = np.min(r_multiples)
     if worst_case >= 0:
         # Если убытков нет, математика Винса не работает в классическом виде
-        return {"optimal_f": 0.5, "expected_growth": 1.0, "message": "У вас нет убыточных сделок! Риск может быть высоким."}
+        return {"optimal_f": 0.5, "expected_growth": 1.0, "message": "У вас нет убыточных сделок! Риск может быть высоким.", "is_valid": True,
+                "recommended_risk_pct": 12.5, "moderate_risk_pct": 25, "aggressive_risk_pct": 50}
 
     # 2. Функция для поиска TWR (Terminal Wealth Relative)
     # TWR = Product(1 + f * (-trade_r / worst_case_r))
@@ -54,7 +71,10 @@ def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Di
         "optimal_f": round(float(optimal_f), 2),
         "geometric_mean": round(float(g), 4),
         "max_twr": round(float(max_twr), 4),
-        "recommended_risk_pct": round(float(optimal_f * 10), 2) # Упрощенная рекомендация
+        "recommended_risk_pct": round(float(optimal_f * 25), 2),  # Quarter Kelly (f/4) - консервативный
+        "moderate_risk_pct": round(float(optimal_f * 50), 2),     # Half Kelly (f/2)
+        "aggressive_risk_pct": round(float(optimal_f * 100), 2),  # Full Kelly - для разгона/конкурсов
+        "is_valid": True
     }
 
 def calculate_z_score(trades_pnl: List[float]) -> Dict:
@@ -327,6 +347,7 @@ def calculate_win_loss_stats(trades_pnl: List[float]) -> Dict:
     expectancy = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
     
     return {
+        "win_rate": round(float(win_rate * 100), 2),
         "avg_win": round(float(avg_win), 2),
         "avg_loss": round(float(avg_loss), 2),
         "payoff_ratio": round(float(payoff_ratio), 2),
@@ -403,13 +424,23 @@ def calculate_risk_of_ruin(win_rate: float, payoff_ratio: float, risk_per_trade:
         }
     
     # Формула Risk of Ruin
-    # RoR = ((1 - p) / p) ^ n, где p = (1 + edge) / 2, n = capital units
-    p = (1 + edge / payoff_ratio) / 2 if payoff_ratio > 0 else 0.5
+    # RoR = ((1 - p) / p) ^ n, где p = win_rate, n = capital units
+    # Но с учётом payoff: 
+    # RoR = ((q/p) * (1/payoff))^n где q = 1 - win_rate
     
-    if p <= 0.5:
+    q = 1 - win_rate
+    
+    # Упрощённая формула с учётом edge
+    # edge = win_rate * payoff - (1 - win_rate)
+    # p_effective = 0.5 + edge/2 (нормированная вероятность)
+    p_effective = 0.5 + edge / 2
+    p_effective = max(0.01, min(0.99, p_effective))  # Ограничиваем
+    
+    if p_effective <= 0.5:
         return {
             "ror_20pct": 100.0,
             "ror_50pct": 100.0,
+            "risk_of_ruin_pct": 100.0,
             "message": "Высокий риск разорения"
         }
     
@@ -417,13 +448,14 @@ def calculate_risk_of_ruin(win_rate: float, payoff_ratio: float, risk_per_trade:
     units_20pct = 0.20 / risk_per_trade  # Сколько ставок в 20% капитала
     units_50pct = 0.50 / risk_per_trade
     
-    ratio = (1 - p) / p
+    ratio = (1 - p_effective) / p_effective
     ror_20 = min(100.0, (ratio ** units_20pct) * 100)
     ror_50 = min(100.0, (ratio ** units_50pct) * 100)
     
     return {
         "ror_20pct": round(ror_20, 2),
         "ror_50pct": round(ror_50, 2),
+        "risk_of_ruin_pct": round(ror_50, 2),  # Для совместимости
         "edge": round(edge, 4),
         "message": "OK" if ror_50 < 5 else "Внимание: высокий риск"
     }

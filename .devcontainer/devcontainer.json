@@ -1,5 +1,5 @@
 {
-  "name": "ATOM Dev Container",
+  "name": "Eqio Dev Container",
   "forwardPorts": [3000, 8000],
   "portsAttributes": {
     "3000": {

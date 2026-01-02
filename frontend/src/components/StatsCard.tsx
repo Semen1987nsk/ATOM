@@ -8,6 +8,7 @@ interface StatsCardProps {
   title: string;
   value: string | number;
   description?: string;
+  highlight?: string;
   trend?: 'up' | 'down';
   icon?: React.ReactNode;
   tooltipText?: string;
@@ -107,7 +108,8 @@ const Tooltip: React.FC<{
 export const StatsCard: React.FC<StatsCardProps> = ({ 
   title, 
   value, 
-  description, 
+  description,
+  highlight,
   trend, 
   icon, 
   tooltipText, 
@@ -183,6 +185,19 @@ export const StatsCard: React.FC<StatsCardProps> = ({
           {trend === 'up' && <span className="inline-block animate-bounce">↑</span>}
           {trend === 'down' && <span className="inline-block animate-bounce">↓</span>}
           {description}
+        </div>
+      )}
+      
+      {highlight && (
+        <div className={`mt-1 px-2 py-1 rounded text-xs font-bold inline-flex items-center gap-1 w-fit ${
+          trend === 'down' 
+            ? 'bg-red-500/20 border border-red-500/40 text-red-400'
+            : 'bg-green-500/20 border border-green-500/40 text-green-400'
+        }`}>
+          <span className={trend === 'down' ? 'text-red-500' : 'text-green-500'}>
+            {trend === 'down' ? '⚠' : '▶'}
+          </span>
+          {highlight}
         </div>
       )}
     </div>

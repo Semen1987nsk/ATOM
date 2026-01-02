@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ATOM",
+  title: "Eqio",
   description: "AI-Powered Trading Intelligence System",
 };
 

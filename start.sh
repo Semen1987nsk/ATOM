@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# ATOM - Start Script
+# Eqio - Start Script
 # Запускает backend и frontend в фоновом режиме
 
-echo "🚀 ATOM - Запуск сервисов..."
+echo "🚀 Eqio - Запуск сервисов..."
 echo "================================"
 
 # Останавливаем старые процессы
@@ -51,7 +51,7 @@ fi
 
 echo ""
 echo "================================"
-echo "🎉 ATOM готов к работе!"
+echo "🎉 Eqio готов к работе!"
 echo ""
 echo "📍 Frontend: http://localhost:3000"
 echo "📍 Backend:  http://localhost:8000"

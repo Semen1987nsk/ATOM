@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 # Create logger
-logger = logging.getLogger("atom")
+logger = logging.getLogger("eqio")
 logger.setLevel(logging.DEBUG)
 
 # Console Handler (INFO+)
@@ -16,7 +16,7 @@ console_format = logging.Formatter(
 console_handler.setFormatter(console_format)
 
 # File Handler (DEBUG+)
-file_handler = logging.FileHandler('atom.log', encoding='utf-8')
+file_handler = logging.FileHandler('eqio.log', encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)
 file_format = logging.Formatter(
     '%(asctime)s | %(levelname)-7s | %(name)s:%(funcName)s:%(lineno)d | %(message)s',

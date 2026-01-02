@@ -298,7 +298,7 @@ export default function Home() {
       <header className="mb-12 flex justify-between items-start relative z-10">
         <div>
           <h1 className="text-4xl font-black tracking-tighter mb-2 italic">
-            <span className="text-accent">ATOM</span>
+            <span className="text-accent">Eqio</span>
           </h1>
           <p className="text-xs font-mono opacity-50 uppercase tracking-[0.2em]">
             {t.app.subtitle}
@@ -411,6 +411,12 @@ export default function Home() {
           title={t.stats.optimalF.title} 
           value={stats?.optimal_f || 0} 
           description={t.stats.optimalF.description}
+          highlight={
+            (stats?.profit_factor || 0) >= 1 
+              ? `Риск: ${((stats?.optimal_f || 0) * 25).toFixed(0)}% от депо`
+              : `⚠️ PF < 1 — не торговать!`
+          }
+          trend={(stats?.profit_factor || 0) < 1 ? 'down' : undefined}
           icon={<Zap size={18} />}
           tooltipText={t.stats.optimalF.tooltip}
         />
@@ -798,10 +804,47 @@ export default function Home() {
                   {rec}
                 </div>
               ))}
-              <div className="p-3 bg-gradient-to-r from-accent-secondary/10 to-transparent border-l-2 border-accent-secondary text-sm rounded-r-lg">
-                <span className="text-accent-secondary font-bold">Optimal f:</span> 
-                <span className="ml-2">{((stats?.optimal_f || 0) * 10).toFixed(1)}%</span>
-                <span className="text-[10px] opacity-40 ml-2">рекомендуемый размер позиции</span>
+              <div className="p-3 bg-gradient-to-r from-green-500/10 to-transparent border-l-2 border-green-500 text-sm rounded-r-lg">
+                <span className="text-green-400 font-bold">Optimal f:</span> 
+                <span className="ml-2">{((stats?.optimal_f || 0) * 25).toFixed(1)}%</span>
+                <span className="text-[10px] opacity-40 ml-2">рекомендуемый риск (f/4)</span>
+              </div>
+              <div className="mt-3 p-2 text-[10px] border border-white/5 rounded-lg space-y-2">
+                <div className="font-mono uppercase opacity-60 mb-2">Варианты риска:</div>
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    Ультра-консерв. (f/10):
+                  </span>
+                  <span className="text-blue-400 font-bold">{((stats?.optimal_f || 0) * 10).toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between items-center opacity-80">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    Консервативный (f/4):
+                  </span>
+                  <span className="text-green-400">{((stats?.optimal_f || 0) * 25).toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between items-center opacity-70">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-accent-secondary"></span>
+                    Умеренный (f/2):
+                  </span>
+                  <span className="text-accent-secondary">{((stats?.optimal_f || 0) * 50).toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between items-center opacity-70">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                    Агрессивный (f):
+                  </span>
+                  <span className="text-red-400">{((stats?.optimal_f || 0) * 100).toFixed(1)}%</span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-white/5 space-y-1 opacity-60">
+                  <div className="text-blue-400/80">✓ f/10 — большой капитал, минимальная волатильность</div>
+                  <div className="text-green-400/80">✓ f/4 — основной капитал, долгосрочная торговля</div>
+                  <div className="text-accent-secondary/80">✓ f/2 — уверенные сетапы, средний риск</div>
+                  <div className="text-red-400/80">✓ f — конкурсы, разгон депо, «play money»</div>
+                </div>
               </div>
             </div>
           </div>

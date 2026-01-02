@@ -1,4 +1,4 @@
-# ATOM — AI-Powered Trading Journal
+# Eqio — AI-Powered Trading Journal
 
 **Smart Tradebook** для серьёзных трейдеров с продвинутой аналитикой и real-time данными с Московской биржи.
 
@@ -14,7 +14,7 @@
 ```bash
 # Клонирование репозитория
 git clone <repo-url>
-cd ATOM
+cd Eqio
 
 # Backend
 cd backend
@@ -64,7 +64,7 @@ python -m pytest tests/ -v
 ## 📁 Структура проекта
 
 ```
-ATOM/
+Eqio/
 ├── backend/
 │   ├── main.py          # FastAPI endpoints
 │   ├── models.py        # SQLAlchemy models
@@ -85,7 +85,7 @@ ATOM/
 
 ### Environment Variables
 ```env
-DATABASE_URL=sqlite:///./atom.db   # По умолчанию SQLite
+DATABASE_URL=sqlite:///./eqio.db   # По умолчанию SQLite
 OPENAI_API_KEY=sk-...              # Для AI-анализа (опционально)
 ```
 
