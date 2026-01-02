@@ -95,8 +95,10 @@ interface DashboardData {
     worst_day: { day: string; total_pnl: number } | null;
   };
   mae_mfe_analysis: {
-    avg_mae_ratio: number;
-    avg_mfe_ratio: number;
+    avg_mae_pct: number;
+    avg_mfe_pct: number;
+    avg_efficiency: number;
+    trades_analyzed: number;
     recommendations: string[];
   };
   equity_curve: { date: string; balance: number }[];
@@ -586,8 +588,8 @@ export default function Home() {
           />
           <StatsCard 
             title={t.advancedStats.maeMfe.title}
-            value={stats?.mae_mfe_analysis?.avg_mae_ratio?.toFixed(2) || 0} 
-            description={interpolate(t.advancedStats.maeMfe.description, { mfe: stats?.mae_mfe_analysis?.avg_mfe_ratio?.toFixed(2) || 0 })}
+            value={`${stats?.mae_mfe_analysis?.avg_mae_pct?.toFixed(2) || 0}%`} 
+            description={interpolate(t.advancedStats.maeMfe.description, { mfe: `${stats?.mae_mfe_analysis?.avg_mfe_pct?.toFixed(2) || 0}%`, efficiency: `${stats?.mae_mfe_analysis?.avg_efficiency?.toFixed(0) || 0}%` })}
             icon={<Gauge size={18} />}
             tooltipText={t.advancedStats.maeMfe.tooltip}
           />

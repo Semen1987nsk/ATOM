@@ -145,9 +145,9 @@
       "tooltip": "Day of week with best total profit. Use to optimize trading schedule."
     },
     "maeMfe": {
-      "title": "MAE/MFE Ratio",
-      "description": "MFE: {mfe}",
-      "tooltip": "MAE — max adverse excursion, MFE — max favorable excursion. Low MAE = good entries."
+      "title": "MAE (drawdown)",
+      "description": "MFE: {mfe} | Efficiency: {efficiency}",
+      "tooltip": "MAE — max adverse excursion against position (%). MFE — max favorable movement (%). Efficiency — how much of MFE you capture on exit."
     }
   },
   "charts": {
