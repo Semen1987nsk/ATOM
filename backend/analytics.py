@@ -744,52 +744,86 @@ def analyze_mae_mfe(trades):
     """
     Анализирует MAE/MFE для списка сделок.
     Возвращает рекомендации по оптимизации стопов и тейков.
+    
+    MAE (Maximum Adverse Excursion) - максимальное движение против позиции в %
+    MFE (Maximum Favorable Excursion) - максимальное движение в нашу сторону в %
     """
     if not trades:
         return {"recommendations": ["Недостаточно данных для анализа"]}
 
-    mae_ratios = []
-    mfe_ratios = []
+    mae_percentages = []  # MAE как % от цены входа
+    mfe_percentages = []  # MFE как % от цены входа
+    exit_efficiency = []  # Эффективность закрытия: сколько от MFE мы взяли
 
     for t in trades:
-        # Нам нужны закрытые сделки с заполненными MAE/MFE и стоп-лоссом
-        if not t.exit_at or not t.stop_loss or not t.entry_price:
+        # Нужны закрытые сделки с заполненными MAE/MFE
+        if not t.exit_at or not t.entry_price:
             continue
         
-        # Расстояние от входа до стопа (риск в пунктах/цене)
-        risk_dist = abs(float(t.entry_price) - float(t.stop_loss))
-        if risk_dist == 0:
+        entry_price = float(t.entry_price)
+        if entry_price == 0:
             continue
+        
+        is_long = t.direction.value == 'long'
         
         if t.mae_price:
-            # Насколько глубоко цена заходила в минус относительно стопа
-            mae_dist = abs(float(t.entry_price) - float(t.mae_price))
-            mae_ratios.append(mae_dist / risk_dist)
+            mae_price = float(t.mae_price)
+            # MAE - насколько цена ушла против нас (в %)
+            if is_long:
+                # Для LONG: MAE = min цена, движение вниз - против нас
+                mae_pct = (entry_price - mae_price) / entry_price * 100
+            else:
+                # Для SHORT: MAE = max цена, движение вверх - против нас
+                mae_pct = (mae_price - entry_price) / entry_price * 100
+            mae_percentages.append(max(0, mae_pct))  # Только положительные (против нас)
             
         if t.mfe_price:
-            # Насколько далеко цена уходила в плюс относительно риска
-            mfe_dist = abs(float(t.entry_price) - float(t.mfe_price))
-            mfe_ratios.append(mfe_dist / risk_dist)
+            mfe_price = float(t.mfe_price)
+            # MFE - насколько цена ушла в нашу сторону (в %)
+            if is_long:
+                # Для LONG: MFE = max цена, движение вверх - за нас
+                mfe_pct = (mfe_price - entry_price) / entry_price * 100
+            else:
+                # Для SHORT: MFE = min цена, движение вниз - за нас
+                mfe_pct = (entry_price - mfe_price) / entry_price * 100
+            mfe_percentages.append(max(0, mfe_pct))  # Только положительные (за нас)
+            
+            # Эффективность закрытия: сколько от MFE мы реально взяли
+            if t.exit_price and mfe_pct > 0:
+                exit_price = float(t.exit_price)
+                if is_long:
+                    actual_pct = (exit_price - entry_price) / entry_price * 100
+                else:
+                    actual_pct = (entry_price - exit_price) / entry_price * 100
+                efficiency = max(0, min(100, actual_pct / mfe_pct * 100))
+                exit_efficiency.append(efficiency)
 
     recommendations = []
     
-    if mae_ratios:
-        avg_mae_ratio = sum(mae_ratios) / len(mae_ratios)
-        if avg_mae_ratio < 0.5:
-            recommendations.append("Ваши стоп-лоссы слишком широкие. Средний MAE составляет менее 50% от стопа.")
-        elif avg_mae_ratio > 0.8:
-            recommendations.append("Ваши стоп-лоссы слишком узкие. Цена часто подходит близко к стопу перед разворотом.")
-
-    if mfe_ratios:
-        avg_mfe_ratio = sum(mfe_ratios) / len(mfe_ratios)
-        # Если цена в среднем уходит в 3 раза дальше риска, а мы закрываем раньше
-        if avg_mfe_ratio > 3.0:
-            recommendations.append("Вы закрываете сделки слишком рано. Средний MFE значительно превышает ваш риск.")
+    avg_mae = sum(mae_percentages) / len(mae_percentages) if mae_percentages else 0
+    avg_mfe = sum(mfe_percentages) / len(mfe_percentages) if mfe_percentages else 0
+    avg_efficiency = sum(exit_efficiency) / len(exit_efficiency) if exit_efficiency else 0
+    
+    if mae_percentages and mfe_percentages:
+        if avg_mae > avg_mfe:
+            recommendations.append(f"Средний MAE ({avg_mae:.1f}%) превышает MFE ({avg_mfe:.1f}%). Пересмотрите точки входа.")
+        
+        if avg_efficiency < 50 and avg_mfe > 1:
+            recommendations.append(f"Эффективность закрытия {avg_efficiency:.0f}%. Вы закрываете слишком рано, теряя часть прибыли.")
+        elif avg_efficiency > 80:
+            recommendations.append(f"Отличная эффективность закрытия {avg_efficiency:.0f}%! Вы хорошо улавливаете движения.")
+        
+        if avg_mae < 1:
+            recommendations.append(f"MAE всего {avg_mae:.1f}%. Отличные точки входа с минимальной просадкой.")
+        elif avg_mae > 3:
+            recommendations.append(f"MAE составляет {avg_mae:.1f}%. Рассмотрите более точные входы или стопы.")
 
     return {
-        "avg_mae_ratio": round(sum(mae_ratios)/len(mae_ratios), 2) if mae_ratios else 0,
-        "avg_mfe_ratio": round(sum(mfe_ratios)/len(mfe_ratios), 2) if mfe_ratios else 0,
-        "recommendations": recommendations if recommendations else ["Продолжайте торговать, пока паттерны не выявлены."]
+        "avg_mae_pct": round(avg_mae, 2),
+        "avg_mfe_pct": round(avg_mfe, 2),
+        "avg_efficiency": round(avg_efficiency, 1),
+        "trades_analyzed": len(mae_percentages),
+        "recommendations": recommendations if recommendations else ["Продолжайте торговать для накопления статистики."]
     }
 
 def calculate_stats(trades):
