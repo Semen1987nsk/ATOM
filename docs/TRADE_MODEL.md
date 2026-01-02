@@ -1,8 +1,8 @@
-# ATOM Trade Model Documentation
+# Eqio Trade Model Documentation
 
 ## Модель Trade — Структура данных сделки
 
-Последнее обновление: 29 декабря 2025
+Последнее обновление: 2 января 2026
 
 ---
 
@@ -91,9 +91,27 @@ net_pnl = pnl - entry_commission - exit_commission - swap
 | `stop_loss` | Numeric | Цена стоп-лосса |
 | `take_profit` | Numeric | Цена тейк-профита |
 | `risk_amount` | Numeric | Риск в валюте (напр. 1000₽) |
-| `mae_price` | Numeric | Maximum Adverse Excursion — худшая цена во время сделки |
-| `mfe_price` | Numeric | Maximum Favorable Excursion — лучшая цена во время сделки |
+| `mae_price` | Numeric | **Maximum Adverse Excursion** — худшая цена во время сделки. Автоматически рассчитывается из исторических свечей MOEX при закрытии сделки. |
+| `mfe_price` | Numeric | **Maximum Favorable Excursion** — лучшая цена во время сделки. Автоматически рассчитывается из исторических свечей MOEX при закрытии сделки. |
 | `r_multiple` | Float | R-мультипликатор = PnL / Risk |
+
+### MAE/MFE Автоматический расчёт
+
+При закрытии сделки Eqio автоматически:
+1. Запрашивает исторические свечи с MOEX ISS API за период сделки
+2. Выбирает интервал свечей в зависимости от длительности:
+   - < 2 часов: 1-минутные
+   - 2-24 часа: 10-минутные
+   - 1-7 дней: часовые
+   - > 7 дней: дневные
+3. Находит min/max цены за период
+4. Записывает в поля `mae_price` и `mfe_price`
+
+**Логика расчёта:**
+| Направление | MAE (против нас) | MFE (за нас) |
+|-------------|------------------|--------------|
+| LONG | min_price | max_price |
+| SHORT | max_price | min_price |
 
 ---
 
