@@ -112,6 +112,22 @@ def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_
                 open_trade.exit_at = trade.entry_at
                 open_trade.exit_reason = trade.setup_name or "Manual Close"
                 
+                # Рассчитываем MAE/MFE из исторических данных MOEX
+                try:
+                    mae, mfe = market_data_service.calculate_mae_mfe(
+                        ticker=open_trade.symbol,
+                        direction=open_trade.direction.value,
+                        entry_price=float(open_trade.entry_price),
+                        entry_time=open_trade.entry_at,
+                        exit_time=trade.entry_at
+                    )
+                    if mae is not None:
+                        open_trade.mae_price = mae
+                    if mfe is not None:
+                        open_trade.mfe_price = mfe
+                except Exception as e:
+                    log.warning(f"Failed to calculate MAE/MFE for trade {open_trade.id}: {e}")
+                
                 # Calculate PnL
                 if open_trade.direction == models.TradeDirection.LONG:
                     open_trade.pnl = (float(open_trade.exit_price) - float(open_trade.entry_price)) * float(open_trade.quantity)
@@ -174,6 +190,22 @@ def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_
                     closed_trade.pnl = (float(closed_trade.entry_price) - float(closed_trade.exit_price)) * float(closed_trade.quantity)
                 
                 closed_trade.net_pnl = closed_trade.pnl - closed_trade.commission
+                
+                # Рассчитываем MAE/MFE для closed_trade
+                try:
+                    mae, mfe = market_data_service.calculate_mae_mfe(
+                        ticker=closed_trade.symbol,
+                        direction=closed_trade.direction.value,
+                        entry_price=float(closed_trade.entry_price),
+                        entry_time=closed_trade.entry_at,
+                        exit_time=trade.entry_at
+                    )
+                    if mae is not None:
+                        closed_trade.mae_price = mae
+                    if mfe is not None:
+                        closed_trade.mfe_price = mfe
+                except Exception as e:
+                    log.warning(f"Failed to calculate MAE/MFE for partial close: {e}")
                 
                 db.add(closed_trade)
                 
@@ -311,8 +343,30 @@ async def close_trade(trade_id: int, trade_close: schemas.TradeClose, db: Sessio
     db_trade.exit_price = trade_close.exit_price
     db_trade.exit_at = trade_close.exit_at
     db_trade.exit_reason = trade_close.exit_reason
-    db_trade.mae_price = trade_close.mae_price
-    db_trade.mfe_price = trade_close.mfe_price
+    
+    # MAE/MFE: используем переданные значения или рассчитываем автоматически
+    if trade_close.mae_price is not None:
+        db_trade.mae_price = trade_close.mae_price
+    if trade_close.mfe_price is not None:
+        db_trade.mfe_price = trade_close.mfe_price
+    
+    # Если MAE/MFE не переданы, пытаемся рассчитать из исторических данных MOEX
+    if db_trade.mae_price is None or db_trade.mfe_price is None:
+        try:
+            mae, mfe = market_data_service.calculate_mae_mfe(
+                ticker=db_trade.symbol,
+                direction=db_trade.direction.value,
+                entry_price=float(db_trade.entry_price),
+                entry_time=db_trade.entry_at,
+                exit_time=trade_close.exit_at
+            )
+            if mae is not None and db_trade.mae_price is None:
+                db_trade.mae_price = mae
+            if mfe is not None and db_trade.mfe_price is None:
+                db_trade.mfe_price = mfe
+        except Exception as e:
+            # Не критично — продолжаем без MAE/MFE
+            log.warning(f"Failed to calculate MAE/MFE for trade {trade_id}: {e}")
     
     # Расчет PnL
     if db_trade.direction == models.TradeDirection.LONG:
