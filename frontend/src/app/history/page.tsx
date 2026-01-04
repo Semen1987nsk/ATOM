@@ -6,6 +6,7 @@ import { ArrowLeft, Trash2, Zap, Download, Upload, Plus, Filter, Edit2, ChevronD
 import { AddTradeModal } from '@/components/AddTradeModal';
 import { EditTradeModal } from '@/components/EditTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
+import ThemeToggle from '@/components/ThemeToggle';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
 
 interface Trade {
@@ -276,14 +277,15 @@ export default function HistoryPage() {
     <main className="min-h-screen p-8 max-w-7xl mx-auto">
       <header className="mb-8 flex justify-between items-center">
         <div>
-          <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-white transition-colors mb-2 font-mono text-xs uppercase tracking-widest">
+          <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-foreground transition-colors mb-2 font-mono text-xs uppercase tracking-widest">
             <ArrowLeft size={14} /> Return to Dashboard
           </Link>
           <h1 className="text-3xl font-black tracking-tighter italic">
             TRADE <span className="text-accent">HISTORY</span>
           </h1>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <ThemeToggle />
           <label className={`btn-secondary flex items-center gap-2 ${isImporting ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}>
             <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} disabled={isImporting} />
             {isImporting ? (
@@ -447,7 +449,7 @@ export default function HistoryPage() {
                     <td className={`py-2 pl-2 font-mono text-xs opacity-70 ${isChild ? 'pl-6' : ''}`}>
                       <div className="flex items-center gap-1">
                         {showChevron && (
-                          <button onClick={(e) => { e.stopPropagation(); toggleGroup(key); }} className="text-accent hover:text-white">
+                          <button onClick={(e) => { e.stopPropagation(); toggleGroup(key); }} className="text-accent hover:text-foreground">
                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
                         )}
@@ -632,7 +634,7 @@ export default function HistoryPage() {
                     >
                       <td className="py-3 px-2 font-mono text-xs opacity-70">
                         <div className="flex items-center gap-1">
-                          <button className="text-accent hover:text-white flex-shrink-0">
+                          <button className="text-accent hover:text-foreground flex-shrink-0">
                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
                           <div className="truncate">

@@ -75,8 +75,8 @@ const Tooltip: React.FC<{
       role="tooltip"
       className={`
         fixed w-72 p-4
-        bg-[#0a0a0a] border-2 border-accent rounded-lg 
-        shadow-[0_0_40px_rgba(0,255,159,0.5)]
+        bg-card border-2 border-accent rounded-lg 
+        shadow-lg
         transition-all duration-200 ease-out
         pointer-events-none
         ${isVisible 
@@ -97,7 +97,7 @@ const Tooltip: React.FC<{
       </div>
       
       {/* Текст */}
-      <p className="text-[13px] text-white leading-relaxed">
+      <p className="text-[13px] text-foreground leading-relaxed">
         {text}
       </p>
     </div>,

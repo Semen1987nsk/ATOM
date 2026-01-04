@@ -6,6 +6,7 @@ import { AddTradeModal } from '@/components/AddTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import ThemeToggle from '@/components/ThemeToggle';
 import { FilterPanel, Filters, Period } from '@/components/FilterPanel';
 import { useLanguage, interpolate } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -323,7 +324,8 @@ export default function Home() {
             onChange={handleFiltersChange}
             getApiUrl={getApiUrl}
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <ThemeToggle />
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="btn-secondary p-2.5 aspect-square"
@@ -761,7 +763,7 @@ export default function Home() {
                          </span>
                       )}
                       {trade.tags && trade.tags.length > 0 && trade.tags.map(tag => (
-                          <span key={tag} className="text-[9px] font-mono border border-border px-1.5 opacity-50">
+                          <span key={tag} className="text-[9px] font-mono border border-border px-1.5 py-0.5 rounded text-muted">
                             #{tag.toUpperCase()}
                           </span>
                         ))}

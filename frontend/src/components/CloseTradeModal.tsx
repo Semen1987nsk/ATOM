@@ -80,7 +80,7 @@ export default function CloseTradeModal({
           
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border relative z-10">
-            <h3 className="text-lg font-bold text-white italic">
+            <h3 className="text-lg font-bold text-foreground italic">
               Закрыть <span className="text-accent">сделку</span>
             </h3>
             <button
@@ -105,7 +105,7 @@ export default function CloseTradeModal({
                 }`}>
                   {tradeDirection}
                 </span>
-                <span className="text-white font-bold">{tradeTicker}</span>
+                <span className="text-foreground font-bold">{tradeTicker}</span>
               </div>
             )}
 

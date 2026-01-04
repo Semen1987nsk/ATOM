@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Eqio",
-    "subtitle": "AI-Система Торгового Интеллекта v1.0.4",
+    "subtitle": "",
     "loading": "Загрузка..."
   },
   "period": {
@@ -154,7 +154,8 @@
     "equityCurve": "Кривая Капитала",
     "recentTrades": "Последние Сделки и AI Анализ",
     "viewAll": "СМОТРЕТЬ ВСЕ",
-    "noTrades": "НЕТ СДЕЛОК ПО ФИЛЬТРУ"
+    "noTrades": "НЕТ СДЕЛОК ПО ФИЛЬТРУ",
+    "dataPoints": "точек"
   },
   "trades": {
     "open": "ОТКРЫТА",

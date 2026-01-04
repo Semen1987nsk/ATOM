@@ -2,14 +2,18 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign } from 'lucide-react';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function Manual() {
   return (
     <main className="min-h-screen p-8 max-w-5xl mx-auto">
       {/* Navigation */}
-      <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-white transition-colors mb-8 font-mono text-xs uppercase tracking-widest">
-        <ArrowLeft size={14} /> Вернуться к терминалу
-      </Link>
+      <div className="flex justify-between items-center mb-8">
+        <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-foreground transition-colors font-mono text-xs uppercase tracking-widest">
+          <ArrowLeft size={14} /> Вернуться к терминалу
+        </Link>
+        <ThemeToggle />
+      </div>
 
       {/* Hero Section */}
       <header className="mb-16 relative">

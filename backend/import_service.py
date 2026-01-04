@@ -20,9 +20,32 @@ class TradeManager:
         self.open_positions = {}  # {symbol: position_dict} - только ОДНА открытая позиция на тикер
         self.completed_trades = []  # Закрытые позиции для сохранения
 
-    def process_trade(self, trade_data: Dict):
-        symbol = trade_data['symbol']
-        direction = trade_data['direction']
+    def process_trade(self, trade_data: Dict) -> bool:
+        """Обработка одной сделки. Возвращает True если сделка обработана, False если пропущена."""
+        
+        # Валидация входных данных
+        quantity = float(trade_data.get('quantity', 0))
+        if quantity <= 0:
+            # Пропускаем сделки с нулевым или отрицательным количеством
+            return False
+        
+        symbol = trade_data.get('symbol', '').strip()
+        if not symbol:
+            # Пропускаем сделки без символа
+            return False
+        
+        direction = trade_data.get('direction')
+        if direction is None:
+            return False
+        
+        entry_price = float(trade_data.get('entry_price', 0))
+        if entry_price <= 0:
+            # Пропускаем сделки с нулевой или отрицательной ценой
+            return False
+        
+        entry_at = trade_data.get('entry_at')
+        if entry_at is None:
+            return False
         
         # Проверяем, есть ли открытая позиция по этому тикеру
         if symbol in self.open_positions:
@@ -37,6 +60,8 @@ class TradeManager:
         else:
             # Нет открытой позиции = новый ВХОД
             self._open_position(trade_data)
+        
+        return True
 
     def _open_position(self, trade_data: Dict):
         """Открытие новой позиции"""
@@ -95,9 +120,11 @@ class TradeManager:
         old_qty = pos['quantity']
         new_qty = old_qty + add_qty
         
-        # Средневзвешенная цена
+        # Средневзвешенная цена (с защитой от деления на ноль)
         pos['_total_cost'] += add_price * add_qty
-        pos['entry_price'] = pos['_total_cost'] / new_qty
+        if new_qty > 0:
+            pos['entry_price'] = pos['_total_cost'] / new_qty
+        # Если new_qty == 0, оставляем старую цену (не должно происходить после валидации)
         
         # Суммируем deal_sum для точного расчёта PnL
         pos['_deal_sum'] += float(trade_data.get('deal_sum', 0))
@@ -373,6 +400,10 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             
             if pd.isna(date_val) or pd.isna(symbol_val):
                 continue
+            
+            # Пропускаем повторяющиеся строки-заголовки в середине файла
+            if str(date_val).lower() in ['дата заключения', 'дата', 'date']:
+                continue
                 
             if isinstance(date_val, str):
                 date_str = date_val
@@ -383,6 +414,10 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
                 time_str = time_val
             else:
                 time_str = time_val.strftime("%H:%M:%S")
+            
+            # Пропускаем если время - это заголовок
+            if str(time_str).lower() in ['время', 'time']:
+                continue
                 
             entry_at = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M:%S")
             
@@ -440,8 +475,11 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             print(f"Error parsing row {row.name}: {e}")
             continue
 
-    # 2. Group by (entry_at, symbol, direction)
-    # Since the file is chronological, we can just iterate and coalesce consecutive matches
+    # 2. Сортируем сделки по времени для корректной работы FIFO логики
+    raw_trades.sort(key=lambda x: x['entry_at'])
+    
+    # 3. Group by (entry_at, symbol, direction)
+    # Since the file is now sorted chronologically, we can iterate and coalesce consecutive matches
     grouped_trades = []
     if raw_trades:
         current_group = raw_trades[0]
@@ -492,7 +530,8 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
         # Infer Asset Type first (needed for price calculation)
         asset_type = "Stock"
         # Futures have format like ETZ5, SiZ4, RIH5 (2-3 letters + month code + year)
-        is_futures = re.search(r'^[A-Z]{2,4}[FGHJKMNQUVXZ]\d$', symbol)
+        # Используем re.IGNORECASE для учёта тикеров типа SiZ4 (mixed case)
+        is_futures = re.search(r'^[A-Za-z]{2,4}[FGHJKMNQUVXZfghjkmnquvxz]\d$', symbol)
         if is_futures:
             asset_type = "Futures"
         # Bonds typically have longer codes or specific patterns

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* Dark theme (default) */
 :root {
   --background: #050505;
   --foreground: #e0e0e0;
@@ -7,6 +8,42 @@
   --accent-secondary: #bc13fe;
   --card-bg: #0d0d0d;
   --border: #1a1a1a;
+  --text-muted: #888888;
+  --success: #00ff9f;
+  --danger: #ff4757;
+}
+
+/* Light theme */
+:root[data-theme="light"] {
+  --background: #f5f5f7;
+  --foreground: #1d1d1f;
+  --accent: #00875a;
+  --accent-secondary: #7c3aed;
+  --card-bg: #ffffff;
+  --border: #d1d5db;
+  --text-muted: #4b5563;
+  --success: #059669;
+  --danger: #dc2626;
+  --input-bg: rgba(255, 255, 255, 0.9);
+  --input-placeholder: #9ca3af;
+  --skeleton-base: rgba(0, 0, 0, 0.05);
+  --skeleton-highlight: rgba(0, 0, 0, 0.1);
+  --tooltip-bg: rgba(255, 255, 255, 0.98);
+  --scrollbar-thumb: rgba(0, 135, 90, 0.4);
+  --scrollbar-thumb-hover: rgba(0, 135, 90, 0.6);
+  --hover-overlay: rgba(0, 135, 90, 0.05);
+}
+
+/* Dark theme defaults for new variables */
+:root {
+  --input-bg: rgba(0, 0, 0, 0.5);
+  --input-placeholder: rgba(255, 255, 255, 0.3);
+  --skeleton-base: rgba(255, 255, 255, 0.03);
+  --skeleton-highlight: rgba(255, 255, 255, 0.08);
+  --tooltip-bg: rgba(13, 13, 13, 0.95);
+  --scrollbar-thumb: rgba(0, 255, 159, 0.4);
+  --scrollbar-thumb-hover: rgba(0, 255, 159, 0.6);
+  --hover-overlay: rgba(0, 255, 159, 0.03);
 }
 
 @theme inline {
@@ -16,12 +53,187 @@
   --color-accent-secondary: var(--accent-secondary);
   --color-card: var(--card-bg);
   --color-border: var(--border);
+  --color-muted: var(--text-muted);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: 'Inter', sans-serif;
+}
+
+/* ===== LIGHT THEME OVERRIDES ===== */
+:root[data-theme="light"] .opacity-50 {
+  opacity: 0.7 !important;
+}
+
+:root[data-theme="light"] .opacity-70 {
+  opacity: 0.85 !important;
+}
+
+:root[data-theme="light"] .text-gray-400,
+:root[data-theme="light"] .text-gray-500 {
+  color: #4b5563 !important;
+}
+
+:root[data-theme="light"] .border-gray-700 {
+  border-color: #d1d5db !important;
+}
+
+:root[data-theme="light"] .bg-black\/50 {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+:root[data-theme="light"] .text-white\/40 {
+  color: rgba(0, 0, 0, 0.3) !important;
+}
+
+:root[data-theme="light"] .bg-accent\/10 {
+  background: rgba(0, 135, 90, 0.1) !important;
+}
+
+:root[data-theme="light"] .border-accent\/20 {
+  border-color: rgba(0, 135, 90, 0.25) !important;
+}
+
+/* Light theme text neon effect - more subtle */
+:root[data-theme="light"] .text-neon {
+  color: var(--accent);
+  text-shadow: none;
+}
+
+/* Light theme card hover - more subtle */
+:root[data-theme="light"] .cyber-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* Light theme badge adjustments */
+:root[data-theme="light"] .badge-accent {
+  background: rgba(0, 135, 90, 0.12);
+  color: #00875a;
+  border: 1px solid rgba(0, 135, 90, 0.25);
+}
+
+:root[data-theme="light"] .badge-success {
+  background: rgba(5, 150, 105, 0.12);
+  color: #047857;
+  border: 1px solid rgba(5, 150, 105, 0.25);
+}
+
+:root[data-theme="light"] .badge-danger {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+/* Light theme button hover adjustments */
+:root[data-theme="light"] .btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0, 135, 90, 0.08);
+  box-shadow: 0 2px 10px rgba(0, 135, 90, 0.1);
+}
+
+:root[data-theme="light"] .btn-primary:hover {
+  background: #006b48 !important;
+  box-shadow: 0 4px 15px rgba(0, 135, 90, 0.25);
+}
+
+/* Light theme modal overlay */
+:root[data-theme="light"] .bg-black\/80 {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Light theme modal and dropdown backgrounds */
+:root[data-theme="light"] .bg-\[\#0d0d0d\] {
+  background: var(--card-bg) !important;
+}
+
+/* Light theme select dropdown options */
+:root[data-theme="light"] select.input-cyber option {
+  background: var(--card-bg);
+  color: var(--foreground);
+}
+
+/* Light theme for bg-black with opacity */
+:root[data-theme="light"] .bg-black\/30,
+:root[data-theme="light"] .bg-black\/20 {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Light theme for bg-white with opacity - invert for visibility */
+:root[data-theme="light"] .bg-white\/5,
+:root[data-theme="light"] .bg-white\/\[0\.02\] {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+:root[data-theme="light"] .hover\:bg-white\/5:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Light theme green/red colors - more saturated */
+:root[data-theme="light"] .text-green-400 {
+  color: #047857 !important;
+}
+
+:root[data-theme="light"] .text-red-400 {
+  color: #b91c1c !important;
+}
+
+:root[data-theme="light"] .bg-green-500\/20 {
+  background: rgba(5, 150, 105, 0.18) !important;
+}
+
+:root[data-theme="light"] .bg-red-500\/20 {
+  background: rgba(220, 38, 38, 0.18) !important;
+}
+
+/* Light theme purple colors */
+:root[data-theme="light"] .text-purple-400 {
+  color: #7c3aed !important;
+}
+
+:root[data-theme="light"] .bg-purple-500\/10 {
+  background: rgba(124, 58, 237, 0.12) !important;
+}
+
+/* Light theme yellow/amber colors */
+:root[data-theme="light"] .text-yellow-400 {
+  color: #b45309 !important;
+}
+
+:root[data-theme="light"] .text-amber-400 {
+  color: #b45309 !important;
+}
+
+/* Light theme opacity adjustments - much stronger */
+:root[data-theme="light"] .opacity-40 {
+  opacity: 0.65 !important;
+}
+
+:root[data-theme="light"] .opacity-60 {
+  opacity: 0.75 !important;
+}
+
+/* Tags with border - make text darker */
+:root[data-theme="light"] .border-border {
+  border-color: #9ca3af !important;
+}
+
+:root[data-theme="light"] span.opacity-50[class*="border"] {
+  opacity: 1 !important;
+  color: #4b5563 !important;
+}
+
+/* AI analysis box background */
+:root[data-theme="light"] .bg-white\/5 {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Accent secondary color for light theme */
+:root[data-theme="light"] .text-accent-secondary {
+  color: #7c3aed !important;
 }
 
 /* ===== ANIMATIONS ===== */
@@ -152,7 +364,7 @@ body {
 /* ===== INPUTS - Global ===== */
 .input-cyber {
   width: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   color: var(--foreground);
   padding: 0.5rem 1rem;
@@ -164,11 +376,11 @@ body {
 .input-cyber:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(0, 255, 159, 0.1);
+  box-shadow: 0 0 0 3px rgba(0, 135, 90, 0.15);
 }
 
 .input-cyber::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--input-placeholder);
 }
 
 @layer utilities {
@@ -211,9 +423,9 @@ body {
   .skeleton-shimmer {
     background: linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0.03) 0%,
-      rgba(255, 255, 255, 0.08) 50%,
-      rgba(255, 255, 255, 0.03) 100%
+      var(--skeleton-base) 0%,
+      var(--skeleton-highlight) 50%,
+      var(--skeleton-base) 100%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite ease-in-out;
@@ -228,10 +440,10 @@ body {
 
   /* ===== CHART TOOLTIP - Custom ===== */
   .chart-tooltip {
-    background: rgba(13, 13, 13, 0.95) !important;
+    background: var(--tooltip-bg) !important;
     border: 1px solid var(--accent) !important;
     border-radius: 4px !important;
-    box-shadow: 0 0 20px rgba(0, 255, 159, 0.2) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
     backdrop-filter: blur(10px);
   }
 
@@ -246,7 +458,7 @@ body {
   /* ===== SCROLLBAR ===== */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(0, 255, 159, 0.3) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
   
   .scrollbar-thin::-webkit-scrollbar {
@@ -255,18 +467,18 @@ body {
   }
   
   .scrollbar-thin::-webkit-scrollbar-track {
-    background: rgba(26, 26, 26, 0.5);
+    background: var(--border);
     border-radius: 4px;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: linear-gradient(90deg, rgba(0, 255, 159, 0.4), rgba(188, 19, 254, 0.4));
+    background: var(--scrollbar-thumb);
     border-radius: 4px;
-    border: 1px solid rgba(0, 255, 159, 0.2);
+    border: 1px solid var(--border);
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(90deg, rgba(0, 255, 159, 0.6), rgba(188, 19, 254, 0.6));
+    background: var(--scrollbar-thumb-hover);
   }
   
   .scrollbar-thin::-webkit-scrollbar-corner {
@@ -321,8 +533,7 @@ body {
   }
 
   .table-row-hover:hover {
-    background: rgba(0, 255, 159, 0.03);
-    box-shadow: inset 0 0 30px rgba(0, 255, 159, 0.02);
+    background: var(--hover-overlay);
   }
 
   /* ===== GLOW EFFECTS ===== */

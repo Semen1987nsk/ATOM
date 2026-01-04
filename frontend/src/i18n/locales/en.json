@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Eqio",
-    "subtitle": "AI-Powered Trading Intelligence System v1.0.4",
+    "subtitle": "",
     "loading": "Loading..."
   },
   "period": {
@@ -154,7 +154,8 @@
     "equityCurve": "Equity Curve",
     "recentTrades": "Recent Trades & AI Analysis",
     "viewAll": "VIEW ALL",
-    "noTrades": "NO TRADES MATCHING FILTER"
+    "noTrades": "NO TRADES MATCHING FILTER",
+    "dataPoints": "points"
   },
   "trades": {
     "open": "OPEN",
