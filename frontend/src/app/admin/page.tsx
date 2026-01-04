@@ -9,7 +9,8 @@ import {
   Search, ChevronDown, ChevronUp, UserCheck, UserX, Crown,
   BarChart3, PieChart, Calendar, Clock, AlertTriangle,
   RefreshCw, Download, Filter, Loader2, DollarSign, CreditCard,
-  Zap, TrendingDown, Repeat
+  Zap, TrendingDown, Repeat, FileText, Plus, Edit, Trash2, Eye, 
+  EyeOff, Save, X, Image, Tag
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -142,6 +143,26 @@ interface TopPayingUser {
   last_login: string | null;
 }
 
+interface ArticleData {
+  id: number;
+  slug: string;
+  title: string;
+  excerpt?: string;
+  content: string;
+  cover_image?: string;
+  category: string;
+  tags: string[];
+  author_id: number;
+  author_name?: string;
+  is_published: boolean;
+  is_featured: boolean;
+  views_count: number;
+  likes_count: number;
+  created_at: string;
+  updated_at: string;
+  published_at?: string;
+}
+
 function AdminDashboard() {
   const { user, token } = useAuth();
   const router = useRouter();
@@ -168,7 +189,23 @@ function AdminDashboard() {
   const pageSize = 20;
   
   // Active tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'revenue' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'revenue' | 'analytics' | 'blog'>('overview');
+  
+  // Blog state
+  const [articles, setArticles] = useState<ArticleData[]>([]);
+  const [editingArticle, setEditingArticle] = useState<ArticleData | null>(null);
+  const [isCreatingArticle, setIsCreatingArticle] = useState(false);
+  const [articleForm, setArticleForm] = useState({
+    title: '',
+    slug: '',
+    excerpt: '',
+    content: '',
+    cover_image: '',
+    category: 'news',
+    tags: '',
+    is_published: false,
+    is_featured: false
+  });
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -223,6 +260,12 @@ function AdminDashboard() {
       setRevenueGrowth(revenueGrowthData);
       setSubscriptionAnalytics(subAnalyticsData);
       setTopPayingUsers(topPayingData);
+      
+      // Fetch articles
+      const articlesRes = await fetch(`${apiBase}/admin/articles`, { headers });
+      if (articlesRes.ok) {
+        setArticles(await articlesRes.json());
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка');
     } finally {
@@ -251,6 +294,122 @@ function AdminDashboard() {
       await fetch(`${getApiBase()}/admin/users/${userId}/toggle-active`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Blog functions
+  const resetArticleForm = () => {
+    setArticleForm({
+      title: '',
+      slug: '',
+      excerpt: '',
+      content: '',
+      cover_image: '',
+      category: 'news',
+      tags: '',
+      is_published: false,
+      is_featured: false
+    });
+  };
+
+  const openCreateArticle = () => {
+    resetArticleForm();
+    setEditingArticle(null);
+    setIsCreatingArticle(true);
+  };
+
+  const openEditArticle = (article: ArticleData) => {
+    setArticleForm({
+      title: article.title,
+      slug: article.slug,
+      excerpt: article.excerpt || '',
+      content: article.content,
+      cover_image: article.cover_image || '',
+      category: article.category,
+      tags: article.tags.join(', '),
+      is_published: article.is_published,
+      is_featured: article.is_featured
+    });
+    setEditingArticle(article);
+    setIsCreatingArticle(true);
+  };
+
+  const closeArticleEditor = () => {
+    setIsCreatingArticle(false);
+    setEditingArticle(null);
+    resetArticleForm();
+  };
+
+  const saveArticle = async () => {
+    try {
+      const headers = { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+      
+      const payload = {
+        title: articleForm.title,
+        slug: articleForm.slug || undefined,
+        excerpt: articleForm.excerpt || undefined,
+        content: articleForm.content,
+        cover_image: articleForm.cover_image || undefined,
+        category: articleForm.category,
+        tags: articleForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+        is_published: articleForm.is_published,
+        is_featured: articleForm.is_featured
+      };
+
+      let res;
+      if (editingArticle) {
+        res = await fetch(`${getApiBase()}/admin/articles/${editingArticle.id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await fetch(`${getApiBase()}/admin/articles`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res.ok) {
+        closeArticleEditor();
+        fetchData();
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Ошибка сохранения');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Ошибка сохранения статьи');
+    }
+  };
+
+  const deleteArticle = async (id: number) => {
+    if (!confirm('Удалить статью?')) return;
+    
+    try {
+      await fetch(`${getApiBase()}/admin/articles/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const togglePublish = async (id: number, isPublished: boolean) => {
+    try {
+      await fetch(`${getApiBase()}/admin/articles/${id}/${isPublished ? 'unpublish' : 'publish'}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
       });
       fetchData();
     } catch (err) {
@@ -350,11 +509,12 @@ function AdminDashboard() {
         </header>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-white/10 pb-2">
+        <div className="flex gap-2 mb-6 border-b border-white/10 pb-2 overflow-x-auto">
           {[
             { id: 'overview', label: 'Обзор', icon: BarChart3 },
             { id: 'revenue', label: 'Выручка', icon: DollarSign },
             { id: 'users', label: 'Пользователи', icon: Users },
+            { id: 'blog', label: 'Блог', icon: FileText },
             { id: 'analytics', label: 'Аналитика', icon: PieChart },
           ].map(tab => (
             <button
@@ -989,6 +1149,307 @@ function AdminDashboard() {
                       </button>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Blog Tab */}
+            {activeTab === 'blog' && (
+              <div className="space-y-6">
+                {/* Article Editor Modal */}
+                {isCreatingArticle && (
+                  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto py-8">
+                    <div className="cyber-card w-full max-w-4xl mx-4">
+                      <div className="flex items-center justify-between p-4 border-b border-white/10">
+                        <h2 className="text-xl font-bold">
+                          {editingArticle ? 'Редактирование статьи' : 'Новая статья'}
+                        </h2>
+                        <button onClick={closeArticleEditor} className="p-2 hover:bg-secondary rounded-lg">
+                          <X size={20} />
+                        </button>
+                      </div>
+                      
+                      <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                        {/* Title */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Заголовок *</label>
+                          <input
+                            type="text"
+                            value={articleForm.title}
+                            onChange={(e) => setArticleForm({...articleForm, title: e.target.value})}
+                            className="w-full p-3 bg-secondary border border-white/10 rounded-lg"
+                            placeholder="Как вести торговый дневник"
+                          />
+                        </div>
+                        
+                        {/* Slug */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1">URL (slug)</label>
+                          <input
+                            type="text"
+                            value={articleForm.slug}
+                            onChange={(e) => setArticleForm({...articleForm, slug: e.target.value})}
+                            className="w-full p-3 bg-secondary border border-white/10 rounded-lg"
+                            placeholder="kak-vesti-torgovyy-dnevnik (auto)"
+                          />
+                        </div>
+                        
+                        {/* Category & Cover */}
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Категория</label>
+                            <select
+                              value={articleForm.category}
+                              onChange={(e) => setArticleForm({...articleForm, category: e.target.value})}
+                              className="w-full p-3 bg-secondary border border-white/10 rounded-lg"
+                            >
+                              <option value="news">Новости</option>
+                              <option value="guides">Гайды</option>
+                              <option value="analytics">Аналитика</option>
+                              <option value="tips">Советы</option>
+                              <option value="updates">Обновления</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Обложка (URL)</label>
+                            <input
+                              type="text"
+                              value={articleForm.cover_image}
+                              onChange={(e) => setArticleForm({...articleForm, cover_image: e.target.value})}
+                              className="w-full p-3 bg-secondary border border-white/10 rounded-lg"
+                              placeholder="https://example.com/image.jpg"
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Excerpt */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Краткое описание</label>
+                          <textarea
+                            value={articleForm.excerpt}
+                            onChange={(e) => setArticleForm({...articleForm, excerpt: e.target.value})}
+                            className="w-full p-3 bg-secondary border border-white/10 rounded-lg h-20"
+                            placeholder="Краткое описание для превью статьи..."
+                          />
+                        </div>
+                        
+                        {/* Content */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Содержимое * (Markdown)</label>
+                          <textarea
+                            value={articleForm.content}
+                            onChange={(e) => setArticleForm({...articleForm, content: e.target.value})}
+                            className="w-full p-3 bg-secondary border border-white/10 rounded-lg h-64 font-mono text-sm"
+                            placeholder="# Заголовок&#10;&#10;Текст статьи...&#10;&#10;## Подзаголовок&#10;&#10;**Жирный текст** и *курсив*"
+                          />
+                        </div>
+                        
+                        {/* Tags */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Теги (через запятую)</label>
+                          <input
+                            type="text"
+                            value={articleForm.tags}
+                            onChange={(e) => setArticleForm({...articleForm, tags: e.target.value})}
+                            className="w-full p-3 bg-secondary border border-white/10 rounded-lg"
+                            placeholder="трейдинг, психология, риск-менеджмент"
+                          />
+                        </div>
+                        
+                        {/* Flags */}
+                        <div className="flex items-center gap-6">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={articleForm.is_published}
+                              onChange={(e) => setArticleForm({...articleForm, is_published: e.target.checked})}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span>Опубликовать</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={articleForm.is_featured}
+                              onChange={(e) => setArticleForm({...articleForm, is_featured: e.target.checked})}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span>В избранное</span>
+                          </label>
+                        </div>
+                      </div>
+                      
+                      {/* Actions */}
+                      <div className="flex items-center justify-end gap-3 p-4 border-t border-white/10">
+                        <button onClick={closeArticleEditor} className="btn-secondary">
+                          Отмена
+                        </button>
+                        <button 
+                          onClick={saveArticle} 
+                          className="btn-primary flex items-center gap-2"
+                          disabled={!articleForm.title || !articleForm.content}
+                        >
+                          <Save size={16} />
+                          {editingArticle ? 'Сохранить' : 'Создать'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Управление статьями</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {articles.length} статей • {articles.filter(a => a.is_published).length} опубликовано
+                    </p>
+                  </div>
+                  <button onClick={openCreateArticle} className="btn-primary flex items-center gap-2">
+                    <Plus size={16} />
+                    Новая статья
+                  </button>
+                </div>
+                
+                {/* Articles List */}
+                <div className="cyber-card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-secondary/50 border-b border-white/10">
+                        <tr>
+                          <th className="text-left p-3 font-medium">Статья</th>
+                          <th className="text-left p-3 font-medium">Категория</th>
+                          <th className="text-center p-3 font-medium">Статус</th>
+                          <th className="text-center p-3 font-medium">Просмотры</th>
+                          <th className="text-left p-3 font-medium">Дата</th>
+                          <th className="text-right p-3 font-medium">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {articles.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                              <FileText size={32} className="mx-auto mb-2 opacity-50" />
+                              Статей пока нет. Создайте первую!
+                            </td>
+                          </tr>
+                        ) : articles.map(article => (
+                          <tr key={article.id} className="hover:bg-secondary/30">
+                            <td className="p-3">
+                              <div className="flex items-start gap-3">
+                                {article.cover_image ? (
+                                  <img 
+                                    src={article.cover_image} 
+                                    alt="" 
+                                    className="w-16 h-10 object-cover rounded"
+                                  />
+                                ) : (
+                                  <div className="w-16 h-10 bg-secondary rounded flex items-center justify-center">
+                                    <Image size={16} className="text-muted-foreground" />
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-medium line-clamp-1">{article.title}</p>
+                                  <p className="text-xs text-muted-foreground">/blog/{article.slug}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                article.category === 'news' ? 'bg-blue-500/20 text-blue-400' :
+                                article.category === 'guides' ? 'bg-green-500/20 text-green-400' :
+                                article.category === 'analytics' ? 'bg-purple-500/20 text-purple-400' :
+                                article.category === 'tips' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-cyan-500/20 text-cyan-400'
+                              }`}>
+                                {article.category === 'news' ? 'Новости' :
+                                 article.category === 'guides' ? 'Гайды' :
+                                 article.category === 'analytics' ? 'Аналитика' :
+                                 article.category === 'tips' ? 'Советы' : 'Обновления'}
+                              </span>
+                              {article.is_featured && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded text-xs">★</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              {article.is_published ? (
+                                <span className="inline-flex items-center gap-1 text-green-400 text-xs">
+                                  <Eye size={12} /> Опубликовано
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                                  <EyeOff size={12} /> Черновик
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center text-muted-foreground">
+                              {article.views_count}
+                            </td>
+                            <td className="p-3 text-sm text-muted-foreground">
+                              {formatDate(article.created_at)}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex gap-1 justify-end">
+                                <button
+                                  onClick={() => togglePublish(article.id, article.is_published)}
+                                  className={`p-1.5 rounded transition-colors ${
+                                    article.is_published 
+                                      ? 'hover:bg-yellow-500/20 hover:text-yellow-400' 
+                                      : 'hover:bg-green-500/20 hover:text-green-400'
+                                  } text-muted-foreground`}
+                                  title={article.is_published ? 'Снять с публикации' : 'Опубликовать'}
+                                >
+                                  {article.is_published ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </button>
+                                <button
+                                  onClick={() => openEditArticle(article)}
+                                  className="p-1.5 rounded hover:bg-blue-500/20 hover:text-blue-400 text-muted-foreground transition-colors"
+                                  title="Редактировать"
+                                >
+                                  <Edit size={14} />
+                                </button>
+                                <button
+                                  onClick={() => deleteArticle(article.id)}
+                                  className="p-1.5 rounded hover:bg-red-500/20 hover:text-red-400 text-muted-foreground transition-colors"
+                                  title="Удалить"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                                <Link
+                                  href={`/blog/${article.slug}`}
+                                  target="_blank"
+                                  className="p-1.5 rounded hover:bg-secondary text-muted-foreground transition-colors"
+                                  title="Открыть"
+                                >
+                                  <ChevronDown size={14} className="rotate-[-90deg]" />
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                {/* Quick Stats */}
+                <div className="grid md:grid-cols-4 gap-4">
+                  <div className="cyber-card p-4 text-center">
+                    <p className="text-2xl font-bold text-blue-400">{articles.filter(a => a.category === 'news').length}</p>
+                    <p className="text-sm text-muted-foreground">Новостей</p>
+                  </div>
+                  <div className="cyber-card p-4 text-center">
+                    <p className="text-2xl font-bold text-green-400">{articles.filter(a => a.category === 'guides').length}</p>
+                    <p className="text-sm text-muted-foreground">Гайдов</p>
+                  </div>
+                  <div className="cyber-card p-4 text-center">
+                    <p className="text-2xl font-bold text-purple-400">{articles.reduce((sum, a) => sum + a.views_count, 0)}</p>
+                    <p className="text-sm text-muted-foreground">Всего просмотров</p>
+                  </div>
+                  <div className="cyber-card p-4 text-center">
+                    <p className="text-2xl font-bold text-yellow-400">{articles.filter(a => a.is_featured).length}</p>
+                    <p className="text-sm text-muted-foreground">В избранном</p>
+                  </div>
                 </div>
               </div>
             )}

@@ -12,7 +12,7 @@ import { useLanguage, interpolate } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
-import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, Plus, Lock, Upload, Trash2, BookOpen, GitGraph, History, Shield, BarChart3, Flame, Scale, Skull, Dice5, LineChart as LineChartIcon, Clock, Calendar, Gauge, Brain, Settings, Wallet, User, LogIn } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, Plus, Lock, Upload, Trash2, BookOpen, GitGraph, History, Shield, BarChart3, Flame, Scale, Skull, Dice5, LineChart as LineChartIcon, Clock, Calendar, Gauge, Brain, Settings, Wallet, User, LogIn, HelpCircle, FileText } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { DashboardSkeleton } from '@/components/Skeleton';
 
@@ -124,6 +124,16 @@ function AuthButton() {
   if (user) {
     return (
       <div className="flex items-center gap-2">
+        <Link 
+          href="/help"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-cyan-400 hover:text-cyan-300 
+                     border border-cyan-500/40 hover:border-cyan-400/60 rounded-lg 
+                     bg-cyan-500/10 hover:bg-cyan-500/20 transition-all"
+          title="Помощь"
+        >
+          <HelpCircle size={14} />
+          <span className="hidden md:inline text-sm">Помощь</span>
+        </Link>
         {user.is_admin && (
           <Link 
             href="/admin"
@@ -152,6 +162,22 @@ function AuthButton() {
   return (
     <div className="flex items-center gap-3">
       <Link 
+        href="/blog"
+        className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground 
+                   border border-border hover:border-foreground/30 rounded-lg 
+                   hover:bg-secondary transition-all"
+      >
+        Блог
+      </Link>
+      <Link 
+        href="/help"
+        className="px-3 py-1.5 text-sm text-muted-foreground hover:text-cyan-400 
+                   border border-border hover:border-cyan-500/50 rounded-lg 
+                   hover:bg-cyan-500/10 transition-all"
+      >
+        Помощь
+      </Link>
+      <Link 
         href="/pricing"
         className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-400 hover:text-purple-300 
                    border border-purple-500/30 hover:border-purple-500/50 rounded-lg 
@@ -174,12 +200,14 @@ function AuthButton() {
 export default function Home() {
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
+  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardData | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAuthRequiredOpen, setIsAuthRequiredOpen] = useState(false);
   const [selectedTradeToClose, setSelectedTradeToClose] = useState<Trade | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [logs, setLogs] = useState<{msg: string, time: string}[]>([]);
@@ -429,17 +457,37 @@ export default function Home() {
             <BookOpen size={14} />
             {t.nav.systemManual}
           </Link>
-          <label className="btn-secondary flex items-center gap-2 cursor-pointer">
-            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
-            <Upload size={14} />
-            {t.nav.importData}
-          </label>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus size={14} /> {t.nav.logPosition}
-          </button>
+          {user ? (
+            <>
+              <label className="btn-secondary flex items-center gap-2 cursor-pointer">
+                <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
+                <Upload size={14} />
+                {t.nav.importData}
+              </label>
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Plus size={14} /> {t.nav.logPosition}
+              </button>
+            </>
+          ) : (
+            <>
+              <button 
+                onClick={() => setIsAuthRequiredOpen(true)}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Upload size={14} />
+                {t.nav.importData}
+              </button>
+              <button 
+                onClick={() => setIsAuthRequiredOpen(true)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Plus size={14} /> {t.nav.logPosition}
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -468,6 +516,44 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)}
       />
 
+      {/* Auth Required Modal */}
+      {isAuthRequiredOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div 
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setIsAuthRequiredOpen(false)}
+          />
+          <div className="relative cyber-card w-full max-w-md mx-4 p-6 text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-accent/20 flex items-center justify-center">
+              <Lock size={32} className="text-accent" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">Требуется авторизация</h2>
+            <p className="text-muted-foreground mb-6">
+              Войдите в аккаунт, чтобы добавлять и импортировать сделки. 
+              Ваши данные будут надёжно сохранены.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button 
+                onClick={() => setIsAuthRequiredOpen(false)}
+                className="btn-secondary px-6"
+              >
+                Отмена
+              </button>
+              <Link 
+                href="/login"
+                className="btn-primary px-6 flex items-center gap-2"
+              >
+                <LogIn size={16} />
+                Войти
+              </Link>
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              Нет аккаунта? <Link href="/register" className="text-accent hover:underline">Зарегистрируйтесь</Link> бесплатно
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Empty State Banner */}
       {!hasData && !loading && (
         <div className="mb-8 p-6 cyber-card border-accent/30 bg-gradient-to-r from-accent/5 to-transparent">
@@ -482,18 +568,39 @@ export default function Home() {
               </div>
             </div>
             <div className="flex gap-3">
-              <label className="btn-secondary flex items-center gap-2 cursor-pointer">
-                <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
-                <Upload size={14} />
-                {t.emptyState?.importButton || 'Import Trades'}
-              </label>
-              <button 
-                onClick={() => setIsModalOpen(true)}
-                className="btn-primary flex items-center gap-2"
-              >
-                <Plus size={14} />
-                {t.emptyState?.addButton || 'Add Manually'}
-              </button>
+              {user ? (
+                <>
+                  <label className="btn-secondary flex items-center gap-2 cursor-pointer">
+                    <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
+                    <Upload size={14} />
+                    {t.emptyState?.importButton || 'Import Trades'}
+                  </label>
+                  <button 
+                    onClick={() => setIsModalOpen(true)}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Plus size={14} />
+                    {t.emptyState?.addButton || 'Add Manually'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setIsAuthRequiredOpen(true)}
+                    className="btn-secondary flex items-center gap-2"
+                  >
+                    <Upload size={14} />
+                    {t.emptyState?.importButton || 'Import Trades'}
+                  </button>
+                  <button 
+                    onClick={() => setIsAuthRequiredOpen(true)}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Plus size={14} />
+                    {t.emptyState?.addButton || 'Add Manually'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

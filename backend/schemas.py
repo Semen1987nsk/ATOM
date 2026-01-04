@@ -168,3 +168,76 @@ class DashboardStats(BaseModel):
     mae_mfe_analysis: Optional[dict] = None
     equity_curve: List[dict] = [] # Данные для графика: [{"date": "...", "balance": ...}]
     tag_stats: List[dict] = [] # Статистика по тегам: [{"tag": "...", "pnl": ..., "win_rate": ...}]
+
+# ==================== BLOG SCHEMAS ====================
+
+class ArticleCreate(BaseModel):
+    """Создание статьи"""
+    title: str = Field(..., min_length=3, max_length=200)
+    slug: Optional[str] = None  # Если не указан, генерируется из title
+    excerpt: Optional[str] = Field(None, max_length=500)
+    content: str = Field(..., min_length=10)
+    cover_image: Optional[str] = None
+    category: str = "news"  # news, guides, analytics, tips, updates
+    tags: List[str] = []
+    is_published: bool = False
+    is_featured: bool = False
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+
+class ArticleUpdate(BaseModel):
+    """Обновление статьи"""
+    title: Optional[str] = Field(None, min_length=3, max_length=200)
+    slug: Optional[str] = None
+    excerpt: Optional[str] = Field(None, max_length=500)
+    content: Optional[str] = Field(None, min_length=10)
+    cover_image: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_published: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+
+class ArticleResponse(BaseModel):
+    """Ответ со статьёй"""
+    id: int
+    slug: str
+    title: str
+    excerpt: Optional[str] = None
+    content: str
+    cover_image: Optional[str] = None
+    category: str
+    tags: List[str] = []
+    author_id: int
+    author_name: Optional[str] = None
+    is_published: bool
+    is_featured: bool
+    views_count: int
+    likes_count: int
+    created_at: datetime
+    updated_at: datetime
+    published_at: Optional[datetime] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class ArticleListItem(BaseModel):
+    """Краткая информация о статье для списка"""
+    id: int
+    slug: str
+    title: str
+    excerpt: Optional[str] = None
+    cover_image: Optional[str] = None
+    category: str
+    tags: List[str] = []
+    author_name: Optional[str] = None
+    views_count: int
+    likes_count: int
+    created_at: datetime
+    published_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True

@@ -178,3 +178,43 @@ class Trade(Base):
     holding_time_minutes = Column(Integer) # Время удержания позиции в минутах
     
     account = relationship("Account", back_populates="trades")
+
+
+class ArticleCategory(enum.Enum):
+    NEWS = "news"  # Новости
+    GUIDES = "guides"  # Гайды и обучение
+    ANALYTICS = "analytics"  # Аналитика рынка
+    TIPS = "tips"  # Советы трейдерам
+    UPDATES = "updates"  # Обновления платформы
+
+
+class Article(Base):
+    """Статьи блога"""
+    __tablename__ = "articles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String, unique=True, index=True, nullable=False)  # URL-friendly ID
+    title = Column(String, nullable=False)
+    excerpt = Column(String, nullable=True)  # Краткое описание для превью
+    content = Column(String, nullable=False)  # Markdown контент
+    cover_image = Column(String, nullable=True)  # URL обложки
+    
+    category = Column(Enum(ArticleCategory), default=ArticleCategory.NEWS)
+    tags = Column(JSON, default=[])  # ["trading", "psychology", "risk"]
+    
+    author_id = Column(Integer, ForeignKey("users.id"), index=True)
+    is_published = Column(Integer, default=0)  # 0 = draft, 1 = published
+    is_featured = Column(Integer, default=0)  # 1 = показывать в топе
+    
+    views_count = Column(Integer, default=0)
+    likes_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)
+    
+    # SEO
+    meta_title = Column(String, nullable=True)
+    meta_description = Column(String, nullable=True)
+    
+    author = relationship("User")
