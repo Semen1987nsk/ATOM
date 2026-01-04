@@ -153,6 +153,17 @@ def get_current_user_info(
     return current_user
 
 
+@app.get("/auth/subscription", tags=["auth"])
+def get_current_user_subscription(
+    current_user: models.User = Depends(auth_service.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Получить информацию о подписке текущего пользователя.
+    """
+    return auth_service.get_user_subscription(db, current_user)
+
+
 @app.put("/auth/me", response_model=schemas.UserResponse, tags=["auth"])
 def update_current_user(
     user_data: schemas.UserUpdate,

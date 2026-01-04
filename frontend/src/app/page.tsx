@@ -150,13 +150,24 @@ function AuthButton() {
   }
   
   return (
-    <Link 
-      href="/login"
-      className="btn-secondary flex items-center gap-2"
-    >
-      <LogIn size={14} />
-      <span className="hidden md:inline">Войти</span>
-    </Link>
+    <div className="flex items-center gap-3">
+      <Link 
+        href="/pricing"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-400 hover:text-purple-300 
+                   border border-purple-500/30 hover:border-purple-500/50 rounded-lg 
+                   hover:bg-purple-500/10 transition-all"
+      >
+        <Zap size={14} />
+        <span className="hidden md:inline">Тарифы</span>
+      </Link>
+      <Link 
+        href="/login"
+        className="btn-primary flex items-center gap-2"
+      >
+        <LogIn size={14} />
+        <span className="hidden md:inline">Войти</span>
+      </Link>
+    </div>
   );
 }
 
@@ -1007,49 +1018,58 @@ export default function Home() {
               {/* Интерпретация */}
               <div className="p-3 bg-white/5 rounded-lg space-y-2 text-[11px]">
                 <div className="font-mono uppercase opacity-60 text-[10px] mb-2">Интерпретация</div>
-                {(stats?.mae_mfe_analysis?.avg_mae_pct || 0) < 1 && (
-                  <div className="flex items-center gap-2 text-green-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                    Отличные точки входа! Средняя просадка менее 1%
+                {(stats?.mae_mfe_analysis?.trades_analyzed || 0) === 0 ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                    Нет данных для анализа. Добавьте сделки с MAE/MFE метриками.
                   </div>
-                )}
-                {(stats?.mae_mfe_analysis?.avg_mae_pct || 0) >= 1 && (stats?.mae_mfe_analysis?.avg_mae_pct || 0) < 3 && (
-                  <div className="flex items-center gap-2 text-yellow-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-                    Нормальные входы. Просадка в пределах нормы
-                  </div>
-                )}
-                {(stats?.mae_mfe_analysis?.avg_mae_pct || 0) >= 3 && (
-                  <div className="flex items-center gap-2 text-red-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                    Высокий MAE. Рассмотрите улучшение точек входа
-                  </div>
-                )}
-                
-                {(stats?.mae_mfe_analysis?.avg_efficiency || 0) < 50 && (
-                  <div className="flex items-center gap-2 text-yellow-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-                    Низкая эффективность. Вы забираете менее половины движения
-                  </div>
-                )}
-                {(stats?.mae_mfe_analysis?.avg_efficiency || 0) >= 50 && (stats?.mae_mfe_analysis?.avg_efficiency || 0) < 80 && (
-                  <div className="flex items-center gap-2 text-cyan-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
-                    Хорошая эффективность закрытия позиций
-                  </div>
-                )}
-                {(stats?.mae_mfe_analysis?.avg_efficiency || 0) >= 80 && (
-                  <div className="flex items-center gap-2 text-green-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                    Отличная эффективность! Вы улавливаете большую часть движения
-                  </div>
-                )}
-                
-                {(stats?.mae_mfe_analysis?.avg_mfe_pct || 0) > (stats?.mae_mfe_analysis?.avg_mae_pct || 0) * 1.5 && (
-                  <div className="flex items-center gap-2 text-green-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                    MFE превышает MAE в {((stats?.mae_mfe_analysis?.avg_mfe_pct || 0) / (stats?.mae_mfe_analysis?.avg_mae_pct || 1)).toFixed(1)}x — положительное соотношение
-                  </div>
+                ) : (
+                  <>
+                    {(stats?.mae_mfe_analysis?.avg_mae_pct || 0) < 1 && (
+                      <div className="flex items-center gap-2 text-green-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        Отличные точки входа! Средняя просадка менее 1%
+                      </div>
+                    )}
+                    {(stats?.mae_mfe_analysis?.avg_mae_pct || 0) >= 1 && (stats?.mae_mfe_analysis?.avg_mae_pct || 0) < 3 && (
+                      <div className="flex items-center gap-2 text-yellow-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                        Нормальные входы. Просадка в пределах нормы
+                      </div>
+                    )}
+                    {(stats?.mae_mfe_analysis?.avg_mae_pct || 0) >= 3 && (
+                      <div className="flex items-center gap-2 text-red-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                        Высокий MAE. Рассмотрите улучшение точек входа
+                      </div>
+                    )}
+                    
+                    {(stats?.mae_mfe_analysis?.avg_efficiency || 0) < 50 && (
+                      <div className="flex items-center gap-2 text-yellow-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                        Низкая эффективность. Вы забираете менее половины движения
+                      </div>
+                    )}
+                    {(stats?.mae_mfe_analysis?.avg_efficiency || 0) >= 50 && (stats?.mae_mfe_analysis?.avg_efficiency || 0) < 80 && (
+                      <div className="flex items-center gap-2 text-cyan-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                        Хорошая эффективность закрытия позиций
+                      </div>
+                    )}
+                    {(stats?.mae_mfe_analysis?.avg_efficiency || 0) >= 80 && (
+                      <div className="flex items-center gap-2 text-green-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        Отличная эффективность! Вы улавливаете большую часть движения
+                      </div>
+                    )}
+                    
+                    {(stats?.mae_mfe_analysis?.avg_mfe_pct || 0) > (stats?.mae_mfe_analysis?.avg_mae_pct || 0) * 1.5 && (
+                      <div className="flex items-center gap-2 text-green-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        MFE превышает MAE в {((stats?.mae_mfe_analysis?.avg_mfe_pct || 0) / (stats?.mae_mfe_analysis?.avg_mae_pct || 1)).toFixed(1)}x — положительное соотношение
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

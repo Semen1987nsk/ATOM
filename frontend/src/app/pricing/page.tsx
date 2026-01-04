@@ -1,0 +1,380 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+import { 
+  Check, X, Zap, Crown, Building2, ArrowRight, 
+  Shield, Clock, BarChart3, Brain, Users, Headphones,
+  ChevronDown, ChevronUp
+} from 'lucide-react';
+
+const plans = [
+  {
+    id: 'free',
+    name: 'Free',
+    description: 'Для начинающих трейдеров',
+    price: 0,
+    period: 'навсегда',
+    icon: Zap,
+    color: 'from-gray-500 to-gray-600',
+    borderColor: 'border-gray-500/30',
+    features: [
+      { text: 'До 50 сделок в месяц', included: true },
+      { text: '1 торговый счёт', included: true },
+      { text: 'Базовая статистика', included: true },
+      { text: 'Импорт из Excel/PDF', included: true },
+      { text: 'История сделок', included: true },
+      { text: 'AI-анализ сделок', included: false },
+      { text: 'Продвинутая аналитика', included: false },
+      { text: 'Экспорт отчётов', included: false },
+      { text: 'Приоритетная поддержка', included: false },
+    ],
+    cta: 'Текущий план',
+    popular: false,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    description: 'Для активных трейдеров',
+    price: 399,
+    period: '/месяц',
+    icon: Crown,
+    color: 'from-purple-500 to-indigo-600',
+    borderColor: 'border-purple-500/50',
+    features: [
+      { text: 'Безлимит сделок', included: true },
+      { text: 'До 5 торговых счетов', included: true },
+      { text: 'Полная статистика', included: true },
+      { text: 'Импорт из Excel/PDF', included: true },
+      { text: 'История сделок', included: true },
+      { text: 'AI-анализ сделок', included: true },
+      { text: 'Продвинутая аналитика', included: true },
+      { text: 'Экспорт отчётов', included: true },
+      { text: 'Приоритетная поддержка', included: false },
+    ],
+    cta: 'Выбрать Pro',
+    popular: true,
+  },
+  {
+    id: 'corporate',
+    name: 'Corporate',
+    description: 'Для проп-компаний и фондов',
+    price: null,
+    period: 'индивидуально',
+    icon: Building2,
+    color: 'from-amber-500 to-orange-600',
+    borderColor: 'border-amber-500/30',
+    features: [
+      { text: 'Безлимит сделок', included: true },
+      { text: 'Безлимит счетов', included: true },
+      { text: 'Полная статистика', included: true },
+      { text: 'Импорт из любых источников', included: true },
+      { text: 'История сделок', included: true },
+      { text: 'AI-анализ сделок', included: true },
+      { text: 'Продвинутая аналитика', included: true },
+      { text: 'Экспорт отчётов', included: true },
+      { text: 'Приоритетная поддержка 24/7', included: true },
+      { text: 'API доступ', included: true },
+      { text: 'Мультипользовательский доступ', included: true },
+      { text: 'Персональный менеджер', included: true },
+    ],
+    cta: 'Связаться',
+    popular: false,
+  },
+];
+
+const faqs = [
+  {
+    q: 'Можно ли попробовать Pro бесплатно?',
+    a: 'Да! При регистрации вы получаете 14 дней Pro-доступа бесплатно. Карта не требуется.',
+  },
+  {
+    q: 'Как работает оплата?',
+    a: 'Оплата списывается ежемесячно. Вы можете отменить подписку в любой момент, доступ сохранится до конца оплаченного периода.',
+  },
+  {
+    q: 'Что будет с моими данными, если я отменю подписку?',
+    a: 'Ваши данные сохраняются. При переходе на Free вы просто потеряете доступ к продвинутым функциям, но все сделки останутся.',
+  },
+  {
+    q: 'Есть ли скидка при годовой оплате?',
+    a: 'Да, при годовой оплате вы получаете 2 месяца бесплатно (10 месяцев по цене 12).',
+  },
+  {
+    q: 'Как связаться для корпоративного тарифа?',
+    a: 'Напишите нам на corp@eqio.app или заполните форму на странице контактов. Мы подберём решение под ваши задачи.',
+  },
+];
+
+export default function PricingPage() {
+  const { user, isAuthenticated } = useAuth();
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  const getPrice = (basePrice: number | null) => {
+    if (basePrice === null) return null;
+    if (basePrice === 0) return 0;
+    return billingPeriod === 'yearly' ? Math.round(basePrice * 10 / 12) : basePrice;
+  };
+
+  const currentPlan = 'free'; // TODO: получить из API
+
+  return (
+    <main className="min-h-screen relative overflow-hidden">
+      {/* Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-purple-500/5" />
+      <div className="absolute top-20 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
+      <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+
+      <div className="relative max-w-6xl mx-auto px-4 py-16">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            Выберите свой <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">план</span>
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Начните бесплатно и переходите на Pro, когда будете готовы к продвинутой аналитике
+          </p>
+        </div>
+
+        {/* Billing Toggle */}
+        <div className="flex items-center justify-center gap-4 mb-12">
+          <span className={billingPeriod === 'monthly' ? 'text-foreground' : 'text-muted-foreground'}>
+            Ежемесячно
+          </span>
+          <button
+            onClick={() => setBillingPeriod(bp => bp === 'monthly' ? 'yearly' : 'monthly')}
+            className={`relative w-14 h-7 rounded-full transition-colors ${
+              billingPeriod === 'yearly' ? 'bg-purple-500' : 'bg-secondary'
+            }`}
+          >
+            <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+              billingPeriod === 'yearly' ? 'translate-x-8' : 'translate-x-1'
+            }`} />
+          </button>
+          <span className={billingPeriod === 'yearly' ? 'text-foreground' : 'text-muted-foreground'}>
+            Ежегодно
+            <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
+              -17%
+            </span>
+          </span>
+        </div>
+
+        {/* Pricing Cards */}
+        <div className="grid md:grid-cols-3 gap-6 mb-20">
+          {plans.map((plan) => {
+            const price = getPrice(plan.price);
+            const isCurrent = currentPlan === plan.id;
+            const Icon = plan.icon;
+
+            return (
+              <div
+                key={plan.id}
+                className={`relative cyber-card p-6 transition-all duration-300 hover:scale-[1.02] ${
+                  plan.popular ? 'ring-2 ring-purple-500 shadow-lg shadow-purple-500/20' : ''
+                } ${plan.borderColor}`}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <span className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+                      Популярный
+                    </span>
+                  </div>
+                )}
+
+                {/* Header */}
+                <div className="text-center mb-6">
+                  <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${plan.color} mb-4`}>
+                    <Icon size={24} className="text-white" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-1">{plan.name}</h3>
+                  <p className="text-sm text-muted-foreground">{plan.description}</p>
+                </div>
+
+                {/* Price */}
+                <div className="text-center mb-6">
+                  {price !== null ? (
+                    <>
+                      <span className="text-4xl font-bold">₽{price}</span>
+                      <span className="text-muted-foreground">{plan.period}</span>
+                      {billingPeriod === 'yearly' && plan.price && plan.price > 0 && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          <span className="line-through">₽{plan.price * 12}</span>
+                          <span className="text-green-400 ml-2">₽{price * 12}/год</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-2xl font-bold">{plan.period}</span>
+                  )}
+                </div>
+
+                {/* CTA Button */}
+                <button
+                  className={`w-full py-3 rounded-lg font-medium transition-all mb-6 ${
+                    isCurrent
+                      ? 'bg-secondary text-muted-foreground cursor-default'
+                      : plan.popular
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:shadow-lg hover:shadow-purple-500/25'
+                      : 'bg-secondary hover:bg-secondary/80'
+                  }`}
+                  disabled={isCurrent}
+                >
+                  {isCurrent ? 'Текущий план' : plan.cta}
+                  {!isCurrent && <ArrowRight size={16} className="inline ml-2" />}
+                </button>
+
+                {/* Features */}
+                <ul className="space-y-3">
+                  {plan.features.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-3 text-sm">
+                      {feature.included ? (
+                        <Check size={16} className="text-green-400 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <X size={16} className="text-muted-foreground/50 mt-0.5 flex-shrink-0" />
+                      )}
+                      <span className={feature.included ? '' : 'text-muted-foreground/50'}>
+                        {feature.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Trust Badges */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-20">
+          {[
+            { icon: Shield, text: 'Безопасные платежи', sub: 'Шифрование данных' },
+            { icon: Clock, text: '14 дней бесплатно', sub: 'Попробуйте Pro' },
+            { icon: BarChart3, text: '10,000+ трейдеров', sub: 'Уже с нами' },
+            { icon: Headphones, text: 'Поддержка', sub: 'Ответим за 24ч' },
+          ].map((item, i) => (
+            <div key={i} className="text-center p-4">
+              <item.icon size={32} className="mx-auto mb-2 text-purple-400" />
+              <div className="font-medium">{item.text}</div>
+              <div className="text-sm text-muted-foreground">{item.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Feature Comparison Table */}
+        <div className="mb-20">
+          <h2 className="text-2xl font-bold text-center mb-8">Сравнение возможностей</h2>
+          <div className="cyber-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th className="text-left p-4 font-medium">Возможность</th>
+                    <th className="text-center p-4 font-medium">Free</th>
+                    <th className="text-center p-4 font-medium text-purple-400">Pro</th>
+                    <th className="text-center p-4 font-medium text-amber-400">Corporate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['Количество сделок', '50/мес', '∞', '∞'],
+                    ['Торговые счета', '1', '5', '∞'],
+                    ['Импорт Excel/PDF', true, true, true],
+                    ['Базовая статистика', true, true, true],
+                    ['AI-анализ', false, true, true],
+                    ['MAE/MFE аналитика', false, true, true],
+                    ['Экспорт отчётов', false, true, true],
+                    ['API доступ', false, false, true],
+                    ['Мультипользователи', false, false, true],
+                    ['Приоритетная поддержка', false, false, true],
+                  ].map((row, i) => (
+                    <tr key={i} className="border-b border-white/5">
+                      <td className="p-4">{row[0]}</td>
+                      {[row[1], row[2], row[3]].map((cell, j) => (
+                        <td key={j} className="text-center p-4">
+                          {typeof cell === 'boolean' ? (
+                            cell ? (
+                              <Check size={16} className="mx-auto text-green-400" />
+                            ) : (
+                              <X size={16} className="mx-auto text-muted-foreground/30" />
+                            )
+                          ) : (
+                            <span className={j === 1 ? 'text-purple-400 font-medium' : ''}>{cell}</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* FAQ */}
+        <div className="max-w-3xl mx-auto mb-20">
+          <h2 className="text-2xl font-bold text-center mb-8">Частые вопросы</h2>
+          <div className="space-y-3">
+            {faqs.map((faq, i) => (
+              <div key={i} className="cyber-card overflow-hidden">
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full flex items-center justify-between p-4 text-left"
+                >
+                  <span className="font-medium">{faq.q}</span>
+                  {openFaq === i ? (
+                    <ChevronUp size={20} className="text-muted-foreground" />
+                  ) : (
+                    <ChevronDown size={20} className="text-muted-foreground" />
+                  )}
+                </button>
+                {openFaq === i && (
+                  <div className="px-4 pb-4 text-muted-foreground">
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="text-center">
+          <div className="cyber-card inline-block p-8 max-w-2xl">
+            <h2 className="text-2xl font-bold mb-4">Готовы улучшить свою торговлю?</h2>
+            <p className="text-muted-foreground mb-6">
+              Присоединяйтесь к тысячам трейдеров, которые уже используют ATOM для анализа своих сделок
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {isAuthenticated ? (
+                <Link
+                  href="/"
+                  className="btn-primary px-8 py-3 text-lg inline-flex items-center justify-center gap-2"
+                >
+                  Перейти к дашборду
+                  <ArrowRight size={18} />
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/register"
+                    className="btn-primary px-8 py-3 text-lg inline-flex items-center justify-center gap-2"
+                  >
+                    Начать бесплатно
+                    <ArrowRight size={18} />
+                  </Link>
+                  <Link
+                    href="/login"
+                    className="btn-secondary px-8 py-3 text-lg"
+                  >
+                    Войти
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}

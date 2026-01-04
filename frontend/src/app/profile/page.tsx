@@ -6,16 +6,38 @@ import Link from 'next/link';
 import { 
   User, Mail, Calendar, Settings, LogOut, Save, 
   ArrowLeft, Loader2, CheckCircle, AlertCircle,
-  TrendingUp, BarChart3, Target, Shield
+  TrendingUp, BarChart3, Target, Shield, Crown, Zap, Building2, ArrowUpRight
 } from 'lucide-react';
 
+interface Subscription {
+  plan: 'free' | 'pro' | 'corporate';
+  is_active: boolean;
+  started_at: string | null;
+  expires_at: string | null;
+  auto_renew: boolean;
+  limits: {
+    max_trades: number | null;
+    max_accounts: number;
+    ai_analysis: boolean;
+  };
+}
+
+function getApiBase(): string {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
+    const codespaceName = window.location.hostname.split('-3000')[0];
+    return `https://${codespaceName}-8000.app.github.dev`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+}
+
 function ProfileContent() {
-  const { user, logout, updateProfile, isLoading: authLoading } = useAuth();
+  const { user, token, logout, updateProfile, isLoading: authLoading } = useAuth();
   
   const [name, setName] = useState(user?.name || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   
   // Синхронизация с user
   useEffect(() => {
@@ -23,6 +45,18 @@ function ProfileContent() {
       setName(user.name || '');
     }
   }, [user]);
+  
+  // Загрузка подписки
+  useEffect(() => {
+    if (token) {
+      fetch(`${getApiBase()}/auth/subscription`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => setSubscription(data))
+        .catch(err => console.error('Failed to load subscription:', err));
+    }
+  }, [token]);
   
   const handleSave = async () => {
     setIsSaving(true);
@@ -115,6 +149,21 @@ function ProfileContent() {
                     Активен
                   </span>
                 )}
+                {/* Plan Badge */}
+                {subscription && (
+                  <span className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
+                    subscription.plan === 'pro' 
+                      ? 'bg-purple-500/20 text-purple-400' 
+                      : subscription.plan === 'corporate'
+                      ? 'bg-amber-500/20 text-amber-400'
+                      : 'bg-gray-500/20 text-gray-400'
+                  }`}>
+                    {subscription.plan === 'pro' && <Crown size={12} />}
+                    {subscription.plan === 'corporate' && <Building2 size={12} />}
+                    {subscription.plan === 'free' && <Zap size={12} />}
+                    {subscription.plan.toUpperCase()}
+                  </span>
+                )}
               </div>
               
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
@@ -130,6 +179,70 @@ function ProfileContent() {
             </div>
           </div>
         </div>
+        
+        {/* Subscription Card */}
+        {subscription && (
+          <div className={`cyber-card p-6 mb-6 border-l-4 ${
+            subscription.plan === 'pro' ? 'border-purple-500' : 
+            subscription.plan === 'corporate' ? 'border-amber-500' : 'border-gray-500'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${
+                  subscription.plan === 'pro' 
+                    ? 'bg-gradient-to-br from-purple-500 to-indigo-600' 
+                    : subscription.plan === 'corporate'
+                    ? 'bg-gradient-to-br from-amber-500 to-orange-600'
+                    : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                }`}>
+                  {subscription.plan === 'pro' && <Crown size={24} className="text-white" />}
+                  {subscription.plan === 'corporate' && <Building2 size={24} className="text-white" />}
+                  {subscription.plan === 'free' && <Zap size={24} className="text-white" />}
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">
+                    {subscription.plan === 'pro' ? 'Pro' : 
+                     subscription.plan === 'corporate' ? 'Corporate' : 'Free'} Plan
+                  </h3>
+                  <div className="text-sm text-muted-foreground">
+                    {subscription.plan === 'free' ? (
+                      <>До {subscription.limits.max_trades} сделок/мес · {subscription.limits.max_accounts} счёт</>
+                    ) : subscription.plan === 'pro' ? (
+                      <>Безлимит сделок · До {subscription.limits.max_accounts} счетов · AI-анализ</>
+                    ) : (
+                      <>Безлимит всего · Приоритетная поддержка</>
+                    )}
+                  </div>
+                  {subscription.expires_at && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Активна до {new Date(subscription.expires_at).toLocaleDateString('ru-RU')}
+                      {subscription.auto_renew && <span className="text-green-400 ml-2">· Автопродление</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {subscription.plan === 'free' && (
+                <Link
+                  href="/pricing"
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <Crown size={16} />
+                  Улучшить до Pro
+                  <ArrowUpRight size={16} />
+                </Link>
+              )}
+              {subscription.plan === 'pro' && (
+                <Link
+                  href="/pricing"
+                  className="btn-secondary flex items-center gap-2 text-sm"
+                >
+                  Управление подпиской
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
         
         {/* Message */}
         {message && (

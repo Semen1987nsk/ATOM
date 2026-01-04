@@ -237,3 +237,43 @@ def get_user_account(db: Session, user: models.User) -> models.Account:
         db.refresh(account)
     
     return account
+
+
+def get_user_subscription(db: Session, user: models.User) -> dict:
+    """
+    Получить текущую подписку пользователя.
+    Если нет активной - возвращает Free план.
+    """
+    subscription = db.query(models.Subscription).filter(
+        models.Subscription.user_id == user.id,
+        models.Subscription.is_active == 1
+    ).first()
+    
+    if not subscription:
+        # Возвращаем Free план
+        return {
+            "plan": "free",
+            "is_active": True,
+            "started_at": user.created_at.isoformat() if user.created_at else None,
+            "expires_at": None,
+            "auto_renew": False,
+            "limits": {
+                "max_trades": 50,
+                "max_accounts": 1,
+                "ai_analysis": False,
+            }
+        }
+    
+    return {
+        "plan": subscription.plan.value,
+        "is_active": bool(subscription.is_active),
+        "started_at": subscription.started_at.isoformat() if subscription.started_at else None,
+        "expires_at": subscription.expires_at.isoformat() if subscription.expires_at else None,
+        "auto_renew": bool(subscription.auto_renew),
+        "limits": {
+            "max_trades": subscription.max_trades,
+            "max_accounts": subscription.max_accounts,
+            "ai_analysis": bool(subscription.ai_analysis_enabled),
+        }
+    }
+
