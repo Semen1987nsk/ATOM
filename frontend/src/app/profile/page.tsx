@@ -1,0 +1,282 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useAuth, RequireAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
+import { 
+  User, Mail, Calendar, Settings, LogOut, Save, 
+  ArrowLeft, Loader2, CheckCircle, AlertCircle,
+  TrendingUp, BarChart3, Target, Shield
+} from 'lucide-react';
+
+function ProfileContent() {
+  const { user, logout, updateProfile, isLoading: authLoading } = useAuth();
+  
+  const [name, setName] = useState(user?.name || '');
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Синхронизация с user
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+    }
+  }, [user]);
+  
+  const handleSave = async () => {
+    setIsSaving(true);
+    setMessage(null);
+    
+    try {
+      await updateProfile({ name: name || undefined });
+      setMessage({ type: 'success', text: 'Профиль сохранён!' });
+      setIsEditing(false);
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Ошибка сохранения' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  
+  const handleLogout = () => {
+    logout();
+    window.location.href = '/';
+  };
+  
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+      </div>
+    );
+  }
+  
+  const createdDate = new Date(user.created_at).toLocaleDateString('ru-RU', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  
+  return (
+    <main className="min-h-screen p-4 md:p-8 relative overflow-hidden">
+      {/* Background Effects */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-accent/5" />
+      <div className="absolute top-20 right-20 w-80 h-80 bg-accent/10 rounded-full blur-3xl" />
+      <div className="absolute bottom-20 left-20 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
+      
+      <div className="relative max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <Link 
+            href="/" 
+            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft size={20} />
+            <span>Назад</span>
+          </Link>
+          
+          <div className="flex items-center gap-2">
+            {user.is_admin && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 px-4 py-2 text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+              >
+                <Shield size={18} />
+                Админ-панель
+              </Link>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+            >
+              <LogOut size={18} />
+              Выйти
+            </button>
+          </div>
+        </div>
+        
+        {/* Profile Card */}
+        <div className="cyber-card p-8 mb-6">
+          <div className="flex items-start gap-6">
+            {/* Avatar */}
+            <div className="w-24 h-24 bg-gradient-to-br from-accent to-accent/50 rounded-2xl flex items-center justify-center shrink-0">
+              <span className="text-3xl font-black text-white">
+                {(user.name || user.email)[0].toUpperCase()}
+              </span>
+            </div>
+            
+            {/* Info */}
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-2xl font-bold">{user.name || 'Трейдер'}</h1>
+                {user.is_active && (
+                  <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">
+                    Активен
+                  </span>
+                )}
+              </div>
+              
+              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <Mail size={14} />
+                  {user.email}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Calendar size={14} />
+                  С {createdDate}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Message */}
+        {message && (
+          <div className={`flex items-center gap-2 p-3 mb-6 rounded-lg text-sm ${
+            message.type === 'success' 
+              ? 'bg-green-500/10 border border-green-500/20 text-green-400' 
+              : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}>
+            {message.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+            {message.text}
+          </div>
+        )}
+        
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Edit Profile */}
+          <div className="cyber-card p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-accent/20 rounded-lg">
+                <Settings size={20} className="text-accent" />
+              </div>
+              <h2 className="text-lg font-bold">Редактировать профиль</h2>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Name */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Имя</label>
+                <div className="relative">
+                  <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => { setName(e.target.value); setIsEditing(true); }}
+                    placeholder="Ваше имя"
+                    className="w-full pl-10 pr-4 py-3 bg-secondary/50 border border-white/10 rounded-lg 
+                             text-foreground placeholder:text-muted-foreground
+                             focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent
+                             transition-all"
+                  />
+                </div>
+              </div>
+              
+              {/* Email (read-only) */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Email</label>
+                <div className="relative">
+                  <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="email"
+                    value={user.email}
+                    disabled
+                    className="w-full pl-10 pr-4 py-3 bg-secondary/30 border border-white/5 rounded-lg 
+                             text-muted-foreground cursor-not-allowed"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Email изменить нельзя</p>
+              </div>
+              
+              {/* Save Button */}
+              <button
+                onClick={handleSave}
+                disabled={!isEditing || isSaving}
+                className="w-full py-3 bg-accent hover:bg-accent/90 text-white font-semibold rounded-lg
+                         flex items-center justify-center gap-2 transition-all
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Сохранение...
+                  </>
+                ) : (
+                  <>
+                    <Save size={18} />
+                    Сохранить изменения
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+          
+          {/* Quick Stats */}
+          <div className="cyber-card p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-green-500/20 rounded-lg">
+                <BarChart3 size={20} className="text-green-400" />
+              </div>
+              <h2 className="text-lg font-bold">Быстрая статистика</h2>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <TrendingUp size={16} />
+                  <span>Всего сделок</span>
+                </div>
+                <span className="font-bold text-foreground">—</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Target size={16} />
+                  <span>Win Rate</span>
+                </div>
+                <span className="font-bold text-foreground">—</span>
+              </div>
+              
+              <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <BarChart3 size={16} />
+                  <span>Общий P&L</span>
+                </div>
+                <span className="font-bold text-foreground">—</span>
+              </div>
+              
+              <p className="text-xs text-muted-foreground text-center">
+                Статистика появится после добавления сделок
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Danger Zone */}
+        <div className="mt-6 cyber-card p-6 border-red-500/20">
+          <h3 className="text-lg font-bold text-red-400 mb-4">Опасная зона</h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Выйти из аккаунта</p>
+              <p className="text-sm text-muted-foreground">Вы будете разлогинены на этом устройстве</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+            >
+              Выйти
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <RequireAuth>
+      <ProfileContent />
+    </RequireAuth>
+  );
+}

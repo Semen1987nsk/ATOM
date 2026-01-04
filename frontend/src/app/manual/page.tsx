@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign } from 'lucide-react';
+import { ArrowLeft, Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
 
 export default function Manual() {
@@ -90,6 +90,10 @@ export default function Manual() {
           <a href="#drawdown" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <TrendingDown size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Drawdown — Анализ просадок</span>
+          </a>
+          <a href="#calmar-ratio" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <Gauge size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Calmar Ratio — Качество доходности</span>
           </a>
           <a href="#monte-carlo" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <Dice5 size={14} className="text-accent" />
@@ -1277,145 +1281,6 @@ export default function Manual() {
           </div>
         </section>
 
-        {/* R-Expectancy */}
-        <section className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute bottom-0 left-0 w-60 h-60 bg-orange-500/15 rounded-full blur-3xl" />
-          
-          <div className="relative">
-            {/* Header */}
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-gradient-to-br from-orange-500 to-orange-700 rounded-xl shadow-lg shadow-orange-500/20">
-                  <BarChart3 size={28} className="text-white" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-2xl font-black tracking-tight">R-Expectancy</h2>
-                    <span className="px-2 py-0.5 bg-orange-500/20 rounded text-[10px] font-mono text-orange-400">VAN THARP</span>
-                  </div>
-                  <p className="text-xs font-mono opacity-50">МАТЕМАТИЧЕСКОЕ ОЖИДАНИЕ В ЕДИНИЦАХ РИСКА</p>
-                </div>
-              </div>
-            </div>
-
-            {/* What is it */}
-            <div className="mb-8">
-              <h3 className="text-white font-bold text-lg mb-3 flex items-center gap-2">
-                <BookOpen className="text-orange-400" size={18} />
-                Что такое R-Expectancy?
-              </h3>
-              <p className="text-sm opacity-80 leading-relaxed mb-4">
-                <strong className="text-orange-400">R-Expectancy (Ожидаемая R)</strong> — это матожидание вашей системы, 
-                выраженное в единицах риска. Отвечает на ключевой вопрос: 
-                <span className="italic text-white"> «Рискуя 1₽, сколько я в среднем заработаю?»</span>
-              </p>
-              <div className="bg-orange-500/10 p-4 rounded-lg border border-orange-500/20">
-                <p className="text-sm">
-                  <strong className="text-white">R</strong> — это ваш риск на сделку. Если вы рискуете 1000₽ и получаете +3000₽, 
-                  то результат = <span className="text-green-400 font-bold">+3R</span>. Если теряете 1000₽, то <span className="text-red-400 font-bold">−1R</span>.
-                </p>
-              </div>
-            </div>
-
-            {/* Formula */}
-            <div className="bg-black/40 rounded-xl p-6 mb-8 border border-white/10">
-              <h3 className="text-white font-bold text-lg mb-4">📐 Формула</h3>
-              <div className="bg-orange-500/10 p-4 rounded-lg font-mono text-center mb-4">
-                <span className="text-orange-400 text-lg">E[R] = (Win% × Avg Win R) + (Loss% × Avg Loss R)</span>
-              </div>
-              <div className="grid md:grid-cols-2 gap-4 text-sm">
-                <div className="bg-black/30 p-3 rounded">
-                  <div className="text-xs font-mono text-orange-400 mb-2">Пример расчёта:</div>
-                  <ul className="space-y-1 opacity-80">
-                    <li>Win Rate: 55%</li>
-                    <li>Средняя прибыль: +2.5R</li>
-                    <li>Loss Rate: 45%</li>
-                    <li>Средний убыток: −1R</li>
-                  </ul>
-                </div>
-                <div className="bg-black/30 p-3 rounded">
-                  <div className="text-xs font-mono text-orange-400 mb-2">Результат:</div>
-                  <p className="opacity-80 mb-2">E[R] = (0.55 × 2.5) + (0.45 × −1)</p>
-                  <p className="opacity-80 mb-2">E[R] = 1.375 − 0.45</p>
-                  <p className="text-orange-400 font-bold text-lg">E[R] = +0.925R</p>
-                </div>
-              </div>
-            </div>
-
-            {/* What it means */}
-            <div className="bg-gradient-to-r from-orange-500/10 via-accent/10 to-orange-500/10 rounded-xl p-6 mb-8 border border-orange-500/20">
-              <h3 className="text-white font-bold text-lg mb-4">💰 Что это значит на практике?</h3>
-              
-              <div className="space-y-4">
-                <div className="bg-black/30 p-4 rounded-lg">
-                  <div className="text-orange-400 font-bold mb-2">E[R] = +0.925R означает:</div>
-                  <ul className="text-sm opacity-80 space-y-2">
-                    <li className="flex items-start gap-2">
-                      <span className="text-orange-400">→</span>
-                      <span>Рискуя <strong className="text-white">1,000₽</strong> на сделку, вы в среднем зарабатываете <strong className="text-green-400">925₽</strong></span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-orange-400">→</span>
-                      <span>За 100 сделок: 100 × 1000₽ × 0.925 = <strong className="text-green-400">+92,500₽</strong> прибыли</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-orange-400">→</span>
-                      <span>Это почти <strong className="text-white">удвоение капитала</strong> за 100 сделок!</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Scale */}
-            <div className="mb-8">
-              <h3 className="text-white font-bold text-lg mb-4">📈 Интерпретация R-Expectancy</h3>
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20 text-center">
-                  <div className="text-red-400 font-bold text-xl mb-2">E[R] &lt; 0</div>
-                  <div className="text-sm opacity-70 mb-2">Отрицательное ожидание</div>
-                  <div className="text-xs opacity-50">Казино. Вы гарантированно проиграете на дистанции.</div>
-                </div>
-                <div className="bg-yellow-500/10 p-4 rounded-lg border border-yellow-500/20 text-center">
-                  <div className="text-yellow-400 font-bold text-xl mb-2">0 — 0.3R</div>
-                  <div className="text-sm opacity-70 mb-2">Слабое преимущество</div>
-                  <div className="text-xs opacity-50">Работает, но медленно. Комиссии могут съесть.</div>
-                </div>
-                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20 text-center">
-                  <div className="text-green-400 font-bold text-xl mb-2">E[R] &gt; 0.5R</div>
-                  <div className="text-sm opacity-70 mb-2">Отличная система</div>
-                  <div className="text-xs opacity-50">Каждые 2R риска = 1R прибыли. Идеально!</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Comparison with Profit Factor */}
-            <div className="bg-accent/5 p-4 rounded-lg border border-accent/20 mb-6">
-              <h4 className="font-bold text-accent mb-2">🔄 Profit Factor vs R-Expectancy</h4>
-              <p className="text-sm opacity-80">
-                <strong className="text-white">Profit Factor</strong> показывает общее соотношение прибыли к убыткам. 
-                <strong className="text-white"> R-Expectancy</strong> нормализует результаты к единому риску, 
-                что позволяет сравнивать разные стратегии с разным sizing.
-              </p>
-            </div>
-
-            {/* Pro Tips */}
-            <div className="border-l-4 border-orange-500 pl-4 py-2">
-              <div className="flex items-center gap-2 mb-2">
-                <Crown size={16} className="text-orange-400" />
-                <span className="text-sm font-bold uppercase tracking-wider text-orange-400">Советы профессионалов</span>
-              </div>
-              <ul className="space-y-2 text-sm opacity-80">
-                <li>💡 Всегда измеряйте результаты в R, а не в рублях — это даёт объективную картину</li>
-                <li>📊 Ведите журнал сделок в R: +2.5R, −1R, +1.8R... Легко считать ожидание</li>
-                <li>⚠️ Низкий Win Rate + высокий Avg Win R = часто лучше, чем наоборот</li>
-                <li>🎯 Eqio автоматически рассчитывает R для каждой сделки</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
         {/* Recovery Factor & Drawdown */}
         <section id="drawdown" className="cyber-card p-8 relative overflow-hidden">
           {/* Background */}
@@ -1579,6 +1444,290 @@ export default function Manual() {
                 <li>📊 Если текущая просадка &gt; 50% от максимальной — уменьшите размер позиции</li>
                 <li>⚠️ После просадки 30% переходите на минимальный риск до восстановления</li>
                 <li>🎯 Eqio показывает текущую просадку в реальном времени</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Calmar Ratio */}
+        <section id="calmar-ratio" className="cyber-card p-8 relative overflow-hidden">
+          {/* Background */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-teal-500/20 to-transparent rounded-full blur-3xl" />
+          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-teal-500/10 rounded-full blur-2xl" />
+          
+          <div className="relative">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-br from-teal-500 to-teal-700 rounded-xl shadow-lg shadow-teal-500/20">
+                  <Gauge size={28} className="text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-black tracking-tight">Calmar Ratio</h2>
+                    <span className="px-2 py-0.5 bg-teal-500/20 rounded text-[10px] font-mono text-teal-400">RISK-ADJUSTED</span>
+                  </div>
+                  <p className="text-xs font-mono opacity-50">ИНДИКАТОР ХЕДЖ-ФОНДОВ • ГОДОВАЯ ДОХОДНОСТЬ / ПРОСАДКА</p>
+                </div>
+              </div>
+              <div className="text-right hidden md:block">
+                <div className="text-3xl font-black text-teal-400">CAGR/DD</div>
+                <div className="text-[10px] opacity-50">базовая формула</div>
+              </div>
+            </div>
+
+            {/* Pain Point */}
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-red-500/20 rounded shrink-0">
+                  <AlertTriangle size={16} className="text-red-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-red-400 mb-1">Ловушка «высокой доходности»</div>
+                  <p className="text-sm opacity-80">
+                    Трейдер хвастается +100% годовых, но умалчивает о просадке -60%. 
+                    <span className="text-foreground font-medium"> Такая система разрушает капитал и нервы. Вам нужна не просто доходность, а КАЧЕСТВЕННАЯ доходность.</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* What is it */}
+            <div className="mb-8">
+              <h3 className="text-foreground font-bold text-lg mb-3 flex items-center gap-2">
+                <BookOpen className="text-teal-400" size={18} />
+                Что такое Calmar Ratio?
+              </h3>
+              <p className="text-sm opacity-80 leading-relaxed mb-4">
+                <strong className="text-teal-400">Calmar Ratio</strong> — это коэффициент, показывающий, 
+                сколько годовой доходности вы получаете на каждый процент максимальной просадки.
+                <span className="italic text-foreground"> Название происходит от California Managed Account Reports.</span>
+              </p>
+              <p className="text-sm opacity-80 leading-relaxed">
+                Это любимый показатель <strong className="text-foreground">хедж-фондов</strong> и профессиональных управляющих, 
+                потому что он чётко отвечает на вопрос: <strong className="text-teal-400">«Стоит ли эта доходность тех просадок, которые приходится терпеть?»</strong>
+              </p>
+            </div>
+
+            {/* Analogy */}
+            <div className="mb-8">
+              <h3 className="text-foreground font-bold text-lg mb-3 flex items-center gap-2">
+                <Flame className="text-orange-400" size={18} />
+                Аналогия: Американские горки vs Скоростной поезд
+              </h3>
+              <p className="text-sm opacity-80 leading-relaxed mb-4">
+                Представьте два способа добраться из Москвы в Питер:
+              </p>
+              <div className="grid md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20">
+                  <div className="text-red-400 font-black text-xl text-center mb-2">🎢 Американские горки</div>
+                  <div className="text-sm text-center opacity-80 mb-2">+100% доход, -60% просадка</div>
+                  <div className="text-center">
+                    <span className="text-red-400 font-bold text-2xl">Calmar = 1.67</span>
+                  </div>
+                  <div className="text-xs opacity-60 text-center mt-2">
+                    Вы доедете, но будете измотаны и седы
+                  </div>
+                </div>
+                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20">
+                  <div className="text-green-400 font-black text-xl text-center mb-2">🚄 Скоростной поезд</div>
+                  <div className="text-sm text-center opacity-80 mb-2">+40% доход, -10% просадка</div>
+                  <div className="text-center">
+                    <span className="text-green-400 font-bold text-2xl">Calmar = 4.0 ✓</span>
+                  </div>
+                  <div className="text-xs opacity-60 text-center mt-2">
+                    Меньше доход, но качество поездки в разы лучше
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs opacity-50 text-center italic">
+                Высокий Calmar = комфортная и устойчивая торговля
+              </p>
+            </div>
+
+            {/* Formula */}
+            <div className="bg-black/40 rounded-xl p-6 mb-8 border border-white/10">
+              <h3 className="text-foreground font-bold text-lg mb-4 flex items-center gap-2">
+                📐 Формула
+              </h3>
+              <div className="bg-teal-500/10 p-4 rounded-lg font-mono text-center mb-4">
+                <span className="text-teal-400 text-lg">Calmar Ratio = CAGR / Max Drawdown</span>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4 text-sm">
+                <div className="text-center">
+                  <div className="text-teal-400 font-bold">CAGR</div>
+                  <div className="opacity-60">Compound Annual Growth Rate</div>
+                  <div className="text-xs opacity-40">Среднегодовая доходность с учётом реинвестирования</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-teal-400 font-bold">Max Drawdown</div>
+                  <div className="opacity-60">Максимальная просадка</div>
+                  <div className="text-xs opacity-40">Крупнейшее падение от пика до впадины</div>
+                </div>
+              </div>
+              <div className="mt-4 p-3 bg-teal-500/5 rounded text-sm text-center">
+                <strong>Пример:</strong> CAGR = 30%, Max DD = 15% → Calmar = 30/15 = <span className="text-teal-400 font-bold">2.0</span>
+              </div>
+            </div>
+
+            {/* Interpretation */}
+            <div className="mb-8">
+              <h3 className="text-foreground font-bold text-lg mb-4 flex items-center gap-2">
+                📊 Интерпретация значений
+              </h3>
+              <div className="grid md:grid-cols-5 gap-2 text-center text-sm">
+                <div className="bg-red-500/20 p-3 rounded-lg">
+                  <div className="text-red-400 font-bold text-xl">&lt; 0</div>
+                  <div className="text-xs mt-1 opacity-80">Убыточная система</div>
+                </div>
+                <div className="bg-orange-500/20 p-3 rounded-lg">
+                  <div className="text-orange-400 font-bold text-xl">0 - 0.5</div>
+                  <div className="text-xs mt-1 opacity-80">Плохо</div>
+                </div>
+                <div className="bg-yellow-500/20 p-3 rounded-lg">
+                  <div className="text-yellow-400 font-bold text-xl">0.5 - 1.0</div>
+                  <div className="text-xs mt-1 opacity-80">Удовл.</div>
+                </div>
+                <div className="bg-green-500/20 p-3 rounded-lg">
+                  <div className="text-green-400 font-bold text-xl">1.0 - 3.0</div>
+                  <div className="text-xs mt-1 opacity-80">Хорошо ✓</div>
+                </div>
+                <div className="bg-teal-500/20 p-3 rounded-lg">
+                  <div className="text-teal-400 font-bold text-xl">&gt; 3.0</div>
+                  <div className="text-xs mt-1 opacity-80">Топ фонды 🏆</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Real world examples */}
+            <div className="mb-8">
+              <h3 className="text-foreground font-bold text-lg mb-4 flex items-center gap-2">
+                🌍 Примеры из реального мира
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">📈</span>
+                    <div>
+                      <div className="font-bold">S&P 500 (долгосрок)</div>
+                      <div className="text-xs opacity-60">Индексное инвестирование</div>
+                    </div>
+                  </div>
+                  <div className="text-yellow-400 font-bold">~0.5-0.7</div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🏦</span>
+                    <div>
+                      <div className="font-bold">Хороший хедж-фонд</div>
+                      <div className="text-xs opacity-60">Профессиональное управление</div>
+                    </div>
+                  </div>
+                  <div className="text-green-400 font-bold">1.5-2.5</div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🥇</span>
+                    <div>
+                      <div className="font-bold">Топ CTA/Quant фонды</div>
+                      <div className="text-xs opacity-60">Элитные алгоритмы</div>
+                    </div>
+                  </div>
+                  <div className="text-teal-400 font-bold">3.0+</div>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🎰</span>
+                    <div>
+                      <div className="font-bold">Типичный ритейл-трейдер</div>
+                      <div className="text-xs opacity-60">Без системы</div>
+                    </div>
+                  </div>
+                  <div className="text-red-400 font-bold">&lt; 0</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Comparison with other ratios */}
+            <div className="mb-8">
+              <h3 className="text-foreground font-bold text-lg mb-4 flex items-center gap-2">
+                ⚖️ Сравнение с другими коэффициентами
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-2 px-3">Коэффициент</th>
+                      <th className="text-left py-2 px-3">Числитель</th>
+                      <th className="text-left py-2 px-3">Знаменатель</th>
+                      <th className="text-left py-2 px-3">Фокус</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-white/5">
+                      <td className="py-2 px-3 font-bold text-teal-400">Calmar</td>
+                      <td className="py-2 px-3">CAGR</td>
+                      <td className="py-2 px-3">Max Drawdown</td>
+                      <td className="py-2 px-3">Экстремальные потери</td>
+                    </tr>
+                    <tr className="border-b border-white/5">
+                      <td className="py-2 px-3 font-bold text-blue-400">Sharpe</td>
+                      <td className="py-2 px-3">Return - Rf</td>
+                      <td className="py-2 px-3">Volatility (σ)</td>
+                      <td className="py-2 px-3">Общая волатильность</td>
+                    </tr>
+                    <tr className="border-b border-white/5">
+                      <td className="py-2 px-3 font-bold text-purple-400">Sortino</td>
+                      <td className="py-2 px-3">Return - Rf</td>
+                      <td className="py-2 px-3">Downside Dev</td>
+                      <td className="py-2 px-3">Нисходящий риск</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 font-bold text-green-400">Recovery</td>
+                      <td className="py-2 px-3">Total Return</td>
+                      <td className="py-2 px-3">Max Drawdown</td>
+                      <td className="py-2 px-3">Скорость восстановления</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* How to improve */}
+            <div className="mb-8">
+              <h3 className="text-foreground font-bold text-lg mb-4 flex items-center gap-2">
+                🚀 Как улучшить Calmar Ratio?
+              </h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20">
+                  <div className="font-bold text-green-400 mb-2">✅ Увеличить CAGR</div>
+                  <ul className="text-sm space-y-1 opacity-80">
+                    <li>• Улучшить качество входов (MAE анализ)</li>
+                    <li>• Оптимизировать выходы (MFE анализ)</li>
+                    <li>• Использовать Optimal f для размера позиций</li>
+                  </ul>
+                </div>
+                <div className="bg-teal-500/10 p-4 rounded-lg border border-teal-500/20">
+                  <div className="font-bold text-teal-400 mb-2">🛡️ Уменьшить Max DD</div>
+                  <ul className="text-sm space-y-1 opacity-80">
+                    <li>• Жёсткие стоп-лоссы</li>
+                    <li>• Диверсификация по инструментам</li>
+                    <li>• Снижение риска после серии убытков</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Pro Tip */}
+            <div className="bg-gradient-to-r from-teal-500/20 to-green-500/20 p-4 rounded-lg border border-teal-500/30">
+              <h4 className="font-bold text-teal-400 mb-2 flex items-center gap-2">
+                <Crown size={16} />
+                Инсайт от хедж-фондов
+              </h4>
+              <ul className="text-sm space-y-1 opacity-80">
+                <li>📊 Calmar &gt; 2.0 позволяет привлекать институциональные деньги</li>
+                <li>🎯 Топ-фонды оптимизируют под Calmar, а не под абсолютную доходность</li>
+                <li>⚡ Eqio автоматически рассчитывает CAGR с учётом периода торговли</li>
               </ul>
             </div>
           </div>
@@ -1795,212 +1944,6 @@ export default function Manual() {
                 <li>📊 Минимум 30 сделок для надёжного анализа</li>
                 <li>⚠️ MAE &gt; стоп-лосса = сделка была обречена. Фильтруйте такие сетапы!</li>
                 <li>🎯 Eqio строит графики MAE/MFE автоматически</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {/* Tags Strategy */}
-        <section className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-60 h-60 bg-pink-500/15 rounded-full blur-3xl" />
-          
-          <div className="relative">
-            {/* Header */}
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-gradient-to-br from-pink-500 to-pink-700 rounded-xl shadow-lg shadow-pink-500/20">
-                  <BookOpen size={28} className="text-white" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-2xl font-black tracking-tight">Система тегов</h2>
-                    <span className="px-2 py-0.5 bg-pink-500/20 rounded text-[10px] font-mono text-pink-400">ПСИХОЛОГИЯ</span>
-                  </div>
-                  <p className="text-xs font-mono opacity-50">TAGGING PROTOCOL • САМОАНАЛИЗ</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Pain Point */}
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
-              <div className="flex items-start gap-3">
-                <div className="p-1.5 bg-red-500/20 rounded shrink-0">
-                  <Brain size={16} className="text-red-400" />
-                </div>
-                <div>
-                  <div className="font-bold text-red-400 mb-1">Враг внутри</div>
-                  <p className="text-sm opacity-80">
-                    «Я плохо торгую шорты» — думаете вы. Но данные могут показать, что вы теряете только когда 
-                    торгуете шорты <strong className="text-white">+ на новостях + после серии убытков</strong>. 
-                    Система тегов превращает интуицию в факты.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* What is tagging */}
-            <div className="mb-8">
-              <h3 className="text-white font-bold text-lg mb-3 flex items-center gap-2">
-                <BookOpen className="text-pink-400" size={18} />
-                Зачем нужны теги?
-              </h3>
-              <p className="text-sm opacity-80 leading-relaxed mb-4">
-                Теги позволяют <strong className="text-white">категоризировать сделки</strong> по любым параметрам: 
-                эмоциональное состояние, тип сетапа, время дня, новости и т.д. 
-                А потом — анализировать статистику по каждой категории.
-              </p>
-              <div className="bg-pink-500/10 p-4 rounded-lg border border-pink-500/20">
-                <p className="text-sm italic text-center">
-                  «Данные не лгут. Теги превращают вашу психологию в сухие цифры, 
-                  которые можно <span className="text-pink-400 font-bold">измерить и улучшить</span>.»
-                </p>
-              </div>
-            </div>
-
-            {/* Emotional Tags */}
-            <div className="mb-8">
-              <h3 className="text-white font-bold text-lg mb-4">😤 Эмоциональные теги (красные флаги)</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">
-                  <div className="text-red-400 font-mono font-bold mb-2">#FOMO</div>
-                  <p className="text-xs opacity-70 mb-2">Fear Of Missing Out — страх упустить движение</p>
-                  <div className="text-[10px] text-red-400/70">⚠️ Обычно убыточные входы</div>
-                </div>
-                <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">
-                  <div className="text-red-400 font-mono font-bold mb-2">#REVENGE</div>
-                  <p className="text-xs opacity-70 mb-2">Попытка «отыграться» после убытка</p>
-                  <div className="text-[10px] text-red-400/70">⚠️ Увеличенный риск, эмоции</div>
-                </div>
-                <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">
-                  <div className="text-red-400 font-mono font-bold mb-2">#TILT</div>
-                  <p className="text-xs opacity-70 mb-2">Полная потеря контроля</p>
-                  <div className="text-[10px] text-red-400/70">🚨 Критический красный флаг</div>
-                </div>
-                <div className="bg-orange-500/10 p-4 rounded-lg border border-orange-500/20 hover:border-orange-500/40 transition-colors">
-                  <div className="text-orange-400 font-mono font-bold mb-2">#IMPULSE</div>
-                  <p className="text-xs opacity-70 mb-2">Спонтанная сделка без плана</p>
-                  <div className="text-[10px] text-orange-400/70">⚠️ Нарушение дисциплины</div>
-                </div>
-                <div className="bg-orange-500/10 p-4 rounded-lg border border-orange-500/20 hover:border-orange-500/40 transition-colors">
-                  <div className="text-orange-400 font-mono font-bold mb-2">#OVERSIZE</div>
-                  <p className="text-xs opacity-70 mb-2">Завышенный размер позиции</p>
-                  <div className="text-[10px] text-orange-400/70">⚠️ Нарушение риск-менеджмента</div>
-                </div>
-                <div className="bg-yellow-500/10 p-4 rounded-lg border border-yellow-500/20 hover:border-yellow-500/40 transition-colors">
-                  <div className="text-yellow-400 font-mono font-bold mb-2">#LATE</div>
-                  <p className="text-xs opacity-70 mb-2">Слишком поздний вход</p>
-                  <div className="text-[10px] text-yellow-400/70">Правильное направление, плохой тайминг</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Positive Tags */}
-            <div className="mb-8">
-              <h3 className="text-white font-bold text-lg mb-4">✅ Позитивные теги (зелёные флаги)</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20 hover:border-green-500/40 transition-colors">
-                  <div className="text-green-400 font-mono font-bold mb-2">#SYSTEM</div>
-                  <p className="text-xs opacity-70 mb-2">Идеальный вход по правилам системы</p>
-                  <div className="text-[10px] text-green-400/70">✓ Эталонная сделка</div>
-                </div>
-                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20 hover:border-green-500/40 transition-colors">
-                  <div className="text-green-400 font-mono font-bold mb-2">#A_SETUP</div>
-                  <p className="text-xs opacity-70 mb-2">Лучший сетап, все условия сошлись</p>
-                  <div className="text-[10px] text-green-400/70">✓ Максимальная уверенность</div>
-                </div>
-                <div className="bg-green-500/10 p-4 rounded-lg border border-green-500/20 hover:border-green-500/40 transition-colors">
-                  <div className="text-green-400 font-mono font-bold mb-2">#PATIENT</div>
-                  <p className="text-xs opacity-70 mb-2">Дождались идеального входа</p>
-                  <div className="text-[10px] text-green-400/70">✓ Дисциплина и терпение</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Context Tags */}
-            <div className="mb-8">
-              <h3 className="text-white font-bold text-lg mb-4">📊 Контекстные теги</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#NEWS</div>
-                  <div className="text-[10px] opacity-50">На новостях</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#TREND</div>
-                  <div className="text-[10px] opacity-50">По тренду</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#COUNTER</div>
-                  <div className="text-[10px] opacity-50">Контртренд</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#BREAKOUT</div>
-                  <div className="text-[10px] opacity-50">Пробой уровня</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#PULLBACK</div>
-                  <div className="text-[10px] opacity-50">Откат</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#MORNING</div>
-                  <div className="text-[10px] opacity-50">Утренняя сессия</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#EVENING</div>
-                  <div className="text-[10px] opacity-50">Вечерняя сессия</div>
-                </div>
-                <div className="bg-accent/10 p-3 rounded-lg border border-accent/20 text-center">
-                  <div className="text-accent font-mono text-sm font-bold">#EARNINGS</div>
-                  <div className="text-[10px] opacity-50">Отчётность</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Example Analysis */}
-            <div className="bg-gradient-to-r from-pink-500/10 via-accent/10 to-pink-500/10 rounded-xl p-6 mb-8 border border-pink-500/20">
-              <h3 className="text-white font-bold text-lg mb-4">📊 Пример анализа по тегам</h3>
-              
-              <div className="bg-black/30 p-4 rounded-lg mb-4">
-                <div className="text-sm opacity-80 mb-4">
-                  Трейдер думал, что плохо торгует шорты. Eqio показал реальную картину:
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center p-2 bg-black/30 rounded">
-                    <span className="font-mono text-sm">#SHORT</span>
-                    <span className="text-green-400">+12% (прибыльно!)</span>
-                  </div>
-                  <div className="flex justify-between items-center p-2 bg-black/30 rounded">
-                    <span className="font-mono text-sm">#SHORT + #NEWS</span>
-                    <span className="text-yellow-400">−3% (слабо)</span>
-                  </div>
-                  <div className="flex justify-between items-center p-2 bg-red-500/10 rounded border border-red-500/20">
-                    <span className="font-mono text-sm">#SHORT + #NEWS + #REVENGE</span>
-                    <span className="text-red-400 font-bold">−45% (катастрофа!)</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-accent/10 p-4 rounded border border-accent/20">
-                <div className="font-bold text-accent mb-2">💡 Вывод:</div>
-                <p className="text-sm opacity-80">
-                  Проблема не в шортах! Проблема в комбинации: новости + желание отыграться. 
-                  <strong className="text-white"> Решение: не торговать шорты на новостях после убытков.</strong>
-                </p>
-              </div>
-            </div>
-
-            {/* Pro Tips */}
-            <div className="border-l-4 border-pink-500 pl-4 py-2">
-              <div className="flex items-center gap-2 mb-2">
-                <Crown size={16} className="text-pink-400" />
-                <span className="text-sm font-bold uppercase tracking-wider text-pink-400">Советы профессионалов</span>
-              </div>
-              <ul className="space-y-2 text-sm opacity-80">
-                <li>💡 Ставьте теги <strong className="text-white">сразу при открытии</strong> — потом забудете эмоции</li>
-                <li>📊 Анализируйте теги еженедельно — ищите паттерны</li>
-                <li>⚠️ Если #FOMO или #REVENGE встречаются часто — это сигнал для работы над психологией</li>
-                <li>🎯 Создавайте свои теги под вашу стратегию!</li>
               </ul>
             </div>
           </div>

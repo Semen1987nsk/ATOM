@@ -10,8 +10,9 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { FilterPanel, Filters, Period } from '@/components/FilterPanel';
 import { useLanguage, interpolate } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
-import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, Plus, Lock, Download, Upload, Trash2, BookOpen, GitGraph, History, Shield, BarChart3, Flame, Scale, Skull, Dice5, LineChart as LineChartIcon, Clock, Calendar, Gauge, Brain, Settings, Wallet } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, Plus, Lock, Upload, Trash2, BookOpen, GitGraph, History, Shield, BarChart3, Flame, Scale, Skull, Dice5, LineChart as LineChartIcon, Clock, Calendar, Gauge, Brain, Settings, Wallet, User, LogIn } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { DashboardSkeleton } from '@/components/Skeleton';
 
@@ -69,6 +70,12 @@ interface DashboardData {
   current_streak: number;
   current_streak_type: string | null;
   tail_ratio: number;
+  calmar_ratio: {
+    calmar_ratio: number;
+    cagr_pct: number;
+    max_drawdown_pct: number;
+    rating: string;
+  };
   risk_of_ruin: {
     ror_20pct: number;
     ror_50pct: number;
@@ -106,6 +113,53 @@ interface DashboardData {
   tag_stats: { tag: string; pnl: number; win_rate: number; count: number }[];
 }
 
+// Auth button component
+function AuthButton() {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return <div className="w-8 h-8 bg-secondary rounded-full animate-pulse" />;
+  }
+  
+  if (user) {
+    return (
+      <div className="flex items-center gap-2">
+        {user.is_admin && (
+          <Link 
+            href="/admin"
+            className="btn-secondary p-2.5 aspect-square text-purple-400"
+            title="Админ-панель"
+          >
+            <Shield size={14} />
+          </Link>
+        )}
+        <Link 
+          href="/profile"
+          className="flex items-center gap-2 btn-secondary"
+          title="Профиль"
+        >
+          <div className="w-5 h-5 bg-accent rounded-full flex items-center justify-center">
+            <span className="text-xs font-bold text-white">
+              {(user.name || user.email)[0].toUpperCase()}
+            </span>
+          </div>
+          <span className="hidden md:inline text-sm">{user.name || 'Профиль'}</span>
+        </Link>
+      </div>
+    );
+  }
+  
+  return (
+    <Link 
+      href="/login"
+      className="btn-secondary flex items-center gap-2"
+    >
+      <LogIn size={14} />
+      <span className="hidden md:inline">Войти</span>
+    </Link>
+  );
+}
+
 export default function Home() {
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
@@ -119,6 +173,30 @@ export default function Home() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [logs, setLogs] = useState<{msg: string, time: string}[]>([]);
   const [mounted, setMounted] = useState(false);
+  
+  // Check if we have any data
+  const hasData = trades.length > 0;
+  const noData = t.emptyState?.noData || '—';
+  
+  // Helper to format stat values - shows dash when no data
+  const formatStat = (value: number | string | null | undefined, suffix: string = ''): string => {
+    if (!hasData) return noData;
+    if (value === null || value === undefined) return noData;
+    if (typeof value === 'number' && (isNaN(value) || !isFinite(value))) return noData;
+    return `${value}${suffix}`;
+  };
+  
+  const formatStatPercent = (value: number | null | undefined, decimals: number = 1): string => {
+    if (!hasData) return noData;
+    if (value === null || value === undefined || isNaN(value) || !isFinite(value)) return noData;
+    return `${value.toFixed(decimals)}%`;
+  };
+  
+  const formatStatCurrency = (value: number | null | undefined): string => {
+    if (!hasData) return noData;
+    if (value === null || value === undefined || isNaN(value) || !isFinite(value)) return noData;
+    return formatCurrency(value);
+  };
   
   // Unified filters state
   const [filters, setFilters] = useState<Filters>({
@@ -236,16 +314,6 @@ export default function Home() {
     }
   };
 
-  const handleExport = async () => {
-    try {
-      window.open(getApiUrl('/trades/export'), '_blank');
-      addLog(t.logs.exporting);
-    } catch (error) {
-      console.error('Export failed:', error);
-      addLog(t.logs.exportFailed);
-    }
-  };
-
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -334,6 +402,7 @@ export default function Home() {
               <Settings size={14} />
             </button>
             <LanguageSwitcher />
+            <AuthButton />
           </div>
           <Link 
             href="/history"
@@ -354,13 +423,6 @@ export default function Home() {
             <Upload size={14} />
             {t.nav.importData}
           </label>
-          <button 
-            onClick={handleExport}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <Download size={14} />
-            {t.nav.exportCsv}
-          </button>
           <button 
             onClick={() => setIsModalOpen(true)}
             className="btn-primary flex items-center gap-2"
@@ -395,136 +457,175 @@ export default function Home() {
         onClose={() => setIsSettingsOpen(false)}
       />
 
+      {/* Empty State Banner */}
+      {!hasData && !loading && (
+        <div className="mb-8 p-6 cyber-card border-accent/30 bg-gradient-to-r from-accent/5 to-transparent">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center">
+                <BarChart3 size={24} className="text-accent" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">{t.emptyState?.title || 'Start Your Trading Journal'}</h3>
+                <p className="text-sm opacity-60">{t.emptyState?.description || 'Import broker report or add your first trade to see analytics'}</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <label className="btn-secondary flex items-center gap-2 cursor-pointer">
+                <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} />
+                <Upload size={14} />
+                {t.emptyState?.importButton || 'Import Trades'}
+              </label>
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Plus size={14} />
+                {t.emptyState?.addButton || 'Add Manually'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatsCard 
           title={t.stats.totalPnl.title} 
-          value={formatCurrency(stats?.total_pnl || 0)} 
-          description={t.stats.totalPnl.description}
-          trend={stats?.total_pnl && stats.total_pnl > 0 ? 'up' : 'down'}
+          value={formatStatCurrency(stats?.total_pnl)} 
+          description={hasData ? t.stats.totalPnl.description : ''}
+          trend={hasData && stats?.total_pnl && stats.total_pnl > 0 ? 'up' : hasData && stats?.total_pnl && stats.total_pnl < 0 ? 'down' : undefined}
           icon={<TrendingUp size={18} />}
           tooltipText={t.stats.totalPnl.tooltip}
         />
         <StatsCard 
           title={t.stats.winRate.title} 
-          value={`${stats?.win_rate.toFixed(1)}%`} 
-          description={interpolate(t.stats.winRate.description, { profitable: stats?.profitable_trades || 0, total: stats?.total_trades || 0 })}
+          value={formatStatPercent(stats?.win_rate)} 
+          description={hasData ? interpolate(t.stats.winRate.description, { profitable: stats?.profitable_trades || 0, total: stats?.total_trades || 0 }) : ''}
           icon={<Target size={18} />}
           tooltipText={t.stats.winRate.tooltip}
         />
         <StatsCard 
           title={t.stats.optimalF.title} 
-          value={stats?.optimal_f || 0} 
-          description={t.stats.optimalF.description}
-          highlight={
+          value={formatStat(stats?.optimal_f)} 
+          description={hasData ? t.stats.optimalF.description : ''}
+          highlight={hasData ? (
             (stats?.profit_factor || 0) >= 1 
               ? `Риск: ${((stats?.optimal_f || 0) * 25).toFixed(0)}% от депо`
               : `⚠️ PF < 1 — не торговать!`
-          }
-          trend={(stats?.profit_factor || 0) < 1 ? 'down' : undefined}
+          ) : undefined}
+          trend={hasData && (stats?.profit_factor || 0) < 1 ? 'down' : undefined}
           icon={<Zap size={18} />}
           tooltipText={t.stats.optimalF.tooltip}
         />
         <StatsCard 
           title={t.stats.sqn.title} 
-          value={stats?.sqn?.sqn || 0} 
-          description={stats?.sqn?.rating || t.stats.sqn.description}
+          value={formatStat(stats?.sqn?.sqn)} 
+          description={hasData ? (stats?.sqn?.rating || t.stats.sqn.description) : ''}
           icon={<Activity size={18} />}
           tooltipText={t.stats.sqn.tooltip}
         />
         <StatsCard 
           title={t.stats.zScore.title} 
-          value={stats?.z_score?.z_score || 0} 
-          description={stats?.z_score?.verdict || t.stats.zScore.description}
+          value={formatStat(stats?.z_score?.z_score)} 
+          description={hasData ? (stats?.z_score?.verdict || t.stats.zScore.description) : ''}
           icon={<GitGraph size={18} />}
           tooltipText={stats?.z_score?.description || t.stats.zScore.tooltip}
         />
         <StatsCard 
           title={t.stats.profitFactor.title} 
-          value={stats?.profit_factor || 0} 
-          description={t.stats.profitFactor.description}
+          value={formatStat(stats?.profit_factor)} 
+          description={hasData ? t.stats.profitFactor.description : ''}
           icon={<TrendingUp size={18} />}
           tooltipText={t.stats.profitFactor.tooltip}
         />
         <StatsCard 
           title={t.stats.rExpectancy.title} 
-          value={`${stats?.r_expectancy || 0}R`} 
-          description={t.stats.rExpectancy.description}
+          value={formatStat(stats?.r_expectancy, 'R')} 
+          description={hasData ? t.stats.rExpectancy.description : ''}
           icon={<Target size={18} />}
           tooltipText={t.stats.rExpectancy.tooltip}
         />
         <StatsCard 
           title={t.stats.recoveryFactor.title} 
-          value={stats?.recovery_factor || 0} 
-          description={t.stats.recoveryFactor.description}
+          value={formatStat(stats?.recovery_factor)} 
+          description={hasData ? t.stats.recoveryFactor.description : ''}
           icon={<Activity size={18} />}
           tooltipText={t.stats.recoveryFactor.tooltip}
         />
         <StatsCard 
           title={t.stats.totalRoi.title} 
-          value={`${stats?.total_roi?.toFixed(2) || 0}%`} 
-          description={t.stats.totalRoi.description}
-          trend={stats?.total_roi && stats.total_roi > 0 ? 'up' : stats?.total_roi && stats.total_roi < 0 ? 'down' : undefined}
+          value={formatStatPercent(stats?.total_roi, 2)} 
+          description={hasData ? t.stats.totalRoi.description : ''}
+          trend={hasData && stats?.total_roi && stats.total_roi > 0 ? 'up' : hasData && stats?.total_roi && stats.total_roi < 0 ? 'down' : undefined}
           icon={<Wallet size={18} />}
           tooltipText={t.stats.totalRoi.tooltip}
         />
         <StatsCard 
           title={t.stats.expectedGhpr.title} 
-          value={stats?.expected_ghpr || 0} 
-          description={t.stats.expectedGhpr.description}
+          value={formatStat(stats?.expected_ghpr)} 
+          description={hasData ? t.stats.expectedGhpr.description : ''}
           icon={<TrendingUp size={18} />}
           tooltipText={t.stats.expectedGhpr.tooltip}
         />
         <StatsCard 
           title={t.stats.sortinoRatio.title} 
-          value={stats?.sortino_ratio || 0} 
-          description={t.stats.sortinoRatio.description}
+          value={formatStat(stats?.sortino_ratio)} 
+          description={hasData ? t.stats.sortinoRatio.description : ''}
           icon={<Shield size={18} />}
           tooltipText={t.stats.sortinoRatio.tooltip}
         />
         <StatsCard 
           title={t.stats.maxDrawdown.title} 
-          value={`${stats?.max_drawdown_pct?.toFixed(1) || 0}%`} 
-          description={`${formatCurrency(stats?.max_drawdown_abs || 0)}`}
-          trend="down"
+          value={formatStatPercent(stats?.max_drawdown_pct)} 
+          description={hasData ? formatCurrency(stats?.max_drawdown_abs || 0) : ''}
+          trend={hasData ? 'down' : undefined}
           icon={<TrendingDown size={18} />}
           tooltipText={t.stats.maxDrawdown.tooltip}
         />
         <StatsCard 
           title={t.stats.currentDrawdown.title} 
-          value={`${stats?.current_drawdown_pct?.toFixed(1) || 0}%`} 
-          description={t.stats.currentDrawdown.description}
-          trend={stats?.current_drawdown_pct && stats.current_drawdown_pct > 5 ? 'down' : undefined}
+          value={formatStatPercent(stats?.current_drawdown_pct)} 
+          description={hasData ? t.stats.currentDrawdown.description : ''}
+          trend={hasData && stats?.current_drawdown_pct && stats.current_drawdown_pct > 5 ? 'down' : undefined}
           icon={<Activity size={18} />}
           tooltipText={t.stats.currentDrawdown.tooltip}
         />
         <StatsCard 
           title={t.stats.tailRatio.title} 
-          value={stats?.tail_ratio?.toFixed(2) || 0} 
-          description={t.stats.tailRatio.description}
+          value={hasData ? (stats?.tail_ratio?.toFixed(2) || noData) : noData} 
+          description={hasData ? t.stats.tailRatio.description : ''}
           icon={<BarChart3 size={18} />}
           tooltipText={t.stats.tailRatio.tooltip}
         />
         <StatsCard 
           title={t.stats.winStreak.title} 
-          value={stats?.max_win_streak || 0} 
-          description={`${interpolate(t.stats.winStreak.description, { current: stats?.current_streak || 0 })} ${stats?.current_streak_type === 'win' ? '🟢' : stats?.current_streak_type === 'loss' ? '🔴' : ''}`}
+          value={formatStat(stats?.max_win_streak)} 
+          description={hasData ? `${interpolate(t.stats.winStreak.description, { current: stats?.current_streak || 0 })} ${stats?.current_streak_type === 'win' ? '🟢' : stats?.current_streak_type === 'loss' ? '🔴' : ''}` : ''}
           icon={<Flame size={18} />}
           tooltipText={t.stats.winStreak.tooltip}
         />
         <StatsCard 
           title={t.stats.lossStreak.title} 
-          value={stats?.max_loss_streak || 0} 
-          description={t.stats.lossStreak.description}
-          trend="down"
+          value={formatStat(stats?.max_loss_streak)} 
+          description={hasData ? t.stats.lossStreak.description : ''}
+          trend={hasData ? 'down' : undefined}
           icon={<AlertTriangle size={18} />}
           tooltipText={t.stats.lossStreak.tooltip}
         />
         <StatsCard 
           title={t.stats.avgWinLoss.title} 
-          value={formatCurrency(stats?.avg_win || 0)} 
-          description={`${settings.currencySymbol}${Math.abs(stats?.avg_loss || 0).toFixed(0)}`}
+          value={formatStatCurrency(stats?.avg_win)} 
+          description={hasData ? `${settings.currencySymbol}${Math.abs(stats?.avg_loss || 0).toFixed(0)}` : ''}
           icon={<Scale size={18} />}
           tooltipText={t.stats.avgWinLoss.tooltip}
+        />
+        <StatsCard 
+          title={t.stats.calmarRatio.title} 
+          value={hasData ? (stats?.calmar_ratio?.calmar_ratio?.toFixed(2) || noData) : noData} 
+          description={hasData ? (stats?.calmar_ratio?.rating || t.stats.calmarRatio.description) : ''}
+          trend={hasData && stats?.calmar_ratio?.calmar_ratio && stats.calmar_ratio.calmar_ratio >= 1 ? 'up' : hasData && stats?.calmar_ratio?.calmar_ratio && stats.calmar_ratio.calmar_ratio < 0.5 ? 'down' : undefined}
+          icon={<Gauge size={18} />}
+          tooltipText={t.stats.calmarRatio.tooltip}
         />
       </div>
 
@@ -537,61 +638,61 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard 
             title={t.advancedStats.ror20.title}
-            value={`${(stats?.risk_of_ruin?.ror_20pct || 0).toFixed(1)}%`} 
-            description={t.advancedStats.ror20.description}
-            trend={stats?.risk_of_ruin?.ror_20pct && stats.risk_of_ruin.ror_20pct > 10 ? 'down' : undefined}
+            value={formatStatPercent(stats?.risk_of_ruin?.ror_20pct)} 
+            description={hasData ? t.advancedStats.ror20.description : ''}
+            trend={hasData && stats?.risk_of_ruin?.ror_20pct && stats.risk_of_ruin.ror_20pct > 10 ? 'down' : undefined}
             icon={<Skull size={18} />}
             tooltipText={t.advancedStats.ror20.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.ror50.title}
-            value={`${(stats?.risk_of_ruin?.ror_50pct || 0).toFixed(1)}%`} 
-            description={t.advancedStats.ror50.description}
-            trend={stats?.risk_of_ruin?.ror_50pct && stats.risk_of_ruin.ror_50pct > 1 ? 'down' : undefined}
+            value={formatStatPercent(stats?.risk_of_ruin?.ror_50pct)} 
+            description={hasData ? t.advancedStats.ror50.description : ''}
+            trend={hasData && stats?.risk_of_ruin?.ror_50pct && stats.risk_of_ruin.ror_50pct > 1 ? 'down' : undefined}
             icon={<Skull size={18} />}
             tooltipText={t.advancedStats.ror50.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.monteCarlo5.title}
-            value={formatCurrency(stats?.monte_carlo?.worst_case_5pct || 0)} 
-            description={t.advancedStats.monteCarlo5.description}
-            trend="down"
+            value={formatStatCurrency(stats?.monte_carlo?.worst_case_5pct)} 
+            description={hasData ? t.advancedStats.monteCarlo5.description : ''}
+            trend={hasData ? 'down' : undefined}
             icon={<Dice5 size={18} />}
             tooltipText={t.advancedStats.monteCarlo5.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.monteCarloMedian.title}
-            value={formatCurrency(stats?.monte_carlo?.median_return || 0)} 
-            description={t.advancedStats.monteCarloMedian.description}
-            trend={stats?.monte_carlo?.median_return && stats.monte_carlo.median_return > 0 ? 'up' : 'down'}
+            value={formatStatCurrency(stats?.monte_carlo?.median_return)} 
+            description={hasData ? t.advancedStats.monteCarloMedian.description : ''}
+            trend={hasData && stats?.monte_carlo?.median_return && stats.monte_carlo.median_return > 0 ? 'up' : hasData ? 'down' : undefined}
             icon={<LineChartIcon size={18} />}
             tooltipText={t.advancedStats.monteCarloMedian.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.rDistribution.title}
-            value={`${stats?.r_distribution?.pct_above_1r?.toFixed(0) || 0}%`} 
-            description={interpolate(t.advancedStats.rDistribution.description, { pct: stats?.r_distribution?.pct_above_2r?.toFixed(0) || 0 })}
+            value={formatStatPercent(stats?.r_distribution?.pct_above_1r, 0)} 
+            description={hasData ? interpolate(t.advancedStats.rDistribution.description, { pct: stats?.r_distribution?.pct_above_2r?.toFixed(0) || 0 }) : ''}
             icon={<BarChart3 size={18} />}
             tooltipText={t.advancedStats.rDistribution.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.tradeDuration.title}
-            value={`${stats?.trade_duration?.avg_duration_hours?.toFixed(1) || 0}h`} 
-            description={interpolate(t.advancedStats.tradeDuration.description, { win: stats?.trade_duration?.avg_win_duration_hours?.toFixed(1) || 0, loss: stats?.trade_duration?.avg_loss_duration_hours?.toFixed(1) || 0 })}
+            value={formatStat(stats?.trade_duration?.avg_duration_hours?.toFixed(1), 'h')} 
+            description={hasData ? interpolate(t.advancedStats.tradeDuration.description, { win: stats?.trade_duration?.avg_win_duration_hours?.toFixed(1) || 0, loss: stats?.trade_duration?.avg_loss_duration_hours?.toFixed(1) || 0 }) : ''}
             icon={<Clock size={18} />}
             tooltipText={t.advancedStats.tradeDuration.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.bestDay.title}
-            value={stats?.time_patterns?.best_day?.day ? (t.days as Record<string, string>)[stats.time_patterns.best_day.day] || stats.time_patterns.best_day.day : 'N/A'} 
-            description={`PnL: ${formatCurrency(stats?.time_patterns?.best_day?.total_pnl || 0)}`}
+            value={hasData && stats?.time_patterns?.best_day?.day ? (t.days as Record<string, string>)[stats.time_patterns.best_day.day] || stats.time_patterns.best_day.day : noData} 
+            description={hasData ? `PnL: ${formatCurrency(stats?.time_patterns?.best_day?.total_pnl || 0)}` : ''}
             icon={<Calendar size={18} />}
             tooltipText={t.advancedStats.bestDay.tooltip}
           />
           <StatsCard 
             title={t.advancedStats.maeMfe.title}
-            value={`${stats?.mae_mfe_analysis?.avg_mae_pct?.toFixed(2) || 0}%`} 
-            description={interpolate(t.advancedStats.maeMfe.description, { mfe: `${stats?.mae_mfe_analysis?.avg_mfe_pct?.toFixed(2) || 0}%`, efficiency: `${stats?.mae_mfe_analysis?.avg_efficiency?.toFixed(0) || 0}%` })}
+            value={formatStatPercent(stats?.mae_mfe_analysis?.avg_mae_pct, 2)} 
+            description={hasData ? interpolate(t.advancedStats.maeMfe.description, { mfe: `${stats?.mae_mfe_analysis?.avg_mfe_pct?.toFixed(2) || 0}%`, efficiency: `${stats?.mae_mfe_analysis?.avg_efficiency?.toFixed(0) || 0}%` }) : ''}
             icon={<Gauge size={18} />}
             tooltipText={t.advancedStats.maeMfe.tooltip}
           />
@@ -998,38 +1099,40 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Terminal Log */}
-      <div className="mt-8 cyber-card p-4 bg-black/50 border-t-2 border-accent/20 relative overflow-hidden">
-        {/* Scan line animation */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/50 to-transparent animate-pulse" />
+      {/* Terminal Log - only show when user has trades */}
+      {hasData && (
+        <div className="mt-8 cyber-card p-4 bg-black/50 border-t-2 border-accent/20 relative overflow-hidden">
+          {/* Scan line animation */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/50 to-transparent animate-pulse" />
+          </div>
+          
+          <div className="flex items-center gap-2 mb-3 opacity-50">
+            <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+            <span className="text-[10px] font-mono uppercase tracking-widest">{t.logs.title}</span>
+            <span className="text-[9px] opacity-50 ml-auto font-mono">{logs.length} entries</span>
+          </div>
+          <div className="space-y-1 font-mono text-[10px] max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-accent/20 scrollbar-track-transparent">
+            {logs.map((log, i) => (
+              <div 
+                key={i} 
+                className={`flex gap-4 py-0.5 ${i === 0 ? 'text-accent' : 'opacity-60'} hover:opacity-100 transition-opacity`}
+              >
+                <span className="opacity-30 shrink-0">[{log.time}]</span>
+                <span className="flex-1">
+                  {i === 0 && <span className="text-accent mr-1">▸</span>}
+                  {log.msg}
+                </span>
+              </div>
+            ))}
+            {logs.length === 0 && (
+              <div className="opacity-20 italic py-4 text-center">
+                <span className="animate-pulse">_</span> Awaiting system events...
+              </div>
+            )}
+          </div>
         </div>
-        
-        <div className="flex items-center gap-2 mb-3 opacity-50">
-          <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-          <span className="text-[10px] font-mono uppercase tracking-widest">{t.logs.title}</span>
-          <span className="text-[9px] opacity-50 ml-auto font-mono">{logs.length} entries</span>
-        </div>
-        <div className="space-y-1 font-mono text-[10px] max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-accent/20 scrollbar-track-transparent">
-          {logs.map((log, i) => (
-            <div 
-              key={i} 
-              className={`flex gap-4 py-0.5 ${i === 0 ? 'text-accent' : 'opacity-60'} hover:opacity-100 transition-opacity`}
-            >
-              <span className="opacity-30 shrink-0">[{log.time}]</span>
-              <span className="flex-1">
-                {i === 0 && <span className="text-accent mr-1">▸</span>}
-                {log.msg}
-              </span>
-            </div>
-          ))}
-          {logs.length === 0 && (
-            <div className="opacity-20 italic py-4 text-center">
-              <span className="animate-pulse">_</span> Awaiting system events...
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </main>
   );
 }

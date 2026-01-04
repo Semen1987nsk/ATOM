@@ -15,11 +15,89 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    name = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=True)  # nullable for OAuth users
+    is_active = Column(Integer, default=1)  # 1 = active, 0 = disabled
+    is_admin = Column(Integer, default=0)  # 1 = admin, 0 = regular user
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)  # Последний вход
     settings = Column(JSON, default={})
+    
+    # OAuth fields
+    oauth_provider = Column(String, nullable=True)  # google, yandex, sber, tinkoff
+    oauth_provider_id = Column(String, nullable=True)  # ID from provider
+    
+    # Marketing / Analytics fields
+    registration_source = Column(String, default="email")  # email, google, yandex, sber, tinkoff
+    utm_source = Column(String, nullable=True)  # Источник трафика
+    utm_medium = Column(String, nullable=True)  # Канал (cpc, organic, social)
+    utm_campaign = Column(String, nullable=True)  # Название кампании
+    referrer = Column(String, nullable=True)  # Откуда пришёл пользователь
 
     accounts = relationship("Account", back_populates="owner")
+    subscriptions = relationship("Subscription", back_populates="user")
+    payments = relationship("Payment", back_populates="user")
+
+
+class SubscriptionPlan(enum.Enum):
+    FREE = "free"
+    PRO = "pro"  # 399₽/мес для РФ
+    CORPORATE = "corporate"  # Индивидуально (проп-трейдинг)
+
+
+class PaymentStatus(enum.Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class Subscription(Base):
+    """Модель подписки пользователя"""
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    plan = Column(Enum(SubscriptionPlan), default=SubscriptionPlan.FREE)
+    is_active = Column(Integer, default=1)
+    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    auto_renew = Column(Integer, default=1)  # 1 = auto-renew, 0 = cancel at expiry
+    
+    # Лимиты по плану
+    max_trades = Column(Integer, nullable=True)  # None = unlimited
+    max_accounts = Column(Integer, default=1)
+    ai_analysis_enabled = Column(Integer, default=0)
+    
+    user = relationship("User", back_populates="subscriptions")
+
+
+class Payment(Base):
+    """История платежей"""
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id"), nullable=True)
+    
+    amount = Column(Numeric(precision=10, scale=2), nullable=False)
+    currency = Column(String, default="RUB")
+    status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING)
+    
+    # Данные платежа
+    payment_method = Column(String)  # card, yookassa, sberbank, tinkoff
+    external_id = Column(String, nullable=True)  # ID в платёжной системе
+    description = Column(String, nullable=True)
+    
+    # Карта (маскированная)
+    card_last4 = Column(String(4), nullable=True)
+    card_type = Column(String, nullable=True)  # visa, mastercard, mir
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User", back_populates="payments")
+
 
 class Account(Base):
     __tablename__ = "accounts"

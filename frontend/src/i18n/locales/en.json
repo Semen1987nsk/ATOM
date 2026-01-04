@@ -4,6 +4,13 @@
     "subtitle": "",
     "loading": "Loading..."
   },
+  "emptyState": {
+    "title": "Start Your Trading Journal",
+    "description": "Import broker report or add your first trade manually to see analytics",
+    "importButton": "Import Trades",
+    "addButton": "Add Manually",
+    "noData": "—"
+  },
   "period": {
     "all": "All Time",
     "today": "Today",
@@ -105,6 +112,11 @@
       "title": "Avg Win / Loss",
       "description": "Loss: ${amount}",
       "tooltip": "Average winning and losing trade. Win/Loss ratio should be > 1.5 for a stable system."
+    },
+    "calmarRatio": {
+      "title": "Calmar Ratio",
+      "description": "CAGR / Max Drawdown",
+      "tooltip": "Calmar Ratio = Annual Return / Max Drawdown. Shows risk management efficiency. < 0.5 — poor, 1-2 — good, > 3 — top hedge fund level."
     }
   },
   "advancedStats": {
@@ -130,9 +142,9 @@
       "tooltip": "Median result from 1000 simulations. Realistic expectation if current trading system is maintained."
     },
     "rDistribution": {
-      "title": "R-Distribution >1R",
-      "description": ">2R: {pct}%",
-      "tooltip": "Percentage of trades with result > 1R and > 2R. Shows ability to let trades run."
+      "title": "Trades >1R",
+      "description": "Of which >2R: {pct}%",
+      "tooltip": "Percent of trades where profit exceeded initial risk (stop-loss). >1R = earned more than risked. >2R = earned twice the risk. Shows ability to let winners run."
     },
     "tradeDuration": {
       "title": "Avg Trade Duration",

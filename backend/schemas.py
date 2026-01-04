@@ -1,8 +1,54 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
 import models
+
+# ==================== AUTH SCHEMAS ====================
+
+class UserCreate(BaseModel):
+    """Схема для регистрации пользователя"""
+    email: EmailStr
+    name: Optional[str] = None
+    password: str = Field(..., min_length=6)
+
+class UserLogin(BaseModel):
+    """Схема для входа"""
+    email: EmailStr
+    password: str
+
+class UserResponse(BaseModel):
+    """Ответ с данными пользователя (без пароля)"""
+    id: int
+    email: str
+    name: Optional[str] = None
+    is_active: bool = True
+    is_admin: bool = False
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    settings: dict = {}
+    oauth_provider: Optional[str] = None
+    registration_source: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    """Схема для обновления профиля"""
+    name: Optional[str] = None
+    settings: Optional[dict] = None
+
+class Token(BaseModel):
+    """JWT токен"""
+    access_token: str
+    token_type: str = "bearer"
+
+class TokenData(BaseModel):
+    """Данные из токена"""
+    user_id: Optional[int] = None
+    email: Optional[str] = None
+
+# ==================== TRADE SCHEMAS ====================
 
 class TradeBase(BaseModel):
     symbol: str
@@ -113,6 +159,7 @@ class DashboardStats(BaseModel):
     current_streak: int = 0
     current_streak_type: Optional[str] = None
     tail_ratio: float = 0
+    calmar_ratio: Optional[dict] = None
     risk_of_ruin: Optional[dict] = None
     r_distribution: Optional[dict] = None
     trade_duration: Optional[dict] = None

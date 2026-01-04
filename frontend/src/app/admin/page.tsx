@@ -1,0 +1,1085 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth, RequireAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { 
+  Users, TrendingUp, Activity, Target, Shield, ArrowLeft,
+  Search, ChevronDown, ChevronUp, UserCheck, UserX, Crown,
+  BarChart3, PieChart, Calendar, Clock, AlertTriangle,
+  RefreshCw, Download, Filter, Loader2, DollarSign, CreditCard,
+  Zap, TrendingDown, Repeat
+} from 'lucide-react';
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, 
+  BarChart, Bar, Legend, Funnel, FunnelChart, LabelList
+} from 'recharts';
+
+function getApiBase(): string {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
+    const codespaceName = window.location.hostname.split('-3000')[0];
+    return `https://${codespaceName}-8000.app.github.dev`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+}
+
+// Цвета для графиков
+const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+const SOURCE_COLORS: Record<string, string> = {
+  email: '#6366f1',
+  google: '#ea4335',
+  yandex: '#fc3f1d',
+  sber: '#21a038',
+  tinkoff: '#ffdd2d',
+};
+
+interface AdminStats {
+  users: {
+    total: number;
+    new_today: number;
+    new_this_week: number;
+    new_this_month: number;
+  };
+  activity: {
+    dau: number;
+    wau: number;
+    mau: number;
+    dau_mau_ratio: number;
+  };
+  engagement: {
+    total_trades: number;
+    trades_today: number;
+    trades_this_week: number;
+    avg_trades_per_user: number;
+  };
+}
+
+interface UserData {
+  id: number;
+  email: string;
+  name: string | null;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+  last_login: string | null;
+  registration_source: string;
+  trades_count: number;
+  accounts_count: number;
+  utm_source: string | null;
+  utm_campaign: string | null;
+}
+
+interface SourceData {
+  source: string;
+  count: number;
+  percentage: number;
+}
+
+interface GrowthData {
+  date: string;
+  new_users: number;
+  total_users: number;
+}
+
+interface FunnelStep {
+  name: string;
+  count: number;
+  rate: number;
+}
+
+interface RevenueStats {
+  overview: {
+    total_users: number;
+    paid_users: number;
+    free_users: number;
+    conversion_rate: number;
+  };
+  revenue: {
+    total: number;
+    this_month: number;
+    today: number;
+    avg_payment: number;
+    mrr: number;
+    arr: number;
+  };
+  plans: {
+    free: number;
+    pro: number;
+    corporate: number;
+  };
+  health: {
+    churn_rate: number;
+    churned_this_month: number;
+    new_paid_this_month: number;
+    total_payments: number;
+  };
+}
+
+interface RevenueGrowth {
+  date: string;
+  revenue: number;
+  payments: number;
+  cumulative: number;
+}
+
+interface SubscriptionAnalytics {
+  payment_methods: { method: string; count: number; amount: number }[];
+  auto_renew: { enabled: number; disabled: number; rate: number };
+  expiring_soon: number;
+  ltv: number;
+  paying_users_total: number;
+}
+
+interface TopPayingUser {
+  id: number;
+  email: string;
+  name: string | null;
+  total_paid: number;
+  payments_count: number;
+  created_at: string;
+  last_login: string | null;
+}
+
+function AdminDashboard() {
+  const { user, token } = useAuth();
+  const router = useRouter();
+  
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [sources, setSources] = useState<SourceData[]>([]);
+  const [growth, setGrowth] = useState<GrowthData[]>([]);
+  const [funnel, setFunnel] = useState<FunnelStep[]>([]);
+  const [revenue, setRevenue] = useState<RevenueStats | null>(null);
+  const [revenueGrowth, setRevenueGrowth] = useState<RevenueGrowth[]>([]);
+  const [subscriptionAnalytics, setSubscriptionAnalytics] = useState<SubscriptionAnalytics | null>(null);
+  const [topPayingUsers, setTopPayingUsers] = useState<TopPayingUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 20;
+  
+  // Active tab
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'revenue' | 'analytics'>('overview');
+
+  const fetchData = useCallback(async () => {
+    if (!token) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const apiBase = getApiBase();
+      
+      // Fetch all data in parallel
+      const [statsRes, usersRes, sourcesRes, growthRes, funnelRes, revenueRes, revenueGrowthRes, subAnalyticsRes, topPayingRes] = await Promise.all([
+        fetch(`${apiBase}/admin/stats`, { headers }),
+        fetch(`${apiBase}/admin/users?skip=${currentPage * pageSize}&limit=${pageSize}&sort_by=${sortBy}&sort_order=${sortOrder}&search=${searchQuery}&registration_source=${sourceFilter}`, { headers }),
+        fetch(`${apiBase}/admin/registration-sources`, { headers }),
+        fetch(`${apiBase}/admin/growth?days=30`, { headers }),
+        fetch(`${apiBase}/admin/funnel`, { headers }),
+        fetch(`${apiBase}/admin/revenue`, { headers }),
+        fetch(`${apiBase}/admin/revenue-growth?days=30`, { headers }),
+        fetch(`${apiBase}/admin/subscription-analytics`, { headers }),
+        fetch(`${apiBase}/admin/top-paying-users?limit=10`, { headers }),
+      ]);
+      
+      if (!statsRes.ok) {
+        if (statsRes.status === 403) {
+          setError('Нет прав доступа к админ-панели');
+          return;
+        }
+        throw new Error('Ошибка загрузки данных');
+      }
+      
+      const [statsData, usersData, sourcesData, growthData, funnelData, revenueData, revenueGrowthData, subAnalyticsData, topPayingData] = await Promise.all([
+        statsRes.json(),
+        usersRes.json(),
+        sourcesRes.json(),
+        growthRes.json(),
+        funnelRes.json(),
+        revenueRes.json(),
+        revenueGrowthRes.json(),
+        subAnalyticsRes.json(),
+        topPayingRes.json(),
+      ]);
+      
+      setStats(statsData);
+      setUsers(usersData.users);
+      setUsersTotal(usersData.total);
+      setSources(sourcesData);
+      setGrowth(growthData);
+      setFunnel(funnelData.steps);
+      setRevenue(revenueData);
+      setRevenueGrowth(revenueGrowthData);
+      setSubscriptionAnalytics(subAnalyticsData);
+      setTopPayingUsers(topPayingData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, currentPage, sortBy, sortOrder, searchQuery, sourceFilter]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const toggleUserAdmin = async (userId: number, isAdmin: boolean) => {
+    try {
+      await fetch(`${getApiBase()}/admin/users/${userId}/toggle-admin?is_admin=${isAdmin}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleUserActive = async (userId: number) => {
+    try {
+      await fetch(`${getApiBase()}/admin/users/${userId}/toggle-active`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '—';
+    return new Date(dateStr).toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getSourceLabel = (source: string) => {
+    const labels: Record<string, string> = {
+      email: 'Email',
+      google: 'Google',
+      yandex: 'Яндекс',
+      sber: 'Сбер ID',
+      tinkoff: 'Тинькофф'
+    };
+    return labels[source] || source;
+  };
+
+  if (!user?.is_admin) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-8">
+        <div className="cyber-card p-8 max-w-md text-center">
+          <Shield size={48} className="text-red-400 mx-auto mb-4" />
+          <h1 className="text-xl font-bold mb-2">Доступ запрещён</h1>
+          <p className="text-muted-foreground mb-4">
+            У вас нет прав для доступа к административной панели.
+          </p>
+          <Link href="/" className="btn-primary">
+            Вернуться на главную
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-8">
+        <div className="cyber-card p-8 max-w-md text-center">
+          <AlertTriangle size={48} className="text-yellow-400 mx-auto mb-4" />
+          <h1 className="text-xl font-bold mb-2">Ошибка</h1>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <button onClick={fetchData} className="btn-primary">
+            Попробовать снова
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen p-4 md:p-8 relative">
+      {/* Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-purple-500/5" />
+      <div className="absolute top-20 right-20 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
+      
+      <div className="relative max-w-7xl mx-auto">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Link 
+              href="/" 
+              className="p-2 hover:bg-secondary rounded-lg transition-colors"
+            >
+              <ArrowLeft size={20} />
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                <Shield className="text-purple-400" />
+                Админ-панель
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Метрики и управление пользователями
+              </p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={fetchData}
+            disabled={loading}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            Обновить
+          </button>
+        </header>
+
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 border-b border-white/10 pb-2">
+          {[
+            { id: 'overview', label: 'Обзор', icon: BarChart3 },
+            { id: 'revenue', label: 'Выручка', icon: DollarSign },
+            { id: 'users', label: 'Пользователи', icon: Users },
+            { id: 'analytics', label: 'Аналитика', icon: PieChart },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                activeTab === tab.id 
+                  ? 'bg-purple-500/20 text-purple-400' 
+                  : 'hover:bg-secondary text-muted-foreground'
+              }`}
+            >
+              <tab.icon size={16} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {loading && !stats ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+          </div>
+        ) : (
+          <>
+            {/* Overview Tab */}
+            {activeTab === 'overview' && stats && (
+              <div className="space-y-6">
+                {/* KPI Cards - Row 1 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="cyber-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Users size={16} />
+                      <span className="text-xs">Всего пользователей</span>
+                    </div>
+                    <div className="text-3xl font-bold">{stats.users.total}</div>
+                    <div className="text-xs text-green-400">+{stats.users.new_this_week} за неделю</div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <CreditCard size={16} className="text-green-400" />
+                      <span className="text-xs">Платных</span>
+                    </div>
+                    <div className="text-3xl font-bold text-green-400">{revenue?.overview.paid_users || 0}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {revenue?.overview.conversion_rate || 0}% конверсия
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <DollarSign size={16} className="text-yellow-400" />
+                      <span className="text-xs">MRR</span>
+                    </div>
+                    <div className="text-3xl font-bold text-yellow-400">
+                      ₽{(revenue?.revenue.mrr || 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      ARR: ₽{((revenue?.revenue.arr || 0) / 1000).toFixed(0)}k
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Activity size={16} />
+                      <span className="text-xs">DAU / MAU</span>
+                    </div>
+                    <div className="text-3xl font-bold">
+                      {stats.activity.dau} / {stats.activity.mau}
+                    </div>
+                    <div className="text-xs text-purple-400">
+                      Stickiness: {stats.activity.dau_mau_ratio}%
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <TrendingUp size={16} />
+                      <span className="text-xs">Всего сделок</span>
+                    </div>
+                    <div className="text-3xl font-bold">{stats.engagement.total_trades}</div>
+                    <div className="text-xs text-blue-400">
+                      +{stats.engagement.trades_this_week} за неделю
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Target size={16} />
+                      <span className="text-xs">Сделок на юзера</span>
+                    </div>
+                    <div className="text-3xl font-bold">{stats.engagement.avg_trades_per_user}</div>
+                    <div className="text-xs text-muted-foreground">в среднем</div>
+                  </div>
+                </div>
+
+                {/* Charts Row */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* User Growth Chart */}
+                  <div className="cyber-card p-4">
+                    <h3 className="font-bold mb-4 flex items-center gap-2">
+                      <TrendingUp size={16} className="text-green-400" />
+                      Рост пользователей (30 дней)
+                    </h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <LineChart data={growth}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis 
+                          dataKey="date" 
+                          tick={{ fontSize: 10, fill: '#888' }}
+                          tickFormatter={(v) => new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                        />
+                        <YAxis tick={{ fontSize: 10, fill: '#888' }} />
+                        <Tooltip 
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid #333' }}
+                          labelFormatter={(v) => new Date(v).toLocaleDateString('ru-RU')}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="total_users" 
+                          stroke="#22c55e" 
+                          strokeWidth={2}
+                          dot={false}
+                          name="Всего"
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="new_users" 
+                          stroke="#6366f1" 
+                          strokeWidth={2}
+                          dot={false}
+                          name="Новых"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Registration Sources */}
+                  <div className="cyber-card p-4">
+                    <h3 className="font-bold mb-4 flex items-center gap-2">
+                      <PieChart size={16} className="text-purple-400" />
+                      Источники регистрации
+                    </h3>
+                    <div className="flex items-center gap-4">
+                      <ResponsiveContainer width="50%" height={200}>
+                        <RechartsPie>
+                          <Pie
+                            data={sources as any}
+                            dataKey="count"
+                            nameKey="source"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={40}
+                            outerRadius={80}
+                          >
+                            {sources.map((entry, index) => (
+                              <Cell 
+                                key={entry.source} 
+                                fill={SOURCE_COLORS[entry.source] || COLORS[index % COLORS.length]} 
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ background: '#1a1a2e', border: '1px solid #333' }}
+                            formatter={(value, name) => [value, getSourceLabel(String(name))]}
+                          />
+                        </RechartsPie>
+                      </ResponsiveContainer>
+                      <div className="space-y-2">
+                        {sources.map(s => (
+                          <div key={s.source} className="flex items-center gap-2 text-sm">
+                            <div 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ background: SOURCE_COLORS[s.source] || '#6366f1' }}
+                            />
+                            <span>{getSourceLabel(s.source)}</span>
+                            <span className="text-muted-foreground">
+                              {s.count} ({s.percentage}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Conversion Funnel */}
+                <div className="cyber-card p-4">
+                  <h3 className="font-bold mb-4 flex items-center gap-2">
+                    <Target size={16} className="text-blue-400" />
+                    Воронка конверсии
+                  </h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    {funnel.map((step, i) => (
+                      <div 
+                        key={step.name}
+                        className="relative p-4 rounded-lg text-center"
+                        style={{ 
+                          background: `linear-gradient(135deg, rgba(99, 102, 241, ${0.3 - i * 0.05}) 0%, rgba(99, 102, 241, ${0.1 - i * 0.02}) 100%)` 
+                        }}
+                      >
+                        <div className="text-2xl font-bold">{step.count}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{step.name}</div>
+                        <div className="text-xs text-purple-400 mt-1">{step.rate}%</div>
+                        {i < funnel.length - 1 && (
+                          <div className="absolute -right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+                            →
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Revenue Tab */}
+            {activeTab === 'revenue' && revenue && (
+              <div className="space-y-6">
+                {/* Revenue KPI Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="cyber-card p-4 border-l-4 border-green-500">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <DollarSign size={16} />
+                      <span className="text-xs">Выручка за месяц</span>
+                    </div>
+                    <div className="text-3xl font-bold text-green-400">
+                      ₽{revenue.revenue.this_month.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Всего: ₽{revenue.revenue.total.toLocaleString()}
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4 border-l-4 border-yellow-500">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Repeat size={16} />
+                      <span className="text-xs">MRR</span>
+                    </div>
+                    <div className="text-3xl font-bold text-yellow-400">
+                      ₽{revenue.revenue.mrr.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      ARR: ₽{(revenue.revenue.arr / 1000).toFixed(0)}k
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4 border-l-4 border-purple-500">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <CreditCard size={16} />
+                      <span className="text-xs">Средний чек</span>
+                    </div>
+                    <div className="text-3xl font-bold">
+                      ₽{revenue.revenue.avg_payment.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {revenue.health.total_payments} платежей
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4 border-l-4 border-red-500">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <TrendingDown size={16} />
+                      <span className="text-xs">Churn Rate</span>
+                    </div>
+                    <div className="text-3xl font-bold text-red-400">
+                      {revenue.health.churn_rate}%
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      -{revenue.health.churned_this_month} за месяц
+                    </div>
+                  </div>
+                </div>
+
+                {/* Revenue Chart + Plan Distribution */}
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Revenue Growth Chart */}
+                  <div className="cyber-card p-4">
+                    <h3 className="font-bold mb-4 flex items-center gap-2">
+                      <TrendingUp size={16} className="text-green-400" />
+                      Динамика выручки (30 дней)
+                    </h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={revenueGrowth}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                        <XAxis 
+                          dataKey="date" 
+                          tick={{ fontSize: 10, fill: '#888' }}
+                          tickFormatter={(v) => v ? new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}
+                        />
+                        <YAxis tick={{ fontSize: 10, fill: '#888' }} />
+                        <Tooltip 
+                          contentStyle={{ background: '#1a1a2e', border: '1px solid #333' }}
+                          labelFormatter={(v) => v ? new Date(v).toLocaleDateString('ru-RU') : ''}
+                          formatter={(value) => [`₽${(value || 0).toLocaleString()}`, 'Выручка']}
+                        />
+                        <Bar dataKey="revenue" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Plan Distribution */}
+                  <div className="cyber-card p-4">
+                    <h3 className="font-bold mb-4 flex items-center gap-2">
+                      <PieChart size={16} className="text-purple-400" />
+                      Распределение по тарифам
+                    </h3>
+                    <div className="space-y-4">
+                      {[
+                        { key: 'free', label: 'Free', color: '#6b7280', price: 0 },
+                        { key: 'pro', label: 'Pro', color: '#8b5cf6', price: 399 },
+                        { key: 'corporate', label: 'Corporate', color: '#f59e0b', price: null },
+                      ].map(plan => {
+                        const count = revenue.plans[plan.key as keyof typeof revenue.plans];
+                        const total = Object.values(revenue.plans).reduce((a, b) => a + b, 0);
+                        const percent = total > 0 ? (count / total * 100) : 0;
+                        return (
+                          <div key={plan.key} className="space-y-1">
+                            <div className="flex justify-between text-sm">
+                              <span className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded" style={{ background: plan.color }} />
+                                {plan.label}
+                                {plan.price !== null && plan.price > 0 && (
+                                  <span className="text-muted-foreground">₽{plan.price}/мес</span>
+                                )}
+                                {plan.price === null && (
+                                  <span className="text-muted-foreground text-xs">индивидуально</span>
+                                )}
+                              </span>
+                              <span className="font-bold">{count}</span>
+                            </div>
+                            <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                              <div 
+                                className="h-full rounded-full transition-all"
+                                style={{ width: `${percent}%`, background: plan.color }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Metrics Row */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  {/* Subscription Health */}
+                  <div className="cyber-card p-4">
+                    <h4 className="font-bold mb-3 flex items-center gap-2">
+                      <Zap size={16} className="text-yellow-400" />
+                      Здоровье подписок
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">LTV</span>
+                        <span className="font-bold">₽{subscriptionAnalytics?.ltv.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Платящих всего</span>
+                        <span className="font-bold">{subscriptionAnalytics?.paying_users_total}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Auto-renew %</span>
+                        <span className="font-bold text-green-400">{subscriptionAnalytics?.auto_renew.rate}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Истекает скоро</span>
+                        <span className={`font-bold ${(subscriptionAnalytics?.expiring_soon || 0) > 0 ? 'text-yellow-400' : ''}`}>
+                          {subscriptionAnalytics?.expiring_soon}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* New vs Churned */}
+                  <div className="cyber-card p-4">
+                    <h4 className="font-bold mb-3 flex items-center gap-2">
+                      <Activity size={16} className="text-blue-400" />
+                      Динамика за месяц
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Новых платных</span>
+                        <span className="font-bold text-green-400">+{revenue.health.new_paid_this_month}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Ушло (churn)</span>
+                        <span className="font-bold text-red-400">-{revenue.health.churned_this_month}</span>
+                      </div>
+                      <div className="border-t border-white/10 pt-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Net</span>
+                          <span className={`font-bold ${
+                            revenue.health.new_paid_this_month - revenue.health.churned_this_month >= 0 
+                              ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {revenue.health.new_paid_this_month - revenue.health.churned_this_month >= 0 ? '+' : ''}
+                            {revenue.health.new_paid_this_month - revenue.health.churned_this_month}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Methods */}
+                  <div className="cyber-card p-4">
+                    <h4 className="font-bold mb-3 flex items-center gap-2">
+                      <CreditCard size={16} className="text-purple-400" />
+                      Способы оплаты
+                    </h4>
+                    {subscriptionAnalytics?.payment_methods.length ? (
+                      <div className="space-y-2">
+                        {subscriptionAnalytics.payment_methods.map(pm => (
+                          <div key={pm.method} className="flex justify-between text-sm">
+                            <span className="capitalize">{pm.method}</span>
+                            <span>
+                              <span className="font-bold">{pm.count}</span>
+                              <span className="text-muted-foreground ml-2">
+                                ₽{pm.amount.toLocaleString()}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">Нет данных о платежах</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Top Paying Users */}
+                {topPayingUsers.length > 0 && (
+                  <div className="cyber-card p-4">
+                    <h3 className="font-bold mb-4 flex items-center gap-2">
+                      <Crown size={16} className="text-yellow-400" />
+                      Топ платящих пользователей
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-white/10">
+                            <th className="text-left p-2 text-muted-foreground">#</th>
+                            <th className="text-left p-2 text-muted-foreground">Пользователь</th>
+                            <th className="text-right p-2 text-muted-foreground">Платежей</th>
+                            <th className="text-right p-2 text-muted-foreground">Сумма</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {topPayingUsers.map((u, i) => (
+                            <tr key={u.id} className="border-b border-white/5">
+                              <td className="p-2 text-muted-foreground">{i + 1}</td>
+                              <td className="p-2">
+                                <div className="font-medium">{u.name || u.email}</div>
+                                {u.name && <div className="text-xs text-muted-foreground">{u.email}</div>}
+                              </td>
+                              <td className="p-2 text-right">{u.payments_count}</td>
+                              <td className="p-2 text-right font-bold text-green-400">
+                                ₽{u.total_paid.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Users Tab */}
+            {activeTab === 'users' && (
+              <div className="space-y-4">
+                {/* Filters */}
+                <div className="cyber-card p-4 flex flex-wrap gap-4 items-center">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Поиск по email или имени..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-secondary/50 border border-white/10 rounded-lg
+                               text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    />
+                  </div>
+                  
+                  <select
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value)}
+                    className="px-3 py-2 bg-secondary/50 border border-white/10 rounded-lg text-sm"
+                  >
+                    <option value="">Все источники</option>
+                    <option value="email">Email</option>
+                    <option value="google">Google</option>
+                    <option value="yandex">Яндекс</option>
+                    <option value="sber">Сбер ID</option>
+                    <option value="tinkoff">Тинькофф</option>
+                  </select>
+                  
+                  <select
+                    value={`${sortBy}-${sortOrder}`}
+                    onChange={(e) => {
+                      const [field, order] = e.target.value.split('-');
+                      setSortBy(field);
+                      setSortOrder(order as 'asc' | 'desc');
+                    }}
+                    className="px-3 py-2 bg-secondary/50 border border-white/10 rounded-lg text-sm"
+                  >
+                    <option value="created_at-desc">Новые первыми</option>
+                    <option value="created_at-asc">Старые первыми</option>
+                    <option value="last_login-desc">По активности</option>
+                  </select>
+                  
+                  <div className="text-sm text-muted-foreground">
+                    Найдено: {usersTotal}
+                  </div>
+                </div>
+
+                {/* Users Table */}
+                <div className="cyber-card overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-white/10">
+                          <th className="text-left p-3 text-muted-foreground font-medium">Пользователь</th>
+                          <th className="text-left p-3 text-muted-foreground font-medium">Источник</th>
+                          <th className="text-left p-3 text-muted-foreground font-medium">Регистрация</th>
+                          <th className="text-left p-3 text-muted-foreground font-medium">Последний вход</th>
+                          <th className="text-center p-3 text-muted-foreground font-medium">Сделок</th>
+                          <th className="text-center p-3 text-muted-foreground font-medium">Статус</th>
+                          <th className="text-right p-3 text-muted-foreground font-medium">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users.map(u => (
+                          <tr key={u.id} className="border-b border-white/5 hover:bg-secondary/30">
+                            <td className="p-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                  <span className="text-xs font-bold text-purple-400">
+                                    {(u.name || u.email)[0].toUpperCase()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="font-medium flex items-center gap-1">
+                                    {u.name || '—'}
+                                    {u.is_admin && <Crown size={12} className="text-yellow-400" />}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">{u.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <span 
+                                className="px-2 py-1 rounded text-xs font-medium"
+                                style={{ 
+                                  background: `${SOURCE_COLORS[u.registration_source] || '#6366f1'}20`,
+                                  color: SOURCE_COLORS[u.registration_source] || '#6366f1'
+                                }}
+                              >
+                                {getSourceLabel(u.registration_source)}
+                              </span>
+                            </td>
+                            <td className="p-3 text-muted-foreground text-xs">
+                              {formatDate(u.created_at)}
+                            </td>
+                            <td className="p-3 text-muted-foreground text-xs">
+                              {formatDate(u.last_login)}
+                            </td>
+                            <td className="p-3 text-center">
+                              <span className={u.trades_count > 0 ? 'text-green-400' : 'text-muted-foreground'}>
+                                {u.trades_count}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center">
+                              {u.is_active ? (
+                                <span className="text-green-400 text-xs">Активен</span>
+                              ) : (
+                                <span className="text-red-400 text-xs">Заблокирован</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex gap-1 justify-end">
+                                <button
+                                  onClick={() => toggleUserAdmin(u.id, !u.is_admin)}
+                                  className={`p-1.5 rounded transition-colors ${
+                                    u.is_admin 
+                                      ? 'bg-yellow-500/20 text-yellow-400' 
+                                      : 'hover:bg-secondary text-muted-foreground'
+                                  }`}
+                                  title={u.is_admin ? 'Снять админа' : 'Сделать админом'}
+                                >
+                                  <Crown size={14} />
+                                </button>
+                                <button
+                                  onClick={() => toggleUserActive(u.id)}
+                                  className={`p-1.5 rounded transition-colors ${
+                                    u.is_active 
+                                      ? 'hover:bg-red-500/20 hover:text-red-400 text-muted-foreground' 
+                                      : 'bg-red-500/20 text-red-400'
+                                  }`}
+                                  title={u.is_active ? 'Заблокировать' : 'Разблокировать'}
+                                >
+                                  {u.is_active ? <UserX size={14} /> : <UserCheck size={14} />}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* Pagination */}
+                  {usersTotal > pageSize && (
+                    <div className="flex items-center justify-between p-3 border-t border-white/10">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                        disabled={currentPage === 0}
+                        className="btn-secondary text-sm disabled:opacity-50"
+                      >
+                        ← Назад
+                      </button>
+                      <span className="text-sm text-muted-foreground">
+                        Стр. {currentPage + 1} из {Math.ceil(usersTotal / pageSize)}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => p + 1)}
+                        disabled={(currentPage + 1) * pageSize >= usersTotal}
+                        className="btn-secondary text-sm disabled:opacity-50"
+                      >
+                        Вперёд →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Analytics Tab */}
+            {activeTab === 'analytics' && stats && (
+              <div className="space-y-6">
+                {/* Detailed Metrics */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="cyber-card p-4">
+                    <h4 className="text-sm text-muted-foreground mb-3">Новые пользователи</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>Сегодня</span>
+                        <span className="font-bold text-green-400">+{stats.users.new_today}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>За неделю</span>
+                        <span className="font-bold text-green-400">+{stats.users.new_this_week}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>За месяц</span>
+                        <span className="font-bold text-green-400">+{stats.users.new_this_month}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <h4 className="text-sm text-muted-foreground mb-3">Активность</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>DAU</span>
+                        <span className="font-bold">{stats.activity.dau}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>WAU</span>
+                        <span className="font-bold">{stats.activity.wau}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>MAU</span>
+                        <span className="font-bold">{stats.activity.mau}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="cyber-card p-4">
+                    <h4 className="text-sm text-muted-foreground mb-3">Вовлечённость</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>Сделок сегодня</span>
+                        <span className="font-bold">{stats.engagement.trades_today}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Сделок за неделю</span>
+                        <span className="font-bold">{stats.engagement.trades_this_week}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Stickiness</span>
+                        <span className="font-bold text-purple-400">{stats.activity.dau_mau_ratio}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="cyber-card p-4 border-purple-500/20">
+                  <h4 className="font-bold mb-2">📊 Ключевые метрики для стартапа</h4>
+                  <div className="grid md:grid-cols-2 gap-4 text-sm text-muted-foreground">
+                    <div>
+                      <p><strong className="text-foreground">DAU/MAU (Stickiness)</strong> — показывает насколько часто пользователи возвращаются. Хороший показатель: 20%+</p>
+                      <p className="mt-2"><strong className="text-foreground">Retention</strong> — сколько пользователей остаются активными со временем</p>
+                    </div>
+                    <div>
+                      <p><strong className="text-foreground">Конверсия воронки</strong> — показывает где теряются пользователи</p>
+                      <p className="mt-2"><strong className="text-foreground">Источники</strong> — какие каналы привлечения работают лучше</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <RequireAuth>
+      <AdminDashboard />
+    </RequireAuth>
+  );
+}

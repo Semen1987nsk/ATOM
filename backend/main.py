@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, RedirectResponse
 import database
 from sqlalchemy.orm import Session
 import models
@@ -10,9 +11,11 @@ import analytics
 import ai_service
 import import_service
 import market_service
+import auth_service
+import oauth_service
 import csv
 import io
-from fastapi.responses import StreamingResponse
+import secrets
 from logger import get_logger
 from datetime import datetime, timedelta
 from typing import Optional
@@ -80,10 +83,449 @@ async def custom_docs():
 async def read_root():
     return {"message": "Добро пожаловать в API для ATOM!"}
 
+
+# ==================== AUTH ENDPOINTS ====================
+
+@app.post("/auth/register", response_model=schemas.Token, tags=["auth"])
+def register(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    """
+    Регистрация нового пользователя.
+    Возвращает JWT токен для авторизации.
+    """
+    # Проверяем, не занят ли email
+    existing_user = auth_service.get_user_by_email(db, user_data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email уже зарегистрирован"
+        )
+    
+    # Создаём пользователя
+    user = auth_service.create_user(db, user_data)
+    
+    # Создаём токен (sub должен быть строкой для JWT)
+    access_token = auth_service.create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+    
+    log.info(f"✅ Зарегистрирован новый пользователь: {user.email}")
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/auth/login", response_model=schemas.Token, tags=["auth"])
+def login(user_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
+    """
+    Вход в систему.
+    Возвращает JWT токен для авторизации.
+    """
+    user = auth_service.authenticate_user(db, user_data.email, user_data.password)
+    
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Неверный email или пароль"
+        )
+    
+    if user.is_active != 1:
+        raise HTTPException(
+            status_code=403,
+            detail="Аккаунт деактивирован"
+        )
+    
+    access_token = auth_service.create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+    
+    log.info(f"🔑 Вход пользователя: {user.email}")
+    
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/auth/me", response_model=schemas.UserResponse, tags=["auth"])
+def get_current_user_info(
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """
+    Получить информацию о текущем авторизованном пользователе.
+    Требует Bearer токен в заголовке Authorization.
+    """
+    return current_user
+
+
+@app.put("/auth/me", response_model=schemas.UserResponse, tags=["auth"])
+def update_current_user(
+    user_data: schemas.UserUpdate,
+    current_user: models.User = Depends(auth_service.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Обновить профиль текущего пользователя.
+    """
+    updated_user = auth_service.update_user(db, current_user, user_data)
+    log.info(f"✏️ Обновлён профиль пользователя: {updated_user.email}")
+    return updated_user
+
+
+@app.post("/auth/change-password", tags=["auth"])
+def change_password(
+    old_password: str,
+    new_password: str,
+    current_user: models.User = Depends(auth_service.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Изменить пароль текущего пользователя.
+    """
+    # Проверяем старый пароль
+    if not auth_service.verify_password(old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный текущий пароль"
+        )
+    
+    if len(new_password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Новый пароль должен быть минимум 6 символов"
+        )
+    
+    # Обновляем пароль
+    current_user.hashed_password = auth_service.get_password_hash(new_password)
+    db.commit()
+    
+    log.info(f"🔒 Пароль изменён для пользователя: {current_user.email}")
+    
+    return {"message": "Пароль успешно изменён"}
+
+
+# ==================== OAuth ENDPOINTS ====================
+
+# Хранилище state для проверки (в продакшене использовать Redis)
+oauth_states: dict[str, str] = {}
+
+@app.get("/auth/oauth/providers", tags=["oauth"])
+def get_oauth_providers():
+    """
+    Получить список доступных OAuth провайдеров.
+    """
+    return oauth_service.get_available_providers()
+
+
+@app.get("/auth/oauth/{provider}/authorize", tags=["oauth"])
+def oauth_authorize(provider: str, redirect_uri: str):
+    """
+    Получить URL для авторизации через OAuth провайдера.
+    """
+    oauth_provider = oauth_service.get_provider(provider)
+    if not oauth_provider:
+        raise HTTPException(status_code=400, detail=f"Провайдер {provider} не поддерживается или не настроен")
+    
+    # Генерируем state для защиты от CSRF
+    state = secrets.token_urlsafe(32)
+    oauth_states[state] = provider
+    
+    auth_url = oauth_provider.get_authorize_url(redirect_uri, state)
+    return {"authorize_url": auth_url, "state": state}
+
+
+@app.post("/auth/oauth/{provider}/callback", tags=["oauth"])
+async def oauth_callback(
+    provider: str,
+    code: str,
+    state: str,
+    redirect_uri: str,
+    db: Session = Depends(database.get_db)
+):
+    """
+    Обработать callback от OAuth провайдера и создать/авторизовать пользователя.
+    """
+    # Проверяем state
+    if state not in oauth_states or oauth_states[state] != provider:
+        raise HTTPException(status_code=400, detail="Неверный state параметр")
+    
+    del oauth_states[state]  # Удаляем использованный state
+    
+    oauth_provider = oauth_service.get_provider(provider)
+    if not oauth_provider:
+        raise HTTPException(status_code=400, detail=f"Провайдер {provider} не поддерживается")
+    
+    try:
+        # Обмениваем code на access_token
+        token_data = await oauth_service.exchange_code_for_token(
+            oauth_provider, code, redirect_uri
+        )
+        access_token = token_data.get("access_token")
+        
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Не удалось получить access_token")
+        
+        # Получаем информацию о пользователе
+        raw_user_info = await oauth_service.get_user_info(oauth_provider, access_token)
+        user_info = oauth_service.normalize_user_info(provider, raw_user_info)
+        
+        email = user_info.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email не получен от провайдера")
+        
+        # Ищем существующего пользователя
+        user = db.query(models.User).filter(models.User.email == email).first()
+        
+        if user:
+            # Обновляем OAuth данные если изменился провайдер
+            if user.oauth_provider != provider:
+                user.oauth_provider = provider
+                user.oauth_provider_id = user_info.get("provider_id")
+            # Обновляем last_login
+            user.last_login = datetime.now()
+            db.commit()
+        else:
+            # Создаём нового пользователя
+            user = models.User(
+                email=email,
+                name=user_info.get("name"),
+                hashed_password=None,  # OAuth пользователи без пароля
+                oauth_provider=provider,
+                oauth_provider_id=user_info.get("provider_id"),
+                registration_source=provider,  # Источник регистрации
+                last_login=datetime.now(),
+                is_active=1,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            
+            # Создаём дефолтный аккаунт
+            default_account = models.Account(
+                user_id=user.id,
+                name="Основной",
+                balance=0,
+                currency="RUB"
+            )
+            db.add(default_account)
+            db.commit()
+            
+            log.info(f"👤 Создан OAuth пользователь: {email} через {provider}")
+        
+        # Генерируем JWT токен
+        jwt_token = auth_service.create_access_token(data={"sub": user.email})
+        
+        log.info(f"🔐 OAuth вход: {email} через {provider}")
+        
+        return {
+            "access_token": jwt_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "oauth_provider": user.oauth_provider,
+            }
+        }
+        
+    except Exception as e:
+        log.error(f"❌ OAuth ошибка для {provider}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Ошибка авторизации: {str(e)}")
+
+
+# ==================== ADMIN ENDPOINTS ====================
+
+import admin_service
+
+def require_admin(current_user: models.User = Depends(auth_service.get_current_user)):
+    """Dependency для проверки прав администратора"""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Требуются права администратора"
+        )
+    return current_user
+
+
+@app.get("/admin/stats", tags=["admin"])
+def admin_get_stats(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Основные метрики для дашборда администратора"""
+    return admin_service.get_overview_stats(db)
+
+
+@app.get("/admin/users", tags=["admin"])
+def admin_get_users(
+    skip: int = 0,
+    limit: int = 50,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    search: Optional[str] = None,
+    registration_source: Optional[str] = None,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Список пользователей с фильтрацией и пагинацией"""
+    return admin_service.get_users_list(
+        db, skip, limit, sort_by, sort_order, search, registration_source
+    )
+
+
+@app.get("/admin/registration-sources", tags=["admin"])
+def admin_get_registration_sources(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Распределение пользователей по источникам регистрации"""
+    return admin_service.get_registration_sources(db)
+
+
+@app.get("/admin/utm-analytics", tags=["admin"])
+def admin_get_utm_analytics(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Аналитика UTM меток"""
+    return admin_service.get_utm_analytics(db)
+
+
+@app.get("/admin/growth", tags=["admin"])
+def admin_get_growth(
+    days: int = 30,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """График роста пользователей"""
+    return admin_service.get_user_growth(db, days)
+
+
+@app.get("/admin/cohorts", tags=["admin"])
+def admin_get_cohorts(
+    weeks: int = 8,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Когортный анализ retention"""
+    return admin_service.get_cohort_retention(db, weeks)
+
+
+@app.get("/admin/power-users", tags=["admin"])
+def admin_get_power_users(
+    limit: int = 20,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Топ активных пользователей"""
+    return admin_service.get_power_users(db, limit)
+
+
+@app.get("/admin/inactive-users", tags=["admin"])
+def admin_get_inactive_users(
+    days: int = 30,
+    limit: int = 50,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Неактивные пользователи (churn risk)"""
+    return admin_service.get_inactive_users(db, days, limit)
+
+
+@app.get("/admin/funnel", tags=["admin"])
+def admin_get_funnel(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Воронка конверсии"""
+    return admin_service.get_conversion_funnel(db)
+
+
+@app.post("/admin/users/{user_id}/toggle-admin", tags=["admin"])
+def admin_toggle_admin(
+    user_id: int,
+    is_admin: bool,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Установить/снять права администратора"""
+    try:
+        user = admin_service.set_user_admin(db, user_id, is_admin)
+        return {"message": f"Права администратора {'выданы' if is_admin else 'отозваны'}", "user_id": user.id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/admin/users/{user_id}/toggle-active", tags=["admin"])
+def admin_toggle_active(
+    user_id: int,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Активировать/деактивировать пользователя"""
+    try:
+        user = admin_service.toggle_user_active(db, user_id)
+        return {"message": f"Пользователь {'активирован' if user.is_active else 'деактивирован'}", "user_id": user.id}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/admin/revenue", tags=["admin"])
+def admin_get_revenue(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Метрики по выручке и платным подпискам"""
+    return admin_service.get_revenue_stats(db)
+
+
+@app.get("/admin/revenue-growth", tags=["admin"])
+def admin_get_revenue_growth(
+    days: int = 30,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """График выручки по дням"""
+    return admin_service.get_revenue_growth(db, days)
+
+
+@app.get("/admin/subscription-analytics", tags=["admin"])
+def admin_get_subscription_analytics(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Аналитика по подпискам"""
+    return admin_service.get_subscription_analytics(db)
+
+
+@app.get("/admin/top-paying-users", tags=["admin"])
+def admin_get_top_paying_users(
+    limit: int = 10,
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db)
+):
+    """Топ платящих пользователей"""
+    return admin_service.get_top_paying_users(db, limit)
+
+
+# ==================== HELPER: Get user's account ====================
+
+def get_account_id(db: Session, user: Optional[models.User] = None) -> int:
+    """Получить account_id для текущего пользователя или вернуть 1 для анонима"""
+    if user:
+        account = auth_service.get_user_account(db, user)
+        return account.id
+    return 1  # Fallback для обратной совместимости
+
+
+# ==================== TRADE ENDPOINTS ====================
+
 @app.post("/trades/", response_model=schemas.Trade)
-def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_db)):
-    # 1. Check for existing open trades for this symbol
+async def create_trade(
+    trade: schemas.TradeCreate, 
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    
+    # 1. Check for existing open trades for this symbol (только для этого аккаунта)
     open_trades = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
         models.Trade.symbol == trade.symbol,
         models.Trade.exit_at == None
     ).order_by(models.Trade.entry_at).all()
@@ -238,6 +680,7 @@ def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_
     else:
         # Standard New Trade
         db_trade = models.Trade(**trade.model_dump())
+        db_trade.account_id = account_id  # Привязываем к аккаунту пользователя
         db_trade.entry_commission = db_trade.commission
         db.add(db_trade)
         db.commit()
@@ -245,7 +688,13 @@ def create_trade(trade: schemas.TradeCreate, db: Session = Depends(database.get_
         return db_trade
 
 @app.post("/trades/import")
-async def import_trades(file: UploadFile = File(...), db: Session = Depends(database.get_db)):
+async def import_trades(
+    file: UploadFile = File(...), 
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    
     contents = await file.read()
     try:
         trades_data = import_service.parse_trade_file(contents, file.filename)
@@ -256,8 +705,9 @@ async def import_trades(file: UploadFile = File(...), db: Session = Depends(data
     skipped_count = 0
     
     for trade_dict in trades_data:
-        # Проверка дубликатов: symbol + direction + entry_at
+        # Проверка дубликатов: symbol + direction + entry_at (только для этого аккаунта)
         existing = db.query(models.Trade).filter(
+            models.Trade.account_id == account_id,
             models.Trade.symbol == trade_dict['symbol'],
             models.Trade.direction == trade_dict['direction'],
             models.Trade.entry_at == trade_dict['entry_at']
@@ -267,8 +717,8 @@ async def import_trades(file: UploadFile = File(...), db: Session = Depends(data
             skipped_count += 1
             continue
         
-        # Добавляем account_id (пока хардкод 1, как и везде)
-        trade_dict["account_id"] = 1
+        # Привязываем к аккаунту пользователя
+        trade_dict["account_id"] = account_id
         
         # Создаем модель
         db_trade = models.Trade(**trade_dict)
@@ -279,40 +729,30 @@ async def import_trades(file: UploadFile = File(...), db: Session = Depends(data
     return {"message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}"}
 
 @app.get("/trades/", response_model=list[schemas.Trade])
-def read_trades(skip: int = 0, limit: int = 5000, db: Session = Depends(database.get_db)):
-    trades = db.query(models.Trade).offset(skip).limit(limit).all()
+async def read_trades(
+    skip: int = 0, 
+    limit: int = 5000, 
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    trades = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id
+    ).offset(skip).limit(limit).all()
     return trades
 
-@app.get("/trades/export")
-def export_trades(db: Session = Depends(database.get_db)):
-    trades = db.query(models.Trade).all()
-    
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Заголовки
-    writer.writerow([
-        "ID", "Symbol", "Direction", "Entry Price", "Exit Price", 
-        "Quantity", "PnL", "Net PnL", "Commission", "Swap", "Entry At", "Exit At", "Tags", "Notes"
-    ])
-    
-    for t in trades:
-        writer.writerow([
-            t.id, t.symbol, t.direction.value, t.entry_price, t.exit_price,
-            t.quantity, t.pnl, t.net_pnl, t.commission, t.swap, t.entry_at, t.exit_at, 
-            ", ".join(t.tags) if t.tags else "", t.notes
-        ])
-    
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=atom_trades_export.csv"}
-    )
-
 @app.patch("/trades/{trade_id}", response_model=schemas.Trade)
-def update_trade(trade_id: int, trade_update: schemas.TradeUpdate, db: Session = Depends(database.get_db)):
-    db_trade = db.query(models.Trade).filter(models.Trade.id == trade_id).first()
+async def update_trade(
+    trade_id: int, 
+    trade_update: schemas.TradeUpdate, 
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    db_trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id
+    ).first()
     if not db_trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
@@ -325,8 +765,16 @@ def update_trade(trade_id: int, trade_update: schemas.TradeUpdate, db: Session =
     return db_trade
 
 @app.delete("/trades/{trade_id}")
-def delete_trade(trade_id: int, db: Session = Depends(database.get_db)):
-    trade = db.query(models.Trade).filter(models.Trade.id == trade_id).first()
+async def delete_trade(
+    trade_id: int, 
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id
+    ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     db.delete(trade)
@@ -334,8 +782,17 @@ def delete_trade(trade_id: int, db: Session = Depends(database.get_db)):
     return {"message": "Trade deleted"}
 
 @app.patch("/trades/{trade_id}/close", response_model=schemas.Trade)
-async def close_trade(trade_id: int, trade_close: schemas.TradeClose, db: Session = Depends(database.get_db)):
-    db_trade = db.query(models.Trade).filter(models.Trade.id == trade_id).first()
+async def close_trade(
+    trade_id: int, 
+    trade_close: schemas.TradeClose, 
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    db_trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id
+    ).first()
     if not db_trade:
         raise HTTPException(status_code=404, detail="Trade not found")
     
@@ -391,9 +848,16 @@ async def close_trade(trade_id: int, trade_close: schemas.TradeClose, db: Sessio
     return db_trade
 
 @app.get("/trades/unrealized-pnl")
-def get_unrealized_pnl(db: Session = Depends(database.get_db)):
-    # 1. Get all open trades
-    open_trades = db.query(models.Trade).filter(models.Trade.exit_at == None).all()
+async def get_unrealized_pnl(
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    account_id = get_account_id(db, current_user)
+    # 1. Get all open trades for this account
+    open_trades = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.exit_at == None
+    ).all()
     if not open_trades:
         return []
     
@@ -438,9 +902,16 @@ def get_unrealized_pnl(db: Session = Depends(database.get_db)):
     return results
 
 @app.get("/tags/")
-def get_all_tags(db: Session = Depends(database.get_db)):
+async def get_all_tags(
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
     """Get all unique tags used in trades with their statistics."""
-    trades = db.query(models.Trade).filter(models.Trade.pnl != None).all()
+    account_id = get_account_id(db, current_user)
+    trades = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.pnl != None
+    ).all()
     
     tag_stats = {}
     for t in trades:
@@ -467,16 +938,18 @@ def get_all_tags(db: Session = Depends(database.get_db)):
     return sorted(result, key=lambda x: x["count"], reverse=True)
 
 @app.get("/stats/", response_model=schemas.DashboardStats)
-def get_stats(
+async def get_stats(
     period: Optional[str] = Query(None, description="Period filter: all, today, week, month, 3months, year, custom"),
     start_date: Optional[str] = Query(None, description="Start date for custom period (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date for custom period (YYYY-MM-DD)"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
     limit: Optional[int] = Query(None, description="Limit to last N trades"),
     initial_deposit: Optional[float] = Query(None, description="Initial deposit for ROI calculation"),
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
 ):
     """Get trading statistics with optional filters: time period, tag, and trade count limit."""
+    account_id = get_account_id(db, current_user)
     
     # Build date filter
     date_filter = None
@@ -498,8 +971,11 @@ def get_stats(
         except ValueError:
             pass
     
-    # Query trades with filter
-    query = db.query(models.Trade).filter(models.Trade.pnl != None)
+    # Query trades with filter (только для текущего аккаунта)
+    query = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.pnl != None
+    )
     
     if date_filter:
         # Filter by exit_at or entry_at
@@ -618,6 +1094,16 @@ def get_stats(
     monte_carlo_data = analytics.monte_carlo_simulation(pnls)
     time_patterns_data = analytics.analyze_time_patterns(trades)
     
+    # Calmar Ratio (нужен период торговли)
+    if len(sorted_trades) >= 2:
+        first_trade_date = sorted_trades[0].entry_at
+        last_trade_date = sorted_trades[-1].exit_at if sorted_trades[-1].exit_at else sorted_trades[-1].entry_at
+        trading_days = (last_trade_date - first_trade_date).days
+        period_years = max(trading_days / 365, 0.1)
+    else:
+        period_years = 1.0
+    calmar_data = analytics.calculate_calmar_ratio(pnls_sorted, initial_balance=initial_deposit or 100000, period_years=period_years)
+    
     # Risk of Ruin
     avg_win = win_loss_data.get("avg_win", 0)
     avg_loss = abs(win_loss_data.get("avg_loss", 1))
@@ -650,6 +1136,7 @@ def get_stats(
         "current_streak": streaks_data.get("current_streak", 0),
         "current_streak_type": streaks_data.get("current_streak_type"),
         "tail_ratio": tail_ratio_data.get("tail_ratio", 0),
+        "calmar_ratio": calmar_data,
         "risk_of_ruin": risk_of_ruin_data,
         "r_distribution": r_distribution_data,
         "trade_duration": trade_duration_data,

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Zap, Download, Upload, Plus, Filter, Edit2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
+import { ArrowLeft, Trash2, Zap, Upload, Plus, Filter, Edit2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import { EditTradeModal } from '@/components/EditTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
@@ -164,10 +164,6 @@ export default function HistoryPage() {
     }
   };
 
-  const handleExport = async () => {
-    window.open(getApiUrl('/trades/export'), '_blank');
-  };
-
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -305,13 +301,6 @@ export default function HistoryPage() {
               {importResult}
             </div>
           )}
-          <button 
-            onClick={handleExport}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <Download size={14} />
-            Export
-          </button>
           <button 
             onClick={() => setIsModalOpen(true)}
             className="btn-primary flex items-center gap-2"

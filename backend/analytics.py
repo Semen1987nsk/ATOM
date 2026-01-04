@@ -282,6 +282,91 @@ def calculate_sharpe_sortino(trades_pnl: List[float], risk_free_rate: float = 0.
     }
 
 
+def calculate_calmar_ratio(trades_pnl: List[float], initial_balance: float = 100000, period_years: float = 1.0) -> Dict:
+    """
+    Расчет Calmar Ratio (CAGR / Max Drawdown).
+    
+    Calmar Ratio показывает соотношение годовой доходности к максимальной просадке.
+    Чем выше значение — тем лучше система управляет рисками.
+    
+    Интерпретация:
+    - < 0.5: Плохо — высокие просадки относительно доходности
+    - 0.5-1.0: Удовлетворительно — есть куда улучшать
+    - 1.0-2.0: Хорошо — приемлемый баланс риск/доходность
+    - 2.0-3.0: Отлично — качественное управление рисками
+    - > 3.0: Исключительно — уровень топ хедж-фондов
+    """
+    if not trades_pnl or len(trades_pnl) < 5:
+        return {
+            "calmar_ratio": 0,
+            "cagr_pct": 0,
+            "max_drawdown_pct": 0,
+            "rating": "Недостаточно данных",
+            "message": "Нужно минимум 5 сделок"
+        }
+    
+    # 1. Рассчитываем итоговую доходность
+    total_pnl = sum(trades_pnl)
+    total_return = total_pnl / initial_balance  # Доходность в долях
+    
+    # 2. CAGR (Compound Annual Growth Rate)
+    # Если торгуем меньше года, экстраполируем
+    if period_years > 0:
+        # Формула: (1 + total_return)^(1/years) - 1
+        if total_return > -1:  # Чтобы не было отрицательного основания
+            cagr = ((1 + total_return) ** (1 / period_years)) - 1
+        else:
+            cagr = -1  # Полная потеря
+    else:
+        cagr = total_return
+    
+    cagr_pct = cagr * 100
+    
+    # 3. Рассчитываем максимальную просадку
+    balance = initial_balance
+    peak = initial_balance
+    max_dd_pct = 0
+    
+    for pnl in trades_pnl:
+        balance += pnl
+        if balance > peak:
+            peak = balance
+        
+        if peak > 0:
+            dd_pct = (peak - balance) / peak * 100
+            if dd_pct > max_dd_pct:
+                max_dd_pct = dd_pct
+    
+    # 4. Calmar Ratio = CAGR% / Max Drawdown%
+    if max_dd_pct > 0:
+        calmar = abs(cagr_pct) / max_dd_pct
+        if cagr_pct < 0:
+            calmar = -calmar  # Отрицательный Calmar для убыточных систем
+    else:
+        calmar = 99.99 if cagr_pct > 0 else 0  # Нет просадок
+    
+    # 5. Интерпретация
+    if calmar < 0:
+        rating = "Убыточная система"
+    elif calmar < 0.5:
+        rating = "Плохо"
+    elif calmar < 1.0:
+        rating = "Удовлетворительно"
+    elif calmar < 2.0:
+        rating = "Хорошо"
+    elif calmar < 3.0:
+        rating = "Отлично"
+    else:
+        rating = "Исключительно"
+    
+    return {
+        "calmar_ratio": round(float(calmar), 2),
+        "cagr_pct": round(float(cagr_pct), 2),
+        "max_drawdown_pct": round(float(max_dd_pct), 2),
+        "rating": rating
+    }
+
+
 def calculate_drawdown_stats(trades_pnl: List[float], initial_balance: float = 0) -> Dict:
     """
     Расчет статистики просадок.
@@ -860,7 +945,8 @@ def calculate_stats(trades):
             "trade_duration": None,
             "tail_ratio": 0,
             "risk_of_ruin": None,
-            "r_distribution": None
+            "r_distribution": None,
+            "calmar_ratio": None
         }
 
     # Use net_pnl if available, else pnl
@@ -891,6 +977,21 @@ def calculate_stats(trades):
     trade_duration = calculate_trade_duration(trades)
     tail_ratio = calculate_tail_ratio(trades_pnl)
     r_distribution = calculate_r_distribution(trades_pnl, trades_risk)
+    
+    # Calmar Ratio (нужен initial_balance из настроек - используем 100000 по умолчанию)
+    # Определяем период торговли в годах
+    if trades:
+        sorted_by_date = sorted([t for t in trades if t.entry_at], key=lambda x: x.entry_at)
+        if len(sorted_by_date) >= 2:
+            first_trade_date = sorted_by_date[0].entry_at
+            last_trade_date = sorted_by_date[-1].exit_at if sorted_by_date[-1].exit_at else sorted_by_date[-1].entry_at
+            trading_days = (last_trade_date - first_trade_date).days
+            period_years = max(trading_days / 365, 0.1)  # Минимум 0.1 года чтобы не делить на 0
+        else:
+            period_years = 1.0
+    else:
+        period_years = 1.0
+    calmar = calculate_calmar_ratio(trades_pnl, initial_balance=100000, period_years=period_years)
     
     # Risk of Ruin (нужны win_rate и payoff_ratio)
     wr_decimal = win_rate / 100 if win_rate > 0 else 0.5
@@ -967,5 +1068,6 @@ def calculate_stats(trades):
         "trade_duration": trade_duration,
         "tail_ratio": tail_ratio["tail_ratio"],
         "risk_of_ruin": risk_of_ruin,
-        "r_distribution": r_distribution
+        "r_distribution": r_distribution,
+        "calmar_ratio": calmar
     }
