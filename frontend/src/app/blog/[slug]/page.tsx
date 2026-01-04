@@ -9,7 +9,13 @@ import {
   Lightbulb, Sparkles, Copy, Check
 } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+function getApiUrl(): string {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
+    const codespaceName = window.location.hostname.split('-3000')[0];
+    return `https://${codespaceName}-8000.app.github.dev`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+}
 
 interface Article {
   id: number;
@@ -155,7 +161,8 @@ export default function ArticlePage() {
     setError(null);
     
     try {
-      const res = await fetch(`${API_URL}/blog/article/${slug}`);
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/blog/article/${slug}`);
       if (!res.ok) {
         if (res.status === 404) {
           setError('Статья не найдена');
