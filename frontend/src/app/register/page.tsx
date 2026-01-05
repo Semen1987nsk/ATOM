@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -20,8 +20,14 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   
   // Если уже авторизован — редирект на главную
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/');
+    }
+  }, [isAuthenticated, router]);
+  
+  // Показываем null пока идёт редирект
   if (isAuthenticated) {
-    router.push('/');
     return null;
   }
   

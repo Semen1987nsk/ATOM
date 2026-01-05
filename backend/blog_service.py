@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from models import Article, ArticleCategory, User
 from schemas import ArticleCreate, ArticleUpdate
-import datetime
+from utils import utc_now_naive
 import re
 from typing import Optional, List
 
@@ -83,7 +83,7 @@ def create_article(db: Session, article_data: ArticleCreate, author_id: int) -> 
         is_featured=1 if article_data.is_featured else 0,
         meta_title=article_data.meta_title,
         meta_description=article_data.meta_description,
-        published_at=datetime.datetime.utcnow() if article_data.is_published else None
+        published_at=utc_now_naive() if article_data.is_published else None
     )
     
     db.add(article)
@@ -120,7 +120,7 @@ def update_article(db: Session, article_id: int, article_data: ArticleUpdate) ->
         update_data['is_published'] = 1 if update_data['is_published'] else 0
         # Устанавливаем дату публикации при первой публикации
         if update_data['is_published'] == 1 and not was_published:
-            update_data['published_at'] = datetime.datetime.utcnow()
+            update_data['published_at'] = utc_now_naive()
     
     if 'is_featured' in update_data:
         update_data['is_featured'] = 1 if update_data['is_featured'] else 0
@@ -128,7 +128,7 @@ def update_article(db: Session, article_id: int, article_data: ArticleUpdate) ->
     for key, value in update_data.items():
         setattr(article, key, value)
     
-    article.updated_at = datetime.datetime.utcnow()
+    article.updated_at = utc_now_naive()
     db.commit()
     db.refresh(article)
     return article

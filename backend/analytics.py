@@ -71,6 +71,7 @@ def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Di
         "optimal_f": round(float(optimal_f), 2),
         "geometric_mean": round(float(g), 4),
         "max_twr": round(float(max_twr), 4),
+        "ultra_conservative_risk_pct": round(float(optimal_f * 10), 2),  # f/10 - ультра консервативный
         "recommended_risk_pct": round(float(optimal_f * 25), 2),  # Quarter Kelly (f/4) - консервативный
         "moderate_risk_pct": round(float(optimal_f * 50), 2),     # Half Kelly (f/2)
         "aggressive_risk_pct": round(float(optimal_f * 100), 2),  # Full Kelly - для разгона/конкурсов

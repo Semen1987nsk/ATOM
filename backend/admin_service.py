@@ -8,6 +8,7 @@ from sqlalchemy import func, distinct, and_, or_, case
 from datetime import datetime, timedelta
 from typing import Optional
 import models
+from utils import utc_now_naive
 
 
 def get_current_admin(db: Session, user: models.User) -> models.User:
@@ -96,7 +97,7 @@ def get_users_list(
 
 def get_overview_stats(db: Session) -> dict:
     """Основные метрики для дашборда"""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
@@ -229,7 +230,7 @@ def get_utm_analytics(db: Session) -> dict:
 
 def get_user_growth(db: Session, days: int = 30) -> list:
     """График роста пользователей по дням"""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     start_date = now - timedelta(days=days)
     
     # Получаем регистрации по дням
@@ -265,7 +266,7 @@ def get_user_growth(db: Session, days: int = 30) -> list:
 
 def get_cohort_retention(db: Session, weeks: int = 8) -> dict:
     """Когортный анализ retention"""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     cohorts = {}
     
     for week_offset in range(weeks):
@@ -341,7 +342,7 @@ def get_power_users(db: Session, limit: int = 20) -> list:
 
 def get_inactive_users(db: Session, days: int = 30, limit: int = 50) -> list:
     """Пользователи без активности за N дней (churn risk)"""
-    threshold = datetime.utcnow() - timedelta(days=days)
+    threshold = utc_now_naive() - timedelta(days=days)
     
     users = db.query(models.User).filter(
         or_(
@@ -359,7 +360,7 @@ def get_inactive_users(db: Session, days: int = 30, limit: int = 50) -> list:
             "name": u.name,
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "last_login": u.last_login.isoformat() if u.last_login else None,
-            "days_inactive": (datetime.utcnow() - u.last_login).days if u.last_login else None,
+            "days_inactive": (utc_now_naive() - u.last_login).days if u.last_login else None,
         }
         for u in users
     ]
@@ -454,7 +455,7 @@ def toggle_user_active(db: Session, user_id: int) -> models.User:
 
 def get_revenue_stats(db: Session) -> dict:
     """Метрики по выручке и платным подпискам"""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_ago = now - timedelta(days=30)
     
@@ -563,7 +564,7 @@ def get_revenue_stats(db: Session) -> dict:
 
 def get_revenue_growth(db: Session, days: int = 30) -> list:
     """График выручки по дням"""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     start_date = now - timedelta(days=days)
     
     results = db.query(
@@ -601,7 +602,7 @@ def get_revenue_growth(db: Session, days: int = 30) -> list:
 
 def get_subscription_analytics(db: Session) -> dict:
     """Аналитика по подпискам"""
-    now = datetime.utcnow()
+    now = utc_now_naive()
     
     # Подписки по методам оплаты
     payment_methods = db.query(

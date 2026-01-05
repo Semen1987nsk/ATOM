@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSO
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
-import datetime
+from utils.datetime_utils import utc_now_naive
 
 Base = declarative_base()
 
@@ -19,7 +19,7 @@ class User(Base):
     hashed_password = Column(String, nullable=True)  # nullable for OAuth users
     is_active = Column(Integer, default=1)  # 1 = active, 0 = disabled
     is_admin = Column(Integer, default=0)  # 1 = admin, 0 = regular user
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now_naive)
     last_login = Column(DateTime, nullable=True)  # Последний вход
     settings = Column(JSON, default={})
     
@@ -60,7 +60,7 @@ class Subscription(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     plan = Column(Enum(SubscriptionPlan), default=SubscriptionPlan.FREE)
     is_active = Column(Integer, default=1)
-    started_at = Column(DateTime, default=datetime.datetime.utcnow)
+    started_at = Column(DateTime, default=utc_now_naive)
     expires_at = Column(DateTime, nullable=True)
     auto_renew = Column(Integer, default=1)  # 1 = auto-renew, 0 = cancel at expiry
     
@@ -93,7 +93,7 @@ class Payment(Base):
     card_last4 = Column(String(4), nullable=True)
     card_type = Column(String, nullable=True)  # visa, mastercard, mir
     
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now_naive)
     completed_at = Column(DateTime, nullable=True)
     
     user = relationship("User", back_populates="payments")
@@ -209,8 +209,8 @@ class Article(Base):
     views_count = Column(Integer, default=0)
     likes_count = Column(Integer, default=0)
     
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     published_at = Column(DateTime, nullable=True)
     
     # SEO

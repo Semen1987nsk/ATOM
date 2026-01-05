@@ -2,8 +2,10 @@
 Сервис аутентификации с JWT токенами и хешированием паролей.
 """
 from datetime import datetime, timedelta
+from utils import utc_now_naive
 from typing import Optional
 import os
+import warnings
 
 import bcrypt
 from jose import JWTError, jwt
@@ -17,10 +19,27 @@ from database import get_db
 
 # ==================== КОНФИГУРАЦИЯ ====================
 
-# Секретный ключ для JWT (в продакшене использовать переменную окружения)
-SECRET_KEY = os.getenv("SECRET_KEY", "eqio-super-secret-key-change-in-production-2024")
+# Загрузка секретного ключа с валидацией
+_DEFAULT_SECRET = "eqio-default-dev-key-DO-NOT-USE-IN-PRODUCTION"
+SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET_KEY")
+
+if not SECRET_KEY:
+    SECRET_KEY = _DEFAULT_SECRET
+    warnings.warn(
+        "\n⚠️  WARNING: SECRET_KEY not set! Using default development key.\n"
+        "   This is INSECURE for production. Set SECRET_KEY environment variable.\n"
+        "   Generate with: python -c 'import secrets; print(secrets.token_urlsafe(64))'",
+        UserWarning
+    )
+elif SECRET_KEY == _DEFAULT_SECRET or "change" in SECRET_KEY.lower():
+    warnings.warn(
+        "\n⚠️  WARNING: SECRET_KEY appears to be a default/placeholder value.\n"
+        "   Generate a strong key for production!",
+        UserWarning
+    )
+
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 дней
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7)))  # 7 дней
 
 # Bearer токен для авторизации
 security = HTTPBearer(auto_error=False)
@@ -45,9 +64,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = utc_now_naive() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = utc_now_naive() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -132,7 +151,7 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
         return None
     
     # Обновляем last_login
-    user.last_login = datetime.utcnow()
+    user.last_login = utc_now_naive()
     db.commit()
     
     return user

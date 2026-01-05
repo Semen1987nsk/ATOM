@@ -42,7 +42,8 @@ function getApiBase(): string {
 async function apiRequest<T>(
   endpoint: string, 
   options: RequestInit = {},
-  token?: string | null
+  token?: string | null,
+  throwOn401: boolean = true
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -59,6 +60,10 @@ async function apiRequest<T>(
   });
   
   if (!response.ok) {
+    // Для 401 можем тихо вернуть null вместо ошибки
+    if (response.status === 401 && !throwOn401) {
+      return null as T;
+    }
     const error = await response.json().catch(() => ({ detail: 'Ошибка сервера' }));
     throw new Error(error.detail || 'Ошибка запроса');
   }
@@ -90,10 +95,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchCurrentUser = async (authToken: string) => {
     try {
       console.log('[Auth] Fetching current user with token:', authToken.substring(0, 20) + '...');
-      const userData = await apiRequest<User>('/auth/me', {}, authToken);
-      console.log('[Auth] User data received:', userData);
-      setUser(userData);
-      setToken(authToken);
+      // throwOn401: false — не выбрасываем ошибку для 401, просто возвращаем null
+      const userData = await apiRequest<User | null>('/auth/me', {}, authToken, false);
+      if (userData) {
+        console.log('[Auth] User data received:', userData);
+        setUser(userData);
+        setToken(authToken);
+      } else {
+        console.log('[Auth] Token invalid, clearing');
+        localStorage.removeItem('auth_token');
+        setToken(null);
+        setUser(null);
+      }
     } catch (error) {
       console.error('[Auth] Failed to fetch user:', error);
       // Токен невалидный — очищаем
