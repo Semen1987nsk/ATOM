@@ -195,7 +195,7 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
       <h2 className="text-sm font-mono uppercase mb-4 flex items-center gap-2 relative z-10">
         <Clock size={16} className="text-purple-400" />
         Post-Exit Анализ
-        <span className="ml-auto text-[10px] opacity-40">Качество выходов</span>
+        <span className="ml-auto text-xs text-slate-400">Качество выходов</span>
       </h2>
       
       <div className="space-y-4 relative z-10">
@@ -204,25 +204,25 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
           <div className="space-y-4">
             {/* Главные метрики */}
             <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 bg-white/5 rounded-lg text-center">
+              <div className="p-3 bg-white/10 rounded-lg text-center">
                 <div className="text-2xl font-bold text-yellow-400">{result.summary.early_exits}</div>
-                <div className="text-[10px] opacity-60">Ранних выходов</div>
+                <div className="text-xs text-slate-400">Ранних выходов</div>
               </div>
-              <div className="p-3 bg-white/5 rounded-lg text-center">
+              <div className="p-3 bg-white/10 rounded-lg text-center">
                 <div className="text-2xl font-bold text-green-400">{result.summary.good_exits}</div>
-                <div className="text-[10px] opacity-60">Хороших</div>
+                <div className="text-xs text-slate-400">Хороших</div>
               </div>
-              <div className="p-3 bg-white/5 rounded-lg text-center">
+              <div className="p-3 bg-white/10 rounded-lg text-center">
                 <div className={`text-2xl font-bold ${result.summary.avg_missed_profit_pct > 1 ? 'text-red-400' : 'text-slate-300'}`}>
                   +{result.summary.avg_missed_profit_pct.toFixed(1)}%
                 </div>
-                <div className="text-[10px] opacity-60">Ср. упущено</div>
+                <div className="text-xs text-slate-400">Ср. упущено</div>
               </div>
             </div>
             
             {/* Прогресс-бар раннего закрытия */}
-            <div className="p-3 bg-white/5 rounded-lg">
-              <div className="flex justify-between text-[10px] mb-1">
+            <div className="p-3 bg-white/10 rounded-lg">
+              <div className="flex justify-between text-xs mb-1">
                 <span className="text-yellow-400">Ранние выходы</span>
                 <span className="text-green-400">Хорошие выходы</span>
               </div>
@@ -240,10 +240,10 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
             
             {/* Статистика по периодам */}
             {result.period_stats && Object.keys(result.period_stats).length > 0 && (
-              <div className="p-3 bg-white/5 rounded-lg">
+              <div className="p-3 bg-white/10 rounded-lg">
                 <button 
                   onClick={() => setShowDetails(!showDetails)}
-                  className="w-full flex items-center justify-between text-[11px] uppercase opacity-70 hover:opacity-100"
+                  className="w-full flex items-center justify-between text-xs uppercase text-slate-300 hover:text-white"
                 >
                   <span>📊 Статистика по периодам</span>
                   {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -251,7 +251,7 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
                 
                 {showDetails && (
                   <div className="mt-3 space-y-2">
-                    <div className="grid grid-cols-5 gap-2 text-[9px] opacity-50 uppercase border-b border-white/10 pb-1">
+                    <div className="grid grid-cols-5 gap-2 text-xs text-slate-400 uppercase border-b border-white/20 pb-1">
                       <div>Период</div>
                       <div className="text-center">Ранние</div>
                       <div className="text-center">Хорошие</div>
@@ -261,14 +261,14 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
                     {Object.entries(result.period_stats)
                       .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
                       .map(([key, stats]) => (
-                        <div key={key} className="grid grid-cols-5 gap-2 text-[11px] py-1 border-b border-white/5">
-                          <div className="text-purple-400 font-medium">{stats.label}</div>
-                          <div className="text-center text-yellow-400">{stats.early_count}</div>
-                          <div className="text-center text-green-400">{stats.good_count}</div>
-                          <div className={`text-right ${stats.avg_continuation_pct > 1 ? 'text-red-400' : 'text-slate-300'}`}>
+                        <div key={key} className="grid grid-cols-5 gap-2 text-sm py-2 border-b border-white/10">
+                          <div className="text-purple-400 font-semibold">{stats.label}</div>
+                          <div className="text-center text-yellow-400 font-medium">{stats.early_count}</div>
+                          <div className="text-center text-green-400 font-medium">{stats.good_count}</div>
+                          <div className={`text-right font-medium ${stats.avg_continuation_pct > 1 ? 'text-red-400' : 'text-slate-300'}`}>
                             {stats.early_count > 0 ? `+${stats.avg_continuation_pct.toFixed(1)}%` : '-'}
                           </div>
-                          <div className={`text-right ${stats.max_continuation_pct > 3 ? 'text-red-500' : 'text-slate-400'}`}>
+                          <div className={`text-right font-medium ${stats.max_continuation_pct > 3 ? 'text-red-500' : 'text-slate-300'}`}>
                             {stats.max_continuation_pct > 0 ? `+${stats.max_continuation_pct.toFixed(1)}%` : '-'}
                           </div>
                         </div>
@@ -280,24 +280,24 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
             
             {/* Топ худших ранних выходов */}
             {result.top_early_exits && result.top_early_exits.length > 0 && (
-              <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-lg">
-                <div className="text-[11px] uppercase mb-3 flex items-center gap-2 text-yellow-400">
-                  <AlertTriangle size={12} />
+              <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                <div className="text-xs uppercase mb-3 flex items-center gap-2 text-yellow-400 font-medium">
+                  <AlertTriangle size={14} />
                   Топ ранних выходов (упущенная прибыль)
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {result.top_early_exits.slice(0, 5).map((exit, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-[11px] py-1 border-b border-white/5">
+                    <div key={idx} className="flex items-center justify-between text-sm py-2 border-b border-white/10">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400">{exit.exit_date}</span>
-                        <span className="font-medium">{exit.symbol}</span>
-                        <span className={exit.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}>
+                        <span className="font-semibold text-white">{exit.symbol}</span>
+                        <span className={`font-medium ${exit.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                           {exit.direction}
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-red-400 font-bold">+{exit.missed_pct.toFixed(2)}%</span>
-                        <span className="text-[9px] opacity-50">{exit.period}</span>
+                        <span className="text-xs text-slate-400">{exit.period}</span>
                       </div>
                     </div>
                   ))}
@@ -306,9 +306,9 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
                 {result.top_early_exits.length > 5 && (
                   <button 
                     onClick={loadTradesList}
-                    className="mt-2 text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    className="mt-2 text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1 font-medium"
                   >
-                    <Eye size={12} />
+                    <Eye size={14} />
                     Смотреть все {result.summary?.total_analyzed} сделок
                   </button>
                 )}
@@ -317,11 +317,11 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
             
             {/* Предупреждение */}
             {result.summary.early_exit_tendency && (
-              <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-400">
-                <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-400">
+                <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-medium mb-1">Тенденция к раннему закрытию!</div>
-                  <div className="text-[10px] opacity-80">
+                  <div className="font-semibold mb-1">Тенденция к раннему закрытию!</div>
+                  <div className="text-xs text-yellow-300">
                     В среднем вы оставляете на столе {result.summary.avg_missed_profit_pct.toFixed(2)}% прибыли.
                     Рассмотрите использование trailing stop или частичное закрытие позиций.
                   </div>
@@ -356,25 +356,25 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
         
         {/* Выбор таймфрейма */}
         {!calculating && (
-          <div className="p-3 bg-white/5 rounded-lg space-y-2">
-            <div className="text-[10px] opacity-60 uppercase">Ваш таймфрейм торговли:</div>
+          <div className="p-3 bg-white/10 rounded-lg space-y-2">
+            <div className="text-xs text-slate-400 uppercase">Ваш таймфрейм торговли:</div>
             <div className="grid grid-cols-4 gap-1">
               {timeframes.map((tf) => (
                 <button
                   key={tf.value}
                   onClick={() => setSelectedTimeframe(tf.value)}
-                  className={`px-2 py-1.5 rounded text-[10px] font-medium transition-colors ${
+                  className={`px-2 py-2 rounded text-xs font-medium transition-colors ${
                     selectedTimeframe === tf.value
                       ? 'bg-purple-500/30 border border-purple-500/50 text-purple-300'
-                      : 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10'
+                      : 'bg-white/10 border border-white/20 text-slate-300 hover:bg-white/15'
                   }`}
                 >
                   {tf.label}
                 </button>
               ))}
             </div>
-            <div className="text-[9px] text-slate-500 mt-1">
-              Периоды анализа: <span className="text-purple-400">{timeframes.find(t => t.value === selectedTimeframe)?.periods}</span>
+            <div className="text-xs text-slate-400 mt-1">
+              Периоды анализа: <span className="text-purple-400 font-medium">{timeframes.find(t => t.value === selectedTimeframe)?.periods}</span>
             </div>
           </div>
         )}
@@ -385,19 +385,19 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
             <button
               onClick={handleCalculate}
               disabled={tradesCount === 0}
-              className="flex-1 px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-400 text-xs font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg text-purple-400 text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
             >
-              <Clock size={14} />
+              <Clock size={16} />
               Анализировать ({selectedTimeframe})
             </button>
             
             <button
               onClick={loadTradesList}
               disabled={tradesCount === 0}
-              className="px-4 py-2 bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/30 rounded-lg text-slate-400 text-xs font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              className="px-4 py-2.5 bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/30 rounded-lg text-slate-300 text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
               title="Смотреть все сделки"
             >
-              <Eye size={14} />
+              <Eye size={16} />
               Все сделки
             </button>
           </div>
@@ -450,74 +450,106 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
                 <div className="space-y-4">
                   <button 
                     onClick={() => setSelectedTrade(null)}
-                    className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1 font-medium"
                   >
                     ← Назад к списку
                   </button>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-white/5 rounded-lg">
-                      <div className="text-[10px] opacity-50 uppercase mb-1">Инструмент</div>
-                      <div className="text-xl font-bold">{selectedTrade.symbol}</div>
-                      <div className={`text-sm ${selectedTrade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className="p-4 bg-white/10 rounded-lg">
+                      <div className="text-xs text-slate-400 uppercase mb-1">Инструмент</div>
+                      <div className="text-2xl font-bold text-white">{selectedTrade.symbol}</div>
+                      <div className={`text-base font-semibold ${selectedTrade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                         {selectedTrade.direction}
                       </div>
                     </div>
-                    <div className="p-4 bg-white/5 rounded-lg">
-                      <div className="text-[10px] opacity-50 uppercase mb-1">P&L</div>
-                      <div className={`text-xl font-bold ${(selectedTrade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <div className="p-4 bg-white/10 rounded-lg">
+                      <div className="text-xs text-slate-400 uppercase mb-1">P&L</div>
+                      <div className={`text-2xl font-bold ${(selectedTrade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {selectedTrade.pnl?.toLocaleString('ru-RU')} ₽
                       </div>
-                      <div className={`text-sm ${selectedTrade.has_early_exit ? 'text-yellow-400' : 'text-green-400'}`}>
-                        {selectedTrade.has_early_exit ? `Упущено +${selectedTrade.max_missed_pct}%` : 'Хороший выход'}
-                      </div>
+                      {(selectedTrade.pnl || 0) < 0 ? (
+                        <div className="text-red-400 text-base font-semibold">
+                          {selectedTrade.has_early_exit 
+                            ? `Можно было спасти ${selectedTrade.max_missed_pct}%` 
+                            : 'Убыток неизбежен'}
+                        </div>
+                      ) : (
+                        <div className={`text-base font-semibold ${selectedTrade.has_early_exit ? 'text-yellow-400' : 'text-green-400'}`}>
+                          {selectedTrade.has_early_exit ? `Упущено +${selectedTrade.max_missed_pct}%` : 'Хороший выход'}
+                        </div>
+                      )}
                     </div>
                   </div>
                   
-                  <div className="p-4 bg-white/5 rounded-lg">
-                    <div className="text-[10px] opacity-50 uppercase mb-3">Детали по периодам</div>
-                    <div className="grid grid-cols-5 gap-2 text-[10px] opacity-50 uppercase border-b border-white/10 pb-2 mb-2">
-                      <div>Период</div>
-                      <div>Макс цена</div>
-                      <div>Мин цена</div>
-                      <div>Итог цена</div>
-                      <div>Оценка</div>
-                    </div>
-                    {selectedTrade.analysis && (selectedTrade.analysis as { periods?: Record<string, { available?: boolean; label?: string; max_price?: number; min_price?: number; final_price?: number; continuation_move_pct?: number; exit_quality?: string }> }).periods && 
-                      Object.entries((selectedTrade.analysis as { periods: Record<string, { available?: boolean; label?: string; max_price?: number; min_price?: number; final_price?: number; continuation_move_pct?: number; exit_quality?: string }> }).periods)
-                        .filter(([, p]) => p.available)
-                        .map(([key, period]) => (
-                          <div key={key} className="grid grid-cols-5 gap-2 text-[11px] py-2 border-b border-white/5">
-                            <div className="text-purple-400 font-medium">{period.label || key}</div>
-                            <div>{formatPrice(period.max_price || 0)}</div>
-                            <div>{formatPrice(period.min_price || 0)}</div>
-                            <div>{formatPrice(period.final_price || 0)}</div>
-                            <div className={
-                              period.exit_quality === 'early' ? 'text-yellow-400' :
-                              period.exit_quality === 'good' ? 'text-green-400' : 'text-slate-400'
-                            }>
-                              {period.exit_quality === 'early' && `+${period.continuation_move_pct}%`}
-                              {period.exit_quality === 'good' && '✓ Хорошо'}
-                              {period.exit_quality === 'neutral' && 'Нейтрально'}
+                  <div className="p-4 bg-white/10 rounded-lg">
+                    <div className="text-xs text-slate-400 uppercase mb-3">Детали по периодам</div>
+                    {(() => {
+                      const periods = (selectedTrade.analysis as { periods?: Record<string, { available?: boolean; label?: string; max_price?: number; min_price?: number; final_price?: number; continuation_move_pct?: number; exit_quality?: string; message?: string }> })?.periods;
+                      if (!periods) return <div className="text-slate-400 text-sm">Нет данных анализа</div>;
+                      
+                      const availablePeriods = Object.entries(periods).filter(([, p]) => p.available);
+                      const unavailablePeriods = Object.entries(periods).filter(([, p]) => !p.available);
+                      
+                      if (availablePeriods.length === 0) {
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-yellow-400 text-sm flex items-center gap-2 mb-3">
+                              <AlertTriangle size={16} />
+                              Нет торговых данных для анализа
                             </div>
+                            {unavailablePeriods.map(([key, period]) => (
+                              <div key={key} className="text-slate-400 text-xs py-1 border-b border-white/5">
+                                <span className="text-purple-400">{period.label || key}:</span> {period.message || 'Нет данных'}
+                              </div>
+                            ))}
                           </div>
-                        ))
-                    }
+                        );
+                      }
+                      
+                      return (
+                        <>
+                          <div className="grid grid-cols-5 gap-3 text-xs text-slate-400 uppercase border-b border-white/20 pb-2 mb-2">
+                            <div>Период</div>
+                            <div>Макс цена</div>
+                            <div>Мин цена</div>
+                            <div>Итог цена</div>
+                            <div>Оценка</div>
+                          </div>
+                          {availablePeriods.map(([key, period]) => (
+                            <div key={key} className="grid grid-cols-5 gap-3 text-sm py-3 border-b border-white/10">
+                              <div className="text-purple-400 font-semibold">{period.label || key}</div>
+                              <div className="text-white">{formatPrice(period.max_price || 0)}</div>
+                              <div className="text-white">{formatPrice(period.min_price || 0)}</div>
+                              <div className="text-white">{formatPrice(period.final_price || 0)}</div>
+                              <div className={
+                                `font-semibold ${period.exit_quality === 'early' ? 'text-yellow-400' :
+                                period.exit_quality === 'good' ? 'text-green-400' : 'text-slate-300'}`
+                              }>
+                                {period.exit_quality === 'early' && `+${period.continuation_move_pct}%`}
+                                {period.exit_quality === 'good' && '✓ Хорошо'}
+                                {period.exit_quality === 'neutral' && 'Нейтрально'}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4 text-[11px]">
-                    <div className="p-3 bg-white/5 rounded-lg">
-                      <span className="opacity-50">Вход:</span> {formatPrice(selectedTrade.entry_price)} @ {selectedTrade.entry_at?.split('T')[0]}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="p-3 bg-white/10 rounded-lg">
+                      <span className="text-slate-400">Вход:</span> <span className="text-white font-medium">{formatPrice(selectedTrade.entry_price)}</span> <span className="text-slate-400">@</span> <span className="text-white">{selectedTrade.entry_at?.split('T')[0]}</span>
                     </div>
-                    <div className="p-3 bg-white/5 rounded-lg">
-                      <span className="opacity-50">Выход:</span> {formatPrice(selectedTrade.exit_price)} @ {selectedTrade.exit_at?.split('T')[0]}
+                    <div className="p-3 bg-white/10 rounded-lg">
+                      <span className="text-slate-400">Выход:</span> <span className="text-white font-medium">{formatPrice(selectedTrade.exit_price)}</span> <span className="text-slate-400">@</span> <span className="text-white">{selectedTrade.exit_at?.split('T')[0]}</span>
                     </div>
                   </div>
                 </div>
               ) : !loadingTrades && !tradesError && (
                 // Список сделок
                 <div className="space-y-2">
-                  <div className="grid grid-cols-6 gap-2 text-[10px] opacity-50 uppercase border-b border-white/10 pb-2 sticky top-0 bg-slate-900">
+                  <div className="grid grid-cols-6 gap-3 text-xs text-slate-400 uppercase border-b border-white/20 pb-2 sticky top-0 bg-slate-900 font-medium">
                     <div>Дата</div>
                     <div>Инструмент</div>
                     <div>Направление</div>
@@ -529,28 +561,35 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
                   {tradesList.map((trade) => (
                     <div 
                       key={trade.id} 
-                      className="grid grid-cols-6 gap-2 text-[11px] py-2 border-b border-white/5 hover:bg-white/5 cursor-pointer rounded"
+                      className="grid grid-cols-6 gap-3 text-sm py-3 border-b border-white/10 hover:bg-white/10 cursor-pointer rounded transition-colors"
                       onClick={() => setSelectedTrade(trade)}
                     >
-                      <div className="text-slate-400">{trade.exit_at?.split('T')[0]}</div>
-                      <div className="font-medium">{trade.symbol}</div>
-                      <div className={trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}>
+                      <div className="text-slate-300">{trade.exit_at?.split('T')[0]}</div>
+                      <div className="font-semibold text-white">{trade.symbol}</div>
+                      <div className={`font-medium ${trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                         {trade.direction}
                       </div>
-                      <div className={(trade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      <div className={`font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {trade.pnl?.toLocaleString('ru-RU')} ₽
                       </div>
-                      <div className={trade.has_early_exit ? 'text-yellow-400 font-bold' : 'text-green-400'}>
-                        {trade.has_early_exit ? `+${trade.max_missed_pct}%` : '✓'}
+                      <div className={`font-semibold ${
+                        (trade.pnl || 0) < 0 
+                          ? (trade.has_early_exit ? 'text-orange-400' : 'text-red-400')
+                          : (trade.has_early_exit ? 'text-yellow-400' : 'text-green-400')
+                      }`}>
+                        {(trade.pnl || 0) < 0 
+                          ? (trade.has_early_exit ? `↓${trade.max_missed_pct}%` : '✗')
+                          : (trade.has_early_exit ? `+${trade.max_missed_pct}%` : '✓')
+                        }
                       </div>
                       <div className="text-right">
-                        <Eye size={14} className="inline text-slate-400 hover:text-purple-400" />
+                        <Eye size={16} className="inline text-slate-400 hover:text-purple-400" />
                       </div>
                     </div>
                   ))}
                   
                   {tradesList.length === 0 && (
-                    <div className="text-center py-8 text-slate-500">
+                    <div className="text-center py-8 text-slate-400 text-sm">
                       Нет сделок с post-exit анализом. Сначала запустите анализ.
                     </div>
                   )}

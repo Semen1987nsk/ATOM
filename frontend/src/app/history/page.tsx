@@ -340,21 +340,21 @@ export default function HistoryPage() {
           <div className="flex items-center border border-border rounded-none overflow-hidden">
             <button 
               onClick={() => setFilterDirection('ALL')}
-              className={`px-3 py-1 text-[10px] font-mono uppercase transition-colors ${filterDirection === 'ALL' ? 'bg-accent text-black font-bold' : 'hover:bg-white/5'}`}
+              className={`px-3 py-1.5 text-xs font-mono uppercase transition-colors ${filterDirection === 'ALL' ? 'bg-accent text-black font-bold' : 'hover:bg-white/10 text-slate-300'}`}
             >
               All Sides
             </button>
             <div className="w-px h-full bg-border"></div>
             <button 
               onClick={() => setFilterDirection('LONG')}
-              className={`px-3 py-1 text-[10px] font-mono uppercase transition-colors ${filterDirection === 'LONG' ? 'bg-green-500 text-black font-bold' : 'hover:bg-white/5 text-green-400'}`}
+              className={`px-3 py-1.5 text-xs font-mono uppercase transition-colors ${filterDirection === 'LONG' ? 'bg-green-500 text-black font-bold' : 'hover:bg-white/10 text-green-400'}`}
             >
               Long
             </button>
             <div className="w-px h-full bg-border"></div>
             <button 
               onClick={() => setFilterDirection('SHORT')}
-              className={`px-3 py-1 text-[10px] font-mono uppercase transition-colors ${filterDirection === 'SHORT' ? 'bg-red-500 text-black font-bold' : 'hover:bg-white/5 text-red-400'}`}
+              className={`px-3 py-1.5 text-xs font-mono uppercase transition-colors ${filterDirection === 'SHORT' ? 'bg-red-500 text-black font-bold' : 'hover:bg-white/10 text-red-400'}`}
             >
               Short
             </button>
@@ -366,7 +366,7 @@ export default function HistoryPage() {
           <div className="flex gap-2 overflow-x-auto no-scrollbar max-w-full">
             <button 
               onClick={() => setSelectedTag(null)}
-              className={`text-[10px] font-mono px-3 py-1 border whitespace-nowrap ${!selectedTag ? 'border-accent text-accent' : 'border-border opacity-50'}`}
+              className={`text-xs font-mono px-3 py-1.5 border whitespace-nowrap ${!selectedTag ? 'border-accent text-accent' : 'border-border text-slate-400 hover:text-slate-300'}`}
             >
               ALL TAGS
             </button>
@@ -374,7 +374,7 @@ export default function HistoryPage() {
               <button 
                 key={tag}
                 onClick={() => setSelectedTag(tag)}
-                className={`text-[10px] font-mono px-3 py-1 border whitespace-nowrap ${selectedTag === tag ? 'border-accent text-accent' : 'border-border opacity-50'}`}
+                className={`text-xs font-mono px-3 py-1.5 border whitespace-nowrap ${selectedTag === tag ? 'border-accent text-accent' : 'border-border text-slate-400 hover:text-slate-300'}`}
               >
                 #{tag.toUpperCase()}
               </button>
@@ -386,7 +386,7 @@ export default function HistoryPage() {
           <table className="w-full text-left border-collapse min-w-[1500px]" style={{ tableLayout: 'fixed' }}>
             <colgroup><col style={{ width: '100px' }} /><col style={{ width: '70px' }} /><col style={{ width: '90px' }} /><col style={{ width: '55px' }} /><col style={{ width: '60px' }} /><col style={{ width: '65px' }} /><col style={{ width: '65px' }} /><col style={{ width: '55px' }} /><col style={{ width: '35px' }} /><col style={{ width: '80px' }} /><col style={{ width: '65px' }} /><col style={{ width: '55px' }} /><col style={{ width: '45px' }} /><col style={{ width: '90px' }} /><col style={{ width: '90px' }} /><col style={{ width: '60px' }} /><col style={{ width: '70px' }} /><col style={{ width: '70px' }} /></colgroup>
             <thead>
-              <tr className="text-[10px] font-mono uppercase opacity-50 border-b border-border">
+              <tr className="text-xs font-mono uppercase text-slate-400 border-b border-border">
                 <th className="pb-2 pl-2">Дата</th>
                 <th className="pb-2">Тикер</th>
                 <th className="pb-2">Название</th>
@@ -444,15 +444,15 @@ export default function HistoryPage() {
                         )}
                         <span className="truncate">
                           {new Date(trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})}
-                          <span className="opacity-50 text-[10px] ml-0.5">{new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                          <span className="text-slate-400 text-xs ml-1">{new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                         </span>
                       </div>
                     </td>
                     <td className="py-2 font-bold truncate">{trade.symbol}</td>
-                    <td className="py-2 font-mono text-[10px] truncate opacity-70">{trade.asset_name || '-'}</td>
-                    <td className="py-2 font-mono text-[10px] truncate opacity-70">{trade.asset_type || '-'}</td>
+                    <td className="py-2 font-mono text-xs truncate text-slate-400">{trade.asset_name || '-'}</td>
+                    <td className="py-2 font-mono text-xs truncate text-slate-400">{trade.asset_type || '-'}</td>
                     <td className="py-2">
-                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                      <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                         {trade.isAddition ? 'ADD' : (trade.direction === 'long' ? 'LONG' : 'SHORT')}
                       </span>
                     </td>
@@ -461,7 +461,7 @@ export default function HistoryPage() {
                     <td className="py-2 font-mono text-xs truncate" title={trade.entry_reason || ''}>{trade.entry_reason ? (trade.entry_reason.length > 8 ? trade.entry_reason.slice(0, 8) + '…' : trade.entry_reason) : '-'}</td>
                     <td className="py-2 font-mono text-xs text-center">
                       {trade.confidence ? (
-                        <span className={`px-1 py-0.5 rounded text-[10px] ${
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
                           trade.confidence >= 8 ? 'bg-green-500/20 text-green-400' :
                           trade.confidence >= 5 ? 'bg-yellow-500/20 text-yellow-400' :
                           'bg-red-500/20 text-red-400'
@@ -470,8 +470,8 @@ export default function HistoryPage() {
                     </td>
                     <td className="py-2 font-mono text-xs">{trade.entry_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</td>
                     <td className="py-2 font-mono text-xs">{trade.quantity.toLocaleString('ru-RU')}</td>
-                    <td className="py-2 font-mono text-[10px] text-red-400/70">{trade.entry_commission ? `-${Number(trade.entry_commission).toFixed(0)}` : '-'}</td>
-                    <td className="py-2 text-xs opacity-30">-</td>
+                    <td className="py-2 font-mono text-xs text-red-400">{trade.entry_commission ? `-${Number(trade.entry_commission).toFixed(0)}` : '-'}</td>
+                    <td className="py-2 text-xs text-slate-500">-</td>
                     <td className="py-2 text-xs">
                       {!trade.exit_at ? (
                         unrealizedData[trade.id] ? (
@@ -479,16 +479,16 @@ export default function HistoryPage() {
                             {unrealizedData[trade.id].pnl >= 0 ? '+' : ''}{unrealizedData[trade.id].pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
                           </span>
                         ) : (
-                          <span className="text-[9px] font-bold bg-accent/20 text-accent px-1 py-0.5 rounded animate-pulse">В РАБОТЕ</span>
+                          <span className="text-xs font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded animate-pulse">В РАБОТЕ</span>
                         )
-                      ) : <span className="opacity-30">-</span>}
+                      ) : <span className="text-slate-500">-</span>}
                     </td>
-                    <td className="py-2 text-xs opacity-30">-</td>
-                    <td className="py-2 text-xs opacity-30">-</td>
+                    <td className="py-2 text-xs text-slate-500">-</td>
+                    <td className="py-2 text-xs text-slate-500">-</td>
                     <td className="py-2">
                       <div className="flex gap-0.5 flex-wrap">
                         {trade.tags?.slice(0, 2).map(tag => (
-                          <span key={tag} className="text-[8px] font-mono border border-border px-0.5 opacity-50">#{tag}</span>
+                          <span key={tag} className="text-[10px] font-mono border border-border px-1 text-slate-400">#{tag}</span>
                         ))}
                       </div>
                     </td>

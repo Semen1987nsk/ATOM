@@ -44,23 +44,23 @@ export default function Manual() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <div className="cyber-card p-4 text-center border-accent/30">
               <div className="text-3xl font-black text-accent">12+</div>
-              <div className="text-[10px] font-mono uppercase opacity-50">Индикаторов</div>
+              <div className="text-xs font-mono uppercase text-slate-400">Индикаторов</div>
             </div>
             <div className="cyber-card p-4 text-center">
               <div className="text-3xl font-black text-green-400">3x</div>
-              <div className="text-[10px] font-mono uppercase opacity-50">Рост прибыли*</div>
+              <div className="text-xs font-mono uppercase text-slate-400">Рост прибыли*</div>
             </div>
             <div className="cyber-card p-4 text-center">
               <div className="text-3xl font-black text-purple-400">−70%</div>
-              <div className="text-[10px] font-mono uppercase opacity-50">Эмоц. ошибок</div>
+              <div className="text-xs font-mono uppercase text-slate-400">Эмоц. ошибок</div>
             </div>
             <div className="cyber-card p-4 text-center">
               <div className="text-3xl font-black text-yellow-400">∞</div>
-              <div className="text-[10px] font-mono uppercase opacity-50">Спокойствие</div>
+              <div className="text-xs font-mono uppercase text-slate-400">Спокойствие</div>
             </div>
           </div>
 
-          <p className="text-[10px] opacity-30 font-mono">* При использовании Optimal f на исторических данных. Результаты могут отличаться.</p>
+          <p className="text-xs text-slate-500 font-mono">* При использовании Optimal f на исторических данных. Результаты могут отличаться.</p>
         </div>
       </header>
 

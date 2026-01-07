@@ -234,12 +234,12 @@ export default function Home() {
           <h1 className="text-4xl font-black tracking-tighter mb-2 italic">
             <span className="text-accent">Eqio</span>
           </h1>
-          <p className="text-xs font-mono opacity-50 uppercase tracking-[0.2em]">
+          <p className="text-xs font-mono text-slate-400 uppercase tracking-[0.2em]">
             {t.app.subtitle}
           </p>
           <div className="mt-3 flex items-center gap-2 text-sm">
             <Wallet size={14} className="text-accent" />
-            <span className="opacity-50">Депозит:</span>
+            <span className="text-slate-400">Депозит:</span>
             <span className="font-bold text-accent">{formatCurrency(settings.initialDeposit)}</span>
             {stats?.total_pnl !== undefined && (
               <span className={`text-xs ${stats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
