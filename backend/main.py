@@ -24,6 +24,7 @@ from routers import (
     stats_router,
     market_router,
 )
+from routers.deposits import router as deposits_router
 
 log = get_logger("api")
 
@@ -62,6 +63,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(trades_router)
+app.include_router(deposits_router)
 app.include_router(admin_router)
 app.include_router(blog_router)
 app.include_router(stats_router)

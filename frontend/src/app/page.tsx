@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Lock, Upload, BookOpen, History, Settings, Wallet, LogIn, BarChart3 } from 'lucide-react';
+import { Plus, Lock, Upload, BookOpen, History, Settings, Wallet, LogIn, BarChart3, HelpCircle, FileText } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { ImportPreviewModal } from '@/components/ImportPreviewModal';
+import { DepositManagerModal } from '@/components/DepositManagerModal';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import ThemeToggle from '@/components/ThemeToggle';
 import { FilterPanel, Filters } from '@/components/FilterPanel';
@@ -22,6 +23,7 @@ import {
   RecentTradesCard,
   AIInsightsCard,
   MAEMFECard,
+  PostExitCard,
   TagStatsCard,
   TerminalLog
 } from '@/components/dashboard';
@@ -96,6 +98,7 @@ export default function Home() {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isAuthRequiredOpen, setIsAuthRequiredOpen] = useState(false);
   const [selectedTradeToClose, setSelectedTradeToClose] = useState<Trade | null>(null);
   const [logs, setLogs] = useState<{msg: string, time: string}[]>([]);
@@ -125,6 +128,14 @@ export default function Home() {
   };
 
   const fetchData = useCallback(async (currentFilters?: Filters) => {
+    // Если пользователь не авторизован - не загружаем данные
+    if (!user) {
+      setStats(null);
+      setTrades([]);
+      setLoading(false);
+      return;
+    }
+    
     try {
       let statsUrl = '/stats/';
       const params = new URLSearchParams();
@@ -159,7 +170,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [filters, settings.initialDeposit, t.logs.synchronized, t.logs.syncFailed]);
+  }, [user, filters, settings.initialDeposit, t.logs.synchronized, t.logs.syncFailed]);
 
   useEffect(() => {
     setMounted(true);
@@ -255,8 +266,19 @@ export default function Home() {
             <BookOpen size={14} />
             {t.nav.systemManual}
           </Link>
+          <Link href="/blog" className="btn-secondary flex items-center gap-2">
+            <FileText size={14} />
+            {t.nav.blog}
+          </Link>
+          <Link href="/help" className="btn-secondary flex items-center gap-2">
+            <HelpCircle size={14} />
+            {t.nav.help}
+          </Link>
           {user ? (
             <>
+              <button onClick={() => setIsDepositModalOpen(true)} className="btn-secondary flex items-center gap-2" title="Управление депозитом">
+                <Wallet size={14} />
+              </button>
               <button onClick={() => setIsImportModalOpen(true)} className="btn-secondary flex items-center gap-2">
                 <Upload size={14} />
                 {t.nav.importData}
@@ -267,6 +289,9 @@ export default function Home() {
             </>
           ) : (
             <>
+              <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-secondary flex items-center gap-2" title="Управление депозитом">
+                <Wallet size={14} />
+              </button>
               <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-secondary flex items-center gap-2">
                 <Upload size={14} />
                 {t.nav.importData}
@@ -297,6 +322,11 @@ export default function Home() {
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={() => { fetchData(); addLog('Import completed'); }}
+      />
+      <DepositManagerModal
+        isOpen={isDepositModalOpen}
+        onClose={() => setIsDepositModalOpen(false)}
+        onUpdate={() => { fetchData(); addLog('Deposit updated'); }}
       />
 
       {/* Auth Required Modal */}
@@ -390,7 +420,16 @@ export default function Home() {
             recommendations={stats?.mae_mfe_analysis?.recommendations || []}
             optimalF={stats?.optimal_f || 0}
           />
-          <MAEMFECard analysis={stats?.mae_mfe_analysis} />
+          <MAEMFECard 
+            analysis={stats?.mae_mfe_analysis} 
+            onRecalculate={() => fetchData()}
+            getApiUrl={getApiUrl}
+          />
+          <PostExitCard 
+            tradesCount={trades.length}
+            getApiUrl={getApiUrl}
+            onRecalculate={() => fetchData()}
+          />
           <TagStatsCard tagStats={stats?.tag_stats || []} />
         </div>
       </div>

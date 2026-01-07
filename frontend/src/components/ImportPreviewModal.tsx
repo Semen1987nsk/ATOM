@@ -20,6 +20,16 @@ interface PreviewTrade {
   is_open: boolean;
 }
 
+interface BalanceInfo {
+  initial_balance: number | null;
+  final_balance: number | null;
+  deposits: number | null;
+  withdrawals: number | null;
+  currency: string;
+  period_start: string | null;
+  period_end: string | null;
+}
+
 interface PreviewResponse {
   filename: string;
   total_trades: number;
@@ -31,6 +41,7 @@ interface PreviewResponse {
     first: string | null;
     last: string | null;
   };
+  balance_info: BalanceInfo;
 }
 
 interface ImportPreviewModalProps {
@@ -336,6 +347,52 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                   <Filter className="w-4 h-4" />
                   Выбор диапазона импорта
                 </h3>
+                
+              {/* Balance Info */}
+              {(preview.balance_info.initial_balance !== null || preview.balance_info.final_balance !== null) && (
+                <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4 mt-4">
+                  <h4 className="font-medium text-indigo-300 mb-3">💰 Информация о балансе</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    {preview.balance_info.initial_balance !== null && (
+                      <div>
+                        <span className="text-slate-400">Начальный:</span>
+                        <div className="text-white font-medium">
+                          {preview.balance_info.initial_balance.toLocaleString('ru-RU')} {preview.balance_info.currency}
+                        </div>
+                      </div>
+                    )}
+                    {preview.balance_info.final_balance !== null && (
+                      <div>
+                        <span className="text-slate-400">Конечный:</span>
+                        <div className="text-white font-medium">
+                          {preview.balance_info.final_balance.toLocaleString('ru-RU')} {preview.balance_info.currency}
+                        </div>
+                      </div>
+                    )}
+                    {preview.balance_info.deposits !== null && preview.balance_info.deposits > 0 && (
+                      <div>
+                        <span className="text-slate-400">Пополнения:</span>
+                        <div className="text-green-400 font-medium">
+                          +{preview.balance_info.deposits.toLocaleString('ru-RU')} {preview.balance_info.currency}
+                        </div>
+                      </div>
+                    )}
+                    {preview.balance_info.withdrawals !== null && preview.balance_info.withdrawals > 0 && (
+                      <div>
+                        <span className="text-slate-400">Выводы:</span>
+                        <div className="text-red-400 font-medium">
+                          -{preview.balance_info.withdrawals.toLocaleString('ru-RU')} {preview.balance_info.currency}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {preview.balance_info.period_start && preview.balance_info.period_end && (
+                    <div className="mt-2 text-xs text-slate-500">
+                      Период: {formatDate(preview.balance_info.period_start)} — {formatDate(preview.balance_info.period_end)}
+                    </div>
+                  )}
+                </div>
+              )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>

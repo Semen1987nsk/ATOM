@@ -25,7 +25,9 @@
     "systemManual": "System Manual",
     "importData": "Import Data",
     "exportCsv": "Export CSV",
-    "logPosition": "Log Position"
+    "logPosition": "Log Position",
+    "blog": "Blog",
+    "help": "Help"
   },
   "stats": {
     "totalPnl": {

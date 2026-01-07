@@ -48,6 +48,47 @@ class TokenData(BaseModel):
     user_id: Optional[int] = None
     email: Optional[str] = None
 
+
+# ==================== DEPOSIT SCHEMAS ====================
+
+class DepositOperationCreate(BaseModel):
+    """Создание операции с депозитом"""
+    operation_type: str  # initial, deposit, withdrawal
+    amount: float
+    date: datetime
+    note: Optional[str] = None
+
+class DepositOperationResponse(BaseModel):
+    """Ответ с операцией депозита"""
+    id: int
+    operation_type: str
+    amount: float
+    balance_after: float
+    date: datetime
+    note: Optional[str] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class AccountBalanceResponse(BaseModel):
+    """Информация о балансе аккаунта"""
+    account_id: int
+    initial_balance: float
+    current_balance: float  # initial + deposits - withdrawals + pnl
+    total_deposits: float
+    total_withdrawals: float
+    total_pnl: float
+    currency: str
+
+class EquityCurvePoint(BaseModel):
+    """Точка кривой капитала"""
+    date: str
+    balance: float
+    pnl_cumulative: float
+    deposit_balance: float  # Баланс без учёта PnL (только депозиты)
+
+
 # ==================== TRADE SCHEMAS ====================
 
 class TradeBase(BaseModel):

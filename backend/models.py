@@ -99,6 +99,12 @@ class Payment(Base):
     user = relationship("User", back_populates="payments")
 
 
+class DepositOperationType(enum.Enum):
+    INITIAL = "initial"      # Начальный депозит
+    DEPOSIT = "deposit"      # Пополнение
+    WITHDRAWAL = "withdrawal"  # Снятие
+
+
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -106,10 +112,28 @@ class Account(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     name = Column(String, nullable=False)
     balance = Column(Numeric(precision=18, scale=8), default=0)
+    initial_balance = Column(Numeric(precision=18, scale=8), default=0)  # Начальный депозит
     currency = Column(String, default="RUB")
 
     owner = relationship("User", back_populates="accounts")
     trades = relationship("Trade", back_populates="account")
+    deposit_history = relationship("DepositHistory", back_populates="account")
+
+
+class DepositHistory(Base):
+    """История изменений депозита (пополнения/снятия)"""
+    __tablename__ = "deposit_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
+    operation_type = Column(Enum(DepositOperationType), nullable=False)
+    amount = Column(Numeric(precision=18, scale=8), nullable=False)  # Положительное для депозита, отрицательное для снятия
+    balance_after = Column(Numeric(precision=18, scale=8), nullable=False)  # Баланс после операции
+    date = Column(DateTime, nullable=False)  # Дата операции
+    note = Column(String, nullable=True)  # Комментарий
+    created_at = Column(DateTime, default=utc_now_naive)
+
+    account = relationship("Account", back_populates="deposit_history")
 
 class Trade(Base):
     __tablename__ = "trades"
@@ -148,6 +172,7 @@ class Trade(Base):
     # Продвинутые метрики (MAE/MFE)
     mae_price = Column(Numeric(precision=18, scale=8)) # Худшая цена во время сделки
     mfe_price = Column(Numeric(precision=18, scale=8)) # Лучшая цена во время сделки
+    post_exit_analysis = Column(JSON) # Анализ движения цены после закрытия
     
     # Результат
     pnl = Column(Numeric(precision=18, scale=8))

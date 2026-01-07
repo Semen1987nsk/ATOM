@@ -25,7 +25,9 @@
     "systemManual": "Руководство",
     "importData": "Импорт",
     "exportCsv": "Экспорт CSV",
-    "logPosition": "Добавить Сделку"
+    "logPosition": "Добавить Сделку",
+    "blog": "Блог",
+    "help": "Помощь"
   },
   "stats": {
     "totalPnl": {

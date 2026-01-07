@@ -213,6 +213,9 @@ async def preview_import(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
+    # Парсим информацию о балансе из файла
+    balance_info = import_service.parse_account_balance(contents, file.filename)
+    
     # Проверяем каждую сделку на дубликат
     preview_items = []
     for idx, trade_dict in enumerate(trades_data):
@@ -260,6 +263,15 @@ async def preview_import(
         "date_range": {
             "first": preview_items[0]["entry_at"] if preview_items else None,
             "last": preview_items[-1]["entry_at"] if preview_items else None,
+        },
+        "balance_info": {
+            "initial_balance": balance_info.get("initial_balance"),
+            "final_balance": balance_info.get("final_balance"),
+            "deposits": balance_info.get("deposits"),
+            "withdrawals": balance_info.get("withdrawals"),
+            "currency": balance_info.get("currency", "RUB"),
+            "period_start": balance_info.get("period_start").isoformat() if balance_info.get("period_start") else None,
+            "period_end": balance_info.get("period_end").isoformat() if balance_info.get("period_end") else None,
         }
     }
 
@@ -514,3 +526,406 @@ async def get_unrealized_pnl(
             })
             
     return results
+
+
+@router.post("/calculate-mae-mfe")
+async def calculate_mae_mfe_bulk(
+    trade_ids: Optional[List[int]] = None,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    """
+    Массовый расчёт MAE/MFE для закрытых сделок.
+    Если trade_ids не указаны, рассчитывает для всех сделок без MAE/MFE.
+    """
+    account_id = get_account_id(db, current_user)
+    
+    # Получаем закрытые сделки без MAE/MFE
+    query = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.exit_at != None,  # Только закрытые
+    )
+    
+    if trade_ids:
+        query = query.filter(models.Trade.id.in_(trade_ids))
+    else:
+        # Только сделки без MAE или MFE
+        query = query.filter(
+            (models.Trade.mae_price == None) | (models.Trade.mfe_price == None)
+        )
+    
+    trades = query.all()
+    
+    if not trades:
+        return {
+            "message": "Нет сделок для расчёта MAE/MFE",
+            "processed": 0,
+            "updated": 0,
+            "failed": 0
+        }
+    
+    updated = 0
+    failed = 0
+    errors = []
+    
+    for trade in trades:
+        try:
+            if not trade.entry_at or not trade.exit_at:
+                continue
+            
+            # Получаем операции для учёта усреднения
+            operations = trade.operations if trade.operations else None
+            
+            # Проверяем есть ли усреднение (больше 1 входа)
+            entry_count = 0
+            if operations:
+                entry_count = len([op for op in operations if op.get('type') == 'entry'])
+            
+            mae, mfe = market_data_service.calculate_mae_mfe(
+                ticker=trade.symbol,
+                direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
+                entry_price=float(trade.entry_price),  # Уже средневзвешенная при усреднении
+                entry_time=trade.entry_at,
+                exit_time=trade.exit_at,
+                operations=operations  # Передаём операции для точного определения периода
+            )
+            
+            if mae is not None and mfe is not None:
+                trade.mae_price = mae
+                trade.mfe_price = mfe
+                updated += 1
+                if entry_count > 1:
+                    log.info(f"Trade {trade.id} ({trade.symbol}): averaged position with {entry_count} entries")
+            else:
+                failed += 1
+                errors.append(f"{trade.symbol}: нет данных")
+                
+        except Exception as e:
+            failed += 1
+            errors.append(f"{trade.symbol}: {str(e)}")
+            log.error(f"Error calculating MAE/MFE for trade {trade.id}: {e}")
+    
+    db.commit()
+    
+    return {
+        "message": f"MAE/MFE рассчитан для {updated} сделок",
+        "processed": len(trades),
+        "updated": updated,
+        "failed": failed,
+        "errors": errors[:10] if errors else []  # Первые 10 ошибок
+    }
+
+
+@router.post("/calculate-post-exit")
+async def calculate_post_exit_bulk(
+    trade_ids: Optional[List[int]] = None,
+    recalculate: bool = False,
+    timeframe: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    """
+    Анализ движения цены ПОСЛЕ закрытия сделок.
+    
+    Показывает:
+    - Закрылись ли вы рано (цена продолжила движение в вашу сторону)
+    - Было ли закрытие правильным (цена развернулась)
+    
+    Параметры:
+    - trade_ids: список ID сделок для анализа
+    - recalculate: если True, пересчитывает все; если False, только без анализа
+    - timeframe: таймфрейм для анализа (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W)
+    """
+    account_id = get_account_id(db, current_user)
+    
+    # Получаем закрытые сделки
+    query = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.exit_at != None,
+    )
+    
+    if trade_ids:
+        query = query.filter(models.Trade.id.in_(trade_ids))
+    elif not recalculate:
+        # Только сделки без post-exit анализа
+        query = query.filter(models.Trade.post_exit_analysis == None)
+    
+    trades = query.order_by(models.Trade.exit_at.desc()).limit(50).all()  # Лимит 50 для скорости
+    
+    # Если нет сделок для расчёта, но есть уже проанализированные - возвращаем статистику
+    if not trades:
+        existing_trades = db.query(models.Trade).filter(
+            models.Trade.account_id == account_id,
+            models.Trade.post_exit_analysis != None
+        ).all()
+        
+        if existing_trades:
+            detailed_stats = _calculate_post_exit_detailed_stats(existing_trades)
+            return {
+                "message": "Статистика по ранее проанализированным сделкам",
+                "processed": len(existing_trades),
+                "updated": 0,
+                "failed": 0,
+                "summary": detailed_stats["summary"],
+                "period_stats": detailed_stats["period_stats"],
+                "top_early_exits": detailed_stats["top_early_exits"],
+                "errors": []
+            }
+        
+        return {
+            "message": "Нет сделок для анализа",
+            "processed": 0,
+            "updated": 0,
+            "summary": None
+        }
+        return {
+            "message": "Нет сделок для анализа",
+            "processed": 0,
+            "updated": 0,
+            "summary": None
+        }
+    
+    updated = 0
+    failed = 0
+    early_exits = 0
+    good_exits = 0
+    errors = []
+    
+    for trade in trades:
+        try:
+            if not trade.exit_at or not trade.exit_price:
+                continue
+            
+            analysis = market_data_service.calculate_post_exit_analysis(
+                ticker=trade.symbol,
+                direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
+                exit_price=float(trade.exit_price),
+                exit_time=trade.exit_at,
+                timeframe=timeframe  # Используем выбранный пользователем таймфрейм
+            )
+            
+            if analysis and analysis.get("periods"):
+                trade.post_exit_analysis = analysis
+                updated += 1
+                
+                # Подсчёт статистики
+                if analysis.get("summary"):
+                    early_exits += analysis["summary"].get("early_exits_count", 0)
+                    if analysis["summary"].get("avg_quality_score", 0) >= 70:
+                        good_exits += 1
+            else:
+                failed += 1
+                errors.append(f"{trade.symbol}: нет данных")
+                
+        except Exception as e:
+            failed += 1
+            errors.append(f"{trade.symbol}: {str(e)}")
+            log.error(f"Error calculating post-exit for trade {trade.id}: {e}")
+    
+    db.commit()
+    
+    # Собираем детальную статистику по всем обработанным сделкам
+    detailed_stats = _calculate_post_exit_detailed_stats(trades)
+    
+    return {
+        "message": f"Post-exit анализ выполнен для {updated} сделок",
+        "processed": len(trades),
+        "updated": updated,
+        "failed": failed,
+        "summary": detailed_stats["summary"],
+        "period_stats": detailed_stats["period_stats"],
+        "top_early_exits": detailed_stats["top_early_exits"],
+        "errors": errors[:10] if errors else []
+    }
+
+
+def _calculate_post_exit_detailed_stats(trades: list) -> dict:
+    """Рассчитывает детальную статистику по post-exit анализу"""
+    period_stats = {}  # Статистика по каждому периоду
+    all_continuation_moves = []  # Все % упущенной прибыли
+    early_exits_list = []
+    good_exits_count = 0
+    neutral_count = 0
+    
+    for trade in trades:
+        if not trade.post_exit_analysis:
+            continue
+            
+        periods = trade.post_exit_analysis.get("periods", {})
+        for period_key, period_data in periods.items():
+            if not period_data.get("available"):
+                continue
+            
+            # Инициализируем статистику для периода
+            if period_key not in period_stats:
+                period_stats[period_key] = {
+                    "label": period_data.get("label", period_key),
+                    "early_count": 0,
+                    "good_count": 0,
+                    "neutral_count": 0,
+                    "total": 0,
+                    "avg_continuation_pct": 0,
+                    "max_continuation_pct": 0,
+                    "continuation_moves": [],
+                    "total_missed_pct": 0,
+                }
+            
+            stats = period_stats[period_key]
+            stats["total"] += 1
+            
+            quality = period_data.get("exit_quality")
+            continuation_pct = period_data.get("continuation_move_pct", 0)
+            
+            if quality == "early":
+                stats["early_count"] += 1
+                stats["continuation_moves"].append(continuation_pct)
+                stats["total_missed_pct"] += continuation_pct
+                
+                # Добавляем в список ранних выходов
+                early_exits_list.append({
+                    "trade_id": trade.id,
+                    "symbol": trade.symbol,
+                    "direction": trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
+                    "exit_date": trade.exit_at.strftime("%d.%m.%Y") if trade.exit_at else None,
+                    "pnl": float(trade.pnl) if trade.pnl else 0,
+                    "period": period_data.get("label", period_key),
+                    "missed_pct": continuation_pct,
+                    "exit_price": float(trade.exit_price) if trade.exit_price else 0,
+                    "max_price_after": period_data.get("max_price"),
+                    "min_price_after": period_data.get("min_price"),
+                    "final_price": period_data.get("final_price"),
+                })
+            elif quality == "good":
+                stats["good_count"] += 1
+                good_exits_count += 1
+            else:
+                stats["neutral_count"] += 1
+                neutral_count += 1
+            
+            all_continuation_moves.append(continuation_pct)
+    
+    # Вычисляем средние значения
+    for period_key, stats in period_stats.items():
+        if stats["continuation_moves"]:
+            stats["avg_continuation_pct"] = round(sum(stats["continuation_moves"]) / len(stats["continuation_moves"]), 2)
+            stats["max_continuation_pct"] = round(max(stats["continuation_moves"]), 2)
+        stats["avg_missed_pct"] = round(stats["total_missed_pct"] / stats["total"], 2) if stats["total"] > 0 else 0
+        # Убираем временные данные
+        del stats["continuation_moves"]
+        del stats["total_missed_pct"]
+    
+    # Сортируем ранние выходы по упущенному %
+    early_exits_list.sort(key=lambda x: x["missed_pct"], reverse=True)
+    total_early = sum(s["early_count"] for s in period_stats.values()) // max(1, len(period_stats))  # Средний по периодам
+    
+    return {
+        "summary": {
+            "early_exits": len(set(e["trade_id"] for e in early_exits_list)),  # Уникальные сделки
+            "good_exits": good_exits_count // max(1, len(period_stats)),
+            "total_analyzed": len([t for t in trades if t.post_exit_analysis]),
+            "avg_missed_profit_pct": round(sum(all_continuation_moves) / len(all_continuation_moves), 2) if all_continuation_moves else 0,
+            "early_exit_tendency": total_early > good_exits_count // max(1, len(period_stats)) * 2
+        },
+        "period_stats": period_stats,
+        "top_early_exits": early_exits_list[:10]  # Топ-10 худших ранних выходов
+    }
+
+
+@router.get("/post-exit/list")
+async def get_trades_with_post_exit(
+    limit: int = 50,
+    early_only: bool = False,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    """Получить список сделок с post-exit анализом"""
+    account_id = get_account_id(db, current_user)
+    
+    query = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.post_exit_analysis != None
+    ).order_by(models.Trade.exit_at.desc())
+    
+    trades = query.limit(limit).all()
+    
+    result = []
+    for trade in trades:
+        analysis = trade.post_exit_analysis or {}
+        periods = analysis.get("periods", {})
+        
+        # Определяем худший период (максимальный missed %)
+        worst_period = None
+        max_missed = 0
+        has_early = False
+        
+        for period_key, period_data in periods.items():
+            if period_data.get("available") and period_data.get("exit_quality") == "early":
+                has_early = True
+                missed = period_data.get("continuation_move_pct", 0)
+                if missed > max_missed:
+                    max_missed = missed
+                    worst_period = period_data
+        
+        if early_only and not has_early:
+            continue
+        
+        result.append({
+            "id": trade.id,
+            "symbol": trade.symbol,
+            "direction": trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
+            "entry_at": trade.entry_at.isoformat() if trade.entry_at else None,
+            "exit_at": trade.exit_at.isoformat() if trade.exit_at else None,
+            "entry_price": float(trade.entry_price) if trade.entry_price else None,
+            "exit_price": float(trade.exit_price) if trade.exit_price else None,
+            "pnl": float(trade.pnl) if trade.pnl else None,
+            "net_pnl": float(trade.net_pnl) if trade.net_pnl else None,
+            "has_early_exit": has_early,
+            "max_missed_pct": round(max_missed, 2),
+            "worst_period": worst_period.get("label") if worst_period else None,
+            "analysis": analysis
+        })
+    
+    return {
+        "trades": result,
+        "total": len(result)
+    }
+
+
+@router.get("/{trade_id}/post-exit")
+async def get_trade_post_exit(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+):
+    """Получить post-exit анализ для конкретной сделки"""
+    account_id = get_account_id(db, current_user)
+    
+    trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id
+    ).first()
+    
+    if not trade:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    
+    if not trade.exit_at:
+        raise HTTPException(status_code=400, detail="Сделка ещё не закрыта")
+    
+    # Если анализ уже есть — возвращаем
+    if trade.post_exit_analysis:
+        return trade.post_exit_analysis
+    
+    # Иначе рассчитываем
+    analysis = market_data_service.calculate_post_exit_analysis(
+        ticker=trade.symbol,
+        direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
+        exit_price=float(trade.exit_price),
+        exit_time=trade.exit_at,
+        timeframe=trade.timeframe  # Используем таймфрейм сделки
+    )
+    
+    if analysis:
+        trade.post_exit_analysis = analysis
+        db.commit()
+    
+    return analysis

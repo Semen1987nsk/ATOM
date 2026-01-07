@@ -306,6 +306,106 @@ class TradeManager:
         return self.completed_trades
 
 
+def parse_account_balance(contents: bytes, filename: str = "") -> Dict:
+    """
+    Парсит информацию о балансе счёта из файла брокера.
+    
+    Возвращает:
+    {
+        "initial_balance": float | None,
+        "final_balance": float | None,
+        "deposits": float | None,
+        "withdrawals": float | None,
+        "currency": str,
+        "period_start": datetime | None,
+        "period_end": datetime | None,
+    }
+    """
+    from openpyxl import load_workbook
+    
+    result = {
+        "initial_balance": None,
+        "final_balance": None,
+        "deposits": None,
+        "withdrawals": None,
+        "currency": "RUB",
+        "period_start": None,
+        "period_end": None,
+    }
+    
+    if not filename.lower().endswith(('.xlsx', '.xls')):
+        return result
+    
+    try:
+        wb = load_workbook(io.BytesIO(contents))
+        ws = wb.active
+        
+        # Ищем информацию в первых 100 строках
+        for row in range(1, 100):
+            for col in range(1, 20):
+                cell_val = ws.cell(row=row, column=col).value
+                if not cell_val:
+                    continue
+                cell_str = str(cell_val).lower()
+                
+                # Период отчёта
+                if 'период' in cell_str or 'period' in cell_str:
+                    # Ищем даты в соседних ячейках
+                    for c in range(col, min(col + 5, 20)):
+                        val = ws.cell(row=row, column=c).value
+                        if isinstance(val, datetime):
+                            if result["period_start"] is None:
+                                result["period_start"] = val
+                            else:
+                                result["period_end"] = val
+                
+                # Начальный баланс / Входящий остаток
+                if any(x in cell_str for x in ['входящий остаток', 'начальный баланс', 'opening balance', 'на начало периода']):
+                    # Ищем число в соседних ячейках
+                    for c in range(col, min(col + 10, 30)):
+                        val = ws.cell(row=row, column=c).value
+                        if val and isinstance(val, (int, float)):
+                            result["initial_balance"] = float(val)
+                            break
+                
+                # Конечный баланс / Исходящий остаток
+                if any(x in cell_str for x in ['исходящий остаток', 'конечный баланс', 'closing balance', 'на конец периода', 'итого активов']):
+                    for c in range(col, min(col + 10, 30)):
+                        val = ws.cell(row=row, column=c).value
+                        if val and isinstance(val, (int, float)):
+                            result["final_balance"] = float(val)
+                            break
+                
+                # Зачисления / Пополнения
+                if any(x in cell_str for x in ['зачисление', 'пополнение', 'deposit', 'ввод денег', 'ввод дс']):
+                    for c in range(col, min(col + 10, 30)):
+                        val = ws.cell(row=row, column=c).value
+                        if val and isinstance(val, (int, float)) and float(val) > 0:
+                            result["deposits"] = float(val)
+                            break
+                
+                # Списания / Снятия
+                if any(x in cell_str for x in ['списание', 'снятие', 'withdrawal', 'вывод денег', 'вывод дс']):
+                    for c in range(col, min(col + 10, 30)):
+                        val = ws.cell(row=row, column=c).value
+                        if val and isinstance(val, (int, float)):
+                            result["withdrawals"] = abs(float(val))
+                            break
+                
+                # Валюта
+                if 'валюта' in cell_str or 'currency' in cell_str:
+                    for c in range(col, min(col + 5, 20)):
+                        val = ws.cell(row=row, column=c).value
+                        if val and str(val).upper() in ['RUB', 'USD', 'EUR', 'РУБ', 'РУБЛЬ']:
+                            result["currency"] = "RUB" if 'РУБ' in str(val).upper() else str(val).upper()
+                            break
+        
+    except Exception as e:
+        print(f"Warning: Could not parse balance info: {e}")
+    
+    return result
+
+
 def parse_margin_fees(contents: bytes) -> Dict[str, float]:
     """
     Парсит раздел 3.4 'Комиссия за маржинальную торговлю' из Excel отчёта Тинькофф.

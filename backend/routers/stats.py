@@ -171,8 +171,13 @@ async def get_stats(
     # Расчет кривой эквити (хронологический порядок)
     sorted_trades = sorted(trades, key=lambda x: x.exit_at if x.exit_at else x.entry_at)
     pnls_sorted = [get_pnl(t) for t in sorted_trades]
+    
+    # Получаем начальный баланс из аккаунта
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    initial_balance = float(account.initial_balance or 0) if account else 0
+    
     equity_curve = []
-    current_balance = 0
+    current_balance = initial_balance
     for t in sorted_trades:
         current_balance += get_pnl(t)
         equity_curve.append({
@@ -267,5 +272,7 @@ async def get_stats(
         "time_patterns": time_patterns_data,
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
-        "tag_stats": tag_stats
+        "tag_stats": tag_stats,
+        "initial_balance": initial_balance,
+        "current_balance": current_balance if equity_curve else initial_balance,
     }

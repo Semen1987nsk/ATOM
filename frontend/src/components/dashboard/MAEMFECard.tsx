@@ -1,6 +1,7 @@
 'use client';
 
-import { Gauge } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Gauge, RefreshCw, Calculator } from 'lucide-react';
 
 interface MAEMFEAnalysis {
   avg_mae_pct: number;
@@ -11,13 +12,88 @@ interface MAEMFEAnalysis {
 
 interface MAEMFECardProps {
   analysis: MAEMFEAnalysis | undefined;
+  onRecalculate?: () => void;
+  getApiUrl: (path: string) => string;
 }
 
-export function MAEMFECard({ analysis }: MAEMFECardProps) {
+export function MAEMFECard({ analysis, onRecalculate, getApiUrl }: MAEMFECardProps) {
+  const [calculating, setCalculating] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
+  const [result, setResult] = useState<{ updated: number; failed: number } | null>(null);
+  const progressInterval = useRef<NodeJS.Timeout | null>(null);
+  
   const avgMAE = analysis?.avg_mae_pct || 0;
   const avgMFE = analysis?.avg_mfe_pct || 0;
   const avgEfficiency = analysis?.avg_efficiency || 0;
   const tradesAnalyzed = analysis?.trades_analyzed || 0;
+
+  // Очистка интервала при размонтировании
+  useEffect(() => {
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    };
+  }, []);
+
+  const handleCalculateMAEMFE = async () => {
+    setCalculating(true);
+    setResult(null);
+    setProgress(0);
+    setProgressText('Запрос исторических данных MOEX...');
+    
+    // Симуляция прогресса для лучшего UX
+    let currentProgress = 0;
+    progressInterval.current = setInterval(() => {
+      currentProgress += Math.random() * 8 + 2;
+      if (currentProgress > 90) currentProgress = 90;
+      setProgress(currentProgress);
+      
+      if (currentProgress < 30) {
+        setProgressText('Загрузка свечей с MOEX...');
+      } else if (currentProgress < 60) {
+        setProgressText('Расчёт MAE для сделок...');
+      } else if (currentProgress < 85) {
+        setProgressText('Расчёт MFE для сделок...');
+      } else {
+        setProgressText('Сохранение результатов...');
+      }
+    }, 300);
+    
+    try {
+      const response = await fetch(getApiUrl('/trades/calculate-mae-mfe'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+      
+      setProgress(100);
+      setProgressText('Готово!');
+      
+      const data = await response.json();
+      setResult({ updated: data.updated, failed: data.failed });
+      
+      if (data.updated > 0 && onRecalculate) {
+        setTimeout(() => onRecalculate(), 500);
+      }
+    } catch (error) {
+      console.error('Failed to calculate MAE/MFE:', error);
+      setResult({ updated: 0, failed: -1 });
+      setProgressText('Ошибка!');
+    } finally {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+      setTimeout(() => {
+        setCalculating(false);
+        setProgress(0);
+      }, 1500);
+    }
+  };
 
   return (
     <div className="cyber-card p-6 border-l-cyan-500/30 relative overflow-hidden group">
@@ -73,9 +149,48 @@ export function MAEMFECard({ analysis }: MAEMFECardProps) {
         <div className="p-3 bg-white/5 rounded-lg space-y-2 text-[11px]">
           <div className="font-mono uppercase opacity-60 text-[10px] mb-2">Интерпретация</div>
           {tradesAnalyzed === 0 ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
-              Нет данных для анализа. Добавьте сделки с MAE/MFE метриками.
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                Нет данных для анализа. Добавьте сделки с MAE/MFE метриками.
+              </div>
+              
+              {/* Прогресс бар */}
+              {calculating && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-300">{progressText}</span>
+                    <span className="text-cyan-400 font-medium">{Math.round(progress)}%</span>
+                  </div>
+                  <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-cyan-500 to-teal-500 h-full rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {!calculating && (
+                <button
+                  onClick={handleCalculateMAEMFE}
+                  disabled={calculating}
+                  className="w-full px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg text-cyan-400 text-xs font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <Calculator size={14} />
+                  Рассчитать MAE/MFE из истории MOEX
+                </button>
+              )}
+              
+              {result && !calculating && (
+                <div className={`text-xs p-2 rounded ${result.failed === -1 ? 'bg-red-500/20 text-red-400' : result.updated > 0 ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                  {result.failed === -1 
+                    ? 'Ошибка при расчёте' 
+                    : result.updated > 0 
+                      ? `✓ Обновлено ${result.updated} сделок` 
+                      : 'Нет сделок для обновления или данные недоступны'}
+                </div>
+              )}
             </div>
           ) : (
             <>
