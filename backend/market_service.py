@@ -1,9 +1,46 @@
 import requests
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from logger import get_logger
+import pytz
 
 log = get_logger("market")
+
+# Московская временная зона
+MSK_TZ = pytz.timezone('Europe/Moscow')
+
+# Праздники MOEX 2025-2026 (торги не проводятся)
+MOEX_HOLIDAYS = {
+    # 2025
+    datetime(2025, 1, 1).date(),
+    datetime(2025, 1, 2).date(),
+    datetime(2025, 1, 3).date(),
+    datetime(2025, 1, 6).date(),
+    datetime(2025, 1, 7).date(),
+    datetime(2025, 1, 8).date(),
+    datetime(2025, 2, 24).date(),  # День защитника отечества (перенос)
+    datetime(2025, 3, 10).date(),  # 8 марта (перенос)
+    datetime(2025, 5, 1).date(),
+    datetime(2025, 5, 2).date(),
+    datetime(2025, 5, 9).date(),
+    datetime(2025, 6, 12).date(),
+    datetime(2025, 6, 13).date(),
+    datetime(2025, 11, 3).date(),  # День народного единства (перенос)
+    datetime(2025, 12, 31).date(),
+    # 2026
+    datetime(2026, 1, 1).date(),
+    datetime(2026, 1, 2).date(),
+    datetime(2026, 1, 5).date(),
+    datetime(2026, 1, 6).date(),
+    datetime(2026, 1, 7).date(),
+    datetime(2026, 1, 8).date(),
+    datetime(2026, 2, 23).date(),
+    datetime(2026, 3, 9).date(),
+    datetime(2026, 5, 1).date(),
+    datetime(2026, 5, 11).date(),
+    datetime(2026, 6, 12).date(),
+    datetime(2026, 11, 4).date(),
+}
 
 class MarketService:
     def __init__(self):
@@ -114,6 +151,94 @@ class MarketService:
         
         log.debug(f"Retrieved specs for {len(specs)} futures")
         return specs
+    
+    def is_trading_day(self, date: datetime) -> bool:
+        """Проверяет, является ли дата торговым днём MOEX"""
+        d = date.date() if isinstance(date, datetime) else date
+        # Выходные
+        if d.weekday() >= 5:  # Суббота=5, Воскресенье=6
+            return False
+        # Праздники
+        if d in MOEX_HOLIDAYS:
+            return False
+        return True
+    
+    def is_trading_hours(self, dt: datetime, is_futures: bool = False) -> bool:
+        """
+        Проверяет, попадает ли время в торговую сессию MOEX.
+        
+        Основная сессия (акции): 10:00 - 18:45 MSK
+        Вечерняя сессия (только фьючерсы): 19:05 - 23:50 MSK
+        """
+        if not self.is_trading_day(dt):
+            return False
+        
+        # Конвертируем в MSK если нужно
+        if dt.tzinfo is None:
+            # Предполагаем UTC
+            dt_msk = MSK_TZ.localize(dt)
+        else:
+            dt_msk = dt.astimezone(MSK_TZ)
+        
+        t = dt_msk.time()
+        
+        # Основная сессия: 10:00 - 18:45
+        main_session = time(10, 0) <= t <= time(18, 45)
+        
+        if is_futures:
+            # Вечерняя сессия: 19:05 - 23:50
+            evening_session = time(19, 5) <= t <= time(23, 50)
+            return main_session or evening_session
+        
+        return main_session
+    
+    def get_next_trading_time(self, dt: datetime) -> datetime:
+        """Возвращает ближайшее торговое время после указанного момента"""
+        current = dt
+        
+        # Максимум 14 дней вперёд (на случай новогодних праздников)
+        for _ in range(14 * 24):  # 14 дней в часах
+            if self.is_trading_day(current):
+                # Конвертируем в MSK
+                if current.tzinfo is None:
+                    current_msk = MSK_TZ.localize(current)
+                else:
+                    current_msk = current.astimezone(MSK_TZ)
+                
+                t = current_msk.time()
+                
+                # Если до начала торгов - ждём 10:00
+                if t < time(10, 0):
+                    return current_msk.replace(hour=10, minute=0, second=0, microsecond=0)
+                
+                # Если в торговые часы - возвращаем как есть
+                if time(10, 0) <= t <= time(18, 45):
+                    return current_msk
+                
+                # Если после торгов - переходим на следующий день
+                current = current + timedelta(days=1)
+                current = current.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                current = current + timedelta(days=1)
+                current = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        return dt  # Fallback
+
+    def count_trading_hours(self, start_dt: datetime, end_dt: datetime) -> float:
+        """Считает количество торговых часов между двумя датами"""
+        if start_dt >= end_dt:
+            return 0
+        
+        trading_hours = 0
+        current = start_dt
+        
+        while current < end_dt:
+            if self.is_trading_hours(current):
+                trading_hours += 1
+            current = current + timedelta(hours=1)
+        
+        return trading_hours
+    
     def get_candles(
         self, 
         ticker: str, 
@@ -379,6 +504,22 @@ class MarketService:
         Returns:
             Dict с анализом по каждому периоду
         """
+        # ===== ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ =====
+        if not exit_price or exit_price <= 0:
+            log.warning(f"Invalid exit_price for {ticker}: {exit_price}")
+            return {"error": "Invalid exit_price", "periods": {}}
+        
+        if not exit_time:
+            log.warning(f"Missing exit_time for {ticker}")
+            return {"error": "Missing exit_time", "periods": {}}
+        
+        if not direction or direction.upper() not in ("LONG", "SHORT"):
+            log.warning(f"Invalid direction for {ticker}: {direction}")
+            return {"error": "Invalid direction", "periods": {}}
+        
+        # Нормализуем direction
+        direction = direction.upper()
+        
         # Выбираем периоды в зависимости от таймфрейма торговли
         if periods_hours is None:
             periods_hours = self._get_post_exit_periods(timeframe)
@@ -388,11 +529,28 @@ class MarketService:
             "exit_time": exit_time.isoformat() if exit_time else None,
             "direction": direction,
             "timeframe": timeframe,
-            "periods": {}
+            "periods": {},
+            "warnings": []
         }
         
+        # ===== ПРОВЕРКА ТОРГОВЫХ СЕССИЙ =====
+        if not self.is_trading_day(exit_time):
+            result["warnings"].append("Выход в нерабочий день - данные могут быть неточными")
+        
         for hours in periods_hours:
+            # Рассчитываем реальное торговое время с учётом выходных/праздников
             period_end = exit_time + timedelta(hours=hours)
+            
+            # Проверяем, сколько торговых часов в периоде
+            trading_hours = self.count_trading_hours(exit_time, period_end)
+            if trading_hours < hours * 0.3:  # Менее 30% торгового времени
+                result["periods"][f"{hours}h"] = {
+                    "available": False,
+                    "message": f"Период попадает на нерабочие дни ({trading_hours:.0f}ч торгов из {hours}ч)",
+                    "trading_hours": trading_hours,
+                    "requested_hours": hours
+                }
+                continue
             
             # Определяем интервал свечей
             if hours <= 4:
@@ -433,17 +591,31 @@ class MarketService:
             min_price = min(all_lows)
             final_price = all_closes[-1]  # Последняя цена закрытия
             
+            # ===== АДАПТИВНЫЙ ПОРОГ на основе волатильности =====
+            # Рассчитываем среднюю волатильность в периоде
+            if len(post_exit_candles) >= 2:
+                price_changes = []
+                for c in post_exit_candles:
+                    if c.get('high') and c.get('low') and c.get('close'):
+                        range_pct = (c['high'] - c['low']) / c['close'] * 100
+                        price_changes.append(range_pct)
+                avg_volatility = sum(price_changes) / len(price_changes) if price_changes else 1.0
+                # Порог = 0.5 * средняя волатильность, но не менее 0.5% и не более 3%
+                significance_threshold = max(0.5, min(3.0, avg_volatility * 0.5))
+            else:
+                significance_threshold = 1.0  # По умолчанию 1%
+            
             # Анализ для LONG
-            if direction.upper() == "LONG":
+            if direction == "LONG":
                 # Для лонга: если цена выросла после выхода — закрылись рано
                 continuation_price = max_price  # Максимальная цена после выхода
                 continuation_move = (max_price - exit_price) / exit_price * 100
                 final_move = (final_price - exit_price) / exit_price * 100
                 
-                if continuation_move > 1:  # Цена выросла больше чем на 1%
+                if continuation_move > significance_threshold:  # Цена выросла значительно
                     exit_quality = "early"  # Закрылись рано
                     quality_score = max(0, 100 - continuation_move * 10)  # Чем больше рост, тем хуже
-                elif final_move < -1:  # Цена упала больше чем на 1%
+                elif final_move < -significance_threshold:  # Цена упала значительно
                     exit_quality = "good"  # Правильное закрытие
                     quality_score = min(100, 70 + abs(final_move) * 5)
                 else:
@@ -455,10 +627,10 @@ class MarketService:
                 continuation_move = (exit_price - min_price) / exit_price * 100
                 final_move = (exit_price - final_price) / exit_price * 100
                 
-                if continuation_move > 1:
+                if continuation_move > significance_threshold:
                     exit_quality = "early"
                     quality_score = max(0, 100 - continuation_move * 10)
-                elif final_move < -1:
+                elif final_move < -significance_threshold:
                     exit_quality = "good"
                     quality_score = min(100, 70 + abs(final_move) * 5)
                 else:

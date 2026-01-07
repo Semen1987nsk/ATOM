@@ -75,6 +75,8 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
   const [tradesList, setTradesList] = useState<TradePostExit[]>([]);
   const [selectedTrade, setSelectedTrade] = useState<TradePostExit | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<string>('1H');
+  const [loadingTrades, setLoadingTrades] = useState(false);
+  const [tradesError, setTradesError] = useState<string | null>(null);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
 
   const timeframes = [
@@ -153,15 +155,31 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
   };
 
   const loadTradesList = async () => {
+    setLoadingTrades(true);
+    setTradesError(null);
+    setShowTradesList(true); // Сначала открываем модал со спиннером
+    
     try {
-      const response = await fetch(getApiUrl('/trades/post-exit/list?limit=50'));
-      if (response.ok) {
-        const data = await response.json();
-        setTradesList(data.trades || []);
-        setShowTradesList(true);
+      const response = await fetch(getApiUrl('/trades/post-exit/list?limit=100'), {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setTradesList(data.trades || []);
+      
+      if (!data.trades || data.trades.length === 0) {
+        setTradesError('Нет сделок с post-exit анализом. Сначала запустите анализ.');
       }
     } catch (error) {
       console.error('Failed to load trades list:', error);
+      setTradesError(error instanceof Error ? error.message : 'Ошибка загрузки данных');
+    } finally {
+      setLoadingTrades(false);
     }
   };
 
@@ -403,7 +421,30 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
             </div>
             
             <div className="p-4 overflow-auto max-h-[calc(80vh-120px)]">
-              {selectedTrade ? (
+              {/* Loading state */}
+              {loadingTrades && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-2 border-purple-500 border-t-transparent mb-4"></div>
+                  <div className="text-slate-400">Загрузка сделок...</div>
+                </div>
+              )}
+              
+              {/* Error state */}
+              {!loadingTrades && tradesError && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <AlertTriangle size={40} className="text-yellow-500 mb-4" />
+                  <div className="text-slate-400 text-center">{tradesError}</div>
+                  <button 
+                    onClick={loadTradesList}
+                    className="mt-4 px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 rounded-lg text-purple-400 text-sm"
+                  >
+                    Попробовать снова
+                  </button>
+                </div>
+              )}
+              
+              {/* Content */}
+              {!loadingTrades && !tradesError && selectedTrade ? (
                 // Детальный просмотр одной сделки
                 <div className="space-y-4">
                   <button 
@@ -472,7 +513,7 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : !loadingTrades && !tradesError && (
                 // Список сделок
                 <div className="space-y-2">
                   <div className="grid grid-cols-6 gap-2 text-[10px] opacity-50 uppercase border-b border-white/10 pb-2 sticky top-0 bg-slate-900">

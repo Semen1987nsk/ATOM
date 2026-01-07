@@ -678,12 +678,6 @@ async def calculate_post_exit_bulk(
             "updated": 0,
             "summary": None
         }
-        return {
-            "message": "Нет сделок для анализа",
-            "processed": 0,
-            "updated": 0,
-            "summary": None
-        }
     
     updated = 0
     failed = 0
