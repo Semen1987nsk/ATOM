@@ -391,14 +391,15 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
               Анализировать ({selectedTimeframe})
             </button>
             
-            {result && (
-              <button
-                onClick={loadTradesList}
-                className="px-4 py-2 bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/30 rounded-lg text-slate-400 text-xs font-medium flex items-center justify-center gap-2 transition-colors"
-              >
-                <Eye size={14} />
-              </button>
-            )}
+            <button
+              onClick={loadTradesList}
+              disabled={tradesCount === 0}
+              className="px-4 py-2 bg-slate-500/20 hover:bg-slate-500/30 border border-slate-500/30 rounded-lg text-slate-400 text-xs font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+              title="Смотреть все сделки"
+            >
+              <Eye size={14} />
+              Все сделки
+            </button>
           </div>
         )}
         
