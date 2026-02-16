@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth, RequireAuth } from '@/contexts/AuthContext';
+import { api, ApiError } from '@/lib/apiClient';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -17,14 +18,6 @@ import {
   ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, 
   BarChart, Bar, Legend, Funnel, FunnelChart, LabelList
 } from 'recharts';
-
-function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-    const codespaceName = window.location.hostname.split('-3000')[0];
-    return `https://${codespaceName}-8000.app.github.dev`;
-  }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-}
 
 // Цвета для графиков
 const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
@@ -214,40 +207,17 @@ function AdminDashboard() {
     setError(null);
     
     try {
-      const headers = { Authorization: `Bearer ${token}` };
-      const apiBase = getApiBase();
-      
       // Fetch all data in parallel
-      const [statsRes, usersRes, sourcesRes, growthRes, funnelRes, revenueRes, revenueGrowthRes, subAnalyticsRes, topPayingRes] = await Promise.all([
-        fetch(`${apiBase}/admin/stats`, { headers }),
-        fetch(`${apiBase}/admin/users?skip=${currentPage * pageSize}&limit=${pageSize}&sort_by=${sortBy}&sort_order=${sortOrder}&search=${searchQuery}&registration_source=${sourceFilter}`, { headers }),
-        fetch(`${apiBase}/admin/registration-sources`, { headers }),
-        fetch(`${apiBase}/admin/growth?days=30`, { headers }),
-        fetch(`${apiBase}/admin/funnel`, { headers }),
-        fetch(`${apiBase}/admin/revenue`, { headers }),
-        fetch(`${apiBase}/admin/revenue-growth?days=30`, { headers }),
-        fetch(`${apiBase}/admin/subscription-analytics`, { headers }),
-        fetch(`${apiBase}/admin/top-paying-users?limit=10`, { headers }),
-      ]);
-      
-      if (!statsRes.ok) {
-        if (statsRes.status === 403) {
-          setError('Нет прав доступа к админ-панели');
-          return;
-        }
-        throw new Error('Ошибка загрузки данных');
-      }
-      
       const [statsData, usersData, sourcesData, growthData, funnelData, revenueData, revenueGrowthData, subAnalyticsData, topPayingData] = await Promise.all([
-        statsRes.json(),
-        usersRes.json(),
-        sourcesRes.json(),
-        growthRes.json(),
-        funnelRes.json(),
-        revenueRes.json(),
-        revenueGrowthRes.json(),
-        subAnalyticsRes.json(),
-        topPayingRes.json(),
+        api.get<AdminStats>('/admin/stats'),
+        api.get<{users: UserData[]; total: number}>(`/admin/users?skip=${currentPage * pageSize}&limit=${pageSize}&sort_by=${sortBy}&sort_order=${sortOrder}&search=${searchQuery}&registration_source=${sourceFilter}`),
+        api.get<SourceData[]>('/admin/registration-sources'),
+        api.get<GrowthData[]>('/admin/growth?days=30'),
+        api.get<{steps: FunnelStep[]}>('/admin/funnel'),
+        api.get<RevenueStats>('/admin/revenue'),
+        api.get<RevenueGrowth[]>('/admin/revenue-growth?days=30'),
+        api.get<SubscriptionAnalytics>('/admin/subscription-analytics'),
+        api.get<TopPayingUser[]>('/admin/top-paying-users?limit=10'),
       ]);
       
       setStats(statsData);
@@ -262,12 +232,18 @@ function AdminDashboard() {
       setTopPayingUsers(topPayingData);
       
       // Fetch articles
-      const articlesRes = await fetch(`${apiBase}/admin/articles`, { headers });
-      if (articlesRes.ok) {
-        setArticles(await articlesRes.json());
+      try {
+        const articlesData = await api.get<ArticleData[]>('/admin/articles');
+        setArticles(articlesData);
+      } catch {
+        // Articles fetch is non-critical
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка');
+      if (err instanceof ApiError && err.status === 403) {
+        setError('Нет прав доступа к админ-панели');
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка');
+      }
     } finally {
       setLoading(false);
     }
@@ -279,10 +255,7 @@ function AdminDashboard() {
 
   const toggleUserAdmin = async (userId: number, isAdmin: boolean) => {
     try {
-      await fetch(`${getApiBase()}/admin/users/${userId}/toggle-admin?is_admin=${isAdmin}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/admin/users/${userId}/toggle-admin`, { params: { is_admin: isAdmin } });
       fetchData();
     } catch (err) {
       console.error(err);
@@ -291,10 +264,7 @@ function AdminDashboard() {
 
   const toggleUserActive = async (userId: number) => {
     try {
-      await fetch(`${getApiBase()}/admin/users/${userId}/toggle-active`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/admin/users/${userId}/toggle-active`);
       fetchData();
     } catch (err) {
       console.error(err);
@@ -346,11 +316,6 @@ function AdminDashboard() {
 
   const saveArticle = async () => {
     try {
-      const headers = { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      };
-      
       const payload = {
         title: articleForm.title,
         slug: articleForm.slug || undefined,
@@ -363,31 +328,21 @@ function AdminDashboard() {
         is_featured: articleForm.is_featured
       };
 
-      let res;
       if (editingArticle) {
-        res = await fetch(`${getApiBase()}/admin/articles/${editingArticle.id}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(payload)
-        });
+        await api.put(`/admin/articles/${editingArticle.id}`, { body: payload });
       } else {
-        res = await fetch(`${getApiBase()}/admin/articles`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload)
-        });
+        await api.post('/admin/articles', { body: payload });
       }
 
-      if (res.ok) {
-        closeArticleEditor();
-        fetchData();
-      } else {
-        const data = await res.json();
-        alert(data.detail || 'Ошибка сохранения');
-      }
+      closeArticleEditor();
+      fetchData();
     } catch (err) {
-      console.error(err);
-      alert('Ошибка сохранения статьи');
+      if (err instanceof ApiError) {
+        alert(err.detail || 'Ошибка сохранения');
+      } else {
+        console.error(err);
+        alert('Ошибка сохранения статьи');
+      }
     }
   };
 
@@ -395,10 +350,7 @@ function AdminDashboard() {
     if (!confirm('Удалить статью?')) return;
     
     try {
-      await fetch(`${getApiBase()}/admin/articles/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/admin/articles/${id}`);
       fetchData();
     } catch (err) {
       console.error(err);
@@ -407,10 +359,7 @@ function AdminDashboard() {
 
   const togglePublish = async (id: number, isPublished: boolean) => {
     try {
-      await fetch(`${getApiBase()}/admin/articles/${id}/${isPublished ? 'unpublish' : 'publish'}`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post(`/admin/articles/${id}/${isPublished ? 'unpublish' : 'publish'}`);
       fetchData();
     } catch (err) {
       console.error(err);

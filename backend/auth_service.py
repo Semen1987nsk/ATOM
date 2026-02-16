@@ -1,11 +1,15 @@
 """
 Сервис аутентификации с JWT токенами и хешированием паролей.
+
+Поддерживает:
+- Access токены (короткоживущие, 15-60 минут)
+- Refresh токены (долгоживущие, 7-30 дней)
+- Автоматическое обновление токенов
 """
 from datetime import datetime, timedelta
 from utils import utc_now_naive
-from typing import Optional
-import os
-import warnings
+from typing import Optional, Tuple
+import secrets
 
 import bcrypt
 from jose import JWTError, jwt
@@ -16,30 +20,16 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from database import get_db
+from config import settings
 
 # ==================== КОНФИГУРАЦИЯ ====================
+# Все секреты берём из единственного источника — config.settings
 
-# Загрузка секретного ключа с валидацией
-_DEFAULT_SECRET = "eqio-default-dev-key-DO-NOT-USE-IN-PRODUCTION"
-SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET_KEY")
-
-if not SECRET_KEY:
-    SECRET_KEY = _DEFAULT_SECRET
-    warnings.warn(
-        "\n⚠️  WARNING: SECRET_KEY not set! Using default development key.\n"
-        "   This is INSECURE for production. Set SECRET_KEY environment variable.\n"
-        "   Generate with: python -c 'import secrets; print(secrets.token_urlsafe(64))'",
-        UserWarning
-    )
-elif SECRET_KEY == _DEFAULT_SECRET or "change" in SECRET_KEY.lower():
-    warnings.warn(
-        "\n⚠️  WARNING: SECRET_KEY appears to be a default/placeholder value.\n"
-        "   Generate a strong key for production!",
-        UserWarning
-    )
-
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7)))  # 7 дней
+SECRET_KEY = settings.SECRET_KEY
+REFRESH_SECRET_KEY = settings.REFRESH_SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 # Bearer токен для авторизации
 security = HTTPBearer(auto_error=False)
@@ -60,7 +50,12 @@ def get_password_hash(password: str) -> str:
 # ==================== JWT ТОКЕНЫ ====================
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Создание JWT токена"""
+    """
+    Создание Access JWT токена.
+    
+    Access токен используется для аутентификации API запросов.
+    Имеет короткий срок жизни для безопасности.
+    """
     to_encode = data.copy()
     
     if expires_delta:
@@ -68,15 +63,63 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     else:
         expire = utc_now_naive() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode.update({"exp": expire})
+    to_encode.update({
+        "exp": expire,
+        "type": "access",  # Тип токена для валидации
+    })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Создание Refresh JWT токена.
+    
+    Refresh токен используется для получения новых access токенов.
+    Имеет долгий срок жизни, хранится на клиенте в httpOnly cookie или secure storage.
+    """
+    to_encode = data.copy()
+    
+    if expires_delta:
+        expire = utc_now_naive() + expires_delta
+    else:
+        expire = utc_now_naive() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    
+    # Добавляем уникальный идентификатор для возможности отзыва
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "jti": secrets.token_urlsafe(16),  # JWT ID для отзыва
+    })
+    encoded_jwt = jwt.encode(to_encode, REFRESH_SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def create_token_pair(user_id: int, email: str) -> Tuple[str, str]:
+    """
+    Создаёт пару токенов: access + refresh.
+    
+    Returns:
+        Tuple[access_token, refresh_token]
+    """
+    token_data = {"sub": str(user_id), "email": email}
+    
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
+    
+    return access_token, refresh_token
+
+
 def decode_access_token(token: str) -> Optional[schemas.TokenData]:
-    """Декодирование JWT токена"""
+    """Декодирование Access JWT токена"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        
+        # Проверяем тип токена (если указан)
+        token_type = payload.get("type")
+        if token_type and token_type != "access":
+            return None
+        
         sub = payload.get("sub")
         email: str = payload.get("email")
         
@@ -89,6 +132,55 @@ def decode_access_token(token: str) -> Optional[schemas.TokenData]:
         return schemas.TokenData(user_id=user_id, email=email)
     except JWTError:
         return None
+
+
+def decode_refresh_token(token: str) -> Optional[schemas.TokenData]:
+    """
+    Декодирование Refresh JWT токена.
+    
+    Returns:
+        TokenData если токен валиден, None иначе.
+    """
+    try:
+        payload = jwt.decode(token, REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
+        
+        # Проверяем тип токена
+        token_type = payload.get("type")
+        if token_type != "refresh":
+            return None
+        
+        sub = payload.get("sub")
+        email: str = payload.get("email")
+        
+        if sub is None:
+            return None
+        
+        user_id = int(sub) if isinstance(sub, str) else sub
+            
+        return schemas.TokenData(user_id=user_id, email=email)
+    except JWTError:
+        return None
+
+
+def refresh_tokens(refresh_token: str, db: Session) -> Optional[Tuple[str, str]]:
+    """
+    Обновление пары токенов по refresh токену.
+    
+    Returns:
+        Tuple[new_access_token, new_refresh_token] или None если refresh невалиден.
+    """
+    token_data = decode_refresh_token(refresh_token)
+    
+    if token_data is None:
+        return None
+    
+    # Проверяем что пользователь существует и активен
+    user = get_user_by_id(db, token_data.user_id)
+    if user is None or user.is_active != 1:
+        return None
+    
+    # Создаём новую пару токенов
+    return create_token_pair(user.id, user.email)
 
 
 # ==================== РАБОТА С ПОЛЬЗОВАТЕЛЯМИ ====================
@@ -145,14 +237,23 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     user = get_user_by_email(db, email)
     
     if not user:
+        # Dummy bcrypt check to prevent timing attacks (email enumeration)
+        bcrypt.checkpw(b"dummy", bcrypt.hashpw(b"dummy", bcrypt.gensalt()))
+        return None
+    
+    # OAuth-only users don't have a password — can't authenticate with password
+    if not user.hashed_password:
         return None
     
     if not verify_password(password, user.hashed_password):
         return None
     
     # Обновляем last_login
-    user.last_login = utc_now_naive()
-    db.commit()
+    try:
+        user.last_login = utc_now_naive()
+        db.commit()
+    except Exception:
+        db.rollback()  # Don't fail login if timestamp update fails
     
     return user
 
@@ -256,6 +357,14 @@ def get_user_account(db: Session, user: models.User) -> models.Account:
         db.refresh(account)
     
     return account
+
+
+def get_account_id(db: Session, user: models.User) -> int:
+    """
+    Convenience wrapper: returns just the account ID.
+    Use this in routers to avoid duplicating get_user_account + .id
+    """
+    return get_user_account(db, user).id
 
 
 def get_user_subscription(db: Session, user: models.User) -> dict:

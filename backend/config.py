@@ -1,9 +1,23 @@
 """
 Конфигурация приложения — настройки из переменных окружения.
+
+Единственный источник правды для всех секретов и настроек.
+Все модули ДОЛЖНЫ импортировать настройки отсюда:
+    from config import settings
 """
 
 import os
+import warnings
+import secrets
+from pathlib import Path
 from typing import List
+
+from dotenv import load_dotenv
+
+# Загружаем .env из директории backend/ (где лежит config.py).
+# override=False — переменные окружения ОС имеют приоритет над .env.
+_env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(_env_path, override=False)
 
 
 def _parse_cors_origins() -> List[str]:
@@ -23,6 +37,49 @@ def _parse_cors_origins() -> List[str]:
     ]
 
 
+def _resolve_secret_key() -> str:
+    """
+    Единственная точка загрузки SECRET_KEY.
+    
+    - В production (DEBUG=false): ОБЯЗАТЕЛЕН через переменную окружения.
+    - В development (DEBUG=true): используется сгенерированный dev-ключ с предупреждением.
+    """
+    key = os.getenv("SECRET_KEY") or os.getenv("JWT_SECRET_KEY")
+    is_debug = os.getenv("DEBUG", "false").lower() == "true"
+    
+    if key:
+        # Проверяем на плейсхолдеры
+        weak_markers = ("change", "default", "placeholder", "example", "test", "dev-key")
+        if any(marker in key.lower() for marker in weak_markers):
+            warnings.warn(
+                "\n⚠️  SECRET_KEY appears to be a default/placeholder value.\n"
+                "   Generate a strong key: python -c 'import secrets; print(secrets.token_urlsafe(64))'",
+                UserWarning,
+                stacklevel=2
+            )
+        return key
+    
+    # Ключ НЕ задан
+    if not is_debug:
+        raise RuntimeError(
+            "\n🚨 FATAL: SECRET_KEY is not set!\n"
+            "   In production mode (DEBUG != true), SECRET_KEY MUST be set as an environment variable.\n"
+            "   Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'\n"
+            "   Then set: export SECRET_KEY='your-generated-key'"
+        )
+    
+    # Dev mode: генерируем ключ для сессии
+    dev_key = secrets.token_urlsafe(64)
+    warnings.warn(
+        "\n⚠️  SECRET_KEY not set — using auto-generated dev key.\n"
+        "   This key changes on every restart. Sessions will be invalidated.\n"
+        "   Set SECRET_KEY env var for persistent sessions in development.",
+        UserWarning,
+        stacklevel=2
+    )
+    return dev_key
+
+
 class Settings:
     """Настройки приложения из переменных окружения"""
     
@@ -32,8 +89,12 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     
     # ==================== SECURITY ====================
-    SECRET_KEY: str = os.getenv("SECRET_KEY", os.getenv("JWT_SECRET_KEY", ""))
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
+    # Единственный источник SECRET_KEY для всего приложения
+    SECRET_KEY: str = _resolve_secret_key()
+    REFRESH_SECRET_KEY: str = os.getenv("REFRESH_SECRET_KEY", SECRET_KEY + "_refresh_v2")
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
     
     # ==================== DATABASE ====================
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./atom.db")

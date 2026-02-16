@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric, Index, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
@@ -21,7 +21,7 @@ class User(Base):
     is_admin = Column(Integer, default=0)  # 1 = admin, 0 = regular user
     created_at = Column(DateTime, default=utc_now_naive)
     last_login = Column(DateTime, nullable=True)  # Последний вход
-    settings = Column(JSON, default={})
+    settings = Column(JSON, default=dict)
     
     # OAuth fields
     oauth_provider = Column(String, nullable=True)  # google, yandex, sber, tinkoff
@@ -34,9 +34,9 @@ class User(Base):
     utm_campaign = Column(String, nullable=True)  # Название кампании
     referrer = Column(String, nullable=True)  # Откуда пришёл пользователь
 
-    accounts = relationship("Account", back_populates="owner")
-    subscriptions = relationship("Subscription", back_populates="user")
-    payments = relationship("Payment", back_populates="user")
+    accounts = relationship("Account", back_populates="owner", cascade="all, delete-orphan")
+    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
 
 
 class SubscriptionPlan(enum.Enum):
@@ -57,7 +57,7 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     plan = Column(Enum(SubscriptionPlan), default=SubscriptionPlan.FREE)
     is_active = Column(Integer, default=1)
     started_at = Column(DateTime, default=utc_now_naive)
@@ -77,8 +77,8 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
-    subscription_id = Column(Integer, ForeignKey("subscriptions.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id", ondelete="SET NULL"), nullable=True)
     
     amount = Column(Numeric(precision=10, scale=2), nullable=False)
     currency = Column(String, default="RUB")
@@ -109,15 +109,16 @@ class Account(Base):
     __tablename__ = "accounts"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name = Column(String, nullable=False)
     balance = Column(Numeric(precision=18, scale=8), default=0)
     initial_balance = Column(Numeric(precision=18, scale=8), default=0)  # Начальный депозит
     currency = Column(String, default="RUB")
 
     owner = relationship("User", back_populates="accounts")
-    trades = relationship("Trade", back_populates="account")
-    deposit_history = relationship("DepositHistory", back_populates="account")
+    trades = relationship("Trade", back_populates="account", cascade="all, delete-orphan")
+    deposit_history = relationship("DepositHistory", back_populates="account", cascade="all, delete-orphan")
+    setups = relationship("Setup", back_populates="account", cascade="all, delete-orphan")
 
 
 class DepositHistory(Base):
@@ -125,7 +126,7 @@ class DepositHistory(Base):
     __tablename__ = "deposit_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     operation_type = Column(Enum(DepositOperationType), nullable=False)
     amount = Column(Numeric(precision=18, scale=8), nullable=False)  # Положительное для депозита, отрицательное для снятия
     balance_after = Column(Numeric(precision=18, scale=8), nullable=False)  # Баланс после операции
@@ -134,6 +135,73 @@ class DepositHistory(Base):
     created_at = Column(DateTime, default=utc_now_naive)
 
     account = relationship("Account", back_populates="deposit_history")
+
+
+class BalanceSnapshot(Base):
+    """Снимок баланса на определённую дату (из отчётов брокера или API)"""
+    __tablename__ = "balance_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    date = Column(DateTime, nullable=False, index=True)  # Дата снимка
+    balance = Column(Numeric(precision=18, scale=8), nullable=False)  # Общий баланс
+    
+    # Детализация баланса (для API-снапшотов)
+    cash = Column(Numeric(precision=18, scale=8), default=0)  # Свободные деньги
+    stocks_value = Column(Numeric(precision=18, scale=8), default=0)  # Стоимость акций
+    bonds_value = Column(Numeric(precision=18, scale=8), default=0)  # Стоимость облигаций
+    etf_value = Column(Numeric(precision=18, scale=8), default=0)  # Стоимость ETF
+    futures_value = Column(Numeric(precision=18, scale=8), default=0)  # Стоимость фьючерсов
+    unrealized_pnl = Column(Numeric(precision=18, scale=8), default=0)  # Нереализованный P/L
+    
+    source = Column(String, nullable=True)  # Источник: "tinkoff_api", "import", "manual"
+    created_at = Column(DateTime, default=utc_now_naive)
+
+    account = relationship("Account")
+    
+    __table_args__ = (
+        Index('ix_balance_snapshots_account_date', 'account_id', 'date'),
+    )
+
+
+class CapitalOperation(Base):
+    """Операции ввода/вывода средств"""
+    __tablename__ = "capital_operations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    broker_id = Column(String, index=True)  # ID операции у брокера
+    operation_type = Column(String, nullable=False)  # "deposit" или "withdrawal"
+    amount = Column(Numeric(precision=18, scale=8), nullable=False)  # Сумма
+    currency = Column(String, default="RUB")
+    date = Column(DateTime, nullable=False, index=True)
+    description = Column(String)  # Описание (напр. "Пополнение с карты")
+    created_at = Column(DateTime, default=utc_now_naive)
+    
+    account = relationship("Account")
+    
+    __table_args__ = (
+        Index('ix_capital_ops_account_date', 'account_id', 'date'),
+    )
+
+
+class Setup(Base):
+    """Сетап/Стратегия торговли"""
+    __tablename__ = "setups"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    name = Column(String, nullable=False)  # Название: "Breakout", "Mean Reversion"
+    description = Column(String)  # Описание стратегии
+    rules = Column(String)  # Правила входа/выхода
+    color = Column(String, default="#00d4aa")  # Цвет для UI
+    icon = Column(String, default="📈")  # Emoji иконка
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    
+    account = relationship("Account", back_populates="setups")
+    trades = relationship("Trade", back_populates="setup")
+
 
 class Trade(Base):
     __tablename__ = "trades"
@@ -148,7 +216,7 @@ class Trade(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
     symbol = Column(String, index=True, nullable=False)
     asset_name = Column(String) # Полное название (напр. "АФК Система")
     asset_type = Column(String) # Тип (Stock, Futures, Bond, Currency)
@@ -187,22 +255,68 @@ class Trade(Base):
     timeframe = Column(String) # Таймфрейм (1m, 5m, 1H, 4H, 1D)
     news_event = Column(String) # Событие рядом (напр. "Отчетность", "Ставка ЦБ")
     screenshot_url = Column(String) # Ссылка на скриншот графика
-    emotions = Column(String)
-    confidence = Column(Integer) # Уверенность при входе (1-10)
+    emotions = Column(String)  # Deprecated, use mood instead
+    confidence = Column(Integer) # Уверенность при входе (1-5)
     notes = Column(String)
-    tags = Column(JSON, default=[]) # Теги сделки (напр. ["FOMO", "Trend"])
+    
+    # Психо-трекер
+    mood = Column(Integer)  # Настроение при входе: 1=😤 2=😟 3=😐 4=😊 5=🚀
+    discipline = Column(Integer)  # Следование плану: 1-5
+    
+    # Сетап/Стратегия
+    setup_id = Column(Integer, ForeignKey("setups.id", ondelete="SET NULL"), nullable=True)
+    tags = Column(JSON, default=list) # Теги сделки (напр. ["FOMO", "Trend"])
     ai_analysis = Column(JSON) # Результат анализа от AI
     
     # Новые поля для группировки и аналитики
     currency = Column(String, default="RUB") # Валюта сделки
     position_id = Column(Integer, index=True) # ID позиции (группирует операции)
-    operations = Column(JSON, default=[]) # Детали операций для аккордеона
+    operations = Column(JSON, default=list) # Детали операций для аккордеона
     # Пример: [{"type": "entry", "price": 14.117, "qty": 7000, "time": "09:50:45", "commission": 50}]
     
     r_multiple = Column(Float) # PnL / Risk = сколько "R" заработал
     holding_time_minutes = Column(Integer) # Время удержания позиции в минутах
     
     account = relationship("Account", back_populates="trades")
+    setup = relationship("Setup", back_populates="trades")
+
+
+class BrokerType(enum.Enum):
+    TINKOFF = "tinkoff"
+    BCS = "bcs"  # Будущее
+    FINAM = "finam"  # Будущее
+
+
+class BrokerConnection(Base):
+    """Подключение к брокеру для автосинхронизации"""
+    __tablename__ = "broker_connections"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    broker = Column(Enum(BrokerType), nullable=False)
+    
+    # Токен API (зашифрованный в будущем)
+    api_token = Column(String, nullable=False)
+    broker_account_id = Column(String, nullable=True)  # ID счёта в брокере
+    
+    # Статус
+    is_active = Column(Boolean, default=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String, nullable=True)  # success, error, partial
+    last_sync_error = Column(String, nullable=True)
+    
+    # Настройки синхронизации
+    auto_sync_enabled = Column(Boolean, default=True)
+    sync_interval_minutes = Column(Integer, default=60)  # Каждые N минут
+    sync_from_date = Column(DateTime, nullable=True)  # С какой даты синхронизировать
+    
+    # Статистика
+    total_synced_trades = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    
+    account = relationship("Account", backref="broker_connections")
 
 
 class ArticleCategory(enum.Enum):
@@ -225,9 +339,9 @@ class Article(Base):
     cover_image = Column(String, nullable=True)  # URL обложки
     
     category = Column(Enum(ArticleCategory), default=ArticleCategory.NEWS)
-    tags = Column(JSON, default=[])  # ["trading", "psychology", "risk"]
+    tags = Column(JSON, default=list)  # ["trading", "psychology", "risk"]
     
-    author_id = Column(Integer, ForeignKey("users.id"), index=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
     is_published = Column(Integer, default=0)  # 0 = draft, 1 = published
     is_featured = Column(Integer, default=0)  # 1 = показывать в топе
     

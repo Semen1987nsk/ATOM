@@ -154,7 +154,17 @@ class MarketService:
     
     def is_trading_day(self, date: datetime) -> bool:
         """Проверяет, является ли дата торговым днём MOEX"""
-        d = date.date() if isinstance(date, datetime) else date
+        # Конвертируем в MSK для корректной проверки даты
+        if isinstance(date, datetime):
+            if date.tzinfo is None:
+                # Предполагаем UTC
+                date_utc = pytz.utc.localize(date)
+                date_msk = date_utc.astimezone(MSK_TZ)
+            else:
+                date_msk = date.astimezone(MSK_TZ)
+            d = date_msk.date()
+        else:
+            d = date
         # Выходные
         if d.weekday() >= 5:  # Суббота=5, Воскресенье=6
             return False
@@ -175,8 +185,9 @@ class MarketService:
         
         # Конвертируем в MSK если нужно
         if dt.tzinfo is None:
-            # Предполагаем UTC
-            dt_msk = MSK_TZ.localize(dt)
+            # Предполагаем UTC, конвертируем в MSK
+            dt_utc = pytz.utc.localize(dt)
+            dt_msk = dt_utc.astimezone(MSK_TZ)
         else:
             dt_msk = dt.astimezone(MSK_TZ)
         
@@ -199,9 +210,10 @@ class MarketService:
         # Максимум 14 дней вперёд (на случай новогодних праздников)
         for _ in range(14 * 24):  # 14 дней в часах
             if self.is_trading_day(current):
-                # Конвертируем в MSK
+                # Конвертируем в MSK (предполагаем UTC если без timezone)
                 if current.tzinfo is None:
-                    current_msk = MSK_TZ.localize(current)
+                    current_utc = pytz.utc.localize(current)
+                    current_msk = current_utc.astimezone(MSK_TZ)
                 else:
                     current_msk = current.astimezone(MSK_TZ)
                 
@@ -350,7 +362,8 @@ class MarketService:
         entry_price: float,
         entry_time: datetime,
         exit_time: datetime,
-        operations: list = None  # Список операций для усреднённых позиций
+        operations: list = None,  # Список операций для усреднённых позиций
+        exit_price: float = None  # Цена выхода для гарантии корректности MAE/MFE
     ) -> Tuple[Optional[float], Optional[float]]:
         """
         Рассчитывает MAE и MFE для сделки на основе исторических данных.
@@ -389,12 +402,32 @@ class MarketService:
                 except Exception as e:
                     log.warning(f"Failed to parse operation times: {e}")
         
-        # Расширяем период на 1 час для надёжности
-        start_date = actual_entry_time - timedelta(hours=1)
-        end_date = exit_time + timedelta(hours=1)
+        # Конвертируем время в MSK для корректного запроса свечей
+        # ВАЖНО: Время сделок в UTC, свечи MOEX в MSK
+        if actual_entry_time.tzinfo is None:
+            entry_utc = pytz.utc.localize(actual_entry_time)
+        else:
+            entry_utc = actual_entry_time.astimezone(pytz.utc)
+        
+        if exit_time.tzinfo is None:
+            exit_utc = pytz.utc.localize(exit_time)
+        else:
+            exit_utc = exit_time.astimezone(pytz.utc)
+        
+        # Конвертируем в московское время
+        entry_msk = entry_utc.astimezone(MSK_TZ)
+        exit_msk = exit_utc.astimezone(MSK_TZ)
+        
+        # Расширяем период на 1 час для надёжности (уже в MSK)
+        start_date = entry_msk - timedelta(hours=1)
+        end_date = exit_msk + timedelta(hours=1)
+        
+        log.debug(f"MAE/MFE period: UTC entry={actual_entry_time} -> MSK={entry_msk}")
+        log.debug(f"MAE/MFE period: UTC exit={exit_time} -> MSK={exit_msk}")
+        log.debug(f"Fetching candles from {start_date} to {end_date}")
         
         # Определяем интервал на основе длительности сделки
-        duration_hours = (exit_time - actual_entry_time).total_seconds() / 3600
+        duration_hours = (exit_msk - entry_msk).total_seconds() / 3600
         
         if duration_hours <= 2:
             interval = 1  # 1-минутные свечи для коротких сделок
@@ -405,30 +438,62 @@ class MarketService:
         else:
             interval = 24  # Дневные для длинных
         
-        # Получаем свечи
+        # Получаем свечи (даты уже в MSK)
         candles = self.get_candles(ticker, start_date, end_date, interval)
         
         if not candles:
             log.warning(f"No candles found for {ticker} from {start_date} to {end_date}")
             return None, None
         
-        # Фильтруем свечи только в период сделки
+        # Фильтруем свечи только в период сделки (entry_msk и exit_msk уже сконвертированы выше)
         relevant_candles = []
-        entry_str = actual_entry_time.strftime("%Y-%m-%d %H:%M")
-        exit_str = exit_time.strftime("%Y-%m-%d %H:%M")
+        
+        # Используем формат с секундами для точного сравнения
+        entry_str = entry_msk.strftime("%Y-%m-%d %H:%M:%S")
+        exit_str = exit_msk.strftime("%Y-%m-%d %H:%M:%S")
+        
+        log.debug(f"Filtering candles in range: {entry_str} to {exit_str}")
         
         for candle in candles:
             candle_begin = candle.get('begin', '')
-            # Проверяем что свеча в пределах сделки
-            if candle_begin and entry_str <= candle_begin <= exit_str:
-                relevant_candles.append(candle)
+            candle_end = candle.get('end', '')
+            
+            # ВАЖНО: Свеча включается ТОЛЬКО если она ПОЛНОСТЬЮ внутри периода сделки
+            # begin >= entry AND end <= exit
+            # Это предотвращает включение свечей, чьи HIGH/LOW могли быть достигнуты
+            # после выхода из сделки
+            if candle_begin and candle_end:
+                # Нормализуем форматы (добавляем :00 если нет секунд)
+                if len(candle_begin) == 16:  # "YYYY-MM-DD HH:MM"
+                    candle_begin += ":00"
+                if len(candle_end) == 16:
+                    candle_end += ":59"
+                    
+                if entry_str <= candle_begin and candle_end <= exit_str:
+                    relevant_candles.append(candle)
+        
+        if not relevant_candles and interval > 1:
+            # Если нет свечей в точном диапазоне, пробуем с 1-минутными для точности
+            log.debug(f"No candles in exact range with interval={interval}, trying 1-minute candles")
+            candles_1m = self.get_candles(ticker, start_date, end_date, interval=1)
+            
+            for candle in candles_1m:
+                candle_begin = candle.get('begin', '')
+                candle_end = candle.get('end', '')
+                
+                if candle_begin and candle_end:
+                    if len(candle_begin) == 16:
+                        candle_begin += ":00"
+                    if len(candle_end) == 16:
+                        candle_end += ":59"
+                        
+                    if entry_str <= candle_begin and candle_end <= exit_str:
+                        relevant_candles.append(candle)
+            
+            log.debug(f"Found {len(relevant_candles)} 1-minute candles in range")
         
         if not relevant_candles:
-            # Если нет точного совпадения, используем все загруженные свечи
-            log.debug(f"No candles in exact range, using all {len(candles)} candles")
-            relevant_candles = candles
-        
-        if not relevant_candles:
+            log.warning(f"No candles found for {ticker} in trade period {entry_str} to {exit_str}")
             return None, None
         
         # Собираем все high и low
@@ -440,6 +505,16 @@ class MarketService:
         
         max_price = max(all_highs)
         min_price = min(all_lows)
+        
+        # ВАЖНО: Учитываем цену выхода!
+        # Цена выхода гарантированно была достигнута, поэтому MAE/MFE должны её учитывать
+        if exit_price is not None:
+            if exit_price > max_price:
+                max_price = exit_price
+                log.debug(f"Adjusted max_price to exit_price: {exit_price}")
+            if exit_price < min_price:
+                min_price = exit_price
+                log.debug(f"Adjusted min_price to exit_price: {exit_price}")
         
         # Определяем MAE и MFE в зависимости от направления
         if direction.upper() == "LONG":
@@ -465,8 +540,24 @@ class MarketService:
     def _parse_operation_datetime(self, op: dict) -> Optional[datetime]:
         """Парсит дату/время из операции"""
         try:
+            # Приоритет 1: ISO формат в поле 'time' (например "2026-01-19T08:14:29.518Z")
+            time_field = op.get('time', '')
+            if time_field and 'T' in time_field:
+                # ISO формат: "2026-01-19T08:14:29.518Z" или "2026-01-19T08:14:29"
+                time_field = time_field.replace('Z', '+00:00')
+                if '.' in time_field:
+                    # С миллисекундами
+                    dt = datetime.fromisoformat(time_field.replace('+00:00', ''))
+                else:
+                    dt = datetime.fromisoformat(time_field.replace('+00:00', ''))
+                return dt
+            
+            # Приоритет 2: Отдельные поля date и time
             date_str = op.get('date', '')
             time_str = op.get('time', '00:00:00')
+            
+            if not date_str:
+                return None
             
             # Формат: "dd.mm.yyyy" или "yyyy-mm-dd"
             if '.' in date_str:
@@ -474,7 +565,8 @@ class MarketService:
             else:
                 dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S")
             return dt
-        except Exception:
+        except Exception as e:
+            log.debug(f"Failed to parse operation datetime: {op}, error: {e}")
             return None
 
     def calculate_post_exit_analysis(
@@ -537,9 +629,18 @@ class MarketService:
         if not self.is_trading_day(exit_time):
             result["warnings"].append("Выход в нерабочий день - данные могут быть неточными")
         
+        # Конвертируем exit_time в MSK для корректного сравнения со свечами
+        # ВАЖНО: Время сделок в UTC, свечи MOEX в MSK
+        if exit_time.tzinfo is None:
+            exit_utc = pytz.utc.localize(exit_time)
+        else:
+            exit_utc = exit_time.astimezone(pytz.utc)
+        exit_msk = exit_utc.astimezone(MSK_TZ)
+        
         for hours in periods_hours:
             # Рассчитываем реальное торговое время с учётом выходных/праздников
             period_end = exit_time + timedelta(hours=hours)
+            period_end_msk = exit_msk + timedelta(hours=hours)
             
             # Проверяем, сколько торговых часов в периоде
             trading_hours = self.count_trading_hours(exit_time, period_end)
@@ -560,7 +661,8 @@ class MarketService:
             else:
                 interval = 24  # Дневные
             
-            candles = self.get_candles(ticker, exit_time, period_end, interval)
+            # Используем MSK время для запроса и фильтрации свечей
+            candles = self.get_candles(ticker, exit_msk, period_end_msk, interval)
             
             if not candles:
                 result["periods"][f"{hours}h"] = {
@@ -569,8 +671,8 @@ class MarketService:
                 }
                 continue
             
-            # Фильтруем только свечи после выхода
-            exit_str = exit_time.strftime("%Y-%m-%d %H:%M")
+            # Фильтруем только свечи после выхода (используем MSK)
+            exit_str = exit_msk.strftime("%Y-%m-%d %H:%M")
             post_exit_candles = [c for c in candles if c.get('begin', '') > exit_str]
             
             if not post_exit_candles:

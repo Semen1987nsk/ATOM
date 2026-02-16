@@ -1,5 +1,5 @@
 """
-Роутер для управления депозитом и историей изменений.
+Р РѕСѓС‚РµСЂ РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ РґРµРїРѕР·РёС‚РѕРј Рё РёСЃС‚РѕСЂРёРµР№ РёР·РјРµРЅРµРЅРёР№.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,54 +17,33 @@ import auth_service
 router = APIRouter(prefix="/deposits", tags=["deposits"])
 
 
-def get_account_id(db: Session, current_user: Optional[models.User]) -> int:
-    """Получить account_id для пользователя или демо-аккаунт"""
-    if current_user:
-        account = db.query(models.Account).filter(
-            models.Account.user_id == current_user.id
-        ).first()
-        if not account:
-            # Создаём аккаунт для пользователя
-            account = models.Account(
-                user_id=current_user.id,
-                name="Основной счёт",
-                balance=0,
-                initial_balance=0,
-                currency="RUB"
-            )
-            db.add(account)
-            db.commit()
-            db.refresh(account)
-        return account.id
-    # Демо-аккаунт
-    return 1
-
+# get_account_id is now centralized in auth_service
 
 @router.get("/balance", response_model=schemas.AccountBalanceResponse)
 def get_balance(
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    """Получить текущий баланс и статистику депозита"""
-    account_id = get_account_id(db, current_user)
+    """РџРѕР»СѓС‡РёС‚СЊ С‚РµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ Рё СЃС‚Р°С‚РёСЃС‚РёРєСѓ РґРµРїРѕР·РёС‚Р°"""
+    account_id = auth_service.get_account_id(db, current_user)
     
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Аккаунт не найден")
+        raise HTTPException(status_code=404, detail="РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
     
-    # Сумма всех пополнений
+    # РЎСѓРјРјР° РІСЃРµС… РїРѕРїРѕР»РЅРµРЅРёР№
     total_deposits = db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
         models.DepositHistory.account_id == account_id,
         models.DepositHistory.operation_type == models.DepositOperationType.DEPOSIT
     ).scalar() or 0
     
-    # Сумма всех снятий (абсолютное значение)
+    # РЎСѓРјРјР° РІСЃРµС… СЃРЅСЏС‚РёР№ (Р°Р±СЃРѕР»СЋС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ)
     total_withdrawals = abs(db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
         models.DepositHistory.account_id == account_id,
         models.DepositHistory.operation_type == models.DepositOperationType.WITHDRAWAL
     ).scalar() or 0)
     
-    # Сумма PnL из закрытых сделок
+    # РЎСѓРјРјР° PnL РёР· Р·Р°РєСЂС‹С‚С‹С… СЃРґРµР»РѕРє
     total_pnl = db.query(func.coalesce(func.sum(models.Trade.net_pnl), 0)).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at.isnot(None)
@@ -89,45 +68,45 @@ def set_initial_balance(
     amount: float,
     date: Optional[datetime] = None,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    """Установить начальный депозит"""
-    account_id = get_account_id(db, current_user)
+    """РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РЅР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚"""
+    account_id = auth_service.get_account_id(db, current_user)
     
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Аккаунт не найден")
+        raise HTTPException(status_code=404, detail="РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
     
     operation_date = date or datetime.utcnow()
     
-    # Проверяем, есть ли уже начальный депозит
+    # РџСЂРѕРІРµСЂСЏРµРј, РµСЃС‚СЊ Р»Рё СѓР¶Рµ РЅР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚
     existing = db.query(models.DepositHistory).filter(
         models.DepositHistory.account_id == account_id,
         models.DepositHistory.operation_type == models.DepositOperationType.INITIAL
     ).first()
     
     if existing:
-        # Обновляем существующий
+        # РћР±РЅРѕРІР»СЏРµРј СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№
         existing.amount = amount
         existing.balance_after = amount
         existing.date = operation_date
         account.initial_balance = amount
     else:
-        # Создаём новый
+        # РЎРѕР·РґР°С‘Рј РЅРѕРІС‹Р№
         history = models.DepositHistory(
             account_id=account_id,
             operation_type=models.DepositOperationType.INITIAL,
             amount=amount,
             balance_after=amount,
             date=operation_date,
-            note="Начальный депозит"
+            note="РќР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚"
         )
         db.add(history)
         account.initial_balance = amount
     
     db.commit()
     
-    return {"message": f"Начальный депозит установлен: {amount}", "initial_balance": amount}
+    return {"message": f"РќР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚ СѓСЃС‚Р°РЅРѕРІР»РµРЅ: {amount}", "initial_balance": amount}
 
 
 @router.post("/add")
@@ -136,15 +115,15 @@ def add_deposit(
     date: datetime,
     note: Optional[str] = None,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    """Добавить пополнение депозита"""
+    """Р”РѕР±Р°РІРёС‚СЊ РїРѕРїРѕР»РЅРµРЅРёРµ РґРµРїРѕР·РёС‚Р°"""
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Сумма пополнения должна быть положительной")
+        raise HTTPException(status_code=400, detail="РЎСѓРјРјР° РїРѕРїРѕР»РЅРµРЅРёСЏ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅРѕР№")
     
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
-    # Получаем текущий баланс на эту дату
+    # РџРѕР»СѓС‡Р°РµРј С‚РµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ РЅР° СЌС‚Сѓ РґР°С‚Сѓ
     balance_info = _calculate_balance_at_date(db, account_id, date)
     new_balance = balance_info + amount
     
@@ -154,12 +133,12 @@ def add_deposit(
         amount=amount,
         balance_after=new_balance,
         date=date,
-        note=note or "Пополнение"
+        note=note or "РџРѕРїРѕР»РЅРµРЅРёРµ"
     )
     db.add(history)
     db.commit()
     
-    return {"message": f"Пополнение добавлено: +{amount}", "balance_after": new_balance}
+    return {"message": f"РџРѕРїРѕР»РЅРµРЅРёРµ РґРѕР±Р°РІР»РµРЅРѕ: +{amount}", "balance_after": new_balance}
 
 
 @router.post("/withdraw")
@@ -168,39 +147,39 @@ def add_withdrawal(
     date: datetime,
     note: Optional[str] = None,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    """Добавить снятие с депозита"""
+    """Р”РѕР±Р°РІРёС‚СЊ СЃРЅСЏС‚РёРµ СЃ РґРµРїРѕР·РёС‚Р°"""
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Сумма снятия должна быть положительной")
+        raise HTTPException(status_code=400, detail="РЎСѓРјРјР° СЃРЅСЏС‚РёСЏ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅРѕР№")
     
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
-    # Получаем текущий баланс на эту дату
+    # РџРѕР»СѓС‡Р°РµРј С‚РµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ РЅР° СЌС‚Сѓ РґР°С‚Сѓ
     balance_info = _calculate_balance_at_date(db, account_id, date)
     new_balance = balance_info - amount
     
     history = models.DepositHistory(
         account_id=account_id,
         operation_type=models.DepositOperationType.WITHDRAWAL,
-        amount=-amount,  # Отрицательное значение
+        amount=-amount,  # РћС‚СЂРёС†Р°С‚РµР»СЊРЅРѕРµ Р·РЅР°С‡РµРЅРёРµ
         balance_after=new_balance,
         date=date,
-        note=note or "Снятие"
+        note=note or "РЎРЅСЏС‚РёРµ"
     )
     db.add(history)
     db.commit()
     
-    return {"message": f"Снятие добавлено: -{amount}", "balance_after": new_balance}
+    return {"message": f"РЎРЅСЏС‚РёРµ РґРѕР±Р°РІР»РµРЅРѕ: -{amount}", "balance_after": new_balance}
 
 
 @router.get("/history", response_model=List[schemas.DepositOperationResponse])
 def get_deposit_history(
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    """Получить историю операций с депозитом"""
-    account_id = get_account_id(db, current_user)
+    """РџРѕР»СѓС‡РёС‚СЊ РёСЃС‚РѕСЂРёСЋ РѕРїРµСЂР°С†РёР№ СЃ РґРµРїРѕР·РёС‚РѕРј"""
+    account_id = auth_service.get_account_id(db, current_user)
     
     history = db.query(models.DepositHistory).filter(
         models.DepositHistory.account_id == account_id
@@ -224,10 +203,10 @@ def get_deposit_history(
 def delete_deposit_operation(
     operation_id: int,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    """Удалить операцию с депозитом"""
-    account_id = get_account_id(db, current_user)
+    """РЈРґР°Р»РёС‚СЊ РѕРїРµСЂР°С†РёСЋ СЃ РґРµРїРѕР·РёС‚РѕРј"""
+    account_id = auth_service.get_account_id(db, current_user)
     
     operation = db.query(models.DepositHistory).filter(
         models.DepositHistory.id == operation_id,
@@ -235,9 +214,9 @@ def delete_deposit_operation(
     ).first()
     
     if not operation:
-        raise HTTPException(status_code=404, detail="Операция не найдена")
+        raise HTTPException(status_code=404, detail="РћРїРµСЂР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°")
     
-    # Если это начальный депозит - обнуляем initial_balance
+    # Р•СЃР»Рё СЌС‚Рѕ РЅР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚ - РѕР±РЅСѓР»СЏРµРј initial_balance
     if operation.operation_type == models.DepositOperationType.INITIAL:
         account = db.query(models.Account).filter(models.Account.id == account_id).first()
         if account:
@@ -246,30 +225,30 @@ def delete_deposit_operation(
     db.delete(operation)
     db.commit()
     
-    return {"message": "Операция удалена"}
+    return {"message": "РћРїРµСЂР°С†РёСЏ СѓРґР°Р»РµРЅР°"}
 
 
 @router.get("/equity-curve")
 def get_equity_curve(
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """
-    Получить кривую капитала с учётом депозитов.
-    Возвращает ежедневный баланс = initial + deposits - withdrawals + cumulative_pnl
+    РџРѕР»СѓС‡РёС‚СЊ РєСЂРёРІСѓСЋ РєР°РїРёС‚Р°Р»Р° СЃ СѓС‡С‘С‚РѕРј РґРµРїРѕР·РёС‚РѕРІ.
+    Р’РѕР·РІСЂР°С‰Р°РµС‚ РµР¶РµРґРЅРµРІРЅС‹Р№ Р±Р°Р»Р°РЅСЃ = initial + deposits - withdrawals + cumulative_pnl
     """
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     initial_balance = float(account.initial_balance or 0) if account else 0
     
-    # Получаем все закрытые сделки
+    # РџРѕР»СѓС‡Р°РµРј РІСЃРµ Р·Р°РєСЂС‹С‚С‹Рµ СЃРґРµР»РєРё
     trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at.isnot(None)
     ).order_by(models.Trade.exit_at).all()
     
-    # Получаем все операции с депозитом
+    # РџРѕР»СѓС‡Р°РµРј РІСЃРµ РѕРїРµСЂР°С†РёРё СЃ РґРµРїРѕР·РёС‚РѕРј
     deposit_ops = db.query(models.DepositHistory).filter(
         models.DepositHistory.account_id == account_id
     ).order_by(models.DepositHistory.date).all()
@@ -277,7 +256,7 @@ def get_equity_curve(
     if not trades and not deposit_ops:
         return {"equity_curve": [], "initial_balance": initial_balance}
     
-    # Собираем все события (сделки + операции) в хронологическом порядке
+    # РЎРѕР±РёСЂР°РµРј РІСЃРµ СЃРѕР±С‹С‚РёСЏ (СЃРґРµР»РєРё + РѕРїРµСЂР°С†РёРё) РІ С…СЂРѕРЅРѕР»РѕРіРёС‡РµСЃРєРѕРј РїРѕСЂСЏРґРєРµ
     events = []
     
     for trade in trades:
@@ -295,19 +274,19 @@ def get_equity_curve(
                 "amount": float(op.amount)
             })
     
-    # Сортируем по дате
+    # РЎРѕСЂС‚РёСЂСѓРµРј РїРѕ РґР°С‚Рµ
     events.sort(key=lambda x: x["date"])
     
     if not events:
         return {"equity_curve": [], "initial_balance": initial_balance}
     
-    # Строим кривую капитала
+    # РЎС‚СЂРѕРёРј РєСЂРёРІСѓСЋ РєР°РїРёС‚Р°Р»Р°
     equity_curve = []
     current_balance = initial_balance
-    deposit_balance = initial_balance  # Баланс только от депозитов (без PnL)
+    deposit_balance = initial_balance  # Р‘Р°Р»Р°РЅСЃ С‚РѕР»СЊРєРѕ РѕС‚ РґРµРїРѕР·РёС‚РѕРІ (Р±РµР· PnL)
     cumulative_pnl = 0
     
-    # Группируем события по дням
+    # Р“СЂСѓРїРїРёСЂСѓРµРј СЃРѕР±С‹С‚РёСЏ РїРѕ РґРЅСЏРј
     from collections import defaultdict
     daily_events = defaultdict(lambda: {"pnl": 0, "deposit_change": 0})
     
@@ -318,7 +297,7 @@ def get_equity_curve(
         else:
             daily_events[date_str]["deposit_change"] += event["amount"]
     
-    # Генерируем точки кривой
+    # Р“РµРЅРµСЂРёСЂСѓРµРј С‚РѕС‡РєРё РєСЂРёРІРѕР№
     for date_str in sorted(daily_events.keys()):
         day_data = daily_events[date_str]
         
@@ -342,18 +321,18 @@ def get_equity_curve(
 
 
 def _calculate_balance_at_date(db: Session, account_id: int, date: datetime) -> float:
-    """Вспомогательная функция: рассчитать баланс на определённую дату"""
+    """Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ: СЂР°СЃСЃС‡РёС‚Р°С‚СЊ Р±Р°Р»Р°РЅСЃ РЅР° РѕРїСЂРµРґРµР»С‘РЅРЅСѓСЋ РґР°С‚Сѓ"""
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     initial = float(account.initial_balance or 0) if account else 0
     
-    # Сумма операций до этой даты
+    # РЎСѓРјРјР° РѕРїРµСЂР°С†РёР№ РґРѕ СЌС‚РѕР№ РґР°С‚С‹
     deposits = db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
         models.DepositHistory.account_id == account_id,
         models.DepositHistory.date <= date,
         models.DepositHistory.operation_type != models.DepositOperationType.INITIAL
     ).scalar() or 0
     
-    # PnL до этой даты
+    # PnL РґРѕ СЌС‚РѕР№ РґР°С‚С‹
     pnl = db.query(func.coalesce(func.sum(models.Trade.net_pnl), 0)).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at.isnot(None),
@@ -361,3 +340,50 @@ def _calculate_balance_at_date(db: Session, account_id: int, date: datetime) -> 
     ).scalar() or 0
     
     return initial + float(deposits) + float(pnl)
+
+
+@router.get("/snapshots")
+def get_balance_snapshots(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """РџРѕР»СѓС‡РёС‚СЊ РІСЃРµ СЃРЅРёРјРєРё Р±Р°Р»Р°РЅСЃР° РёР· РѕС‚С‡С‘С‚РѕРІ Р±СЂРѕРєРµСЂР°"""
+    account_id = auth_service.get_account_id(db, current_user)
+    
+    snapshots = db.query(models.BalanceSnapshot).filter(
+        models.BalanceSnapshot.account_id == account_id
+    ).order_by(models.BalanceSnapshot.date).all()
+    
+    return [
+        {
+            "id": s.id,
+            "date": s.date.isoformat(),
+            "balance": float(s.balance),
+            "source": s.source,
+            "created_at": s.created_at.isoformat() if s.created_at else None
+        }
+        for s in snapshots
+    ]
+
+
+@router.delete("/snapshots/{snapshot_id}")
+def delete_balance_snapshot(
+    snapshot_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """РЈРґР°Р»РёС‚СЊ СЃРЅРёРјРѕРє Р±Р°Р»Р°РЅСЃР°"""
+    account_id = auth_service.get_account_id(db, current_user)
+    
+    snapshot = db.query(models.BalanceSnapshot).filter(
+        models.BalanceSnapshot.id == snapshot_id,
+        models.BalanceSnapshot.account_id == account_id
+    ).first()
+    
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="РЎРЅРёРјРѕРє Р±Р°Р»Р°РЅСЃР° РЅРµ РЅР°Р№РґРµРЅ")
+    
+    db.delete(snapshot)
+    db.commit()
+    
+    return {"message": "РЎРЅРёРјРѕРє Р±Р°Р»Р°РЅСЃР° СѓРґР°Р»С‘РЅ"}

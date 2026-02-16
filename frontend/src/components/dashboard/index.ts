@@ -9,3 +9,4 @@ export { MAEMFECard } from './MAEMFECard';
 export { PostExitCard } from './PostExitCard';
 export { TagStatsCard } from './TagStatsCard';
 export { TerminalLog } from './TerminalLog';
+export { MAEMFEAnalysisPanel } from './MAEMFEAnalysisPanel';

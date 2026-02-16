@@ -6,10 +6,17 @@ ATOM API — Главный файл приложения
 from fastapi import FastAPI, Depends, Request
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from slowapi.errors import RateLimitExceeded
+import traceback
 
 import database
+from contextlib import asynccontextmanager
 from config import settings
 from rate_limiter import limiter, rate_limit_exceeded_handler
 from middleware import RequestLoggingMiddleware
@@ -25,17 +32,36 @@ from routers import (
     market_router,
 )
 from routers.deposits import router as deposits_router
+from routers.setups import router as setups_router
+from routers.broker import router as broker_router
+from routers.real_pnl import router as real_pnl_router
+from sync_scheduler import scheduler
 
 log = get_logger("api")
 
 # Инициализируем базу данных при запуске
 database.init_db()
 
+
+@asynccontextmanager
+async def lifespan(app):
+    """Application lifespan: startup and shutdown events."""
+    log.info("🚀 ATOM API v0.2.0 Starting...")
+    log.info(f"📦 Routers: auth, trades, deposits, setups, broker, admin, blog, stats, market, real_pnl")
+    await scheduler.start()
+    log.info("🔄 Auto-sync scheduler started")
+    yield
+    log.info("🛑 ATOM API shutting down...")
+    await scheduler.stop()
+    log.info("✅ Cleanup complete")
+
+
 app = FastAPI(
     title="ATOM API",
     description="API для умного торгового дневника ATOM. "
                 "Продвинутая аналитика торговых стратегий: Optimal f, SQN, MAE/MFE, Monte Carlo.",
     version="0.2.0",
+    lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
 )
@@ -43,6 +69,82 @@ app = FastAPI(
 # Rate limiter state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+
+# ==================== ГЛОБАЛЬНЫЕ ОБРАБОТЧИКИ ОШИБОК ====================
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Обработчик ошибок валидации Pydantic.
+    Возвращает понятные сообщения об ошибках.
+    """
+    errors = []
+    for error in exc.errors():
+        field = " -> ".join(str(loc) for loc in error["loc"])
+        errors.append({
+            "field": field,
+            "message": error["msg"],
+            "type": error["type"]
+        })
+    
+    log.warning(f"Validation error on {request.url.path}: {errors}")
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Ошибка валидации данных",
+            "errors": errors
+        }
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    """
+    Обработчик ошибок SQLAlchemy.
+    Скрывает детали БД в продакшене.
+    """
+    log.error(f"Database error on {request.url.path}: {exc}")
+    
+    if settings.DEBUG:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Ошибка базы данных",
+                "error": str(exc)
+            }
+        )
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера"}
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Глобальный обработчик всех необработанных исключений.
+    """
+    log.error(f"Unhandled exception on {request.url.path}: {exc}")
+    log.error(traceback.format_exc())
+    
+    if settings.DEBUG:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Необработанная ошибка",
+                "error": str(exc),
+                "traceback": traceback.format_exc()
+            }
+        )
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера"}
+    )
+
 
 # ==================== MIDDLEWARE ====================
 
@@ -64,10 +166,21 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(trades_router)
 app.include_router(deposits_router)
+app.include_router(setups_router)
+app.include_router(broker_router)
 app.include_router(admin_router)
 app.include_router(blog_router)
-app.include_router(stats_router)
+app.include_router(stats_router, prefix="/stats")
 app.include_router(market_router)
+app.include_router(real_pnl_router, prefix="/real-pnl")
+
+# ==================== СТАТИЧЕСКИЕ ФАЙЛЫ ====================
+# Создаём папку uploads если её нет
+uploads_dir = Path("uploads/screenshots")
+uploads_dir.mkdir(parents=True, exist_ok=True)
+
+# Монтируем папку uploads для отдачи скриншотов
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ==================== ДОКУМЕНТАЦИЯ ====================
 
@@ -91,18 +204,6 @@ async def redoc_html():
         title=app.title + " - ReDoc",
         redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
     )
-
-
-# ==================== СОБЫТИЯ ====================
-
-@app.on_event("startup")
-async def startup_event():
-    log.info("🚀 ATOM API v0.2.0 Starting...")
-    log.info("📦 Routers loaded: auth, trades, admin, blog, stats, market")
-    log.debug("Registered routes:")
-    for route in app.routes:
-        if hasattr(route, 'path'):
-            log.debug(f"  → {route.path}")
 
 
 # ==================== КОРНЕВЫЕ ENDPOINTS ====================

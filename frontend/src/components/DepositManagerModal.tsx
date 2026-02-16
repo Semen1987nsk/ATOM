@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Plus, Minus, Wallet, TrendingUp, Calendar, Trash2, Edit2, DollarSign } from 'lucide-react';
+import { api } from '@/lib/apiClient';
 
 interface DepositOperation {
   id: number;
@@ -42,28 +43,15 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
   const [formNote, setFormNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const getApiUrl = (path: string) => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-      const codespaceName = window.location.hostname.split('-3000')[0];
-      return `https://${codespaceName}-8000.app.github.dev${path}`;
-    }
-    return `http://localhost:8000${path}`;
-  };
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [balanceRes, historyRes] = await Promise.all([
-        fetch(getApiUrl('/deposits/balance')),
-        fetch(getApiUrl('/deposits/history'))
+      const [balanceData, historyData] = await Promise.all([
+        api.get<BalanceInfo>('/deposits/balance'),
+        api.get<DepositOperation[]>('/deposits/history')
       ]);
-      
-      if (balanceRes.ok) {
-        setBalance(await balanceRes.json());
-      }
-      if (historyRes.ok) {
-        setHistory(await historyRes.json());
-      }
+      setBalance(balanceData);
+      setHistory(historyData);
     } catch (err) {
       setError('Ошибка загрузки данных');
     } finally {
@@ -85,26 +73,22 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
     setError(null);
     
     try {
-      let url = '';
-      const params = new URLSearchParams();
-      params.append('amount', formAmount);
-      params.append('date', new Date(formDate).toISOString());
-      if (formNote) params.append('note', formNote);
+      const params: Record<string, string> = {
+        amount: formAmount,
+        date: new Date(formDate).toISOString()
+      };
+      if (formNote) params.note = formNote;
       
+      let path = '';
       if (formType === 'initial') {
-        url = getApiUrl(`/deposits/initial?${params.toString()}`);
+        path = '/deposits/initial';
       } else if (formType === 'deposit') {
-        url = getApiUrl(`/deposits/add?${params.toString()}`);
+        path = '/deposits/add';
       } else {
-        url = getApiUrl(`/deposits/withdraw?${params.toString()}`);
+        path = '/deposits/withdraw';
       }
       
-      const response = await fetch(url, { method: 'POST' });
-      
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Ошибка');
-      }
+      await api.post(path, { params });
       
       // Сбрасываем форму
       setFormAmount('');
@@ -114,8 +98,8 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
       // Обновляем данные
       await fetchData();
       onUpdate?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
+    } catch (err: any) {
+      setError(err?.detail || err?.message || 'Неизвестная ошибка');
     } finally {
       setSubmitting(false);
     }
@@ -125,11 +109,9 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
     if (!confirm('Удалить эту операцию?')) return;
     
     try {
-      const response = await fetch(getApiUrl(`/deposits/${id}`), { method: 'DELETE' });
-      if (response.ok) {
-        await fetchData();
-        onUpdate?.();
-      }
+      await api.delete(`/deposits/${id}`);
+      await fetchData();
+      onUpdate?.();
     } catch (err) {
       setError('Ошибка при удалении');
     }

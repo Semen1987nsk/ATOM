@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 
 interface StatsCardProps {
   title: string;
@@ -13,6 +14,9 @@ interface StatsCardProps {
   icon?: React.ReactNode;
   tooltipText?: string;
   className?: string;
+  manualAnchor?: string; // Ссылка на якорь в руководстве, напр. "optimal-f"
+  secondaryValue?: string; // Второе значение для сравнения
+  secondaryLabel?: string; // Подпись ко второму значению
 }
 
 // Tooltip компонент с Portal - рендерится вне DOM-дерева карточки
@@ -113,7 +117,10 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   trend, 
   icon, 
   tooltipText, 
-  className = '' 
+  className = '',
+  manualAnchor,
+  secondaryValue,
+  secondaryLabel
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const helpRef = useRef<HTMLButtonElement>(null);
@@ -137,9 +144,20 @@ export const StatsCard: React.FC<StatsCardProps> = ({
       )}
       
       <div className="flex justify-between items-start relative z-10">
-        <span className="text-xs font-mono uppercase tracking-wider opacity-60 group-hover:opacity-80 transition-opacity">
-          {title}
-        </span>
+        {manualAnchor ? (
+          <Link 
+            href={`/manual#${manualAnchor}`}
+            className="text-xs font-mono uppercase tracking-wider opacity-60 group-hover:opacity-100 group-hover:text-accent transition-all hover:underline flex items-center gap-1"
+            title="Открыть в руководстве"
+          >
+            {title}
+            <ExternalLink size={10} className="opacity-0 group-hover:opacity-60" />
+          </Link>
+        ) : (
+          <span className="text-xs font-mono uppercase tracking-wider opacity-60 group-hover:opacity-80 transition-opacity">
+            {title}
+          </span>
+        )}
         <div className="flex gap-2 items-center">
           {/* Help Icon */}
           {tooltipText && (
@@ -198,6 +216,14 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             {trend === 'down' ? '⚠' : '▶'}
           </span>
           {highlight}
+        </div>
+      )}
+      
+      {/* Дополнительное значение (напр. второй метод расчёта) */}
+      {secondaryValue && (
+        <div className="mt-2 pt-2 border-t border-white/10 flex justify-between items-center text-xs">
+          <span className="opacity-50">{secondaryLabel || 'Альт. метод:'}</span>
+          <span className="font-mono text-accent/80">{secondaryValue}</span>
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '@/lib/apiClient';
 
 interface OAuthProvider {
   id: string;
@@ -72,7 +73,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
 
   useEffect(() => {
     // Получаем список доступных провайдеров
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/oauth/providers`)
+    fetch(getApiUrl('/auth/oauth/providers'))
       .then(res => res.json())
       .then(data => setProviders(data))
       .catch(() => setProviders([]));
@@ -93,7 +94,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
         try {
           const redirectUri = `${window.location.origin}${window.location.pathname}`;
           const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/oauth/${provider}/callback?code=${code}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+            getApiUrl(`/auth/oauth/${provider}/callback?code=${code}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`),
             { method: 'POST' }
           );
           
@@ -128,7 +129,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
     try {
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/oauth/${providerId}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`
+        getApiUrl(`/auth/oauth/${providerId}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`)
       );
       
       if (!response.ok) {

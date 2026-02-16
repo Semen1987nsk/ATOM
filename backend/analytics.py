@@ -5,78 +5,147 @@ from decimal import Decimal
 def calculate_optimal_f(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
     """
     Расчет Optimal f по Ральфу Винсу.
-    trades_pnl: список прибылей/убытков в валюте
-    trades_risk: список сумм, которыми рисковали в каждой сделке
+    Возвращает ОБА метода расчёта:
+    - pnl_method: на основе реальных PnL (всегда доступен)
+    - r_method: на основе R-множителей (если есть риски)
     """
     if not trades_pnl or len(trades_pnl) < 2:
-        return {"optimal_f": 0, "expected_growth": 0, "message": "Недостаточно данных для расчета (нужно минимум 2 сделки)", "is_valid": False}
+        return {
+            "optimal_f": 0,
+            "pnl_method": None,
+            "r_method": None,
+            "message": "Недостаточно данных (нужно минимум 2 сделки)",
+            "is_valid": False,
+            "trades_with_risk": 0,
+            "trades_without_risk": len(trades_pnl) if trades_pnl else 0
+        }
 
-    # Фильтруем сделки без указанного риска
-    valid_pairs = [(pnl, risk) for pnl, risk in zip(trades_pnl, trades_risk) if risk > 0]
-    if len(valid_pairs) < 2:
-        return {"optimal_f": 0, "expected_growth": 0, "message": "Недостаточно сделок с указанным риском", "is_valid": False}
+    pnl_arr = np.array(trades_pnl)
     
-    pnl_arr = np.array([p[0] for p in valid_pairs])
-    risk_arr = np.array([p[1] for p in valid_pairs])
-    
-    # Проверяем profit factor - если < 1, система убыточная
-    wins = pnl_arr[pnl_arr > 0].sum() if len(pnl_arr[pnl_arr > 0]) > 0 else 0
-    losses = abs(pnl_arr[pnl_arr < 0].sum()) if len(pnl_arr[pnl_arr < 0]) > 0 else 0.01
-    profit_factor = wins / losses if losses > 0 else 0
+    # Проверяем profit factor
+    wins_sum = pnl_arr[pnl_arr > 0].sum() if len(pnl_arr[pnl_arr > 0]) > 0 else 0
+    losses_sum = abs(pnl_arr[pnl_arr < 0].sum()) if len(pnl_arr[pnl_arr < 0]) > 0 else 0.01
+    profit_factor = wins_sum / losses_sum if losses_sum > 0 else 0
     
     if profit_factor < 1.0:
         return {
-            "optimal_f": 0, 
-            "expected_growth": 0, 
+            "optimal_f": 0,
+            "pnl_method": None,
+            "r_method": None,
             "message": f"⚠️ Система убыточна (PF={profit_factor:.2f}). Optimal f не применим.",
             "is_valid": False,
-            "recommended_risk_pct": 0,
-            "moderate_risk_pct": 0,
-            "aggressive_risk_pct": 0
+            "trades_with_risk": 0,
+            "trades_without_risk": len(trades_pnl)
         }
-
-    # 1. Переводим результаты в R-multiple (результат относительно риска)
-    # R = PnL / Risk. Например, заработал $200 при риске $100 -> R = 2.0
-    r_multiples = pnl_arr / risk_arr
     
-    # Худший результат (самый большой убыток в R)
-    worst_case = np.min(r_multiples)
-    if worst_case >= 0:
-        # Если убытков нет, математика Винса не работает в классическом виде
-        return {"optimal_f": 0.5, "expected_growth": 1.0, "message": "У вас нет убыточных сделок! Риск может быть высоким.", "is_valid": True,
-                "recommended_risk_pct": 12.5, "moderate_risk_pct": 25, "aggressive_risk_pct": 50}
-
-    # 2. Функция для поиска TWR (Terminal Wealth Relative)
-    # TWR = Product(1 + f * (-trade_r / worst_case_r))
-    def get_twr(f):
-        # Ральф Винс использует нормализацию через худший случай
-        hpr = 1 + f * (r_multiples / (-worst_case))
-        # Если любой HPR <= 0, это банкротство — TWR должен быть 0
-        if np.any(hpr <= 0):
-            return 0.0
-        return np.prod(hpr)
-
-    # 3. Перебор f от 0.01 до 0.99 (f=1.0 всегда даёт HPR=0 для worst case)
-    f_values = np.linspace(0.01, 0.99, 99)
-    twr_values = [get_twr(f) for f in f_values]
+    # Считаем сделки с риском и без
+    valid_risks = [(pnl, r) for pnl, r in zip(trades_pnl, trades_risk) if r and r > 0]
+    trades_with_risk = len(valid_risks)
+    trades_without_risk = len(trades_pnl) - trades_with_risk
     
-    best_idx = np.argmax(twr_values)
-    optimal_f = f_values[best_idx]
-    max_twr = twr_values[best_idx]
-    
-    # Геометрическое среднее (G)
-    g = max_twr ** (1 / len(valid_pairs))
-
-    return {
-        "optimal_f": round(float(optimal_f), 2),
-        "geometric_mean": round(float(g), 4),
-        "max_twr": round(float(max_twr), 4),
-        "ultra_conservative_risk_pct": round(float(optimal_f * 10), 2),  # f/10 - ультра консервативный
-        "recommended_risk_pct": round(float(optimal_f * 25), 2),  # Quarter Kelly (f/4) - консервативный
-        "moderate_risk_pct": round(float(optimal_f * 50), 2),     # Half Kelly (f/2)
-        "aggressive_risk_pct": round(float(optimal_f * 100), 2),  # Full Kelly - для разгона/конкурсов
-        "is_valid": True
+    result = {
+        "is_valid": True,
+        "trades_with_risk": trades_with_risk,
+        "trades_without_risk": trades_without_risk,
+        "total_trades": len(trades_pnl)
     }
+    
+    # ========== МЕТОД 1: PnL (всегда считаем) ==========
+    worst_loss = np.min(pnl_arr)
+    
+    if worst_loss >= 0:
+        # Все сделки прибыльные
+        result["pnl_method"] = {
+            "optimal_f": 0.5,
+            "f_10": 5.0,
+            "f_4": 12.5,
+            "f_2": 25.0,
+            "message": "Нет убытков — риск может быть высоким"
+        }
+    else:
+        def get_twr_pnl(f):
+            hpr = 1 + f * (pnl_arr / abs(worst_loss))
+            if np.any(hpr <= 0):
+                return 0.0
+            return np.prod(hpr)
+        
+        f_values = np.linspace(0.01, 0.99, 99)
+        twr_values = [get_twr_pnl(f) for f in f_values]
+        best_idx = np.argmax(twr_values)
+        opt_f_pnl = f_values[best_idx]
+        
+        result["pnl_method"] = {
+            "optimal_f": round(float(opt_f_pnl), 2),
+            "f_10": round(float(opt_f_pnl * 10), 2),
+            "f_4": round(float(opt_f_pnl * 25), 2),
+            "f_2": round(float(opt_f_pnl * 50), 2),
+            "worst_loss": round(float(worst_loss), 2),
+            "description": "По реальным PnL (без учёта стоп-лоссов)"
+        }
+    
+    # ========== МЕТОД 2: R-множители (если есть риски) ==========
+    if trades_with_risk >= 2:
+        pnl_with_risk = np.array([p[0] for p in valid_risks])
+        risk_arr = np.array([p[1] for p in valid_risks])
+        r_multiples = pnl_with_risk / risk_arr
+        worst_r = np.min(r_multiples)
+        
+        if worst_r >= 0:
+            result["r_method"] = {
+                "optimal_f": 0.5,
+                "f_10": 5.0,
+                "f_4": 12.5,
+                "f_2": 25.0,
+                "message": "Нет убытков по R — риск может быть высоким",
+                "trades_used": trades_with_risk
+            }
+        else:
+            def get_twr_r(f):
+                hpr = 1 + f * (r_multiples / (-worst_r))
+                if np.any(hpr <= 0):
+                    return 0.0
+                return np.prod(hpr)
+            
+            f_values = np.linspace(0.01, 0.99, 99)
+            twr_values = [get_twr_r(f) for f in f_values]
+            best_idx = np.argmax(twr_values)
+            opt_f_r = f_values[best_idx]
+            
+            result["r_method"] = {
+                "optimal_f": round(float(opt_f_r), 2),
+                "f_10": round(float(opt_f_r * 10), 2),
+                "f_4": round(float(opt_f_r * 25), 2),
+                "f_2": round(float(opt_f_r * 50), 2),
+                "worst_r": round(float(worst_r), 2),
+                "trades_used": trades_with_risk,
+                "description": "По R-множителям (с учётом стоп-лоссов)"
+            }
+    else:
+        result["r_method"] = None
+    
+    # Основное значение - берём PnL метод как базовый (более консервативный при смешанных данных)
+    if result["pnl_method"]:
+        result["optimal_f"] = result["pnl_method"]["optimal_f"]
+        result["recommended_risk_pct"] = result["pnl_method"]["f_4"]
+        result["ultra_conservative_risk_pct"] = result["pnl_method"]["f_10"]
+        result["moderate_risk_pct"] = result["pnl_method"]["f_2"]
+        result["aggressive_risk_pct"] = result["pnl_method"]["optimal_f"] * 100
+    
+    # Calculate Geometric Mean (GHPR) using optimal f
+    # GHPR = (TWR)^(1/n) where TWR is calculated at optimal f
+    opt_f = result.get("optimal_f", 0)
+    if opt_f > 0 and worst_loss < 0:
+        hpr_values = 1 + opt_f * (pnl_arr / abs(worst_loss))
+        if np.all(hpr_values > 0):
+            twr = np.prod(hpr_values)
+            ghpr = twr ** (1 / len(pnl_arr))
+            result["geometric_mean"] = round(float(ghpr), 4)
+        else:
+            result["geometric_mean"] = 0
+    else:
+        result["geometric_mean"] = 0
+    
+    return result
 
 def calculate_z_score(trades_pnl: List[float]) -> Dict:
     """
@@ -162,31 +231,43 @@ def calculate_sqn(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
     """
     Расчет SQN (System Quality Number) по Ван Тарпу.
     SQN = (Expectancy / StdDev) * sqrt(N)
-    Используем R-multiples для расчета.
+    
+    Если указаны риски - используем R-multiples.
+    Если нет - используем сами PnL.
     """
     if not trades_pnl or len(trades_pnl) < 2:
         return {"sqn": 0, "rating": "Недостаточно данных"}
 
-    # Расчет R-multiples
-    r_multiples = []
-    for pnl, risk in zip(trades_pnl, trades_risk):
-        if risk == 0:
-            r_multiples.append(0)
-        else:
-            r_multiples.append(pnl / risk)
-            
-    r_array = np.array(r_multiples)
+    # Проверяем есть ли риски
+    valid_risks = [r for r in trades_risk if r and r > 0]
+    use_r_multiples = len(valid_risks) >= len(trades_pnl) * 0.5  # Минимум 50% сделок с риском
     
-    avg_r = np.mean(r_array)
-    std_dev_r = np.std(r_array, ddof=1) # Стандартное отклонение выборки
+    if use_r_multiples:
+        # Расчет R-multiples
+        r_multiples = []
+        for pnl, risk in zip(trades_pnl, trades_risk):
+            if risk and risk > 0:
+                r_multiples.append(pnl / risk)
+        values = np.array(r_multiples)
+        method = "r_multiples"
+    else:
+        # Используем сами PnL
+        values = np.array(trades_pnl)
+        method = "pnl"
     
-    if std_dev_r == 0:
+    if len(values) < 2:
+        return {"sqn": 0, "rating": "Недостаточно данных"}
+    
+    avg_val = np.mean(values)
+    std_dev = np.std(values, ddof=1)  # Стандартное отклонение выборки
+    
+    if std_dev == 0:
         return {"sqn": 0, "rating": "Стабильно (StdDev=0)"}
         
-    n = len(trades_pnl)
+    n = len(values)
     # Van Tharp рекомендует ограничивать N до 100 для стабильности SQN
     effective_n = min(n, 100)
-    sqn = (avg_r / std_dev_r) * np.sqrt(effective_n)
+    sqn = (avg_val / std_dev) * np.sqrt(effective_n)
     
     # Шкала Ван Тарпа
     if sqn < 1.6: rating = "Poor (Слабая)"
@@ -197,7 +278,7 @@ def calculate_sqn(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
     elif sqn < 7.0: rating = "Holy Grail (Грааль)"
     else: rating = "Holy Grail++"
     
-    return {"sqn": round(float(sqn), 2), "rating": rating}
+    return {"sqn": round(float(sqn), 2), "rating": rating, "method": method}
 
 def calculate_advanced_stats(trades_pnl: List[float], trades_risk: List[float]) -> Dict:
     """
@@ -216,12 +297,20 @@ def calculate_advanced_stats(trades_pnl: List[float], trades_risk: List[float]) 
     profit_factor = round(gross_profit / gross_loss, 2) if gross_loss != 0 else 99.99
 
     # 2. R-Expectancy
+    # If risk data available, use R-multiples
+    # Otherwise, use average loss as "risk unit"
     r_multiples = []
-    for pnl, risk in zip(trades_pnl, trades_risk):
-        if risk > 0:
-            r_multiples.append(pnl / risk)
-        else:
-            r_multiples.append(0)
+    has_risk_data = any(r > 0 for r in trades_risk)
+    
+    if has_risk_data:
+        for pnl, risk in zip(trades_pnl, trades_risk):
+            if risk > 0:
+                r_multiples.append(pnl / risk)
+    else:
+        # Fallback: use average loss as risk unit
+        avg_loss = abs(gross_loss / len([p for p in trades_pnl if p < 0])) if gross_loss > 0 else 1
+        for pnl in trades_pnl:
+            r_multiples.append(pnl / avg_loss)
     
     r_expectancy = round(float(np.mean(r_multiples)), 2) if r_multiples else 0
 
@@ -343,6 +432,9 @@ def calculate_calmar_ratio(trades_pnl: List[float], initial_balance: float = 100
         calmar = abs(cagr_pct) / max_dd_pct
         if cagr_pct < 0:
             calmar = -calmar  # Отрицательный Calmar для убыточных систем
+        # Cap at 100 to avoid misleading huge values when drawdown is tiny
+        if calmar > 100:
+            calmar = 99.99
     else:
         calmar = 99.99 if cagr_pct > 0 else 0  # Нет просадок
     
@@ -826,53 +918,105 @@ def analyze_time_patterns(trades) -> Dict:
     }
 
 
-def analyze_mae_mfe(trades):
+def analyze_mae_mfe(trades, mae_method: str = 'weighted_average'):
     """
     Анализирует MAE/MFE для списка сделок.
-    Возвращает рекомендации по оптимизации стопов и тейков.
+    Возвращает детальную аналитику и рекомендации.
     
     MAE (Maximum Adverse Excursion) - максимальное движение против позиции в %
     MFE (Maximum Favorable Excursion) - максимальное движение в нашу сторону в %
+    
+    mae_method:
+        - 'weighted_average': от средневзвешенной цены (по умолчанию)
+        - 'first_entry': от цены первого входа
     """
     if not trades:
-        return {"recommendations": ["Недостаточно данных для анализа"]}
+        return {"recommendations": ["Недостаточно данных для анализа"], "trades_analyzed": 0}
 
     mae_percentages = []  # MAE как % от цены входа
     mfe_percentages = []  # MFE как % от цены входа
     exit_efficiency = []  # Эффективность закрытия: сколько от MFE мы взяли
-
+    edge_ratios = []  # MFE/MAE для каждой сделки
+    
+    # Данные по выигрышным и проигрышным сделкам
+    winners_mae = []
+    winners_mfe = []
+    winners_efficiency = []
+    losers_mae = []
+    losers_mfe = []
+    losers_efficiency = []
+    
+    # Данные для распределения
+    mae_distribution = []  # (mae_pct, is_winner)
+    mfe_distribution = []  # (mfe_pct, is_winner)
+    
+    # Данные о потерянной прибыли
+    profit_left_on_table = []  # В рублях
+    
     for t in trades:
         # Нужны закрытые сделки с заполненными MAE/MFE
         if not t.exit_at or not t.entry_price:
             continue
         
-        entry_price = float(t.entry_price)
+        # Определяем базовую цену в зависимости от метода
+        if mae_method == 'first_entry' and t.operations:
+            # Ищем первый вход в операциях
+            entry_ops = [op for op in t.operations if op.get('type') == 'entry']
+            if entry_ops:
+                entry_price = float(entry_ops[0].get('price', t.entry_price))
+            else:
+                entry_price = float(t.entry_price)
+        else:
+            # По умолчанию - средневзвешенная цена
+            entry_price = float(t.entry_price)
+        
         if entry_price == 0:
             continue
         
         is_long = t.direction.value == 'long'
+        pnl = float(t.pnl) if t.pnl else 0
+        is_winner = pnl > 0
+        qty = float(t.quantity) if t.quantity else 0
+        
+        mae_pct = 0
+        mfe_pct = 0
         
         if t.mae_price:
             mae_price = float(t.mae_price)
             # MAE - насколько цена ушла против нас (в %)
             if is_long:
-                # Для LONG: MAE = min цена, движение вниз - против нас
                 mae_pct = (entry_price - mae_price) / entry_price * 100
             else:
-                # Для SHORT: MAE = max цена, движение вверх - против нас
                 mae_pct = (mae_price - entry_price) / entry_price * 100
-            mae_percentages.append(max(0, mae_pct))  # Только положительные (против нас)
+            mae_pct = max(0, mae_pct)
+            mae_percentages.append(mae_pct)
+            mae_distribution.append({"value": round(mae_pct, 2), "winner": is_winner})
+            
+            if is_winner:
+                winners_mae.append(mae_pct)
+            else:
+                losers_mae.append(mae_pct)
             
         if t.mfe_price:
             mfe_price = float(t.mfe_price)
             # MFE - насколько цена ушла в нашу сторону (в %)
             if is_long:
-                # Для LONG: MFE = max цена, движение вверх - за нас
                 mfe_pct = (mfe_price - entry_price) / entry_price * 100
             else:
-                # Для SHORT: MFE = min цена, движение вниз - за нас
                 mfe_pct = (entry_price - mfe_price) / entry_price * 100
-            mfe_percentages.append(max(0, mfe_pct))  # Только положительные (за нас)
+            mfe_pct = max(0, mfe_pct)
+            mfe_percentages.append(mfe_pct)
+            mfe_distribution.append({"value": round(mfe_pct, 2), "winner": is_winner})
+            
+            if is_winner:
+                winners_mfe.append(mfe_pct)
+            else:
+                losers_mfe.append(mfe_pct)
+            
+            # Edge Ratio (MFE/MAE)
+            if mae_pct > 0:
+                edge = mfe_pct / mae_pct
+                edge_ratios.append(edge)
             
             # Эффективность закрытия: сколько от MFE мы реально взяли
             if t.exit_price and mfe_pct > 0:
@@ -883,33 +1027,187 @@ def analyze_mae_mfe(trades):
                     actual_pct = (entry_price - exit_price) / entry_price * 100
                 efficiency = max(0, min(100, actual_pct / mfe_pct * 100))
                 exit_efficiency.append(efficiency)
+                
+                if is_winner:
+                    winners_efficiency.append(efficiency)
+                else:
+                    losers_efficiency.append(efficiency)
+                
+                # Потерянная прибыль (MFE - actual)
+                if qty > 0:
+                    max_possible_pnl = (mfe_pct / 100) * entry_price * qty
+                    actual_pnl = (actual_pct / 100) * entry_price * qty
+                    left = max_possible_pnl - actual_pnl
+                    if left > 0:
+                        profit_left_on_table.append(left)
 
-    recommendations = []
-    
+    # Статистика
     avg_mae = sum(mae_percentages) / len(mae_percentages) if mae_percentages else 0
     avg_mfe = sum(mfe_percentages) / len(mfe_percentages) if mfe_percentages else 0
     avg_efficiency = sum(exit_efficiency) / len(exit_efficiency) if exit_efficiency else 0
+    avg_edge_ratio = sum(edge_ratios) / len(edge_ratios) if edge_ratios else 0
+    
+    # Percentiles
+    def percentile(data, p):
+        if not data:
+            return 0
+        k = (len(data) - 1) * p / 100
+        f = int(k)
+        c = f + 1 if f + 1 < len(data) else f
+        sorted_data = sorted(data)
+        return sorted_data[f] + (k - f) * (sorted_data[c] - sorted_data[f]) if c != f else sorted_data[f]
+    
+    mae_percentiles = {
+        "p10": round(percentile(mae_percentages, 10), 2),
+        "p25": round(percentile(mae_percentages, 25), 2),
+        "p50": round(percentile(mae_percentages, 50), 2),
+        "p75": round(percentile(mae_percentages, 75), 2),
+        "p90": round(percentile(mae_percentages, 90), 2),
+        "max": round(max(mae_percentages), 2) if mae_percentages else 0
+    }
+    
+    mfe_percentiles = {
+        "p10": round(percentile(mfe_percentages, 10), 2),
+        "p25": round(percentile(mfe_percentages, 25), 2),
+        "p50": round(percentile(mfe_percentages, 50), 2),
+        "p75": round(percentile(mfe_percentages, 75), 2),
+        "p90": round(percentile(mfe_percentages, 90), 2),
+        "max": round(max(mfe_percentages), 2) if mfe_percentages else 0
+    }
+    
+    # Winners vs Losers comparison
+    winners_vs_losers = {
+        "winners": {
+            "count": len(winners_mae),
+            "avg_mae": round(sum(winners_mae) / len(winners_mae), 2) if winners_mae else 0,
+            "avg_mfe": round(sum(winners_mfe) / len(winners_mfe), 2) if winners_mfe else 0,
+            "avg_efficiency": round(sum(winners_efficiency) / len(winners_efficiency), 1) if winners_efficiency else 0,
+        },
+        "losers": {
+            "count": len(losers_mae),
+            "avg_mae": round(sum(losers_mae) / len(losers_mae), 2) if losers_mae else 0,
+            "avg_mfe": round(sum(losers_mfe) / len(losers_mfe), 2) if losers_mfe else 0,
+            "avg_efficiency": round(sum(losers_efficiency) / len(losers_efficiency), 1) if losers_efficiency else 0,
+        }
+    }
+    
+    # Stop Loss optimization
+    optimal_stop = mae_percentiles["p75"]  # 75% сделок не пробивали этот уровень
+    trades_saved_by_tighter_stop = len([m for m in mae_percentages if m > optimal_stop])
+    
+    # Entry Quality Score (0-100)
+    # Чем меньше MAE, тем лучше входы
+    if mae_percentages:
+        entry_quality = max(0, min(100, 100 - avg_mae * 20))  # -20 за каждый %
+    else:
+        entry_quality = 0
+    
+    # Exit Quality Score (0-100)
+    # Основано на эффективности захвата MFE
+    exit_quality = avg_efficiency
+    
+    # Потерянная прибыль
+    total_left_on_table = sum(profit_left_on_table) if profit_left_on_table else 0
+    avg_left_on_table = total_left_on_table / len(profit_left_on_table) if profit_left_on_table else 0
+    
+    # Рекомендации
+    recommendations = []
     
     if mae_percentages and mfe_percentages:
-        if avg_mae > avg_mfe:
-            recommendations.append(f"Средний MAE ({avg_mae:.1f}%) превышает MFE ({avg_mfe:.1f}%). Пересмотрите точки входа.")
+        # Edge Ratio analysis
+        if avg_edge_ratio >= 2:
+            recommendations.append({
+                "type": "success",
+                "icon": "✓",
+                "text": f"Отличный Edge Ratio ({avg_edge_ratio:.1f}x). Ваш потенциал прибыли в {avg_edge_ratio:.1f} раза больше риска."
+            })
+        elif avg_edge_ratio >= 1:
+            recommendations.append({
+                "type": "warning",
+                "icon": "!",
+                "text": f"Edge Ratio {avg_edge_ratio:.1f}x — средний. Идеально >2x."
+            })
+        else:
+            recommendations.append({
+                "type": "danger",
+                "icon": "✕",
+                "text": f"Edge Ratio {avg_edge_ratio:.1f}x — низкий. Потенциал прибыли меньше риска."
+            })
         
-        if avg_efficiency < 50 and avg_mfe > 1:
-            recommendations.append(f"Эффективность закрытия {avg_efficiency:.0f}%. Вы закрываете слишком рано, теряя часть прибыли.")
-        elif avg_efficiency > 80:
-            recommendations.append(f"Отличная эффективность закрытия {avg_efficiency:.0f}%! Вы хорошо улавливаете движения.")
-        
+        # Entry quality
         if avg_mae < 1:
-            recommendations.append(f"MAE всего {avg_mae:.1f}%. Отличные точки входа с минимальной просадкой.")
+            recommendations.append({
+                "type": "success",
+                "icon": "✓",
+                "text": f"Отличные точки входа! Средняя просадка всего {avg_mae:.1f}%."
+            })
         elif avg_mae > 3:
-            recommendations.append(f"MAE составляет {avg_mae:.1f}%. Рассмотрите более точные входы или стопы.")
+            recommendations.append({
+                "type": "danger",
+                "icon": "✕",
+                "text": f"Высокая просадка ({avg_mae:.1f}%). Оптимизируйте точки входа или используйте стоп {optimal_stop:.1f}%."
+            })
+        
+        # Exit efficiency
+        if avg_efficiency < 50:
+            recommendations.append({
+                "type": "warning",
+                "icon": "!",
+                "text": f"Эффективность выхода {avg_efficiency:.0f}%. Вы закрываетесь слишком рано."
+            })
+        elif avg_efficiency >= 70:
+            recommendations.append({
+                "type": "success",
+                "icon": "✓",
+                "text": f"Хорошая эффективность выхода ({avg_efficiency:.0f}%)."
+            })
+        
+        # Winners vs Losers insight
+        if winners_vs_losers["losers"]["avg_mae"] > winners_vs_losers["winners"]["avg_mae"] * 1.5:
+            recommendations.append({
+                "type": "insight",
+                "icon": "💡",
+                "text": f"Проигрышные сделки имеют MAE {winners_vs_losers['losers']['avg_mae']:.1f}% vs {winners_vs_losers['winners']['avg_mae']:.1f}% у выигрышных. Рассмотрите более ранний стоп."
+            })
+        
+        # Profit left on table
+        if total_left_on_table > 1000:
+            recommendations.append({
+                "type": "insight",
+                "icon": "💰",
+                "text": f"Потенциально упущено {total_left_on_table:,.0f} ₽. Средняя упущенная прибыль: {avg_left_on_table:,.0f} ₽/сделку."
+            })
 
     return {
         "avg_mae_pct": round(avg_mae, 2),
         "avg_mfe_pct": round(avg_mfe, 2),
         "avg_efficiency": round(avg_efficiency, 1),
+        "avg_edge_ratio": round(avg_edge_ratio, 2),
         "trades_analyzed": len(mae_percentages),
-        "recommendations": recommendations if recommendations else ["Продолжайте торговать для накопления статистики."]
+        
+        # Детальная статистика
+        "mae_percentiles": mae_percentiles,
+        "mfe_percentiles": mfe_percentiles,
+        "winners_vs_losers": winners_vs_losers,
+        
+        # Качество входов/выходов
+        "entry_quality_score": round(entry_quality, 0),
+        "exit_quality_score": round(exit_quality, 0),
+        
+        # Оптимизация стопов
+        "optimal_stop_pct": round(optimal_stop, 2),
+        "trades_above_optimal_stop": trades_saved_by_tighter_stop,
+        
+        # Упущенная прибыль
+        "total_profit_left_on_table": round(total_left_on_table, 0),
+        "avg_profit_left_on_table": round(avg_left_on_table, 0),
+        
+        # Распределения для графиков
+        "mae_distribution": mae_distribution[:50],  # Ограничиваем для производительности
+        "mfe_distribution": mfe_distribution[:50],
+        
+        # Рекомендации
+        "recommendations": recommendations if recommendations else [{"type": "info", "icon": "ℹ", "text": "Продолжайте торговать для накопления статистики."}]
     }
 
 def calculate_stats(trades):

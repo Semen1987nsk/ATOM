@@ -2,8 +2,13 @@ import pandas as pd
 import io
 from datetime import datetime
 from typing import List, Dict, Optional
+from decimal import Decimal
 import models
 import re
+from moex_service import get_moex_service
+from logger import get_logger
+
+log = get_logger("import")
 
 class TradeManager:
     """
@@ -196,17 +201,24 @@ class TradeManager:
             exit_deal_sum_part = exit_deal_sum * exit_ratio
             
             if entry_deal_sum and exit_deal_sum_part:
-                # Точный расчёт по суммам сделок
+                # Точный расчёт по суммам сделок (уже в рублях)
                 if pos['direction'] == models.TradeDirection.LONG:
                     pnl = exit_deal_sum_part - entry_deal_sum
                 else:
                     pnl = entry_deal_sum - exit_deal_sum_part
             else:
                 # Fallback по ценам
-                if pos['direction'] == models.TradeDirection.LONG:
-                    pnl = (exit_price - pos['entry_price']) * close_qty
-                else:
-                    pnl = (pos['entry_price'] - exit_price) * close_qty
+                # Для фьючерсов нужен point_value (цена пункта)
+                point_value = Decimal(1)
+                moex = get_moex_service()
+                if moex.is_futures_ticker(symbol):
+                    point_value = moex.get_point_value(symbol)
+                
+                price_diff = Decimal(str(exit_price)) - Decimal(str(pos['entry_price']))
+                if pos['direction'] == models.TradeDirection.SHORT:
+                    price_diff = -price_diff
+                
+                pnl = float(price_diff * Decimal(str(close_qty)) * point_value)
             
             pos['pnl'] = pnl
             pos['net_pnl'] = pnl - pos['commission'] - pos['swap']
@@ -266,15 +278,24 @@ class TradeManager:
             entry_deal_sum_part = pos['_deal_sum'] * close_ratio
             
             if entry_deal_sum_part and exit_deal_sum:
+                # Точный расчёт по суммам сделок (уже в рублях)
                 if pos['direction'] == models.TradeDirection.LONG:
                     pnl = exit_deal_sum - entry_deal_sum_part
                 else:
                     pnl = entry_deal_sum_part - exit_deal_sum
             else:
-                if pos['direction'] == models.TradeDirection.LONG:
-                    pnl = (exit_price - pos['entry_price']) * exit_qty
-                else:
-                    pnl = (pos['entry_price'] - exit_price) * exit_qty
+                # Fallback по ценам
+                # Для фьючерсов нужен point_value (цена пункта)
+                point_value = Decimal(1)
+                moex = get_moex_service()
+                if moex.is_futures_ticker(symbol):
+                    point_value = moex.get_point_value(symbol)
+                
+                price_diff = Decimal(str(exit_price)) - Decimal(str(pos['entry_price']))
+                if pos['direction'] == models.TradeDirection.SHORT:
+                    price_diff = -price_diff
+                
+                pnl = float(price_diff * Decimal(str(exit_qty)) * point_value)
             
             closed_part['pnl'] = pnl
             closed_part['net_pnl'] = pnl - closed_part['commission'] - closed_part['swap']
@@ -401,7 +422,7 @@ def parse_account_balance(contents: bytes, filename: str = "") -> Dict:
                             break
         
     except Exception as e:
-        print(f"Warning: Could not parse balance info: {e}")
+        log.warning(f"Could not parse balance info: {e}")
     
     return result
 
@@ -472,31 +493,71 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
     # Reload with correct header
     df = pd.read_excel(io.BytesIO(contents), header=start_row)
     
+    # Нормализация колонок: newlines → spaces, схлопываем множественные пробелы
+    # Создаём маппинг normalized_name → original_column_name
+    cols = { " ".join(str(c).replace('\n', ' ').split()): c for c in df.columns }
+    
+    def _find_col(*aliases):
+        """Ищет колонку по списку алиасов (частичное совпадение). Возвращает оригинальное имя колонки."""
+        # Сначала точное совпадение
+        for alias in aliases:
+            if alias in cols:
+                return cols[alias]
+        # Затем частичное (алиас как подстрока колонки или наоборот)
+        for alias in aliases:
+            alias_lower = alias.lower()
+            for norm_name, orig_name in cols.items():
+                if alias_lower in norm_name.lower() or norm_name.lower() in alias_lower:
+                    return orig_name
+        return None
+    
+    # Предварительно находим все нужные колонки один раз (не в цикле!)
+    col_date = _find_col('Дата заключения', 'Дата', 'Date')
+    col_time = _find_col('Время', 'Time')
+    col_side = _find_col('Вид сделки', 'Направление', 'Side')
+    col_symbol = _find_col('Код актива', 'Тикер', 'Symbol')
+    col_qty = _find_col('Количество', 'Quantity', 'Qty')
+    col_deal_sum = _find_col('Сумма сделки', 'Deal Sum', 'Amount')
+    col_comm = _find_col('Комиссия брокера', 'Комиссия', 'Commission', 'Fee')
+    col_swap = _find_col('Плата за перенос позиций', 'Своп', 'Swap')
+    col_price = _find_col('Цена за единицу', 'Цена', 'Price')
+    col_name_candidates = ['Сокращенное наименование', 'Наименование', 'Наименование актива']
+    col_name = _find_col(*col_name_candidates)
+    
+    # Валидация: обязательные колонки
+    missing = []
+    if not col_date: missing.append('Дата')
+    if not col_side: missing.append('Вид сделки')
+    if not col_symbol: missing.append('Код актива')
+    if not col_qty: missing.append('Количество')
+    if missing:
+        available = list(cols.keys())
+        raise ValueError(
+            f"Не найдены колонки: {', '.join(missing)}. "
+            f"Доступные: {available[:15]}"
+        )
+    
     manager = TradeManager()
     
     # 1. Extract raw rows
     raw_trades = []
+    skipped_rows = 0
     
     for _, row in df.iterrows():
         try:
-            # Normalize column names: replace newlines and multiple spaces with single space
-            cols = { " ".join(str(c).replace('\n', ' ').split()): c for c in df.columns }
+            date_val = row[col_date] if col_date else None
+            time_val = row[col_time] if col_time else None
+            side_val = row[col_side] if col_side else None
+            symbol_val = row[col_symbol] if col_symbol else None
+            qty_val = row[col_qty] if col_qty else None
+            deal_sum_val = row[col_deal_sum] if col_deal_sum else None
             
-            date_val = row[cols.get('Дата заключения', 'Дата заключения')]
-            time_val = row[cols.get('Время', 'Время')]
-            side_val = row[cols.get('Вид сделки', 'Вид сделки')]
-            symbol_val = row[cols.get('Код актива', 'Код актива')]
-            qty_val = row[cols.get('Количество', 'Количество')]
-            deal_sum_val = row[cols.get('Сумма сделки', 'Сумма сделки')]
-            
-            # Asset Name: Try 'Сокращенное наименование', 'Наименование', 'Наименование актива'
+            # Asset Name
             asset_name = None
-            for key in ['Сокращенное наименование', 'Наименование', 'Наименование актива']:
-                if key in cols:
-                    val = row[cols[key]]
-                    if pd.notna(val):
-                        asset_name = val
-                        break
+            if col_name:
+                val = row[col_name]
+                if pd.notna(val):
+                    asset_name = val
             
             if pd.isna(date_val) or pd.isna(symbol_val):
                 continue
@@ -507,19 +568,37 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
                 
             if isinstance(date_val, str):
                 date_str = date_val
-            else:
+            elif hasattr(date_val, 'strftime'):
                 date_str = date_val.strftime("%d.%m.%Y")
-                
-            if isinstance(time_val, str):
-                time_str = time_val
             else:
+                continue  # NaT или непонятный тип — пропускаем строку
+                
+            if time_val is None or (hasattr(time_val, '__class__') and 'NaT' in str(type(time_val))):
+                time_str = "00:00:00"
+            elif isinstance(time_val, str):
+                time_str = time_val
+            elif hasattr(time_val, 'strftime'):
                 time_str = time_val.strftime("%H:%M:%S")
+            else:
+                time_str = str(time_val)
             
             # Пропускаем если время - это заголовок
             if str(time_str).lower() in ['время', 'time']:
                 continue
                 
-            entry_at = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M:%S")
+            try:
+                entry_at = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M:%S")
+            except ValueError:
+                # Пробуем альтернативные форматы даты
+                for fmt in ["%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d.%m.%Y %H:%M"]:
+                    try:
+                        entry_at = datetime.strptime(f"{date_str} {time_str}", fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    log.warning(f"Cannot parse date/time: '{date_str}' / '{time_str}'")
+                    continue
             
             side_str = str(side_val).lower()
             if 'репо' in side_str or 'рпс' in side_str:
@@ -536,7 +615,7 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             quantity = float(qty_val)
             
             # Commissions
-            comm_broker = row.get(cols.get('Комиссия брокера', 'Комиссия брокера'), 0)
+            comm_broker = row.get(col_comm, 0) if col_comm else 0
             
             def parse_comm(val):
                 try: return abs(float(val)) if pd.notna(val) else 0.0
@@ -546,18 +625,25 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             commission = parse_comm(comm_broker)
             
             # Swap / Rollover
-            swap_val = row.get(cols.get('Плата за перенос позиций', 'Плата за перенос позиций'), 0)
+            swap_val = row.get(col_swap, 0) if col_swap else 0
             if pd.isna(swap_val) or swap_val == 0:
-                 swap_val = row.get(cols.get('Своп', 'Своп'), 0)
+                swap_val = 0
             swap = parse_comm(swap_val)
 
             # Deal Sum (for price calc)
             deal_sum = 0.0
-            if pd.notna(deal_sum_val):
+            if deal_sum_val is not None and pd.notna(deal_sum_val):
                 deal_sum = float(deal_sum_val)
             
             # Fallback price if deal_sum is 0 (unlikely but possible)
-            price_per_unit = float(row[cols.get('Цена за единицу', 'Цена за единицу')]) if pd.notna(row.get(cols.get('Цена за единицу', 'Цена за единицу'))) else 0.0
+            price_per_unit = 0.0
+            if col_price:
+                pval = row.get(col_price)
+                if pval is not None and pd.notna(pval):
+                    try:
+                        price_per_unit = float(pval)
+                    except (ValueError, TypeError):
+                        pass
 
             raw_trades.append({
                 "entry_at": entry_at,
@@ -572,8 +658,13 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             })
 
         except Exception as e:
-            print(f"Error parsing row {row.name}: {e}")
+            skipped_rows += 1
+            if skipped_rows <= 5:  # Логируем первые 5 ошибок, дальше молчим
+                log.warning(f"Error parsing row {row.name}: {e}")
             continue
+    
+    if skipped_rows > 0:
+        log.info(f"Excel parsing: {len(raw_trades)} trades parsed, {skipped_rows} rows skipped")
 
     # 2. Сортируем сделки по времени для корректной работы FIFO логики
     raw_trades.sort(key=lambda x: x['entry_at'])
@@ -614,8 +705,25 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
         'RU000A0JXNU8': 'FLOT',    # Совкомфлот
         'RU000A107UL4': 'T',       # Т-Банк (Т-Технологии)
         'RU000A10ANA1': 'CNRU',    # Циан
+        'RU000A0ZZFS9': 'LEAS',    # ЛК Европлан
+        'RU000A0JQ9P0': 'RENI',    # Ренессанс Страхование
+        'RU000A0JXN21': 'AQUA',    # ИНАРКТИКА
+        'RU000A103X66': 'POSI',    # Positive Technologies
+        'RU000A106K63': 'VKCO',    # ВК
+        'RU000A100K72': 'HNFG',    # Хендерсон
+        'RU000A101NJ4': 'SPBE',    # СПБ Биржа
     }
 
+    # Build asset_name -> symbol mapping from non-ISIN entries
+    # This helps resolve unknown ISINs by asset name
+    asset_name_to_symbol = {}
+    for t in grouped_trades:
+        sym = t['symbol']
+        name = t.get('asset_name')
+        # If symbol is not ISIN-like (doesn't start with RU + digits)
+        if name and not (sym.startswith('RU') and len(sym) == 12 and sym[2:].isalnum()):
+            asset_name_to_symbol[name] = sym
+    
     # 3. Process grouped trades through TradeManager
     for t in grouped_trades:
         symbol = t['symbol']
@@ -623,9 +731,12 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
         quantity = t['quantity']
         deal_sum = t['deal_sum']
         
-        # Replace ISIN with readable ticker-СПБ if known
+        # Replace ISIN with readable ticker if known
         if symbol in isin_to_ticker:
             symbol = isin_to_ticker[symbol]
+        # If still looks like ISIN, try to resolve by asset_name
+        elif symbol.startswith('RU') and len(symbol) == 12 and t.get('asset_name') in asset_name_to_symbol:
+            symbol = asset_name_to_symbol[t['asset_name']]
         
         # Infer Asset Type first (needed for price calculation)
         asset_type = "Stock"
@@ -728,6 +839,10 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
         clean_trade = {k: v for k, v in trade.items() if k not in fields_to_remove}
         result.append(clean_trade)
     
+    # Сортируем по дате входа для корректного отображения в UI
+    # Без этой сортировки порядок определяется датой ЗАКРЫТИЯ, что вводит пользователя в заблуждение
+    result.sort(key=lambda x: x.get('entry_at') or datetime.min)
+    
     return result
 
 def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
@@ -783,7 +898,7 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     if missing:
         # Если не нашли стандартные, пробуем специфичные для Binance/Bybit
         # Но пока вернем ошибку или пустой список
-        print(f"Missing columns: {missing}")
+        log.warning(f"Missing columns: {missing}")
         # Fallback logic could go here
         pass
 
@@ -797,6 +912,10 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     if not all([date_col, symbol_col, side_col, price_col, qty_col]):
          raise ValueError(f"Could not detect required columns. Found: {df.columns.tolist()}")
 
+    # Собираем raw сделки
+    raw_trades = []
+    fee_col = get_col('fee')
+    
     for _, row in df.iterrows():
         try:
             # Парсинг даты
@@ -816,25 +935,52 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
             price = float(row[price_col])
             quantity = float(row[qty_col])
             
-            pnl = None
-            if pnl_col and pd.notna(row[pnl_col]):
-                pnl = float(row[pnl_col])
+            # Комиссия
+            commission = 0.0
+            if fee_col and pd.notna(row.get(fee_col)):
+                try:
+                    commission = abs(float(row[fee_col]))
+                except:
+                    pass
 
-            trade = {
+            raw_trades.append({
                 "symbol": str(row[symbol_col]).upper(),
                 "direction": direction,
                 "entry_price": price,
                 "quantity": quantity,
                 "entry_at": entry_at,
-                "pnl": pnl,
-                "net_pnl": pnl, # Assuming generic import PnL is Net? Or Gross? Let's assume Gross for now and calc Net if fee exists
+                "commission": commission,
+                "deal_sum": price * quantity,
+                "swap": 0.0,
                 "notes": f"Imported from {filename}",
                 "tags": ["Imported"]
-            }
-            trades.append(trade)
+            })
             
         except Exception as e:
-            print(f"Skipping row due to error: {e}")
+            log.warning(f"Skipping row due to error: {e}")
             continue
 
-    return trades
+    if not raw_trades:
+        return trades
+    
+    # Сортируем по времени для корректной FIFO логики
+    raw_trades.sort(key=lambda x: x['entry_at'])
+    
+    # Используем TradeManager для группировки позиций
+    manager = TradeManager()
+    for trade_data in raw_trades:
+        manager.process_trade(trade_data)
+    
+    # Финализируем и получаем результат
+    result = manager.finalize()
+    
+    # Очищаем временные поля
+    fields_to_remove = ['deal_sum', '_total_cost', '_deal_sum']
+    for trade in result:
+        for field in fields_to_remove:
+            trade.pop(field, None)
+    
+    # Сортируем по дате входа для корректного отображения в UI
+    result.sort(key=lambda x: x.get('entry_at') or datetime.min)
+    
+    return result

@@ -4,12 +4,17 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 export type Currency = 'USD' | 'EUR' | 'RUB' | 'USDT' | 'BTC';
 export type Theme = 'dark' | 'light';
+export type MAECalculationMethod = 'weighted_average' | 'first_entry';
 
 export interface Settings {
   initialDeposit: number;
   currency: Currency;
   currencySymbol: string;
   theme: Theme;
+  maeCalculationMethod: MAECalculationMethod;
+  tradesStartDate: string | null; // ISO date string, null = all trades
+  tradesStartTradeId: number | null; // ID конкретной сделки для начала отсчёта
+  tradesStartTradeSymbol: string | null; // Символ сделки для отображения
 }
 
 interface SettingsContextType {
@@ -32,6 +37,10 @@ const defaultSettings: Settings = {
   currency: 'USD',
   currencySymbol: '$',
   theme: 'dark',
+  maeCalculationMethod: 'weighted_average',
+  tradesStartDate: null,
+  tradesStartTradeId: null,
+  tradesStartTradeSymbol: null,
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);

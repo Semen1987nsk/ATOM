@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth, RequireAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/apiClient';
 import Link from 'next/link';
 import { 
   User, Mail, Calendar, Settings, LogOut, Save, 
@@ -20,14 +21,6 @@ interface Subscription {
     max_accounts: number;
     ai_analysis: boolean;
   };
-}
-
-function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-    const codespaceName = window.location.hostname.split('-3000')[0];
-    return `https://${codespaceName}-8000.app.github.dev`;
-  }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 }
 
 function ProfileContent() {
@@ -49,10 +42,7 @@ function ProfileContent() {
   // Загрузка подписки
   useEffect(() => {
     if (token) {
-      fetch(`${getApiBase()}/auth/subscription`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => res.json())
+      api.get<Subscription>('/auth/subscription')
         .then(data => setSubscription(data))
         .catch(err => console.error('Failed to load subscription:', err));
     }

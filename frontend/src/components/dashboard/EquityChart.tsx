@@ -26,6 +26,7 @@ export function EquityChart({ data }: EquityChartProps) {
       <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
         <Activity size={16} className="text-accent" />
         {t.charts.equityCurve}
+        <span className="text-[10px] opacity-50 normal-case ml-1">(по сделкам)</span>
         <span className="ml-auto text-[10px] opacity-40">{data?.length || 0} {t.charts.dataPoints || 'points'}</span>
       </h2>
       <div className="h-[250px] w-full relative z-10">

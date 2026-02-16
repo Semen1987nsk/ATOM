@@ -1,13 +1,46 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, Lightbulb } from 'lucide-react';
+
+// Support both old string format and new object format
+type Recommendation = string | { type: string; icon: string; text: string };
 
 interface AIInsightsCardProps {
-  recommendations: string[];
+  recommendations: Recommendation[];
   optimalF: number;
 }
 
 export function AIInsightsCard({ recommendations, optimalF }: AIInsightsCardProps) {
+  // Helper to get recommendation text
+  const getRecText = (rec: Recommendation): string => {
+    if (typeof rec === 'string') return rec;
+    return rec.text || '';
+  };
+
+  // Helper to get border color based on type
+  const getBorderColor = (rec: Recommendation): string => {
+    if (typeof rec === 'string') return 'border-accent';
+    switch (rec.type) {
+      case 'success': return 'border-green-500';
+      case 'warning': return 'border-yellow-500';
+      case 'danger': return 'border-red-500';
+      case 'insight': return 'border-cyan-500';
+      default: return 'border-accent';
+    }
+  };
+
+  // Helper to get icon
+  const getRecIcon = (rec: Recommendation) => {
+    if (typeof rec === 'string') return null;
+    switch (rec.type) {
+      case 'success': return <CheckCircle size={12} className="text-green-400" />;
+      case 'warning': return <AlertTriangle size={12} className="text-yellow-400" />;
+      case 'danger': return <AlertTriangle size={12} className="text-red-400" />;
+      case 'insight': return <Lightbulb size={12} className="text-cyan-400" />;
+      default: return <Info size={12} className="text-slate-400" />;
+    }
+  };
+
   return (
     <div className="cyber-card p-6 border-l-accent/30 relative overflow-hidden group">
       {/* Glow effect */}
@@ -22,11 +55,12 @@ export function AIInsightsCard({ recommendations, optimalF }: AIInsightsCardProp
         {recommendations.map((rec, i) => (
           <div 
             key={i} 
-            className="p-3 bg-accent/5 border-l-2 border-accent text-sm hover:bg-accent/10 transition-all duration-300 rounded-r-lg cursor-default"
+            className={`p-3 bg-accent/5 border-l-2 ${getBorderColor(rec)} text-sm hover:bg-accent/10 transition-all duration-300 rounded-r-lg cursor-default`}
             style={{ animationDelay: `${i * 0.1}s` }}
           >
             <span className="opacity-30 text-[10px] mr-2">0{i + 1}</span>
-            {rec}
+            {getRecIcon(rec) && <span className="mr-2 inline-flex align-middle">{getRecIcon(rec)}</span>}
+            {getRecText(rec)}
           </div>
         ))}
         <div className="p-3 bg-gradient-to-r from-blue-500/10 to-transparent border-l-2 border-blue-500 text-sm rounded-r-lg">

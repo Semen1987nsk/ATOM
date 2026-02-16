@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Clock, AlertTriangle, CheckCircle, Eye, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle, Eye, X, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/apiClient';
 
 interface PeriodStats {
   label: string;
@@ -61,11 +64,10 @@ interface TradePostExit {
 
 interface PostExitCardProps {
   tradesCount: number;
-  getApiUrl: (path: string) => string;
   onRecalculate?: () => void;
 }
 
-export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExitCardProps) {
+export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) {
   const [calculating, setCalculating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -122,9 +124,8 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
     }, 400);
     
     try {
-      const response = await fetch(getApiUrl(`/trades/calculate-post-exit?recalculate=true&timeframe=${selectedTimeframe}`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const data = await api.post<PostExitAnalysis>(`/trades/calculate-post-exit`, {
+        params: { recalculate: true, timeframe: selectedTimeframe }
       });
       
       if (progressInterval.current) {
@@ -134,7 +135,6 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
       setProgress(100);
       setProgressText('Готово!');
       
-      const data = await response.json();
       setResult(data);
       
       if (data.updated > 0 && onRecalculate) {
@@ -160,16 +160,7 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
     setShowTradesList(true); // Сначала открываем модал со спиннером
     
     try {
-      const response = await fetch(getApiUrl('/trades/post-exit/list?limit=100'), {
-        credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const data = await api.get<{ trades: TradePostExit[] }>('/trades/post-exit/list', { params: { limit: 100 } });
       setTradesList(data.trades || []);
       
       if (!data.trades || data.trades.length === 0) {
@@ -194,7 +185,14 @@ export function PostExitCard({ tradesCount, getApiUrl, onRecalculate }: PostExit
       
       <h2 className="text-sm font-mono uppercase mb-4 flex items-center gap-2 relative z-10">
         <Clock size={16} className="text-purple-400" />
+        <Link 
+          href="/manual#post-exit" 
+          className="hover:text-accent transition-colors flex items-center gap-1"
+          title="Открыть в руководстве"
+        >
         Post-Exit Анализ
+          <ExternalLink size={10} className="opacity-0 group-hover:opacity-60" />
+        </Link>
         <span className="ml-auto text-xs text-slate-400">Качество выходов</span>
       </h2>
       

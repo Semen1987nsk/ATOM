@@ -361,6 +361,28 @@ body {
   box-shadow: 0 0 15px rgba(0, 255, 159, 0.1);
 }
 
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.5rem 1rem;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+}
+
 /* ===== INPUTS - Global ===== */
 .input-cyber {
   width: 100%;

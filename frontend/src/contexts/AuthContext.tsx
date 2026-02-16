@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 
 // ==================== TYPES ====================
 
@@ -17,6 +17,13 @@ export interface User {
   registration_source?: string | null;
 }
 
+interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -28,6 +35,12 @@ interface AuthContextType {
   updateProfile: (data: { name?: string; settings?: Record<string, unknown> }) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
+
+// ==================== STORAGE KEYS ====================
+
+const ACCESS_TOKEN_KEY = 'auth_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+const TOKEN_EXPIRY_KEY = 'token_expiry';
 
 // ==================== API ====================
 
@@ -71,6 +84,39 @@ async function apiRequest<T>(
   return response.json();
 }
 
+// ==================== TOKEN HELPERS ====================
+
+function saveTokens(tokens: TokenPair) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
+  localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
+  
+  // Сохраняем время истечения (с запасом 1 минута)
+  const expiryTime = Date.now() + (tokens.expires_in - 60) * 1000;
+  localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+}
+
+function clearTokens() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(TOKEN_EXPIRY_KEY);
+  // Также очищаем старый ключ от OAuth
+  localStorage.removeItem('token');
+}
+
+function getAccessToken(): string | null {
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+function isTokenExpired(): boolean {
+  const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+  if (!expiry) return true;
+  return Date.now() > parseInt(expiry, 10);
+}
+
 // ==================== CONTEXT ====================
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -80,105 +126,200 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  // При загрузке проверяем токен в localStorage
-  useEffect(() => {
-    const savedToken = localStorage.getItem('auth_token');
-    if (savedToken) {
-      setToken(savedToken);
-      // Проверяем валидность токена
-      fetchCurrentUser(savedToken);
-    } else {
-      setIsLoading(false);
+  // Ref для предотвращения множественных refresh запросов
+  const isRefreshing = useRef(false);
+  const refreshPromise = useRef<Promise<string | null> | null>(null);
+  
+  // Функция обновления токенов
+  const refreshTokens = useCallback(async (): Promise<string | null> => {
+    // Если уже идёт обновление, ждём его завершения
+    if (isRefreshing.current && refreshPromise.current) {
+      return refreshPromise.current;
     }
+    
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      return null;
+    }
+    
+    isRefreshing.current = true;
+    
+    refreshPromise.current = (async () => {
+      try {
+        console.log('[Auth] Refreshing tokens...');
+        const response = await apiRequest<TokenPair>('/auth/refresh', {
+          method: 'POST',
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        
+        saveTokens(response);
+        setToken(response.access_token);
+        console.log('[Auth] Tokens refreshed successfully');
+        return response.access_token;
+      } catch (error) {
+        console.error('[Auth] Failed to refresh tokens:', error);
+        clearTokens();
+        setToken(null);
+        setUser(null);
+        return null;
+      } finally {
+        isRefreshing.current = false;
+        refreshPromise.current = null;
+      }
+    })();
+    
+    return refreshPromise.current;
   }, []);
   
-  const fetchCurrentUser = async (authToken: string) => {
+  // Функция для получения валидного токена
+  const getValidToken = useCallback(async (): Promise<string | null> => {
+    const accessToken = getAccessToken();
+    
+    if (!accessToken) {
+      return null;
+    }
+    
+    // Если токен истёк, обновляем
+    if (isTokenExpired()) {
+      return refreshTokens();
+    }
+    
+    return accessToken;
+  }, [refreshTokens]);
+  
+  // Загрузка пользователя
+  const fetchCurrentUser = useCallback(async (authToken: string) => {
     try {
-      console.log('[Auth] Fetching current user with token:', authToken.substring(0, 20) + '...');
-      // throwOn401: false — не выбрасываем ошибку для 401, просто возвращаем null
+      console.log('[Auth] Fetching current user...');
       const userData = await apiRequest<User | null>('/auth/me', {}, authToken, false);
+      
       if (userData) {
-        console.log('[Auth] User data received:', userData);
+        console.log('[Auth] User data received:', userData.email);
         setUser(userData);
         setToken(authToken);
       } else {
-        console.log('[Auth] Token invalid, clearing');
-        localStorage.removeItem('auth_token');
+        // Токен невалидный, пробуем обновить
+        const newToken = await refreshTokens();
+        if (newToken) {
+          const retryUserData = await apiRequest<User | null>('/auth/me', {}, newToken, false);
+          if (retryUserData) {
+            setUser(retryUserData);
+            return;
+          }
+        }
+        // Если всё равно не получилось — очищаем
+        clearTokens();
         setToken(null);
         setUser(null);
       }
     } catch (error) {
       console.error('[Auth] Failed to fetch user:', error);
-      // Токен невалидный — очищаем
-      localStorage.removeItem('auth_token');
+      clearTokens();
       setToken(null);
       setUser(null);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [refreshTokens]);
+  
+  // При загрузке проверяем токен
+  useEffect(() => {
+    const initAuth = async () => {
+      const accessToken = await getValidToken();
+      if (accessToken) {
+        await fetchCurrentUser(accessToken);
+      } else {
+        setIsLoading(false);
+      }
+    };
+    
+    initAuth();
+  }, [fetchCurrentUser, getValidToken]);
+  
+  // Автоматическое обновление токена за 1 минуту до истечения
+  useEffect(() => {
+    if (!token) return;
+    
+    const checkAndRefresh = () => {
+      const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+      if (!expiry) return;
+      
+      const timeLeft = parseInt(expiry, 10) - Date.now();
+      
+      // Обновляем за 1 минуту до истечения
+      if (timeLeft > 0 && timeLeft < 60 * 1000) {
+        refreshTokens();
+      }
+    };
+    
+    // Проверяем каждые 30 секунд
+    const interval = setInterval(checkAndRefresh, 30 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [token, refreshTokens]);
   
   const login = async (email: string, password: string) => {
     console.log('[Auth] Attempting login for:', email);
-    const response = await apiRequest<{ access_token: string }>('/auth/login', {
+    const response = await apiRequest<TokenPair>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
     
-    console.log('[Auth] Login successful, got token');
-    localStorage.setItem('auth_token', response.access_token);
+    console.log('[Auth] Login successful');
+    saveTokens(response);
     setToken(response.access_token);
     await fetchCurrentUser(response.access_token);
-    console.log('[Auth] User fetched successfully');
   };
   
   const register = async (email: string, password: string, name?: string) => {
-    const response = await apiRequest<{ access_token: string }>('/auth/register', {
+    console.log('[Auth] Attempting registration for:', email);
+    const response = await apiRequest<TokenPair>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name }),
     });
     
-    localStorage.setItem('auth_token', response.access_token);
+    console.log('[Auth] Registration successful');
+    saveTokens(response);
     setToken(response.access_token);
     await fetchCurrentUser(response.access_token);
   };
   
   const logout = () => {
-    localStorage.removeItem('auth_token');
+    console.log('[Auth] Logging out');
+    clearTokens();
     setToken(null);
     setUser(null);
   };
   
   const updateProfile = async (data: { name?: string; settings?: Record<string, unknown> }) => {
-    if (!token) throw new Error('Не авторизован');
+    const validToken = await getValidToken();
+    if (!validToken) throw new Error('Не авторизован');
     
     const updatedUser = await apiRequest<User>('/auth/me', {
       method: 'PUT',
       body: JSON.stringify(data),
-    }, token);
+    }, validToken);
     
     setUser(updatedUser);
   };
   
   // Обновить данные пользователя (для OAuth callback)
   const refreshUser = async () => {
-    const savedToken = localStorage.getItem('auth_token') || localStorage.getItem('token');
-    if (savedToken) {
-      localStorage.setItem('auth_token', savedToken); // Нормализуем ключ
-      localStorage.removeItem('token'); // Удаляем старый ключ от OAuth
-      await fetchCurrentUser(savedToken);
+    // Проверяем старый ключ от OAuth
+    const oauthToken = localStorage.getItem('token');
+    if (oauthToken) {
+      // OAuth возвращает только access_token, сохраняем его
+      localStorage.setItem(ACCESS_TOKEN_KEY, oauthToken);
+      localStorage.removeItem('token');
+      await fetchCurrentUser(oauthToken);
+      return;
+    }
+    
+    const validToken = await getValidToken();
+    if (validToken) {
+      await fetchCurrentUser(validToken);
     }
   };
-  
-  // Проверяем OAuth token при загрузке
-  useEffect(() => {
-    const oauthToken = localStorage.getItem('token');
-    if (oauthToken && !token) {
-      localStorage.setItem('auth_token', oauthToken);
-      localStorage.removeItem('token');
-      fetchCurrentUser(oauthToken);
-    }
-  }, [token]);
   
   const value: AuthContextType = {
     user,

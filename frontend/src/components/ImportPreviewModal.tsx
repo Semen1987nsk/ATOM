@@ -2,6 +2,8 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { X, Upload, AlertTriangle, Check, FileSpreadsheet, Filter, ArrowDown, ArrowUp } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/apiClient';
 
 interface PreviewTrade {
   index: number;
@@ -51,6 +53,8 @@ interface ImportPreviewModalProps {
 }
 
 export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const { token } = useAuth(); // Получаем токен из контекста авторизации
+  
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,14 +68,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
   const [endIndex, setEndIndex] = useState<number>(0);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [showOnlyNew, setShowOnlyNew] = useState(false);
-
-  const getApiUrl = (path: string) => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-      const codespaceName = window.location.hostname.split('-3000')[0];
-      return `https://${codespaceName}-8000.app.github.dev${path}`;
-    }
-    return `http://localhost:8000${path}`;
-  };
+  
+  // Сохранение баланса
+  const [saveBalance, setSaveBalance] = useState(true);
+  const [manualBalance, setManualBalance] = useState<number | null>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -84,6 +84,11 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
 
   const handlePreview = async () => {
     if (!file) return;
+    
+    if (!token) {
+      setError('Необходимо войти в аккаунт для импорта сделок');
+      return;
+    }
     
     setLoading(true);
     setError(null);
@@ -101,21 +106,12 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
       
       setProgressText('Парсинг сделок...');
       
-      const response = await fetch(getApiUrl('/trades/import/preview'), {
-        method: 'POST',
-        body: formData,
-      });
+      const data = await api.upload<PreviewResponse>('/trades/import/preview', formData);
       
       clearInterval(progressInterval);
       setProgress(90);
       setProgressText('Проверка дубликатов...');
       
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Ошибка при загрузке файла');
-      }
-      
-      const data: PreviewResponse = await response.json();
       setProgress(100);
       setProgressText('Готово!');
       
@@ -148,6 +144,29 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
       formData.append('end_index', endIndex.toString());
       formData.append('skip_duplicates', skipDuplicates.toString());
       
+      // Отправляем баланс если выбрано
+      if (saveBalance) {
+        // Приоритет: автоматический баланс > ручной ввод
+        const initialBal = preview.balance_info?.initial_balance ?? manualBalance;
+        if (initialBal !== null) {
+          formData.append('initial_balance', initialBal.toString());
+        }
+        if (preview.balance_info?.final_balance !== null) {
+          formData.append('final_balance', preview.balance_info.final_balance.toString());
+        }
+        // Если есть период — отправляем, иначе используем дату первой сделки
+        if (preview.balance_info?.period_start) {
+          formData.append('balance_date_start', preview.balance_info.period_start);
+        } else if (preview.date_range.first) {
+          formData.append('balance_date_start', preview.date_range.first);
+        }
+        if (preview.balance_info?.period_end) {
+          formData.append('balance_date_end', preview.balance_info.period_end);
+        } else if (preview.date_range.last) {
+          formData.append('balance_date_end', preview.date_range.last);
+        }
+      }
+      
       // Симуляция прогресса импорта
       const totalTrades = endIndex - startIndex + 1;
       let currentProgress = 0;
@@ -159,21 +178,12 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
         setProgressText(`Импорт сделок: ${estimatedTrades}/${totalTrades}`);
       }, 150);
       
-      const response = await fetch(getApiUrl('/trades/import'), {
-        method: 'POST',
-        body: formData,
-      });
+      const result = await api.upload<{ imported: number; message: string }>('/trades/import', formData);
       
       clearInterval(progressInterval);
       setProgress(95);
       setProgressText('Сохранение в базу данных...');
       
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Ошибка при импорте');
-      }
-      
-      const result = await response.json();
       setProgress(100);
       setProgressText(`✅ Импортировано: ${result.imported}`);
       
@@ -198,6 +208,8 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
     setEndIndex(0);
     setProgress(0);
     setProgressText('');
+    setManualBalance(null);
+    setSaveBalance(true);
     onClose();
   }, [onClose]);
 
@@ -264,18 +276,25 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {/* File Upload */}
           <div className="flex items-center gap-4">
-            <label className="flex-1 flex items-center justify-center gap-3 p-4 border-2 border-dashed border-slate-600 rounded-xl hover:border-indigo-500 cursor-pointer transition-colors bg-slate-800/50">
+            <div className="flex-1 flex items-center gap-3">
               <input 
                 type="file" 
+                id="file-upload"
                 accept=".xlsx,.xls,.csv"
                 onChange={handleFileSelect}
                 className="hidden"
               />
-              <Upload className="w-6 h-6 text-slate-400" />
-              <span className="text-slate-300">
-                {file ? file.name : 'Выберите файл (Excel или CSV)'}
-              </span>
-            </label>
+              <button
+                type="button"
+                onClick={() => document.getElementById('file-upload')?.click()}
+                className="flex-1 flex items-center justify-center gap-3 p-4 border-2 border-dashed border-slate-600 rounded-xl hover:border-indigo-500 cursor-pointer transition-colors bg-slate-800/50"
+              >
+                <Upload className="w-6 h-6 text-slate-400" />
+                <span className="text-slate-300">
+                  {file ? file.name : 'Выберите файл (Excel или CSV)'}
+                </span>
+              </button>
+            </div>
             
             <button
               onClick={handlePreview}
@@ -348,13 +367,26 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                   Выбор диапазона импорта
                 </h3>
                 
-              {/* Balance Info */}
-              {(preview.balance_info.initial_balance !== null || preview.balance_info.final_balance !== null) && (
-                <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4 mt-4">
-                  <h4 className="font-medium text-indigo-300 mb-3">💰 Информация о балансе</h4>
+              {/* Balance Info - показываем всегда с возможностью ручного ввода */}
+              <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium text-indigo-300">💰 Начальный баланс счёта</h4>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox"
+                      checked={saveBalance}
+                      onChange={(e) => setSaveBalance(e.target.checked)}
+                      className="w-4 h-4 rounded border-indigo-500 text-indigo-600 focus:ring-indigo-500 bg-slate-700"
+                    />
+                    <span className="text-sm text-indigo-300">Сохранить баланс</span>
+                  </label>
+                </div>
+                
+                {/* Если баланс найден автоматически */}
+                {(preview.balance_info.initial_balance !== null || preview.balance_info.final_balance !== null) ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     {preview.balance_info.initial_balance !== null && (
-                      <div>
+                      <div className={saveBalance ? '' : 'opacity-50'}>
                         <span className="text-slate-400">Начальный:</span>
                         <div className="text-white font-medium">
                           {preview.balance_info.initial_balance.toLocaleString('ru-RU')} {preview.balance_info.currency}
@@ -362,7 +394,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                       </div>
                     )}
                     {preview.balance_info.final_balance !== null && (
-                      <div>
+                      <div className={saveBalance ? '' : 'opacity-50'}>
                         <span className="text-slate-400">Конечный:</span>
                         <div className="text-white font-medium">
                           {preview.balance_info.final_balance.toLocaleString('ru-RU')} {preview.balance_info.currency}
@@ -370,7 +402,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                       </div>
                     )}
                     {preview.balance_info.deposits !== null && preview.balance_info.deposits > 0 && (
-                      <div>
+                      <div className={saveBalance ? '' : 'opacity-50'}>
                         <span className="text-slate-400">Пополнения:</span>
                         <div className="text-green-400 font-medium">
                           +{preview.balance_info.deposits.toLocaleString('ru-RU')} {preview.balance_info.currency}
@@ -378,7 +410,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                       </div>
                     )}
                     {preview.balance_info.withdrawals !== null && preview.balance_info.withdrawals > 0 && (
-                      <div>
+                      <div className={saveBalance ? '' : 'opacity-50'}>
                         <span className="text-slate-400">Выводы:</span>
                         <div className="text-red-400 font-medium">
                           -{preview.balance_info.withdrawals.toLocaleString('ru-RU')} {preview.balance_info.currency}
@@ -386,13 +418,40 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                       </div>
                     )}
                   </div>
-                  {preview.balance_info.period_start && preview.balance_info.period_end && (
-                    <div className="mt-2 text-xs text-slate-500">
-                      Период: {formatDate(preview.balance_info.period_start)} — {formatDate(preview.balance_info.period_end)}
+                ) : (
+                  /* Ручной ввод если баланс не найден */
+                  <div className="space-y-3">
+                    <div className="text-sm text-slate-400 mb-2">
+                      Баланс не найден в файле. Введите начальный баланс вручную:
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <label className="block text-xs text-slate-500 mb-1">Баланс до первой сделки</label>
+                        <input
+                          type="number"
+                          placeholder="Например: 500000"
+                          value={manualBalance || ''}
+                          onChange={(e) => setManualBalance(e.target.value ? parseFloat(e.target.value) : null)}
+                          className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500"
+                          disabled={!saveBalance}
+                        />
+                      </div>
+                      <div className="text-slate-400 pt-5">₽</div>
+                    </div>
+                  </div>
+                )}
+                
+                {preview.balance_info.period_start && preview.balance_info.period_end && (
+                  <div className="mt-2 text-xs text-slate-500">
+                    Период: {formatDate(preview.balance_info.period_start)} — {formatDate(preview.balance_info.period_end)}
+                  </div>
+                )}
+                {saveBalance && (preview.balance_info.initial_balance !== null || manualBalance) && (
+                  <div className="mt-3 p-2 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-400">
+                    ✓ Баланс будет сохранён для расчёта кривой капитала и ROI
+                  </div>
+                )}
+              </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>

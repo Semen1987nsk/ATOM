@@ -2,19 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { getApiUrl } from '@/lib/apiClient';
 import { 
   ArrowLeft, Search, Eye, Heart, Calendar, Tag, User,
   Newspaper, BookOpen, TrendingUp, Lightbulb, Sparkles,
   ChevronRight
 } from 'lucide-react';
-
-function getApiUrl(): string {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-    const codespaceName = window.location.hostname.split('-3000')[0];
-    return `https://${codespaceName}-8000.app.github.dev`;
-  }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-}
 
 interface Article {
   id: number;
@@ -220,12 +213,11 @@ export default function BlogPage() {
       if (selectedCategory) params.append('category', selectedCategory);
       if (searchQuery) params.append('search', searchQuery);
       
-      const apiUrl = getApiUrl();
       const [articlesRes, featuredRes, categoriesRes, popularRes] = await Promise.all([
-        fetch(`${apiUrl}/blog/articles?${params}`),
-        fetch(`${apiUrl}/blog/articles?featured=true&limit=1`),
-        fetch(`${apiUrl}/blog/categories`),
-        fetch(`${apiUrl}/blog/popular?limit=5`)
+        fetch(getApiUrl(`/blog/articles?${params}`)),
+        fetch(getApiUrl('/blog/articles?featured=true&limit=1')),
+        fetch(getApiUrl('/blog/categories')),
+        fetch(getApiUrl('/blog/popular?limit=5'))
       ]);
       
       if (articlesRes.ok) setArticles(await articlesRes.json());

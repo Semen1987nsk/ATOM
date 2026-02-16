@@ -1,13 +1,45 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Zap, Upload, Plus, Filter, Edit2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
+import { ArrowLeft, Trash2, Zap, Upload, Plus, Filter, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, GripVertical, BarChart2, Loader2, Calendar, Save, Check } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import { EditTradeModal } from '@/components/EditTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
+import { ImportPreviewModal } from '@/components/ImportPreviewModal';
 import ThemeToggle from '@/components/ThemeToggle';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
+import { useSettings } from '@/contexts/SettingsContext';
+import { api, getApiUrl } from '@/lib/apiClient';
+
+// Конфигурация колонок
+interface ColumnConfig {
+  id: string;
+  label: string;
+  defaultVisible: boolean;
+  width?: string;
+}
+
+const ALL_COLUMNS: ColumnConfig[] = [
+  { id: 'date', label: 'Дата', defaultVisible: true },
+  { id: 'ticker', label: 'Тикер', defaultVisible: true },
+  { id: 'direction', label: 'Сторона', defaultVisible: true },
+  { id: 'entry', label: 'Вход', defaultVisible: true },
+  { id: 'exit', label: 'Выход', defaultVisible: true },
+  { id: 'quantity', label: 'Кол-во', defaultVisible: true },
+  { id: 'pnl', label: 'PnL', defaultVisible: true },
+  { id: 'status', label: 'Статус', defaultVisible: true },
+  { id: 'commission', label: 'Комиссия', defaultVisible: false },
+  { id: 'swap', label: 'Своп', defaultVisible: false },
+  { id: 'setup', label: 'Сетап', defaultVisible: false },
+  { id: 'confidence', label: 'Уверенность', defaultVisible: false },
+  { id: 'risk', label: 'Риск', defaultVisible: false },
+  { id: 'rMultiple', label: 'R-Multiple', defaultVisible: false },
+  { id: 'tags', label: 'Теги', defaultVisible: false },
+  { id: 'leverage', label: 'Плечо', defaultVisible: false },
+];
+
+const STORAGE_KEY = 'eqio_history_columns';
 
 interface Trade {
   id: number;
@@ -23,6 +55,14 @@ interface Trade {
   swap?: number;
   leverage?: number;
   confidence?: number;
+  mood?: number;
+  discipline?: number;
+  setup_id?: number;
+  setup?: {
+    name: string;
+    icon: string;
+    color: string;
+  };
   entry_price: number;
   exit_price?: number;
   quantity: number;
@@ -60,13 +100,20 @@ interface Trade {
   r_multiple?: number;
   position_id?: number;
   entry_reason?: string; // Причина/логика входа (для ИИ анализа)
+  mae_price?: number; // Maximum Adverse Excursion - худшая цена
+  mfe_price?: number; // Maximum Favorable Excursion - лучшая цена
 }
 
 export default function HistoryPage() {
+  const { settings, updateSettings } = useSettings();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'LONG' | 'SHORT'>('ALL');
+  const [tempStartDate, setTempStartDate] = useState<string>(settings.tradesStartDate || '');
+  const [tempStartTradeId, setTempStartTradeId] = useState<number | null>(settings.tradesStartTradeId || null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tradesForSelectedDate, setTradesForSelectedDate] = useState<Trade[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
@@ -74,23 +121,79 @@ export default function HistoryPage() {
   const [selectedTradeToClose, setSelectedTradeToClose] = useState<Trade | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [unrealizedData, setUnrealizedData] = useState<{[key: number]: {pnl: number, price: number}}>({});
-  const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(0);
-  const [importResult, setImportResult] = useState<string | null>(null);
-
-  const getApiUrl = (path: string) => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-      const codespaceName = window.location.hostname.split('-3000')[0];
-      return `https://${codespaceName}-8000.app.github.dev${path}`;
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [expandedTrades, setExpandedTrades] = useState<Set<number>>(new Set());
+  const [isCalculatingMAE, setIsCalculatingMAE] = useState(false);
+  const [maeCalculationResult, setMaeCalculationResult] = useState<{updated: number, failed: number} | null>(null);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    // Загружаем из localStorage при инициализации
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          return new Set(JSON.parse(saved));
+        } catch {
+          // Если ошибка парсинга, используем дефолтные
+        }
+      }
     }
-    return `http://localhost:8000${path}`;
-  };
+    return new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id));
+  });
+  
+  // Horizontal scroll state
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 1);
+    }
+  }, []);
+
+  const scrollTable = useCallback((direction: 'left' | 'right') => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const scrollAmount = 300;
+      container.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      // Delay initial check to ensure DOM is fully rendered
+      const timeoutId = setTimeout(updateScrollState, 100);
+      container.addEventListener('scroll', updateScrollState);
+      window.addEventListener('resize', updateScrollState);
+      
+      // Also use ResizeObserver for more reliable detection
+      const resizeObserver = new ResizeObserver(() => {
+        updateScrollState();
+      });
+      resizeObserver.observe(container);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        container.removeEventListener('scroll', updateScrollState);
+        window.removeEventListener('resize', updateScrollState);
+        resizeObserver.disconnect();
+      };
+    }
+  }, [updateScrollState, trades, loading]);
 
   const fetchTrades = async () => {
     try {
-      const res = await fetch(getApiUrl('/trades/'));
-      const data = await res.json();
-      setTrades(data.reverse());
+      const data = await api.get<Trade[]>('/trades/');
+      setTrades(data);
     } catch (error) {
       console.error('Failed to fetch trades:', error);
     } finally {
@@ -100,15 +203,12 @@ export default function HistoryPage() {
 
   const fetchUnrealizedPnL = async () => {
     try {
-        const res = await fetch(getApiUrl('/trades/unrealized-pnl'));
-        if (res.ok) {
-            const data = await res.json();
-            const map: any = {};
-            data.forEach((item: any) => {
-                map[item.trade_id] = { pnl: item.unrealized_pnl, price: item.current_price };
-            });
-            setUnrealizedData(map);
-        }
+        const data = await api.get<Array<{trade_id: number; unrealized_pnl: number; current_price: number}>>('/trades/unrealized-pnl');
+        const map: any = {};
+        data.forEach((item: any) => {
+            map[item.trade_id] = { pnl: item.unrealized_pnl, price: item.current_price };
+        });
+        setUnrealizedData(map);
     } catch (e) {
         console.error(e);
     }
@@ -130,20 +230,14 @@ export default function HistoryPage() {
     if (!selectedTradeToClose) return;
     
     try {
-      const response = await fetch(getApiUrl(`/trades/${selectedTradeToClose.id}/close`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await api.patch(`/trades/${selectedTradeToClose.id}/close`, {
+        body: {
           exit_price: exitPrice,
           exit_at: new Date().toISOString(),
-          exit_reason: exitReason,
-          mae_price: exitPrice * 0.98,
-          mfe_price: exitPrice * 1.02
-        }),
+          exit_reason: exitReason
+        }
       });
-      if (response.ok) {
-        fetchTrades();
-      }
+      fetchTrades();
     } catch (error) {
       console.error('Failed to close trade:', error);
     }
@@ -157,61 +251,28 @@ export default function HistoryPage() {
   const handleDelete = async (tradeId: number) => {
     if (!confirm('Are you sure you want to delete this trade?')) return;
     try {
-      await fetch(getApiUrl(`/trades/${tradeId}`), { method: 'DELETE' });
+      await api.delete(`/trades/${tradeId}`);
       fetchTrades();
     } catch (error) {
       console.error('Delete failed:', error);
     }
   };
 
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsImporting(true);
-    setImportProgress(0);
-    setImportResult(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    // Анимация прогресса (т.к. fetch не поддерживает реальный progress для upload)
-    const progressInterval = setInterval(() => {
-      setImportProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 15;
-      });
-    }, 200);
-
+  const handleDeleteAllTrades = async () => {
+    setIsDeleting(true);
     try {
-      const response = await fetch(getApiUrl('/trades/import'), {
-        method: 'POST',
-        body: formData,
-      });
-      
-      clearInterval(progressInterval);
-      setImportProgress(100);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setImportResult(data.message || 'Импорт завершён!');
-        fetchTrades();
-      } else {
-        const error = await response.json();
-        setImportResult(`Ошибка: ${error.detail || 'Не удалось импортировать'}`);
+      // Удаляем все сделки по одной
+      for (const trade of trades) {
+        await api.delete(`/trades/${trade.id}`);
       }
+      setShowDeleteConfirm(false);
+      fetchTrades();
     } catch (error) {
-      clearInterval(progressInterval);
-      setImportResult('Ошибка соединения');
-      console.error('Import failed:', error);
+      console.error('Delete all failed:', error);
+      alert('Ошибка при удалении сделок');
     } finally {
-      setTimeout(() => {
-        setIsImporting(false);
-        setImportProgress(0);
-        setTimeout(() => setImportResult(null), 3000);
-      }, 500);
+      setIsDeleting(false);
     }
-    e.target.value = '';
   };
 
   const allTags = Array.from(new Set(trades.flatMap(t => t.tags || [])));
@@ -237,7 +298,21 @@ export default function HistoryPage() {
   const filteredTrades = enrichedTrades.filter(t => {
     const matchesTag = selectedTag ? t.tags?.includes(selectedTag) : true;
     const matchesDirection = filterDirection === 'ALL' ? true : t.direction.toUpperCase() === filterDirection;
-    return matchesTag && matchesDirection;
+    
+    // Фильтр по дате/сделке начала из настроек
+    let matchesStart = true;
+    if (settings.tradesStartTradeId) {
+      // Если выбрана конкретная сделка — показываем только сделки начиная с неё
+      const startTrade = trades.find(tr => tr.id === settings.tradesStartTradeId);
+      if (startTrade) {
+        matchesStart = new Date(t.entry_at) >= new Date(startTrade.entry_at);
+      }
+    } else if (settings.tradesStartDate) {
+      // Если только дата — показываем сделки с начала этого дня
+      matchesStart = new Date(t.entry_at) >= new Date(settings.tradesStartDate);
+    }
+    
+    return matchesTag && matchesDirection && matchesStart;
   });
 
   // Grouping Logic
@@ -267,6 +342,56 @@ export default function HistoryPage() {
     setExpandedGroups(newSet);
   };
 
+  const toggleTrade = (tradeId: number) => {
+    const newSet = new Set(expandedTrades);
+    if (newSet.has(tradeId)) newSet.delete(tradeId);
+    else newSet.add(tradeId);
+    setExpandedTrades(newSet);
+  };
+
+  const toggleColumn = (columnId: string) => {
+    const newSet = new Set(visibleColumns);
+    if (newSet.has(columnId)) {
+      // Не позволяем скрыть все колонки - минимум 3
+      if (newSet.size > 3) {
+        newSet.delete(columnId);
+      }
+    } else {
+      newSet.add(columnId);
+    }
+    setVisibleColumns(newSet);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...newSet]));
+  };
+
+  const resetColumns = () => {
+    const defaultCols = new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id));
+    setVisibleColumns(defaultCols);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...defaultCols]));
+  };
+
+  const isColumnVisible = (columnId: string) => visibleColumns.has(columnId);
+
+  // Расчёт MAE/MFE для всех сделок
+  const calculateMAEMFE = async (tradeIds?: number[]) => {
+    setIsCalculatingMAE(true);
+    setMaeCalculationResult(null);
+    try {
+      const result = await api.post<{updated: number; failed: number}>('/trades/calculate-mae-mfe', {
+        body: tradeIds || null
+      });
+      setMaeCalculationResult({ updated: result.updated, failed: result.failed });
+      // Перезагружаем сделки чтобы увидеть обновлённые данные
+      const data = await api.get<Trade[]>('/trades/');
+      setTrades(data);
+      // Скрываем результат через 5 секунд
+      setTimeout(() => setMaeCalculationResult(null), 5000);
+    } catch (error) {
+      console.error('Error calculating MAE/MFE:', error);
+    } finally {
+      setIsCalculatingMAE(false);
+    }
+  };
+
   if (loading) return <TradeHistorySkeleton />;
 
   return (
@@ -282,25 +407,107 @@ export default function HistoryPage() {
         </div>
         <div className="flex gap-3 items-center">
           <ThemeToggle />
-          <label className={`btn-secondary flex items-center gap-2 ${isImporting ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}>
-            <input type="file" accept=".csv,.xlsx,.xls,.pdf" className="hidden" onChange={handleImport} disabled={isImporting} />
-            {isImporting ? (
-              <>
-                <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                {Math.round(importProgress)}%
-              </>
-            ) : (
-              <>
-                <Upload size={14} />
-                Import
-              </>
+          <div className="relative">
+            <button 
+              onClick={() => setShowColumnSettings(!showColumnSettings)}
+              className={`p-2 rounded-lg border transition-all cursor-pointer ${
+                showColumnSettings 
+                  ? 'border-accent bg-accent/20 text-accent' 
+                  : 'border-border hover:border-accent/50 text-slate-400 hover:text-accent'
+              }`}
+              title="Настройки колонок"
+            >
+              <Settings size={18} />
+            </button>
+            
+            {/* Column Settings Panel */}
+            {showColumnSettings && (
+              <div className="absolute right-0 top-12 z-50 bg-slate-900 border border-border rounded-xl shadow-2xl p-4 w-72">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-white flex items-center gap-2">
+                    <Settings size={16} className="text-accent" />
+                    Колонки таблицы
+                  </h3>
+                  <button 
+                    onClick={() => setShowColumnSettings(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                
+                <div className="space-y-1 max-h-80 overflow-y-auto">
+                  {ALL_COLUMNS.map(col => (
+                    <button
+                      key={col.id}
+                      onClick={() => toggleColumn(col.id)}
+                      className={`w-full flex items-center justify-between p-2 rounded-lg transition-all ${
+                        isColumnVisible(col.id)
+                          ? 'bg-accent/20 text-accent'
+                          : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="text-sm">{col.label}</span>
+                      {isColumnVisible(col.id) ? (
+                        <Eye size={16} className="text-accent" />
+                      ) : (
+                        <EyeOff size={16} className="text-slate-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
+                  <span className="text-xs text-slate-500">
+                    {visibleColumns.size} из {ALL_COLUMNS.length} колонок
+                  </span>
+                  <button
+                    onClick={resetColumns}
+                    className="text-xs text-accent hover:underline"
+                  >
+                    Сбросить
+                  </button>
+                </div>
+              </div>
             )}
-          </label>
-          {importResult && (
-            <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg border backdrop-blur-sm ${importResult.includes('Ошибка') ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-green-500/20 border-green-500 text-green-400'} text-sm font-mono shadow-lg`}>
-              {importResult}
-            </div>
+          </div>
+          {trades.length > 0 && (
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className="btn-danger flex items-center gap-2 cursor-pointer"
+              title="Удалить все сделки"
+            >
+              <Trash2 size={14} />
+              Удалить все
+            </button>
           )}
+          {trades.filter(t => t.exit_at && (!t.mae_price || !t.mfe_price)).length > 0 && (
+            <button 
+              onClick={() => calculateMAEMFE()}
+              disabled={isCalculatingMAE}
+              className="btn-secondary flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              title="Рассчитать MAE/MFE для всех сделок"
+            >
+              {isCalculatingMAE ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <BarChart2 size={14} />
+              )}
+              {isCalculatingMAE ? 'Расчёт...' : 'MAE/MFE'}
+            </button>
+          )}
+          {maeCalculationResult && (
+            <span className="text-xs bg-accent/20 text-accent px-2 py-1 rounded" title="Фонды ликвидности и облигации не поддерживаются - нет свечных данных на MOEX">
+              ✓ Обновлено: {maeCalculationResult.updated}{maeCalculationResult.failed > 0 && `, пропущено: ${maeCalculationResult.failed}`}
+            </span>
+          )}
+          <button 
+            onClick={() => setIsImportModalOpen(true)}
+            className="btn-secondary flex items-center gap-2 cursor-pointer"
+          >
+            <Upload size={14} />
+            Import
+          </button>
           <button 
             onClick={() => setIsModalOpen(true)}
             className="btn-primary flex items-center gap-2"
@@ -334,6 +541,61 @@ export default function HistoryPage() {
         tradeDirection={selectedTradeToClose?.direction}
       />
 
+      <ImportPreviewModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={() => fetchTrades()}
+      />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Удалить все сделки?</h3>
+                <p className="text-slate-400 text-sm">Это действие нельзя отменить</p>
+              </div>
+            </div>
+            
+            <p className="text-slate-300 mb-6">
+              Вы уверены, что хотите удалить <span className="font-bold text-red-400">{trades.length}</span> сделок? 
+              Все данные будут безвозвратно потеряны.
+            </p>
+            
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleDeleteAllTrades}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Удаление...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Удалить всё
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="cyber-card p-6">
         <div className="flex flex-wrap gap-4 mb-6 items-center">
           {/* Direction Filter */}
@@ -362,6 +624,175 @@ export default function HistoryPage() {
 
           <div className="w-px h-6 bg-border mx-2 hidden sm:block"></div>
 
+          {/* Date Filter */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setShowDatePicker(!showDatePicker);
+                // Загружаем сделки за сохраненную дату при открытии
+                if (!showDatePicker && settings.tradesStartDate) {
+                  const dateStart = new Date(settings.tradesStartDate);
+                  dateStart.setHours(0, 0, 0, 0);
+                  const dateEnd = new Date(settings.tradesStartDate);
+                  dateEnd.setHours(23, 59, 59, 999);
+                  const filtered = trades.filter(t => {
+                    const tradeDate = new Date(t.entry_at);
+                    return tradeDate >= dateStart && tradeDate <= dateEnd;
+                  }).sort((a, b) => new Date(a.entry_at).getTime() - new Date(b.entry_at).getTime());
+                  setTradesForSelectedDate(filtered);
+                }
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono border transition-colors ${
+                settings.tradesStartDate 
+                  ? 'border-accent text-accent bg-accent/10' 
+                  : 'border-border text-slate-400 hover:text-slate-300 hover:border-accent/50'
+              }`}
+              title="Фильтр по дате начала"
+            >
+              <Calendar size={14} />
+              {settings.tradesStartDate 
+                ? settings.tradesStartTradeSymbol
+                  ? `С ${settings.tradesStartTradeSymbol} (${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})})`
+                  : `С ${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}`
+                : 'Дата начала'
+              }
+            </button>
+            
+            {showDatePicker && (
+              <div className="absolute top-20 left-4 z-50 bg-slate-900 border border-border rounded-xl shadow-2xl p-4 min-w-80">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-white">Показывать сделки с:</span>
+                    <button onClick={() => setShowDatePicker(false)} className="text-slate-400 hover:text-white">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  
+                  {/* Шаг 1: Выбор даты */}
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">1. Выберите дату:</label>
+                    <input
+                      type="date"
+                      value={tempStartDate}
+                      onChange={(e) => {
+                        setTempStartDate(e.target.value);
+                        setTempStartTradeId(null);
+                        // Фильтруем сделки за выбранную дату
+                        if (e.target.value) {
+                          const dateStart = new Date(e.target.value);
+                          dateStart.setHours(0, 0, 0, 0);
+                          const dateEnd = new Date(e.target.value);
+                          dateEnd.setHours(23, 59, 59, 999);
+                          const filtered = trades.filter(t => {
+                            const tradeDate = new Date(t.entry_at);
+                            return tradeDate >= dateStart && tradeDate <= dateEnd;
+                          }).sort((a, b) => new Date(a.entry_at).getTime() - new Date(b.entry_at).getTime());
+                          setTradesForSelectedDate(filtered);
+                        } else {
+                          setTradesForSelectedDate([]);
+                        }
+                      }}
+                      className="w-full bg-slate-800 border border-border rounded-lg px-3 py-2 text-white text-sm"
+                      style={{ colorScheme: 'dark' }}
+                    />
+                  </div>
+                  
+                  {/* Шаг 2: Выбор сделки (если есть сделки за эту дату) */}
+                  {tempStartDate && tradesForSelectedDate.length > 0 && (
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">
+                        2. Выберите сделку ({tradesForSelectedDate.length} за этот день):
+                      </label>
+                      <div className="max-h-40 overflow-y-auto bg-slate-800 border border-border rounded-lg">
+                        <button
+                          onClick={() => setTempStartTradeId(null)}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-700 transition-colors border-b border-border ${
+                            tempStartTradeId === null ? 'bg-accent/20 text-accent' : 'text-slate-300'
+                          }`}
+                        >
+                          📅 Все сделки с этой даты
+                        </button>
+                        {tradesForSelectedDate.map((trade) => (
+                          <button
+                            key={trade.id}
+                            onClick={() => setTempStartTradeId(trade.id)}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-700 transition-colors border-b border-border last:border-0 ${
+                              tempStartTradeId === trade.id ? 'bg-accent/20 text-accent' : 'text-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono">
+                                {new Date(trade.entry_at).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}
+                                {' '}
+                                <span className={trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}>
+                                  {trade.direction}
+                                </span>
+                                {' '}
+                                {trade.symbol}
+                              </span>
+                              <span className={trade.pnl && trade.pnl > 0 ? 'text-green-400' : 'text-red-400'}>
+                                {trade.pnl ? `${trade.pnl > 0 ? '+' : ''}${trade.pnl.toFixed(0)}₽` : 'OPEN'}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {tempStartDate && tradesForSelectedDate.length === 0 && (
+                    <p className="text-xs text-yellow-500">⚠️ Нет сделок за выбранную дату</p>
+                  )}
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const selectedTrade = tempStartTradeId 
+                          ? tradesForSelectedDate.find(t => t.id === tempStartTradeId)
+                          : null;
+                        updateSettings({ 
+                          tradesStartDate: tempStartDate || null,
+                          tradesStartTradeId: tempStartTradeId,
+                          tradesStartTradeSymbol: selectedTrade ? selectedTrade.symbol : null
+                        });
+                        setShowDatePicker(false);
+                      }}
+                      disabled={!tempStartDate}
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-accent text-black font-bold text-xs rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Check size={14} />
+                      Сохранить
+                    </button>
+                    {(settings.tradesStartDate || settings.tradesStartTradeId) && (
+                      <button
+                        onClick={() => {
+                          setTempStartDate('');
+                          setTempStartTradeId(null);
+                          setTradesForSelectedDate([]);
+                          updateSettings({ 
+                            tradesStartDate: null,
+                            tradesStartTradeId: null,
+                            tradesStartTradeSymbol: null
+                          });
+                          setShowDatePicker(false);
+                        }}
+                        className="px-3 py-2 border border-red-500/50 text-red-400 text-xs rounded-lg hover:bg-red-500/10 transition-colors"
+                      >
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
+                  
+                  <p className="text-xs text-slate-500">
+                    Эта настройка влияет на все расчеты и дашборд
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="w-px h-6 bg-border mx-2 hidden sm:block"></div>
+
           {/* Tag Filter */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar max-w-full">
             <button 
@@ -382,327 +813,695 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-accent/30 hover:scrollbar-thumb-accent/50">
-          <table className="w-full text-left border-collapse min-w-[1500px]" style={{ tableLayout: 'fixed' }}>
-            <colgroup><col style={{ width: '100px' }} /><col style={{ width: '70px' }} /><col style={{ width: '90px' }} /><col style={{ width: '55px' }} /><col style={{ width: '60px' }} /><col style={{ width: '65px' }} /><col style={{ width: '65px' }} /><col style={{ width: '55px' }} /><col style={{ width: '35px' }} /><col style={{ width: '80px' }} /><col style={{ width: '65px' }} /><col style={{ width: '55px' }} /><col style={{ width: '45px' }} /><col style={{ width: '90px' }} /><col style={{ width: '90px' }} /><col style={{ width: '60px' }} /><col style={{ width: '70px' }} /><col style={{ width: '70px' }} /></colgroup>
-            <thead>
+        {/* Horizontal Scroll Navigation */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-slate-500 font-mono">
+            {canScrollLeft || canScrollRight ? '← → Прокрутите для просмотра всех колонок' : ''}
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => scrollTable('left')}
+              disabled={!canScrollLeft}
+              className={`p-2 rounded-lg border transition-all ${
+                canScrollLeft 
+                  ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 cursor-pointer' 
+                  : 'border-border/30 text-slate-600 cursor-not-allowed'
+              }`}
+              title="Прокрутить влево"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              onClick={() => scrollTable('right')}
+              disabled={!canScrollRight}
+              className={`p-2 rounded-lg border transition-all ${
+                canScrollRight 
+                  ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 cursor-pointer' 
+                  : 'border-border/30 text-slate-600 cursor-not-allowed'
+              }`}
+              title="Прокрутить вправо"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Table Container with scroll shadows */}
+        <div className="relative">
+          {/* Left shadow indicator */}
+          <div 
+            className={`absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-900/90 to-transparent pointer-events-none z-10 transition-opacity duration-200 ${
+              canScrollLeft ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+          {/* Right shadow indicator */}
+          <div 
+            className={`absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900/90 to-transparent pointer-events-none z-10 transition-opacity duration-200 ${
+              canScrollRight ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+          
+          <div 
+            ref={scrollContainerRef}
+            className="overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-accent/30 hover:scrollbar-thumb-accent/50"
+            style={{ maxHeight: 'calc(100vh - 300px)' }}
+          >
+          <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm">
               <tr className="text-xs font-mono uppercase text-slate-400 border-b border-border">
-                <th className="pb-2 pl-2">Дата</th>
-                <th className="pb-2">Тикер</th>
-                <th className="pb-2">Название</th>
-                <th className="pb-2">Тип</th>
-                <th className="pb-2">Стор.</th>
-                <th className="pb-2">Сетап</th>
-                <th className="pb-2">Событие</th>
-                <th className="pb-2">Причина</th>
-                <th className="pb-2">Увер.</th>
-                <th className="pb-2">Цена</th>
-                <th className="pb-2">Кол-во</th>
-                <th className="pb-2">Комис.</th>
-                <th className="pb-2">Своп</th>
-                <th className="pb-2">PnL</th>
-                <th className="pb-2">Чист. PnL</th>
-                <th className="pb-2">⏱️ Время</th>
-                <th className="pb-2">Теги</th>
-                <th className="pb-2 text-right pr-2">Действия</th>
+                  <th className="py-2 pl-2 w-8"></th>
+                  {isColumnVisible('date') && <th className="py-2 w-24">Дата</th>}
+                  {isColumnVisible('ticker') && <th className="py-2 w-20">Тикер</th>}
+                  {isColumnVisible('direction') && <th className="py-2 w-14">Стор.</th>}
+                  {isColumnVisible('entry') && <th className="py-2 w-20">Вход</th>}
+                  {isColumnVisible('exit') && <th className="py-2 w-20">Выход</th>}
+                  {isColumnVisible('quantity') && <th className="py-2 w-16">Кол-во</th>}
+                  {isColumnVisible('commission') && <th className="py-2 w-20">Комис.</th>}
+                  {isColumnVisible('swap') && <th className="py-2 w-16">Своп</th>}
+                  {isColumnVisible('setup') && <th className="py-2 w-20">Сетап</th>}
+                  {isColumnVisible('confidence') && <th className="py-2 w-12">Увер.</th>}
+                  {isColumnVisible('risk') && <th className="py-2 w-20">Риск</th>}
+                  {isColumnVisible('rMultiple') && <th className="py-2 w-16">R</th>}
+                  {isColumnVisible('pnl') && <th className="py-2 w-24">PnL</th>}
+                  {isColumnVisible('status') && <th className="py-2 w-16">Статус</th>}
+                  {isColumnVisible('tags') && <th className="py-2 w-24">Теги</th>}
+                  {isColumnVisible('leverage') && <th className="py-2 w-12">Плечо</th>}
+                  <th className="py-2 w-16 text-right pr-2">Действ.</th>
               </tr>
             </thead>
             <tbody className="text-sm">
-              {sortedGroupKeys.map((key) => {
-                const groupTrades = groups[key];
-                // Sort trades within group by entry time (Oldest first)
-                const sortedTrades = [...groupTrades].sort((a, b) => new Date(a.entry_at).getTime() - new Date(b.entry_at).getTime());
-                const isGroup = groupTrades.length > 1;
-                const isExpanded = expandedGroups.has(key);
+              {filteredTrades.map((trade) => {
+                const isExpanded = expandedTrades.has(trade.id);
+                const hasDetails = trade.setup_name || trade.news_event || trade.notes || trade.entry_reason || trade.tags?.length || trade.operations?.length || trade.mood || trade.discipline || trade.screenshot_url || trade.setup;
                 
-                // Summary Stats for Group
-                const firstTrade = sortedTrades[0];
-                const totalQty = groupTrades.reduce((sum, t) => sum + t.quantity, 0);
-                const totalPnl = groupTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-                const totalNetPnl = groupTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0);
-                const totalCommission = groupTrades.reduce((sum, t) => sum + (t.commission || 0), 0);
-                const totalSwap = groupTrades.reduce((sum, t) => sum + (t.swap || 0), 0);
-                const avgEntryPrice = groupTrades.reduce((sum, t) => sum + (t.entry_price * t.quantity), 0) / totalQty;
-                const isClosed = groupTrades.every(t => t.exit_at);
-                
-                const totalUnrealizedPnl = groupTrades.reduce((sum, t) => {
-                    if (!t.exit_at && unrealizedData[t.id]) {
-                        return sum + unrealizedData[t.id].pnl;
-                    }
-                    return sum;
-                }, 0);
-                
-                // Render Entry Row as proper table cells
-                const renderEntryRow = (trade: Trade, isChild = false, showChevron = false) => (
-                  <>
-                    <td className={`py-2 pl-2 font-mono text-xs opacity-70 ${isChild ? 'pl-6' : ''}`}>
-                      <div className="flex items-center gap-1">
-                        {showChevron && (
-                          <button onClick={(e) => { e.stopPropagation(); toggleGroup(key); }} className="text-accent hover:text-foreground">
-                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          </button>
-                        )}
-                        <span className="truncate">
-                          {new Date(trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})}
-                          <span className="text-slate-400 text-xs ml-1">{new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-2 font-bold truncate">{trade.symbol}</td>
-                    <td className="py-2 font-mono text-xs truncate text-slate-400">{trade.asset_name || '-'}</td>
-                    <td className="py-2 font-mono text-xs truncate text-slate-400">{trade.asset_type || '-'}</td>
-                    <td className="py-2">
-                      <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                        {trade.isAddition ? 'ADD' : (trade.direction === 'long' ? 'LONG' : 'SHORT')}
-                      </span>
-                    </td>
-                    <td className="py-2 font-mono text-xs truncate">{trade.setup_name || '-'}</td>
-                    <td className="py-2 font-mono text-xs truncate opacity-70">{trade.news_event || '-'}</td>
-                    <td className="py-2 font-mono text-xs truncate" title={trade.entry_reason || ''}>{trade.entry_reason ? (trade.entry_reason.length > 8 ? trade.entry_reason.slice(0, 8) + '…' : trade.entry_reason) : '-'}</td>
-                    <td className="py-2 font-mono text-xs text-center">
-                      {trade.confidence ? (
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                          trade.confidence >= 8 ? 'bg-green-500/20 text-green-400' :
-                          trade.confidence >= 5 ? 'bg-yellow-500/20 text-yellow-400' :
-                          'bg-red-500/20 text-red-400'
-                        }`}>{trade.confidence}</span>
-                      ) : '-'}
-                    </td>
-                    <td className="py-2 font-mono text-xs">{trade.entry_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</td>
-                    <td className="py-2 font-mono text-xs">{trade.quantity.toLocaleString('ru-RU')}</td>
-                    <td className="py-2 font-mono text-xs text-red-400">{trade.entry_commission ? `-${Number(trade.entry_commission).toFixed(0)}` : '-'}</td>
-                    <td className="py-2 text-xs text-slate-500">-</td>
-                    <td className="py-2 text-xs">
-                      {!trade.exit_at ? (
-                        unrealizedData[trade.id] ? (
-                          <span className={`font-mono font-bold ${unrealizedData[trade.id].pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {unrealizedData[trade.id].pnl >= 0 ? '+' : ''}{unrealizedData[trade.id].pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
-                          </span>
-                        ) : (
-                          <span className="text-xs font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded animate-pulse">В РАБОТЕ</span>
-                        )
-                      ) : <span className="text-slate-500">-</span>}
-                    </td>
-                    <td className="py-2 text-xs text-slate-500">-</td>
-                    <td className="py-2 text-xs text-slate-500">-</td>
-                    <td className="py-2">
-                      <div className="flex gap-0.5 flex-wrap">
-                        {trade.tags?.slice(0, 2).map(tag => (
-                          <span key={tag} className="text-[10px] font-mono border border-border px-1 text-slate-400">#{tag}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2">
-                      <div className="flex justify-end gap-1">
-                        {!trade.exit_at && (
-                          <button onClick={(e) => { e.stopPropagation(); openCloseModal(trade); }} className="text-yellow-500/50 hover:text-yellow-500 p-0.5" title="Закрыть">
-                            <Lock size={12} />
-                          </button>
-                        )}
-                        <button onClick={(e) => { e.stopPropagation(); handleEdit(trade); }} className="text-accent/50 hover:text-accent p-0.5"><Edit2 size={12} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(trade.id); }} className="text-red-500/50 hover:text-red-500 p-0.5"><Trash2 size={12} /></button>
-                      </div>
-                    </td>
-                  </>
-                );
-
-                // Render Exit Row as proper table cells
                 const formatHoldingTime = (minutes: number | undefined) => {
-                  if (!minutes) return null;
+                  if (!minutes) return '-';
                   if (minutes < 60) return `${minutes}м`;
-                  if (minutes < 1440) return `${Math.floor(minutes / 60)}ч ${minutes % 60}м`;
-                  return `${Math.floor(minutes / 1440)}д ${Math.floor((minutes % 1440) / 60)}ч`;
+                  if (minutes < 1440) return `${Math.floor(minutes / 60)}ч`;
+                  return `${Math.floor(minutes / 1440)}д`;
                 };
-                
-                const renderExitRow = (trade: Trade) => (
-                  <>
-                    <td className="py-2 pl-6 font-mono text-xs opacity-70 border-l-2 border-accent/20">
-                      {new Date(trade.exit_at!).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})}
-                      <span className="opacity-50 text-[10px] ml-0.5">{new Date(trade.exit_at!).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                    </td>
-                    <td className="py-2 font-bold opacity-50 truncate">{trade.symbol}</td>
-                    <td className="py-2 font-mono text-[10px] truncate opacity-50">{trade.asset_name || '-'}</td>
-                    <td className="py-2 font-mono text-[10px] truncate opacity-50">{trade.asset_type || '-'}</td>
-                    <td className="py-2">
-                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded opacity-70 ${trade.direction === 'long' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
-                        {trade.direction === 'long' ? 'SELL' : 'BUY'}
-                      </span>
-                    </td>
-                    <td className="py-2 text-xs opacity-30">-</td>
-                    <td className="py-2 text-xs opacity-30">-</td>
-                    <td className="py-2 font-mono text-xs opacity-70 truncate">{trade.exit_reason || '-'}</td>
-                    <td className="py-2 text-xs opacity-30">-</td>
-                    <td className="py-2 font-mono text-xs">{trade.exit_price?.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</td>
-                    <td className="py-2 font-mono text-xs opacity-50">{trade.quantity.toLocaleString('ru-RU')}</td>
-                    <td className="py-2 font-mono text-[10px] text-red-400/70">{trade.exit_commission ? `-${Number(trade.exit_commission).toFixed(0)}` : '-'}</td>
-                    <td className="py-2 font-mono text-[10px] text-red-400/70">{trade.swap ? `-${trade.swap.toFixed(0)}` : '-'}</td>
-                    <td className="py-2 font-mono font-bold text-xs">
-                      {trade.pnl !== null ? (
-                        <span className={Number(trade.pnl) >= 0 ? 'text-green-400' : 'text-red-400'}>
-                          {Number(trade.pnl) >= 0 ? '+' : ''}{Number(trade.pnl).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="py-2 font-mono font-bold text-xs">
-                      {trade.net_pnl !== null && trade.net_pnl !== undefined ? (
-                        <span className={Number(trade.net_pnl) >= 0 ? 'text-green-400' : 'text-red-400'}>
-                          {Number(trade.net_pnl) >= 0 ? '+' : ''}{Number(trade.net_pnl).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="py-2 font-mono text-[10px] text-cyan-400">
-                      {trade.holding_time_minutes ? formatHoldingTime(trade.holding_time_minutes) : '-'}
-                    </td>
-                    <td className="py-2"></td>
-                    <td className="py-2"></td>
-                  </>
-                );
 
-                if (!isGroup) {
-                  // Для одиночной сделки - показываем с возможностью раскрыть операции
-                  const hasOperations = firstTrade.operations && firstTrade.operations.length > 0;
-                  const showExpander = hasOperations;
-                  
-                  return (
-                    <React.Fragment key={key}>
-                      <tr 
-                        className={`border-b border-border/50 hover:bg-white/5 transition-colors ${showExpander ? 'cursor-pointer' : ''}`}
-                        onClick={() => showExpander && toggleGroup(key)}
-                      >
-                        {renderEntryRow(firstTrade, false, showExpander)}
-                      </tr>
-                      
-                      {/* Раскрытые операции */}
-                      {isExpanded && hasOperations && (
-                        <>
-                          {(firstTrade.operations || []).map((op: any, idx: number) => (
-                            <tr key={`${key}-op-${idx}`} className="border-b border-border/20 bg-black/30">
-                              <td className="py-1 pl-8 font-mono text-[10px] opacity-60">
-                                {op.date} <span className="opacity-50">{op.time}</span>
-                              </td>
-                              <td className="py-1 font-bold opacity-50">{firstTrade.symbol}</td>
-                              <td className="py-1 text-[9px] opacity-40" colSpan={2}>операция</td>
-                              <td className="py-1">
-                                <span className={`text-[9px] font-mono px-1 py-0.5 rounded ${op.type === 'entry' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'}`}>
-                                  {op.type === 'entry' ? 'ВХОД' : 'ВЫХОД'}
-                                </span>
-                              </td>
-                              <td className="py-1 text-[10px] opacity-40">-</td>
-                              <td className="py-1 text-[10px] opacity-40">-</td>
-                              <td className="py-1 text-[10px] opacity-40">-</td>
-                              <td className="py-1 text-[10px] opacity-40">-</td>
-                              <td className="py-1 font-mono text-[10px]">{op.price?.toLocaleString('ru-RU', { maximumFractionDigits: 3 })}</td>
-                              <td className="py-1 font-mono text-[10px]">{op.qty?.toLocaleString('ru-RU')}</td>
-                              <td className="py-1 font-mono text-[9px] text-red-400/60">{op.commission ? `-${op.commission.toFixed(2)}` : '-'}</td>
-                              <td className="py-1 text-[10px] opacity-30">-</td>
-                              <td className="py-1 text-[10px] opacity-30">-</td>
-                              <td className="py-1 text-[10px] opacity-30">-</td>
-                              <td className="py-1 text-[10px] opacity-30">-</td>
-                              <td className="py-1"></td>
-                              <td className="py-1"></td>
-                            </tr>
-                          ))}
-                        </>
-                      )}
-                      
-                      {firstTrade.exit_at && (
-                        <tr className="border-b border-border/30 bg-white/[0.02]">
-                          {renderExitRow(firstTrade)}
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                }
+                const pnlValue = trade.net_pnl ?? trade.pnl;
+                const unrealized = !trade.exit_at && unrealizedData[trade.id];
 
                 return (
-                  <React.Fragment key={key}>
-                    {/* Summary Row for Group */}
+                  <React.Fragment key={trade.id}>
+                    {/* Компактная строка */}
                     <tr 
-                      className="border-b border-border/50 hover:bg-white/5 transition-colors cursor-pointer bg-white/[0.02]"
-                      onClick={() => toggleGroup(key)}
+                      className={`border-b border-border/30 hover:bg-white/5 transition-colors ${hasDetails ? 'cursor-pointer' : ''}`}
+                      onClick={() => hasDetails && toggleTrade(trade.id)}
                     >
-                      <td className="py-3 px-2 font-mono text-xs opacity-70">
-                        <div className="flex items-center gap-1">
-                          <button className="text-accent hover:text-foreground flex-shrink-0">
+                      {/* Expand Icon */}
+                      <td className="py-2 pl-2">
+                        {hasDetails && (
+                          <button className="text-accent/50 hover:text-accent">
                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                           </button>
-                          <div className="truncate">
-                            {isClosed && firstTrade.exit_at ? (
-                              <>
-                                {new Date(firstTrade.exit_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})} 
-                                <span className="opacity-50 text-[10px] ml-0.5">{new Date(firstTrade.exit_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                              </>
-                            ) : (
-                              <span className="text-accent animate-pulse">OPEN</span>
-                            )}
+                        )}
+                      </td>
+                      
+                      {/* Дата */}
+                      {isColumnVisible('date') && (
+                        <td className="py-2 font-mono text-xs">
+                          <div>
+                            {new Date(trade.exit_at || trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}
+                            <span className="text-slate-500 ml-1 text-[10px]">
+                              {new Date(trade.exit_at || trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 font-bold text-accent truncate">{firstTrade.symbol}</td>
-                      <td className="py-3 px-2 font-mono text-[10px] truncate opacity-70">{firstTrade.asset_name || '-'}</td>
-                      <td className="py-3 px-2 font-mono text-[10px] truncate opacity-70">{firstTrade.asset_type || '-'}</td>
-                      <td className="py-3 px-2">
-                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${firstTrade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                          {firstTrade.direction === 'long' ? 'LONG' : 'SHORT'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-2 font-mono text-xs opacity-50">Mixed</td>
-                      <td className="py-3 px-2 opacity-30 text-xs">-</td>
-                      <td className="py-3 px-2 opacity-30 text-xs">-</td>
-                      <td className="py-3 px-2 opacity-30 text-xs">-</td>
-                      <td className="py-3 px-2 font-mono text-xs text-yellow-400 truncate">{avgEntryPrice.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}</td>
-                      <td className="py-3 px-2 font-mono text-xs font-bold">{totalQty.toLocaleString('ru-RU')}</td>
-                      <td className="py-3 px-2 font-mono text-[10px] text-red-400/70">
-                        {totalCommission ? `-${totalCommission.toFixed(0)}` : '-'}
-                      </td>
-                      <td className="py-3 px-2 font-mono text-[10px] text-red-400/70">
-                        {totalSwap ? `-${totalSwap.toFixed(0)}` : '-'}
-                      </td>
-                      <td className="py-3 px-2 font-mono font-bold text-sm">
-                        {isClosed ? (
-                          <span className={totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            {totalPnl >= 0 ? '+' : ''}{totalPnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
+                        </td>
+                      )}
+                      
+                      {/* Тикер */}
+                      {isColumnVisible('ticker') && (
+                        <td className="py-2">
+                          <span className="font-bold">{trade.symbol}</span>
+                          {trade.asset_name && (
+                            <span className="text-slate-500 text-[10px] ml-1 hidden sm:inline">{trade.asset_name.slice(0, 8)}</span>
+                          )}
+                        </td>
+                      )}
+                      
+                      {/* Сторона */}
+                      {isColumnVisible('direction') && (
+                        <td className="py-2">
+                          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                            trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                          }`}>
+                            {trade.isAddition ? '+ ADD' : (trade.direction === 'long' ? 'LONG' : 'SHORT')}
                           </span>
-                        ) : (
-                          totalUnrealizedPnl !== 0 ? (
-                            <span className={`text-xs ${totalUnrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {totalUnrealizedPnl >= 0 ? '+' : ''}{totalUnrealizedPnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
+                        </td>
+                      )}
+                      
+                      {/* Вход */}
+                      {isColumnVisible('entry') && (
+                        <td className="py-2 font-mono text-xs">
+                          {trade.entry_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}
+                        </td>
+                      )}
+                      
+                      {/* Выход */}
+                      {isColumnVisible('exit') && (
+                        <td className="py-2 font-mono text-xs">
+                          {trade.exit_price 
+                            ? trade.exit_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+                            : <span className="text-slate-500">—</span>
+                          }
+                        </td>
+                      )}
+                      
+                      {/* Кол-во */}
+                      {isColumnVisible('quantity') && (
+                        <td className="py-2 font-mono text-xs">
+                          {trade.quantity.toLocaleString('ru-RU')}
+                        </td>
+                      )}
+                      
+                      {/* Комиссия */}
+                      {isColumnVisible('commission') && (
+                        <td className="py-2 font-mono text-xs text-red-400">
+                          {(trade.commission || 0) > 0 ? `-${Number(trade.commission).toFixed(0)}` : '—'}
+                        </td>
+                      )}
+                      
+                      {/* Своп */}
+                      {isColumnVisible('swap') && (
+                        <td className="py-2 font-mono text-xs text-red-400">
+                          {(trade.swap || 0) > 0 ? `-${Number(trade.swap).toFixed(0)}` : '—'}
+                        </td>
+                      )}
+                      
+                      {/* Сетап */}
+                      {isColumnVisible('setup') && (
+                        <td className="py-2 font-mono text-xs text-slate-400 truncate max-w-20">
+                          {trade.setup_name || '—'}
+                        </td>
+                      )}
+                      
+                      {/* Уверенность */}
+                      {isColumnVisible('confidence') && (
+                        <td className="py-2 text-center">
+                          {trade.confidence ? (
+                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                              trade.confidence >= 8 ? 'bg-green-500/20 text-green-400' :
+                              trade.confidence >= 5 ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>{trade.confidence}</span>
+                          ) : '—'}
+                        </td>
+                      )}
+                      
+                      {/* Риск */}
+                      {isColumnVisible('risk') && (
+                        <td className="py-2 font-mono text-xs">
+                          {trade.risk_amount ? `${trade.risk_amount.toLocaleString('ru-RU')} ₽` : '—'}
+                        </td>
+                      )}
+                      
+                      {/* R-Multiple */}
+                      {isColumnVisible('rMultiple') && (
+                        <td className="py-2 font-mono text-xs">
+                          {trade.r_multiple ? (
+                            <span className={trade.r_multiple >= 1 ? 'text-green-400' : trade.r_multiple < 0 ? 'text-red-400' : ''}>
+                              {trade.r_multiple.toFixed(1)}R
+                            </span>
+                          ) : '—'}
+                        </td>
+                      )}
+                      
+                      {/* PnL */}
+                      {isColumnVisible('pnl') && (() => {
+                        // Расчёт процента между ценами входа и выхода
+                        let pnlPercent = 0;
+                        if (trade.entry_price > 0) {
+                          if (unrealized?.price) {
+                            // Открытая позиция - считаем от текущей цены
+                            const isLong = trade.direction.toLowerCase() === 'long';
+                            pnlPercent = isLong
+                              ? ((unrealized.price - trade.entry_price) / trade.entry_price * 100)
+                              : ((trade.entry_price - unrealized.price) / trade.entry_price * 100);
+                          } else if (trade.exit_price) {
+                            // Закрытая позиция - считаем от цены выхода
+                            const isLong = trade.direction.toLowerCase() === 'long';
+                            pnlPercent = isLong
+                              ? ((trade.exit_price - trade.entry_price) / trade.entry_price * 100)
+                              : ((trade.entry_price - trade.exit_price) / trade.entry_price * 100);
+                          }
+                        }
+                        
+                        return (
+                          <td className="py-2 font-mono font-bold">
+                            {unrealized ? (
+                              <div className="flex flex-col">
+                                <span className={unrealized.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {unrealized.pnl >= 0 ? '+' : ''}{unrealized.pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
+                                </span>
+                                <span className={`text-[10px] ${pnlPercent >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+                                  {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                                </span>
+                              </div>
+                            ) : pnlValue !== null && pnlValue !== undefined ? (
+                              <div className="flex flex-col">
+                                <span className={Number(pnlValue) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {Number(pnlValue) >= 0 ? '+' : ''}{Number(pnlValue).toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
+                                </span>
+                                <span className={`text-[10px] ${pnlPercent >= 0 ? 'text-green-400/60' : 'text-red-400/60'}`}>
+                                  {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500">—</span>
+                            )}
+                          </td>
+                        );
+                      })()}
+                      
+                      {/* Статус */}
+                      {isColumnVisible('status') && (
+                        <td className="py-2">
+                          {trade.exit_at ? (
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {formatHoldingTime(trade.holding_time_minutes)}
                             </span>
                           ) : (
-                            <span className="text-[9px] font-bold bg-accent/20 text-accent px-1 py-0.5 rounded animate-pulse">В РАБОТЕ</span>
-                          )
-                        )}
+                            <span className="text-[10px] font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded animate-pulse">
+                              OPEN
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      
+                      {/* Теги */}
+                      {isColumnVisible('tags') && (
+                        <td className="py-2">
+                          <div className="flex gap-0.5 flex-wrap">
+                            {trade.tags?.slice(0, 2).map(tag => (
+                              <span key={tag} className="text-[9px] font-mono border border-accent/30 px-1 rounded text-accent">
+                                #{tag}
+                              </span>
+                            ))}
+                            {(trade.tags?.length || 0) > 2 && (
+                              <span className="text-[9px] text-slate-500">+{(trade.tags?.length || 0) - 2}</span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      
+                      {/* Плечо */}
+                      {isColumnVisible('leverage') && (
+                        <td className="py-2 font-mono text-xs text-center">
+                          {trade.leverage ? `${trade.leverage}x` : '—'}
+                        </td>
+                      )}
+                      
+                      {/* Действия */}
+                      <td className="py-2 pr-2">
+                        <div className="flex justify-end gap-1">
+                          {!trade.exit_at && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); openCloseModal(trade); }} 
+                              className="text-yellow-500/50 hover:text-yellow-500 p-1" 
+                              title="Закрыть"
+                            >
+                              <Lock size={14} />
+                            </button>
+                          )}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleEdit(trade); }} 
+                            className="text-accent/50 hover:text-accent p-1"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDelete(trade.id); }} 
+                            className="text-red-500/50 hover:text-red-500 p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
-                      <td className="py-3 px-2 font-mono font-bold text-sm">
-                        {isClosed ? (
-                          <span className={totalNetPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            {totalNetPnl >= 0 ? '+' : ''}{totalNetPnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
-                          </span>
-                        ) : '-'}
-                      </td>
-                      <td className="py-3 px-2 text-xs opacity-30">-</td>
-                      <td className="py-3 px-2"></td>
-                      <td className="py-3 px-2"></td>
                     </tr>
                     
-                    {/* Expanded Children */}
-                    {isExpanded && sortedTrades.map(trade => (
-                      <React.Fragment key={trade.id}>
-                        <tr className="border-b border-border/30 bg-black/20">
-                          {renderEntryRow(trade, true, false)}
+                    {/* Развёрнутые детали */}
+                    {isExpanded && (
+                      <tr className="bg-slate-800/30 border-b border-border/30">
+                        <td colSpan={visibleColumns.size + 2} className="p-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-xs">
+                            {/* Основная информация */}
+                            {/* Сетап */}
+                            <div>
+                              <span className="text-slate-500 block mb-1">Сетап</span>
+                              {trade.setup ? (
+                                <span className="font-medium flex items-center gap-1" style={{ color: trade.setup.color }}>
+                                  {trade.setup.icon} {trade.setup.name}
+                                </span>
+                              ) : (
+                                <span className="font-medium">{trade.setup_name || '-'}</span>
+                              )}
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Событие</span>
+                              <span className="font-medium">{trade.news_event || '-'}</span>
+                            </div>
+                            
+                            {/* Психо-метрики */}
+                            <div>
+                              <span className="text-slate-500 block mb-1">Настроение</span>
+                              {trade.mood ? (
+                                <span className="text-lg">{['😤', '😟', '😐', '😊', '🚀'][trade.mood - 1]}</span>
+                              ) : '-'}
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Уверенность</span>
+                              {trade.confidence ? (
+                                <span className={`px-1.5 py-0.5 rounded font-medium ${
+                                  trade.confidence >= 4 ? 'bg-green-500/20 text-green-400' :
+                                  trade.confidence >= 3 ? 'bg-yellow-500/20 text-yellow-400' :
+                                  'bg-red-500/20 text-red-400'
+                                }`}>{trade.confidence}/5</span>
+                              ) : '-'}
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Дисциплина</span>
+                              {trade.discipline ? (
+                                <span className={`px-1.5 py-0.5 rounded font-medium ${
+                                  trade.discipline >= 4 ? 'bg-green-500/20 text-green-400' :
+                                  trade.discipline >= 3 ? 'bg-yellow-500/20 text-yellow-400' :
+                                  'bg-red-500/20 text-red-400'
+                                }`}>{['Нарушил', 'Частично', 'Нейтр.', 'Следовал', 'Идеально'][trade.discipline - 1]}</span>
+                              ) : '-'}
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Комиссия</span>
+                              <span className="font-medium text-red-400">
+                                {(trade.commission || 0) > 0 ? `-${Number(trade.commission).toFixed(2)} ₽` : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Своп</span>
+                              <span className="font-medium text-red-400">
+                                {(trade.swap || 0) > 0 ? `-${Number(trade.swap).toFixed(2)} ₽` : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Время в сделке</span>
+                              <span className="font-medium text-cyan-400">
+                                {trade.holding_time_minutes ? formatHoldingTime(trade.holding_time_minutes) : '-'}
+                              </span>
+                            </div>
+                            
+                            {/* Вторая строка */}
+                            <div>
+                              <span className="text-slate-500 block mb-1">SL</span>
+                              <span className="font-mono">{trade.stop_loss?.toLocaleString('ru-RU') || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">TP</span>
+                              <span className="font-mono">{trade.take_profit?.toLocaleString('ru-RU') || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Риск</span>
+                              <span className="font-mono">{trade.risk_amount ? `${trade.risk_amount.toLocaleString('ru-RU')} ₽` : '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">R-Multiple</span>
+                              <span className={`font-mono font-bold ${
+                                trade.r_multiple && trade.r_multiple >= 1 ? 'text-green-400' : 
+                                trade.r_multiple && trade.r_multiple < 0 ? 'text-red-400' : ''
+                              }`}>
+                                {trade.r_multiple ? `${trade.r_multiple.toFixed(2)}R` : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Причина выхода</span>
+                              <span className="font-medium">{trade.exit_reason || '-'}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block mb-1">Плечо</span>
+                              <span className="font-mono">{trade.leverage ? `${trade.leverage}x` : '-'}</span>
+                            </div>
+                            
+                            {/* MAE/MFE Анализ */}
+                            {trade.exit_at && (trade.mae_price || trade.mfe_price) && (
+                              <div className="col-span-full border border-accent/20 rounded-lg p-3 bg-accent/5">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <span className="text-accent font-bold text-sm">📊 MAE/MFE Анализ</span>
+                                  {!trade.mae_price && !trade.mfe_price && (
+                                    <span className="text-slate-500 text-[10px]">(нет данных)</span>
+                                  )}
+                                </div>
+                                
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {/* MAE */}
+                                  <div>
+                                    <span className="text-slate-500 block mb-1 text-[10px]">MAE (худшая цена)</span>
+                                    <span className="font-mono text-red-400">
+                                      {trade.mae_price ? trade.mae_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—'}
+                                    </span>
+                                    {trade.mae_price && trade.entry_price && (
+                                      <span className="text-red-400/70 text-[10px] ml-1">
+                                        ({trade.direction === 'long' 
+                                          ? `-${(((trade.entry_price - trade.mae_price) / trade.entry_price) * 100).toFixed(2)}%`
+                                          : `-${(((trade.mae_price - trade.entry_price) / trade.entry_price) * 100).toFixed(2)}%`
+                                        })
+                                      </span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* MFE */}
+                                  <div>
+                                    <span className="text-slate-500 block mb-1 text-[10px]">MFE (лучшая цена)</span>
+                                    <span className="font-mono text-green-400">
+                                      {trade.mfe_price ? trade.mfe_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—'}
+                                    </span>
+                                    {trade.mfe_price && trade.entry_price && (
+                                      <span className="text-green-400/70 text-[10px] ml-1">
+                                        (+{trade.direction === 'long' 
+                                          ? (((trade.mfe_price - trade.entry_price) / trade.entry_price) * 100).toFixed(2)
+                                          : (((trade.entry_price - trade.mfe_price) / trade.entry_price) * 100).toFixed(2)
+                                        }%)
+                                      </span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Edge Ratio */}
+                                  {trade.mae_price && trade.mfe_price && trade.entry_price && (
+                                    <div>
+                                      <span className="text-slate-500 block mb-1 text-[10px]">Edge Ratio (MFE/MAE)</span>
+                                      {(() => {
+                                        const maeMove = trade.direction === 'long' 
+                                          ? trade.entry_price - trade.mae_price 
+                                          : trade.mae_price - trade.entry_price;
+                                        const mfeMove = trade.direction === 'long' 
+                                          ? trade.mfe_price - trade.entry_price 
+                                          : trade.entry_price - trade.mfe_price;
+                                        const edgeRatio = maeMove > 0 ? mfeMove / maeMove : 0;
+                                        return (
+                                          <span className={`font-mono font-bold ${edgeRatio >= 2 ? 'text-green-400' : edgeRatio >= 1 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                            {edgeRatio.toFixed(2)}
+                                          </span>
+                                        );
+                                      })()}
+                                      <span className="text-slate-500 text-[10px] ml-1">
+                                        ({'>'}2 = отлично)
+                                      </span>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Capture Ratio */}
+                                  {trade.mfe_price && trade.entry_price && trade.exit_price && (
+                                    <div>
+                                      <span className="text-slate-500 block mb-1 text-[10px]">Capture (захват MFE)</span>
+                                      {(() => {
+                                        const maxProfit = trade.direction === 'long' 
+                                          ? (trade.mfe_price - trade.entry_price) * trade.quantity
+                                          : (trade.entry_price - trade.mfe_price) * trade.quantity;
+                                        const actualProfit = trade.pnl || 0;
+                                        const captureRatio = maxProfit > 0 ? (actualProfit / maxProfit) * 100 : 0;
+                                        return (
+                                          <span className={`font-mono font-bold ${captureRatio >= 70 ? 'text-green-400' : captureRatio >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                            {captureRatio.toFixed(0)}%
+                                          </span>
+                                        );
+                                      })()}
+                                      <span className="text-slate-500 text-[10px] ml-1">
+                                        (сколько взяли от макс.)
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* Visual representation */}
+                                {trade.mae_price && trade.mfe_price && trade.entry_price && trade.exit_price && (
+                                  <div className="mt-3 pt-3 border-t border-slate-700/50">
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                      <span className="text-red-400">MAE {trade.mae_price.toLocaleString('ru-RU')}</span>
+                                      <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
+                                        {(() => {
+                                          const min = Math.min(trade.mae_price, trade.entry_price, trade.exit_price);
+                                          const max = Math.max(trade.mfe_price, trade.entry_price, trade.exit_price);
+                                          const range = max - min;
+                                          const entryPos = ((trade.entry_price - min) / range) * 100;
+                                          const exitPos = ((trade.exit_price - min) / range) * 100;
+                                          const maePos = ((trade.mae_price - min) / range) * 100;
+                                          const mfePos = ((trade.mfe_price - min) / range) * 100;
+                                          
+                                          return (
+                                            <>
+                                              {/* MAE to MFE range */}
+                                              <div 
+                                                className="absolute h-full bg-gradient-to-r from-red-500/30 via-slate-600 to-green-500/30"
+                                                style={{ left: `${maePos}%`, width: `${mfePos - maePos}%` }}
+                                              />
+                                              {/* Entry marker */}
+                                              <div 
+                                                className="absolute w-1 h-full bg-white"
+                                                style={{ left: `${entryPos}%` }}
+                                                title={`Вход: ${trade.entry_price}`}
+                                              />
+                                              {/* Exit marker */}
+                                              <div 
+                                                className="absolute w-1 h-full bg-accent"
+                                                style={{ left: `${exitPos}%` }}
+                                                title={`Выход: ${trade.exit_price}`}
+                                              />
+                                            </>
+                                          );
+                                        })()}
+                                      </div>
+                                      <span className="text-green-400">MFE {trade.mfe_price.toLocaleString('ru-RU')}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[9px] text-slate-500 mt-1">
+                                      <span>⬜ Вход: {trade.entry_price.toLocaleString('ru-RU')}</span>
+                                      <span>🟩 Выход: {trade.exit_price.toLocaleString('ru-RU')}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Нет данных MAE/MFE - показываем кнопку расчёта */}
+                            {trade.exit_at && !trade.mae_price && !trade.mfe_price && (
+                              <div className="col-span-full border border-slate-700 rounded-lg p-3 bg-slate-800/30">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <span className="text-slate-400 text-sm">📊 MAE/MFE Анализ</span>
+                                    <p className="text-slate-500 text-[10px] mt-1">Нет данных о ценовом диапазоне во время сделки</p>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      calculateMAEMFE([trade.id]);
+                                    }}
+                                    disabled={isCalculatingMAE}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-accent/20 hover:bg-accent/30 text-accent rounded text-xs transition-colors disabled:opacity-50"
+                                  >
+                                    {isCalculatingMAE ? (
+                                      <Loader2 size={12} className="animate-spin" />
+                                    ) : (
+                                      <BarChart2 size={12} />
+                                    )}
+                                    Рассчитать
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Теги на всю ширину */}
+                            {trade.tags && trade.tags.length > 0 && (
+                              <div className="col-span-full">
+                                <span className="text-slate-500 block mb-1">Теги</span>
+                                <div className="flex gap-1 flex-wrap">
+                                  {trade.tags.map(tag => (
+                                    <span key={tag} className="text-[10px] font-mono border border-accent/30 px-2 py-0.5 rounded text-accent">
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Логика входа */}
+                            {trade.entry_reason && (
+                              <div className="col-span-full">
+                                <span className="text-slate-500 block mb-1">Логика входа</span>
+                                <span className="font-medium">{trade.entry_reason}</span>
+                              </div>
+                            )}
+                            
+                            {/* Скриншот */}
+                            {trade.screenshot_url && (
+                              <div className="col-span-full">
+                                <span className="text-slate-500 block mb-1">📷 Скриншот графика</span>
+                                <a 
+                                  href={getApiUrl(trade.screenshot_url)} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="block"
+                                >
+                                  <img 
+                                    src={getApiUrl(trade.screenshot_url)} 
+                                    alt="Trade screenshot" 
+                                    className="max-w-md h-40 object-cover rounded-lg border border-border hover:border-accent transition-colors cursor-pointer"
+                                  />
+                                </a>
+                              </div>
+                            )}
+                            
+                            {/* Заметки */}
+                            {trade.notes && (
+                              <div className="col-span-full">
+                                <span className="text-slate-500 block mb-1">📝 Заметки</span>
+                                <p className="text-slate-300 whitespace-pre-wrap bg-slate-800/50 p-2 rounded-lg">{trade.notes}</p>
+                              </div>
+                            )}
+                            
+                            {/* Операции */}
+                            {trade.operations && trade.operations.length > 0 && (
+                              <div className="col-span-full">
+                                <span className="text-slate-500 block mb-2">Операции ({trade.operations.length})</span>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-[10px]">
+                                    <thead>
+                                      <tr className="text-slate-500">
+                                        <th className="text-left py-1">Дата</th>
+                                        <th className="text-left py-1">Тип</th>
+                                        <th className="text-right py-1">Цена</th>
+                                        <th className="text-right py-1">Кол-во</th>
+                                        <th className="text-right py-1">Комиссия</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {trade.operations.map((op, idx) => (
+                                        <tr key={idx} className="border-t border-slate-700/50">
+                                          <td className="py-1 font-mono">{op.date} {op.time}</td>
+                                          <td className="py-1">
+                                            <span className={`px-1 rounded ${op.type === 'entry' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'}`}>
+                                              {op.type === 'entry' ? 'ВХОД' : (op.note === 'partial_close' ? 'ЧАСТИЧ. ВЫХОД' : 'ВЫХОД')}
+                                            </span>
+                                          </td>
+                                          <td className="py-1 text-right font-mono">{op.price?.toLocaleString('ru-RU')}</td>
+                                          <td className="py-1 text-right font-mono">{op.qty?.toLocaleString('ru-RU')}</td>
+                                          <td className="py-1 text-right font-mono text-red-400">
+                                            {op.commission ? `-${op.commission.toFixed(2)}` : '-'}
+                                          </td>
                         </tr>
-                        {trade.exit_at && (
-                          <tr className="border-b border-border/20 bg-black/30">
-                            {renderExitRow(trade)}
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
                           </tr>
                         )}
-                      </React.Fragment>
-                    ))}
                   </React.Fragment>
                 );
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </main>

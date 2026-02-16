@@ -1,0 +1,53 @@
+# ATOM Backend Dependencies
+# Python 3.11+
+
+# ==================== WEB FRAMEWORK ====================
+fastapi>=0.109.0,<0.115.0
+uvicorn[standard]>=0.27.0,<0.32.0
+python-multipart>=0.0.9  # File uploads
+
+# ==================== DATABASE ====================
+sqlalchemy>=2.0.0,<3.0.0
+alembic>=1.13.0,<2.0.0
+
+# SQLite (built-in)
+# PostgreSQL support
+psycopg2-binary>=2.9.9,<3.0.0  # или asyncpg для async
+
+# ==================== AUTHENTICATION ====================
+python-jose[cryptography]>=3.3.0,<4.0.0  # JWT
+bcrypt>=4.1.0,<5.0.0  # Password hashing
+passlib[bcrypt]>=1.7.4,<2.0.0  # Password utilities
+
+# ==================== HTTP CLIENTS ====================
+requests>=2.31.0,<3.0.0
+httpx>=0.26.0,<0.28.0  # Async HTTP client for OAuth
+
+# ==================== DATA PROCESSING ====================
+pandas>=2.2.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+openpyxl>=3.1.2,<4.0.0  # Excel files
+
+# ==================== RATE LIMITING ====================
+slowapi>=0.1.9,<0.2.0
+redis>=5.0.0,<6.0.0  # Optional: for distributed rate limiting
+
+# ==================== UTILITIES ====================
+python-dotenv>=1.0.0,<2.0.0  # Environment variables
+pytz>=2024.1  # Timezone support
+
+# ==================== BROKER INTEGRATIONS ====================
+# Tinkoff Invest API - используем REST API через httpx (уже установлен)
+
+# ==================== AI (OPTIONAL) ====================
+# openai>=1.12.0,<2.0.0  # Uncomment if using AI features
+
+# ==================== TESTING ====================
+pytest>=8.0.0,<9.0.0
+pytest-asyncio>=0.23.0,<0.24.0
+pytest-cov>=4.1.0,<5.0.0
+httpx>=0.26.0  # For TestClient
+
+# ==================== DEVELOPMENT ====================
+# ruff>=0.2.0  # Linting
+# black>=24.1.0  # Formatting

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
 
+from decimal import Decimal
+
 import database
 import models
 import schemas
@@ -13,6 +15,8 @@ import auth_service
 import import_service
 import market_service
 import ai_service
+from moex_service import get_moex_service
+import pnl_service
 from logger import get_logger
 
 log = get_logger("trades")
@@ -23,21 +27,16 @@ router = APIRouter(prefix="/trades", tags=["trades"])
 market_data_service = market_service.MarketService()
 
 
-def get_account_id(db: Session, user: Optional[models.User] = None) -> int:
-    """Получить account_id для текущего пользователя или вернуть 1 для анонима"""
-    if user:
-        account = auth_service.get_user_account(db, user)
-        return account.id
-    return 1  # Fallback для обратной совместимости
+# get_account_id is now centralized in auth_service
 
 
 @router.post("/", response_model=schemas.Trade)
 async def create_trade(
     trade: schemas.TradeCreate, 
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     # Check for existing open trades for this symbol
     open_trades = db.query(models.Trade).filter(
@@ -84,18 +83,13 @@ async def create_trade(
                 except Exception as e:
                     log.warning(f"Failed to calculate MAE/MFE for trade {open_trade.id}: {e}")
                 
-                # Calculate PnL
-                if open_trade.direction == models.TradeDirection.LONG:
-                    open_trade.pnl = (float(open_trade.exit_price) - float(open_trade.entry_price)) * float(open_trade.quantity)
-                else:
-                    open_trade.pnl = (float(open_trade.entry_price) - float(open_trade.exit_price)) * float(open_trade.quantity)
-                
-                # Commission handling
+                # Calculate PnL + net_pnl via unified service
                 ratio = available_qty / float(trade.quantity)
                 exit_comm = (trade.commission or 0) * ratio
-                open_trade.exit_commission = exit_comm
-                open_trade.commission = float(open_trade.commission or 0) + exit_comm
-                open_trade.net_pnl = open_trade.pnl - open_trade.commission - float(open_trade.swap or 0)
+                pnl_service.apply_close_pnl(
+                    trade=open_trade,
+                    exit_commission=exit_comm,
+                )
 
                 qty_to_close -= available_qty
                 last_modified_trade = open_trade
@@ -116,30 +110,22 @@ async def create_trade(
                     tags=open_trade.tags
                 )
                 
-                ratio = qty_to_close / available_qty
-                part_entry_comm = float(open_trade.entry_commission or 0) * ratio
-                closed_trade.entry_commission = part_entry_comm
-                
-                open_trade.entry_commission = float(open_trade.entry_commission or 0) - part_entry_comm
-                open_trade.commission = float(open_trade.commission or 0) - part_entry_comm
-                
                 closed_trade.exit_price = trade.entry_price
                 closed_trade.exit_at = trade.entry_at
                 closed_trade.exit_reason = trade.setup_name or "Manual Partial Close"
                 
+                # Exit commission proportional to closed qty
                 total_close_qty = float(trade.quantity)
                 exit_comm_ratio = qty_to_close / total_close_qty
                 exit_comm = (trade.commission or 0) * exit_comm_ratio
                 
-                closed_trade.exit_commission = exit_comm
-                closed_trade.commission = closed_trade.entry_commission + exit_comm
-                
-                if closed_trade.direction == models.TradeDirection.LONG:
-                    closed_trade.pnl = (float(closed_trade.exit_price) - float(closed_trade.entry_price)) * float(closed_trade.quantity)
-                else:
-                    closed_trade.pnl = (float(closed_trade.entry_price) - float(closed_trade.exit_price)) * float(closed_trade.quantity)
-                
-                closed_trade.net_pnl = closed_trade.pnl - closed_trade.commission
+                # PnL + net_pnl via unified service (includes swap split)
+                pnl_service.apply_partial_close_pnl(
+                    closed_trade=closed_trade,
+                    original_trade=open_trade,
+                    close_quantity=qty_to_close,
+                    exit_commission=exit_comm,
+                )
                 
                 try:
                     mae, mfe = market_data_service.calculate_mae_mfe(
@@ -157,7 +143,7 @@ async def create_trade(
                     log.warning(f"Failed to calculate MAE/MFE for partial close: {e}")
                 
                 db.add(closed_trade)
-                open_trade.quantity = float(open_trade.quantity) - qty_to_close
+                # NOTE: open_trade.quantity already reduced by apply_partial_close_pnl
                 
                 qty_to_close = 0
                 last_modified_trade = closed_trade
@@ -199,13 +185,13 @@ async def create_trade(
 async def preview_import(
     file: UploadFile = File(...), 
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """
     Превью импорта: парсит файл и возвращает список сделок БЕЗ сохранения.
     Показывает какие сделки новые, а какие уже существуют (дубликаты).
     """
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     contents = await file.read()
     try:
@@ -282,8 +268,12 @@ async def import_trades(
     start_index: Optional[int] = Form(None),
     end_index: Optional[int] = Form(None),
     skip_duplicates: bool = Form(True),
+    initial_balance: Optional[float] = Form(None),
+    final_balance: Optional[float] = Form(None),
+    balance_date_start: Optional[str] = Form(None),
+    balance_date_end: Optional[str] = Form(None),
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """
     Импорт сделок из файла.
@@ -291,10 +281,14 @@ async def import_trades(
     - start_index: индекс первой сделки для импорта (0-based)
     - end_index: индекс последней сделки для импорта (inclusive)
     - skip_duplicates: пропускать дубликаты (default: True)
+    - initial_balance: начальный баланс из отчёта (для снимка)
+    - final_balance: конечный баланс из отчёта (для снимка)
+    - balance_date_start: дата начала периода
+    - balance_date_end: дата конца периода
     
     Дубликаты определяются по: symbol + direction + entry_at
     """
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     contents = await file.read()
     try:
@@ -319,6 +313,7 @@ async def import_trades(
     imported_count = 0
     skipped_count = 0
     duplicate_count = 0
+    balance_saved = False
     
     for trade_dict in trades_to_import:
         existing = db.query(models.Trade).filter(
@@ -335,23 +330,81 @@ async def import_trades(
                 continue
             else:
                 # Если не пропускаем, обновляем существующую сделку
+                update_columns = {c.name for c in models.Trade.__table__.columns}
                 for key, value in trade_dict.items():
-                    setattr(existing, key, value)
+                    if key in update_columns and key not in ('id', 'created_at'):
+                        setattr(existing, key, value)
                 imported_count += 1
                 continue
         
         trade_dict["account_id"] = account_id
-        db_trade = models.Trade(**trade_dict)
+        
+        # Удаляем ключи, которых нет в модели Trade (import_service может вернуть лишние)
+        valid_columns = {c.name for c in models.Trade.__table__.columns}
+        clean_dict = {k: v for k, v in trade_dict.items() if k in valid_columns}
+        db_trade = models.Trade(**clean_dict)
         db.add(db_trade)
         imported_count += 1
     
+    # Сохраняем снимки баланса если переданы
+    if initial_balance is not None and balance_date_start:
+        try:
+            from datetime import datetime
+            date_start = datetime.fromisoformat(balance_date_start.replace('Z', '+00:00'))
+            
+            # Проверяем нет ли уже снимка на эту дату
+            existing_snapshot = db.query(models.BalanceSnapshot).filter(
+                models.BalanceSnapshot.account_id == account_id,
+                models.BalanceSnapshot.date == date_start
+            ).first()
+            
+            if not existing_snapshot:
+                snapshot = models.BalanceSnapshot(
+                    account_id=account_id,
+                    date=date_start,
+                    balance=initial_balance,
+                    source=file.filename
+                )
+                db.add(snapshot)
+                balance_saved = True
+                
+            # Также обновляем initial_balance аккаунта если это первый снимок
+            account = db.query(models.Account).filter(models.Account.id == account_id).first()
+            if account and (account.initial_balance is None or account.initial_balance == 0):
+                account.initial_balance = initial_balance
+        except Exception as e:
+            log.warning(f"Could not save initial balance snapshot: {e}")
+    
+    if final_balance is not None and balance_date_end:
+        try:
+            from datetime import datetime
+            date_end = datetime.fromisoformat(balance_date_end.replace('Z', '+00:00'))
+            
+            existing_snapshot = db.query(models.BalanceSnapshot).filter(
+                models.BalanceSnapshot.account_id == account_id,
+                models.BalanceSnapshot.date == date_end
+            ).first()
+            
+            if not existing_snapshot:
+                snapshot = models.BalanceSnapshot(
+                    account_id=account_id,
+                    date=date_end,
+                    balance=final_balance,
+                    source=file.filename
+                )
+                db.add(snapshot)
+                balance_saved = True
+        except Exception as e:
+            log.warning(f"Could not save final balance snapshot: {e}")
+    
     db.commit()
     return {
-        "message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}",
+        "message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}" + (", баланс сохранён" if balance_saved else ""),
         "imported": imported_count,
         "skipped": skipped_count,
         "duplicates_found": duplicate_count,
         "total_in_file": total_in_file,
+        "balance_saved": balance_saved,
         "range_processed": {
             "start": actual_start,
             "end": actual_end,
@@ -363,15 +416,118 @@ async def import_trades(
 @router.get("/", response_model=list[schemas.Trade])
 async def read_trades(
     skip: int = 0, 
-    limit: int = 5000, 
+    limit: int = 500, 
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id
-    ).offset(skip).limit(limit).all()
+    ).order_by(models.Trade.entry_at.desc()).offset(skip).limit(limit).all()
     return trades
+
+
+import os
+import uuid
+from pathlib import Path
+
+UPLOAD_DIR = Path("uploads/screenshots")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.post("/{trade_id}/screenshot")
+async def upload_screenshot(
+    trade_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """Загрузить скриншот для сделки"""
+    account_id = auth_service.get_account_id(db, current_user)
+    
+    trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id
+    ).first()
+    
+    if not trade:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    
+    # Проверяем тип файла по Content-Type
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Разрешены только изображения (JPEG, PNG, GIF, WEBP)")
+    
+    # Читаем файл и проверяем размер (макс 10 МБ)
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+    content = await file.read()
+    
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Файл слишком большой. Максимум 10 МБ")
+    
+    if len(content) < 8:
+        raise HTTPException(status_code=400, detail="Файл повреждён или пуст")
+    
+    # Валидация magic bytes (реальный тип файла)
+    MAGIC_BYTES = {
+        b"\xff\xd8\xff": "jpg",       # JPEG
+        b"\x89PNG": "png",             # PNG
+        b"GIF87a": "gif",              # GIF87
+        b"GIF89a": "gif",              # GIF89
+        b"RIFF": "webp",              # WebP (starts with RIFF)
+    }
+    
+    detected_ext = None
+    for magic, ext in MAGIC_BYTES.items():
+        if content[:len(magic)] == magic:
+            detected_ext = ext
+            break
+    
+    if not detected_ext:
+        raise HTTPException(status_code=400, detail="Файл не является изображением (проверка magic bytes)")
+    
+    # Генерируем уникальное имя файла
+    filename = f"{trade_id}_{uuid.uuid4().hex[:8]}.{detected_ext}"
+    filepath = UPLOAD_DIR / filename
+    
+    # Сохраняем файл
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    # Обновляем URL в сделке
+    screenshot_url = f"/uploads/screenshots/{filename}"
+    trade.screenshot_url = screenshot_url
+    db.commit()
+    
+    return {"url": screenshot_url, "filename": filename}
+
+
+@router.delete("/{trade_id}/screenshot")
+async def delete_screenshot(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """Удалить скриншот сделки"""
+    account_id = auth_service.get_account_id(db, current_user)
+    
+    trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id
+    ).first()
+    
+    if not trade:
+        raise HTTPException(status_code=404, detail="Сделка не найдена")
+    
+    if trade.screenshot_url:
+        # Удаляем файл
+        filepath = Path(trade.screenshot_url.lstrip("/"))
+        if filepath.exists():
+            filepath.unlink()
+        trade.screenshot_url = None
+        db.commit()
+    
+    return {"message": "Скриншот удалён"}
 
 
 @router.patch("/{trade_id}", response_model=schemas.Trade)
@@ -379,9 +535,9 @@ async def update_trade(
     trade_id: int, 
     trade_update: schemas.TradeUpdate, 
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     db_trade = db.query(models.Trade).filter(
         models.Trade.id == trade_id,
         models.Trade.account_id == account_id
@@ -402,9 +558,9 @@ async def update_trade(
 async def delete_trade(
     trade_id: int, 
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     trade = db.query(models.Trade).filter(
         models.Trade.id == trade_id,
         models.Trade.account_id == account_id
@@ -421,9 +577,9 @@ async def close_trade(
     trade_id: int, 
     trade_close: schemas.TradeClose, 
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     db_trade = db.query(models.Trade).filter(
         models.Trade.id == trade_id,
         models.Trade.account_id == account_id
@@ -435,12 +591,18 @@ async def close_trade(
     db_trade.exit_at = trade_close.exit_at
     db_trade.exit_reason = trade_close.exit_reason
     
+    # Update swap if provided by client
+    if trade_close.swap is not None:
+        db_trade.swap = trade_close.swap
+    
+    # Auto-calculate MAE/MFE (only if not provided by client)
+    # NOTE: mae_price/mfe_price are NOT sent from frontend anymore;
+    # the backend always auto-calculates from market data.
     if trade_close.mae_price is not None:
         db_trade.mae_price = trade_close.mae_price
     if trade_close.mfe_price is not None:
         db_trade.mfe_price = trade_close.mfe_price
     
-    # Auto-calculate MAE/MFE if not provided
     if db_trade.mae_price is None or db_trade.mfe_price is None:
         try:
             mae, mfe = market_data_service.calculate_mae_mfe(
@@ -457,11 +619,11 @@ async def close_trade(
         except Exception as e:
             log.warning(f"Failed to calculate MAE/MFE for trade {trade_id}: {e}")
     
-    # Calculate PnL
-    if db_trade.direction == models.TradeDirection.LONG:
-        db_trade.pnl = (db_trade.exit_price - db_trade.entry_price) * db_trade.quantity
-    else:
-        db_trade.pnl = (db_trade.entry_price - db_trade.exit_price) * db_trade.quantity
+    # Calculate PnL + net_pnl via unified service
+    pnl_service.apply_close_pnl(
+        trade=db_trade,
+        exit_commission=float(trade_close.exit_commission or 0),
+    )
     
     # AI Analysis
     trade_data = {
@@ -483,9 +645,9 @@ async def close_trade(
 @router.get("/unrealized-pnl")
 async def get_unrealized_pnl(
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     open_trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at == None
@@ -528,19 +690,57 @@ async def get_unrealized_pnl(
     return results
 
 
+@router.get("/mae-mfe-stats")
+async def get_mae_mfe_stats(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """
+    Получить статистику по MAE/MFE: сколько сделок с метриками, сколько без.
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    
+    # Общее количество закрытых сделок
+    total_closed = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.exit_at != None
+    ).count()
+    
+    # Сделки с MAE/MFE
+    with_mae_mfe = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.exit_at != None,
+        models.Trade.mae_price != None,
+        models.Trade.mfe_price != None
+    ).count()
+    
+    # Сделки без MAE/MFE
+    without_mae_mfe = total_closed - with_mae_mfe
+    
+    return {
+        "total_closed": total_closed,
+        "with_mae_mfe": with_mae_mfe,
+        "without_mae_mfe": without_mae_mfe,
+        "coverage_pct": round(with_mae_mfe / total_closed * 100, 1) if total_closed > 0 else 0
+    }
+
+
 @router.post("/calculate-mae-mfe")
 async def calculate_mae_mfe_bulk(
     trade_ids: Optional[List[int]] = None,
+    force_all: bool = False,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """
     Массовый расчёт MAE/MFE для закрытых сделок.
-    Если trade_ids не указаны, рассчитывает для всех сделок без MAE/MFE.
+    - trade_ids: конкретные ID сделок для расчёта
+    - force_all: если True, пересчитывает ВСЕ сделки (даже с уже существующими MAE/MFE)
+    - Если ничего не указано, рассчитывает только для сделок без MAE/MFE.
     """
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
-    # Получаем закрытые сделки без MAE/MFE
+    # Получаем закрытые сделки
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at != None,  # Только закрытые
@@ -548,8 +748,8 @@ async def calculate_mae_mfe_bulk(
     
     if trade_ids:
         query = query.filter(models.Trade.id.in_(trade_ids))
-    else:
-        # Только сделки без MAE или MFE
+    elif not force_all:
+        # Только сделки без MAE или MFE (если не force_all)
         query = query.filter(
             (models.Trade.mae_price == None) | (models.Trade.mfe_price == None)
         )
@@ -587,7 +787,8 @@ async def calculate_mae_mfe_bulk(
                 entry_price=float(trade.entry_price),  # Уже средневзвешенная при усреднении
                 entry_time=trade.entry_at,
                 exit_time=trade.exit_at,
-                operations=operations  # Передаём операции для точного определения периода
+                operations=operations,  # Передаём операции для точного определения периода
+                exit_price=float(trade.exit_price) if trade.exit_price else None  # Для корректности MAE
             )
             
             if mae is not None and mfe is not None:
@@ -622,7 +823,7 @@ async def calculate_post_exit_bulk(
     recalculate: bool = False,
     timeframe: Optional[str] = None,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """
     Анализ движения цены ПОСЛЕ закрытия сделок.
@@ -636,7 +837,7 @@ async def calculate_post_exit_bulk(
     - recalculate: если True, пересчитывает все; если False, только без анализа
     - timeframe: таймфрейм для анализа (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W)
     """
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     # Получаем закрытые сделки
     query = db.query(models.Trade).filter(
@@ -830,10 +1031,10 @@ async def get_trades_with_post_exit(
     limit: int = 50,
     early_only: bool = False,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """Получить список сделок с post-exit анализом"""
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
@@ -889,10 +1090,10 @@ async def get_trades_with_post_exit(
 async def get_trade_post_exit(
     trade_id: int,
     db: Session = Depends(database.get_db),
-    current_user: Optional[models.User] = Depends(auth_service.get_current_user_optional)
+    current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """Получить post-exit анализ для конкретной сделки"""
-    account_id = get_account_id(db, current_user)
+    account_id = auth_service.get_account_id(db, current_user)
     
     trade = db.query(models.Trade).filter(
         models.Trade.id == trade_id,

@@ -65,6 +65,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           trend={hasData && stats?.risk_of_ruin?.ror_20pct && stats.risk_of_ruin.ror_20pct > 10 ? 'down' : undefined}
           icon={<Skull size={18} />}
           tooltipText={t.advancedStats.ror20.tooltip}
+          manualAnchor="risk-of-ruin"
         />
         <StatsCard 
           title={t.advancedStats.ror50.title}
@@ -73,6 +74,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           trend={hasData && stats?.risk_of_ruin?.ror_50pct && stats.risk_of_ruin.ror_50pct > 1 ? 'down' : undefined}
           icon={<Skull size={18} />}
           tooltipText={t.advancedStats.ror50.tooltip}
+          manualAnchor="risk-of-ruin"
         />
         <StatsCard 
           title={t.advancedStats.monteCarlo5.title}
@@ -81,6 +83,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           trend={hasData ? 'down' : undefined}
           icon={<Dice5 size={18} />}
           tooltipText={t.advancedStats.monteCarlo5.tooltip}
+          manualAnchor="monte-carlo"
         />
         <StatsCard 
           title={t.advancedStats.monteCarloMedian.title}
@@ -89,6 +92,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           trend={hasData && stats?.monte_carlo?.median_return && stats.monte_carlo.median_return > 0 ? 'up' : hasData ? 'down' : undefined}
           icon={<LineChartIcon size={18} />}
           tooltipText={t.advancedStats.monteCarloMedian.tooltip}
+          manualAnchor="monte-carlo"
         />
         <StatsCard 
           title={t.advancedStats.rDistribution.title}
@@ -96,6 +100,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           description={hasData ? interpolate(t.advancedStats.rDistribution.description, { pct: stats?.r_distribution?.pct_above_2r?.toFixed(0) || 0 }) : ''}
           icon={<BarChart3 size={18} />}
           tooltipText={t.advancedStats.rDistribution.tooltip}
+          manualAnchor="r-expectancy"
         />
         <StatsCard 
           title={t.advancedStats.tradeDuration.title}
@@ -103,6 +108,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           description={hasData ? interpolate(t.advancedStats.tradeDuration.description, { win: stats?.trade_duration?.avg_win_duration_hours?.toFixed(1) || 0, loss: stats?.trade_duration?.avg_loss_duration_hours?.toFixed(1) || 0 }) : ''}
           icon={<Clock size={18} />}
           tooltipText={t.advancedStats.tradeDuration.tooltip}
+          manualAnchor="time-patterns"
         />
         <StatsCard 
           title={t.advancedStats.bestDay.title}
@@ -110,6 +116,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           description={hasData ? `PnL: ${formatCurrency(stats?.time_patterns?.best_day?.total_pnl || 0)}` : ''}
           icon={<Calendar size={18} />}
           tooltipText={t.advancedStats.bestDay.tooltip}
+          manualAnchor="time-patterns"
         />
         <StatsCard 
           title={t.advancedStats.maeMfe.title}
@@ -117,6 +124,7 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
           description={hasData ? interpolate(t.advancedStats.maeMfe.description, { mfe: `${stats?.mae_mfe_analysis?.avg_mfe_pct?.toFixed(2) || 0}%`, efficiency: `${stats?.mae_mfe_analysis?.avg_efficiency?.toFixed(0) || 0}%` }) : ''}
           icon={<Gauge size={18} />}
           tooltipText={t.advancedStats.maeMfe.tooltip}
+          manualAnchor="mae-mfe"
         />
       </div>
     </div>

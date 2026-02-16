@@ -6,12 +6,36 @@ import { StatsCard } from '@/components/StatsCard';
 import { useLanguage, interpolate } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
 
+interface OptimalFMethod {
+  optimal_f: number;
+  f_10: number;
+  f_4: number;
+  f_2: number;
+  worst_loss?: number;
+  worst_r?: number;
+  trades_used?: number;
+  description?: string;
+}
+
+interface OptimalFData {
+  optimal_f: number;
+  pnl_method: OptimalFMethod | null;
+  r_method: OptimalFMethod | null;
+  trades_with_risk: number;
+  trades_without_risk: number;
+  total_trades: number;
+  is_valid: boolean;
+}
+
 interface DashboardData {
   total_pnl: number;
+  unrealized_pnl?: number;
+  total_pnl_with_unrealized?: number;
   win_rate: number;
   total_trades: number;
   profitable_trades: number;
   optimal_f: number;
+  optimal_f_data?: OptimalFData;  // Полные данные с обоими методами
   sqn: { sqn: number; rating: string };
   z_score: { z_score: number; verdict: string; description: string };
   profit_factor: number;
@@ -66,11 +90,16 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       <StatsCard 
         title={t.stats.totalPnl.title} 
-        value={formatStatCurrency(stats?.total_pnl)} 
-        description={hasData ? t.stats.totalPnl.description : ''}
-        trend={hasData && stats?.total_pnl && stats.total_pnl > 0 ? 'up' : hasData && stats?.total_pnl && stats.total_pnl < 0 ? 'down' : undefined}
+        value={formatStatCurrency(stats?.total_pnl_with_unrealized ?? stats?.total_pnl)} 
+        description={hasData ? (
+          stats?.unrealized_pnl && stats.unrealized_pnl !== 0 
+            ? `Реализ.: ${formatCurrency(stats.total_pnl)} | Нереализ.: ${formatCurrency(stats.unrealized_pnl)}`
+            : t.stats.totalPnl.description
+        ) : ''}
+        trend={hasData && (stats?.total_pnl_with_unrealized ?? stats?.total_pnl ?? 0) > 0 ? 'up' : hasData && (stats?.total_pnl_with_unrealized ?? stats?.total_pnl ?? 0) < 0 ? 'down' : undefined}
         icon={<TrendingUp size={18} />}
-        tooltipText={t.stats.totalPnl.tooltip}
+        tooltipText={stats?.unrealized_pnl ? `Реализованный PnL: ${formatCurrency(stats.total_pnl)}\nНереализованный: ${formatCurrency(stats.unrealized_pnl)}` : t.stats.totalPnl.tooltip}
+        manualAnchor="total-pnl"
       />
       <StatsCard 
         title={t.stats.winRate.title} 
@@ -78,19 +107,35 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? interpolate(t.stats.winRate.description, { profitable: stats?.profitable_trades || 0, total: stats?.total_trades || 0 }) : ''}
         icon={<Target size={18} />}
         tooltipText={t.stats.winRate.tooltip}
+        manualAnchor="win-rate"
       />
       <StatsCard 
         title={t.stats.optimalF.title} 
-        value={formatStat(stats?.optimal_f)} 
-        description={hasData ? t.stats.optimalF.description : ''}
+        value={formatStat(stats?.optimal_f_data?.pnl_method?.optimal_f ?? stats?.optimal_f)} 
+        description={hasData ? (
+          stats?.optimal_f_data?.pnl_method 
+            ? `PnL-метод • Риск: ${stats.optimal_f_data.pnl_method.f_10}%`
+            : t.stats.optimalF.description
+        ) : ''}
         highlight={hasData ? (
           (stats?.profit_factor || 0) >= 1 
-            ? `Риск: ${((stats?.optimal_f || 0) * 10).toFixed(1)}% (1/10)`
+            ? `Рекомендуемый: ${((stats?.optimal_f_data?.pnl_method?.f_10 ?? stats?.optimal_f ?? 0) * 10).toFixed(1)}% (f/10)`
             : `⚠️ PF < 1 — не торговать!`
         ) : undefined}
+        secondaryValue={
+          hasData && stats?.optimal_f_data?.r_method 
+            ? `${stats.optimal_f_data.r_method.optimal_f} (R-метод)`
+            : undefined
+        }
+        secondaryLabel={
+          stats?.optimal_f_data?.r_method 
+            ? `R-метод (${stats.optimal_f_data.trades_with_risk} сд.)`
+            : undefined
+        }
         trend={hasData && (stats?.profit_factor || 0) < 1 ? 'down' : undefined}
         icon={<Zap size={18} />}
         tooltipText={t.stats.optimalF.tooltip}
+        manualAnchor="optimal-f"
       />
       <StatsCard 
         title={t.stats.sqn.title} 
@@ -98,6 +143,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? (stats?.sqn?.rating || t.stats.sqn.description) : ''}
         icon={<Activity size={18} />}
         tooltipText={t.stats.sqn.tooltip}
+        manualAnchor="sqn"
       />
       <StatsCard 
         title={t.stats.zScore.title} 
@@ -105,6 +151,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? (stats?.z_score?.verdict || t.stats.zScore.description) : ''}
         icon={<GitGraph size={18} />}
         tooltipText={stats?.z_score?.description || t.stats.zScore.tooltip}
+        manualAnchor="z-score"
       />
       <StatsCard 
         title={t.stats.profitFactor.title} 
@@ -112,6 +159,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? t.stats.profitFactor.description : ''}
         icon={<TrendingUp size={18} />}
         tooltipText={t.stats.profitFactor.tooltip}
+        manualAnchor="profit-factor"
       />
       <StatsCard 
         title={t.stats.rExpectancy.title} 
@@ -119,6 +167,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? t.stats.rExpectancy.description : ''}
         icon={<Target size={18} />}
         tooltipText={t.stats.rExpectancy.tooltip}
+        manualAnchor="r-expectancy"
       />
       <StatsCard 
         title={t.stats.recoveryFactor.title} 
@@ -126,6 +175,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? t.stats.recoveryFactor.description : ''}
         icon={<Activity size={18} />}
         tooltipText={t.stats.recoveryFactor.tooltip}
+        manualAnchor="recovery-factor"
       />
       <StatsCard 
         title={t.stats.totalRoi.title} 
@@ -134,6 +184,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         trend={hasData && stats?.total_roi && stats.total_roi > 0 ? 'up' : hasData && stats?.total_roi && stats.total_roi < 0 ? 'down' : undefined}
         icon={<Wallet size={18} />}
         tooltipText={t.stats.totalRoi.tooltip}
+        manualAnchor="roi"
       />
       <StatsCard 
         title={t.stats.expectedGhpr.title} 
@@ -141,6 +192,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? t.stats.expectedGhpr.description : ''}
         icon={<TrendingUp size={18} />}
         tooltipText={t.stats.expectedGhpr.tooltip}
+        manualAnchor="ghpr"
       />
       <StatsCard 
         title={t.stats.sortinoRatio.title} 
@@ -148,6 +200,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? t.stats.sortinoRatio.description : ''}
         icon={<Shield size={18} />}
         tooltipText={t.stats.sortinoRatio.tooltip}
+        manualAnchor="sortino"
       />
       <StatsCard 
         title={t.stats.maxDrawdown.title} 
@@ -156,6 +209,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         trend={hasData ? 'down' : undefined}
         icon={<TrendingDown size={18} />}
         tooltipText={t.stats.maxDrawdown.tooltip}
+        manualAnchor="drawdown"
       />
       <StatsCard 
         title={t.stats.currentDrawdown.title} 
@@ -164,6 +218,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         trend={hasData && stats?.current_drawdown_pct && stats.current_drawdown_pct > 5 ? 'down' : undefined}
         icon={<Activity size={18} />}
         tooltipText={t.stats.currentDrawdown.tooltip}
+        manualAnchor="drawdown"
       />
       <StatsCard 
         title={t.stats.tailRatio.title} 
@@ -171,6 +226,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? t.stats.tailRatio.description : ''}
         icon={<BarChart3 size={18} />}
         tooltipText={t.stats.tailRatio.tooltip}
+        manualAnchor="tail-ratio"
       />
       <StatsCard 
         title={t.stats.winStreak.title} 
@@ -178,6 +234,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? `${interpolate(t.stats.winStreak.description, { current: stats?.current_streak || 0 })} ${stats?.current_streak_type === 'win' ? '🟢' : stats?.current_streak_type === 'loss' ? '🔴' : ''}` : ''}
         icon={<Flame size={18} />}
         tooltipText={t.stats.winStreak.tooltip}
+        manualAnchor="streaks"
       />
       <StatsCard 
         title={t.stats.lossStreak.title} 
@@ -186,6 +243,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         trend={hasData ? 'down' : undefined}
         icon={<AlertTriangle size={18} />}
         tooltipText={t.stats.lossStreak.tooltip}
+        manualAnchor="streaks"
       />
       <StatsCard 
         title={t.stats.avgWinLoss.title} 
@@ -193,6 +251,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         description={hasData ? `${settings.currencySymbol}${Math.abs(stats?.avg_loss || 0).toFixed(0)}` : ''}
         icon={<Scale size={18} />}
         tooltipText={t.stats.avgWinLoss.tooltip}
+        manualAnchor="avg-win-loss"
       />
       <StatsCard 
         title={t.stats.calmarRatio.title} 
@@ -201,6 +260,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         trend={hasData && stats?.calmar_ratio?.calmar_ratio && stats.calmar_ratio.calmar_ratio >= 1 ? 'up' : hasData && stats?.calmar_ratio?.calmar_ratio && stats.calmar_ratio.calmar_ratio < 0.5 ? 'down' : undefined}
         icon={<Gauge size={18} />}
         tooltipText={t.stats.calmarRatio.tooltip}
+        manualAnchor="calmar-ratio"
       />
     </div>
   );

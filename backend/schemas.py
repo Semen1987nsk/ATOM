@@ -39,9 +39,23 @@ class UserUpdate(BaseModel):
     settings: Optional[dict] = None
 
 class Token(BaseModel):
-    """JWT токен"""
+    """JWT токен (legacy, только access)"""
     access_token: str
     token_type: str = "bearer"
+
+
+class TokenPair(BaseModel):
+    """Пара JWT токенов: access + refresh"""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int = 1800  # Время жизни access токена в секундах (30 мин)
+
+
+class TokenRefreshRequest(BaseModel):
+    """Запрос на обновление токенов"""
+    refresh_token: str
+
 
 class TokenData(BaseModel):
     """Данные из токена"""
@@ -115,7 +129,12 @@ class TradeBase(BaseModel):
     entry_commission: Optional[float] = 0
     exit_commission: Optional[float] = 0
     swap: Optional[float] = 0
-    confidence: Optional[int] = Field(None, ge=1, le=10)
+    confidence: Optional[int] = Field(None, ge=1, le=5)  # Уверенность 1-5
+    # Психо-трекер
+    mood: Optional[int] = Field(None, ge=1, le=5)  # Настроение: 1=😤 2=😟 3=😐 4=😊 5=🚀
+    discipline: Optional[int] = Field(None, ge=1, le=5)  # Следование плану 1-5
+    # Сетап
+    setup_id: Optional[int] = None
     # Новые поля
     currency: Optional[str] = "RUB"
     operations: Optional[list] = []  # Детали операций для аккордеона
@@ -129,6 +148,8 @@ class TradeClose(BaseModel):
     exit_reason: Optional[str] = None
     mae_price: Optional[float] = None
     mfe_price: Optional[float] = None
+    exit_commission: Optional[float] = 0
+    swap: Optional[float] = None  # If provided, overrides existing swap on trade
 
 class TradeUpdate(BaseModel):
     symbol: Optional[str] = None
@@ -154,7 +175,46 @@ class TradeUpdate(BaseModel):
     entry_commission: Optional[float] = None
     exit_commission: Optional[float] = None
     swap: Optional[float] = None
-    confidence: Optional[int] = Field(None, ge=1, le=10)
+    confidence: Optional[int] = Field(None, ge=1, le=5)
+    mood: Optional[int] = Field(None, ge=1, le=5)
+    discipline: Optional[int] = Field(None, ge=1, le=5)
+    setup_id: Optional[int] = None
+
+
+# Setup/Strategy schemas
+class SetupBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    rules: Optional[str] = None
+    color: Optional[str] = "#00d4aa"
+    icon: Optional[str] = "📈"
+    is_active: Optional[bool] = True
+
+class SetupCreate(SetupBase):
+    account_id: int
+
+class SetupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    rules: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class Setup(SetupBase):
+    id: int
+    account_id: int
+    created_at: datetime
+    
+    # Статистика (добавляется динамически)
+    trades_count: Optional[int] = 0
+    win_rate: Optional[float] = 0
+    avg_pnl: Optional[float] = 0
+    total_pnl: Optional[float] = 0
+    
+    class Config:
+        from_attributes = True
+
 
 class Trade(TradeBase):
     id: int
@@ -170,16 +230,21 @@ class Trade(TradeBase):
     position_id: Optional[int] = None
     r_multiple: Optional[float] = None
     holding_time_minutes: Optional[int] = None
+    # Setup relation (simplified)
+    setup: Optional[SetupBase] = None
 
     class Config:
         from_attributes = True
 
 class DashboardStats(BaseModel):
     total_pnl: float
+    unrealized_pnl: float = 0
+    total_pnl_with_unrealized: float = 0
     win_rate: float
     total_trades: int
     profitable_trades: int
-    optimal_f: float
+    optimal_f: float  # Основное значение (PnL-метод)
+    optimal_f_data: Optional[dict] = None  # Полные данные: pnl_method, r_method, сравнение
     sqn: Optional[dict] = None
     z_score: Optional[dict] = None
     profit_factor: float = 0

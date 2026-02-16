@@ -8,9 +8,49 @@ env/
 venv/
 .venv/
 backend/venv/
+*.egg-info/
+dist/
+build/
 
 # Environment variables
 .env
+.env.local
+.env.production
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Uploads (user data)
+backend/uploads/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Test/temp files
+*_result.txt
+*_result.json
+*.xlsx
+_archive/
+
+# Node
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+
+# Coverage & testing
+.coverage
+htmlcov/
+.pytest_cache/

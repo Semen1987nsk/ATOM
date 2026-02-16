@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge } from 'lucide-react';
+import { ArrowLeft, Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge, CheckCircle } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
 
 export default function Manual() {
@@ -71,6 +71,14 @@ export default function Manual() {
           Содержание
         </h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+          <a href="#total-pnl" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <TrendingUp size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Total PnL — Общий результат</span>
+          </a>
+          <a href="#win-rate" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <Target size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Win Rate — Процент побед</span>
+          </a>
           <a href="#optimal-f" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <Zap size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Optimal f — Формула богатства</span>
@@ -91,9 +99,29 @@ export default function Manual() {
             <TrendingDown size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Drawdown — Анализ просадок</span>
           </a>
+          <a href="#recovery-factor" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <Activity size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Recovery Factor — Скорость восстановления</span>
+          </a>
           <a href="#calmar-ratio" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <Gauge size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Calmar Ratio — Качество доходности</span>
+          </a>
+          <a href="#roi" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <DollarSign size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">ROI — Доходность инвестиций</span>
+          </a>
+          <a href="#ghpr" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <TrendingUp size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">GHPR — Геом. средняя доходность</span>
+          </a>
+          <a href="#sortino" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <Shield size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Sortino Ratio — Оценка риска</span>
+          </a>
+          <a href="#tail-ratio" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <BarChart3 size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Tail Ratio — Анализ хвостов</span>
           </a>
           <a href="#monte-carlo" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <Dice5 size={14} className="text-accent" />
@@ -107,6 +135,10 @@ export default function Manual() {
             <Target size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">MAE/MFE — Оптимизация входов</span>
           </a>
+          <a href="#post-exit" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <Clock size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Post-Exit — Качество выходов</span>
+          </a>
           <a href="#time-patterns" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <Clock size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Time Patterns — Когда торговать</span>
@@ -119,6 +151,10 @@ export default function Manual() {
             <Repeat size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Streaks — Серии побед/поражений</span>
           </a>
+          <a href="#avg-win-loss" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
+            <Scale size={14} className="text-accent" />
+            <span className="group-hover:text-accent transition-colors">Avg Win/Loss — Средняя сделка</span>
+          </a>
           <a href="#tags" className="flex items-center gap-2 p-2 hover:bg-accent/10 rounded transition-colors group">
             <Tag size={14} className="text-accent" />
             <span className="group-hover:text-accent transition-colors">Tags — Система тегов</span>
@@ -127,6 +163,99 @@ export default function Manual() {
       </nav>
 
       <div className="space-y-16">
+        {/* Total PnL */}
+        <section id="total-pnl" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-green-500/20 rounded-xl">
+                <TrendingUp className="text-green-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">TOTAL PnL</h2>
+                <p className="text-sm text-slate-400">Общий финансовый результат</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-green-400">Total PnL (Profit and Loss)</strong> — это сумма всех ваших прибылей и убытков 
+                за выбранный период. Самый простой и понятный показатель эффективности торговли.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Формула</h4>
+                <code className="text-lg text-green-400">Total PnL = Σ(Прибыльные сделки) + Σ(Убыточные сделки)</code>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Важно понимать:</h4>
+              <ul className="space-y-2 text-slate-300">
+                <li>• <strong>Gross PnL</strong> — результат без учёта комиссий</li>
+                <li>• <strong>Net PnL</strong> — чистый результат с учётом всех издержек</li>
+                <li>• PnL сам по себе не показывает качество системы — нужно смотреть в связке с другими метриками</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Win Rate */}
+        <section id="win-rate" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-blue-500/20 rounded-xl">
+                <Target className="text-blue-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">WIN RATE</h2>
+                <p className="text-sm text-slate-400">Процент прибыльных сделок</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-blue-400">Win Rate</strong> — процент сделок, закрытых с прибылью. 
+                Один из самых переоценённых показателей среди начинающих трейдеров.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Формула</h4>
+                <code className="text-lg text-blue-400">Win Rate = (Прибыльные сделки / Всего сделок) × 100%</code>
+              </div>
+              
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="text-yellow-400 mt-1 flex-shrink-0" size={20} />
+                  <div>
+                    <p className="font-bold text-yellow-400">Распространённое заблуждение</p>
+                    <p className="text-sm text-slate-300 mt-1">
+                      Win Rate 80% ≠ прибыльная система. Можно иметь 80% побед и сливать депозит, 
+                      если средний убыток в 5 раз больше средней прибыли. И наоборот — Win Rate 30% 
+                      может быть очень прибыльным при большом соотношении риск/прибыль.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Интерпретация:</h4>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-red-400 mb-2">&lt; 40%</div>
+                  <p className="text-sm text-slate-400">Трендовые системы, высокий R:R</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-yellow-400 mb-2">40-60%</div>
+                  <p className="text-sm text-slate-400">Сбалансированные системы</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-green-400 mb-2">&gt; 60%</div>
+                  <p className="text-sm text-slate-400">Скальпинг, арбитраж, HFT</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Optimal f */}
         <section id="optimal-f" className="cyber-card p-8 relative overflow-hidden">
           {/* Background Effects */}
@@ -1449,6 +1578,213 @@ export default function Manual() {
           </div>
         </section>
 
+        {/* Recovery Factor */}
+        <section id="recovery-factor" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-cyan-500/20 rounded-xl">
+                <Activity className="text-cyan-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">RECOVERY FACTOR</h2>
+                <p className="text-sm text-slate-400">Скорость восстановления после просадок</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-cyan-400">Recovery Factor</strong> показывает, насколько быстро 
+                ваша система восстанавливается после просадок. Чем выше — тем устойчивее система.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Формула</h4>
+                <code className="text-lg text-cyan-400">Recovery Factor = Net Profit / Max Drawdown</code>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Интерпретация:</h4>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-red-400 mb-2">&lt; 1</div>
+                  <p className="text-sm text-slate-400">Система не окупила просадку</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-yellow-400 mb-2">1-3</div>
+                  <p className="text-sm text-slate-400">Средний уровень</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-green-400 mb-2">&gt; 3</div>
+                  <p className="text-sm text-slate-400">Отличная система</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ROI */}
+        <section id="roi" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-emerald-500/20 rounded-xl">
+                <DollarSign className="text-emerald-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">ROI</h2>
+                <p className="text-sm text-slate-400">Return on Investment — доходность инвестиций</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-emerald-400">ROI</strong> — процентная доходность относительно 
+                начального депозита. Показывает, сколько вы заработали в процентах от вложенных средств.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Формула</h4>
+                <code className="text-lg text-emerald-400">ROI = (Net Profit / Initial Deposit) × 100%</code>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Пример:</h4>
+              <ul className="space-y-2 text-slate-300">
+                <li>• Депозит: 100,000₽</li>
+                <li>• Чистая прибыль: 25,000₽</li>
+                <li>• <strong className="text-emerald-400">ROI = 25%</strong></li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* GHPR */}
+        <section id="ghpr" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-violet-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-violet-500/20 rounded-xl">
+                <TrendingUp className="text-violet-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">GHPR</h2>
+                <p className="text-sm text-slate-400">Geometric Holding Period Return</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-violet-400">GHPR</strong> — геометрическая средняя доходность за период удержания. 
+                Учитывает эффект сложного процента, в отличие от простого среднего.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Почему важно</h4>
+                <p className="text-slate-300">
+                  Арифметическое среднее может обманывать. Если вы заработали +50% и потеряли -50%, 
+                  арифметическое среднее покажет 0%, но на самом деле вы в минусе на 25%!
+                </p>
+                <p className="text-violet-400 font-mono mt-2">
+                  100 × 1.5 × 0.5 = 75 (а не 100)
+                </p>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Интерпретация:</h4>
+              <ul className="space-y-2 text-slate-300">
+                <li>• <strong className="text-green-400">GHPR &gt; 1.0</strong> — система прибыльна в долгосрок</li>
+                <li>• <strong className="text-red-400">GHPR &lt; 1.0</strong> — система убыточна</li>
+                <li>• Чем выше GHPR, тем быстрее растёт капитал</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Sortino Ratio */}
+        <section id="sortino" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-indigo-500/20 rounded-xl">
+                <Shield className="text-indigo-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">SORTINO RATIO</h2>
+                <p className="text-sm text-slate-400">Доходность с поправкой на риск падения</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-indigo-400">Sortino Ratio</strong> — улучшенная версия Sharpe Ratio. 
+                Учитывает только негативную волатильность (убытки), а не все колебания.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Формула</h4>
+                <code className="text-lg text-indigo-400">Sortino = (Avg Return - Risk Free Rate) / Downside Deviation</code>
+              </div>
+              
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-6">
+                <p className="text-sm text-slate-300">
+                  <strong className="text-blue-400">Преимущество над Sharpe:</strong> Sharpe штрафует за любую 
+                  волатильность, включая положительную (большие прибыли). Sortino штрафует только за убытки, 
+                  что более справедливо для оценки торговых систем.
+                </p>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Интерпретация:</h4>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-red-400 mb-2">&lt; 1</div>
+                  <p className="text-sm text-slate-400">Плохо</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-yellow-400 mb-2">1-2</div>
+                  <p className="text-sm text-slate-400">Приемлемо</p>
+                </div>
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="text-2xl font-bold text-green-400 mb-2">&gt; 2</div>
+                  <p className="text-sm text-slate-400">Отлично</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Tail Ratio */}
+        <section id="tail-ratio" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-orange-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-orange-500/20 rounded-xl">
+                <BarChart3 className="text-orange-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">TAIL RATIO</h2>
+                <p className="text-sm text-slate-400">Соотношение экстремальных значений</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                <strong className="text-orange-400">Tail Ratio</strong> сравнивает размер экстремальных 
+                прибылей с размером экстремальных убытков. Показывает асимметрию &quot;хвостов&quot; распределения.
+              </p>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Формула</h4>
+                <code className="text-lg text-orange-400">Tail Ratio = 95-й перцентиль / |5-й перцентиль|</code>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Интерпретация:</h4>
+              <ul className="space-y-2 text-slate-300">
+                <li>• <strong className="text-green-400">Tail Ratio &gt; 1</strong> — экстремальные прибыли больше экстремальных убытков (хорошо)</li>
+                <li>• <strong className="text-yellow-400">Tail Ratio ≈ 1</strong> — симметричное распределение</li>
+                <li>• <strong className="text-red-400">Tail Ratio &lt; 1</strong> — &quot;чёрные лебеди&quot; чаще в убытках (опасно)</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         {/* Calmar Ratio */}
         <section id="calmar-ratio" className="cyber-card p-8 relative overflow-hidden">
           {/* Background */}
@@ -1944,6 +2280,181 @@ export default function Manual() {
                 <li>📊 Минимум 30 сделок для надёжного анализа</li>
                 <li>⚠️ MAE &gt; стоп-лосса = сделка была обречена. Фильтруйте такие сетапы!</li>
                 <li>🎯 Eqio строит графики MAE/MFE автоматически</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Post-Exit Analysis */}
+        <section id="post-exit" className="cyber-card p-8 relative overflow-hidden">
+          {/* Background */}
+          <div className="absolute -top-20 -right-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
+          
+          <div className="relative">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-700 rounded-xl shadow-lg shadow-purple-500/20">
+                  <Clock size={28} className="text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-black tracking-tight">Post-Exit Анализ</h2>
+                    <span className="px-2 py-0.5 bg-purple-500/20 rounded text-[10px] font-mono text-purple-400">ТАЙМИНГ</span>
+                  </div>
+                  <p className="text-xs font-mono opacity-50">АНАЛИЗ КАЧЕСТВА ВЫХОДОВ</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Pain Point */}
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-red-500/20 rounded shrink-0">
+                  <AlertTriangle size={16} className="text-red-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-red-400 mb-1">Преждевременные выходы</div>
+                  <p className="text-sm opacity-80">
+                    Вы закрываете сделку в +5%, а цена потом идёт ещё на +15%. Знакомо? 
+                    <span className="text-white font-medium"> Post-Exit анализ покажет, сколько денег вы оставляете на столе.</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* What is Post-Exit */}
+            <div className="mb-8">
+              <h3 className="text-white font-bold text-lg mb-3 flex items-center gap-2">
+                <BookOpen className="text-purple-400" size={18} />
+                Что такое Post-Exit анализ?
+              </h3>
+              <p className="text-sm opacity-80 leading-relaxed mb-4">
+                Post-Exit анализ отслеживает <strong className="text-white">движение цены ПОСЛЕ закрытия</strong> вашей сделки.
+                Он показывает, продолжилось ли движение в вашу сторону и на сколько процентов вы &quot;недобрали&quot;.
+              </p>
+              <div className="bg-purple-500/10 p-4 rounded-lg border border-purple-500/20">
+                <p className="text-sm italic text-center">
+                  «Лучший трейдер — не тот, кто всегда прав на входе, а тот, кто 
+                  <span className="text-purple-400 font-bold"> максимально использует правильные входы</span>.»
+                </p>
+              </div>
+            </div>
+
+            {/* How it works */}
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              {/* Early Exit */}
+              <div className="bg-gradient-to-br from-yellow-500/10 to-yellow-500/5 p-6 rounded-xl border border-yellow-500/20">
+                <h3 className="font-bold text-yellow-400 text-lg mb-3 flex items-center gap-2">
+                  <AlertTriangle size={18} />
+                  Ранний выход
+                </h3>
+                <p className="text-sm opacity-70 mb-4">
+                  Сделка, закрытая <strong className="text-white">до того</strong>, как цена достигла потенциала.
+                  Цена продолжила движение в вашу сторону более чем на 1%.
+                </p>
+                
+                <div className="bg-black/30 p-4 rounded-lg mb-4">
+                  <div className="text-xs font-mono text-yellow-400 mb-2">📉 Пример:</div>
+                  <p className="text-sm opacity-80 mb-2">
+                    LONG по 100₽ → Закрыли по 105₽ (+5%)
+                  </p>
+                  <p className="text-sm opacity-80 mb-2">
+                    Через 4 часа цена достигла 115₽ (+15%)
+                  </p>
+                  <p className="text-sm">
+                    <span className="text-yellow-400 font-bold">Упущено: +10%</span> — вы забрали только треть движения
+                  </p>
+                </div>
+              </div>
+
+              {/* Good Exit */}
+              <div className="bg-gradient-to-br from-green-500/10 to-green-500/5 p-6 rounded-xl border border-green-500/20">
+                <h3 className="font-bold text-green-400 text-lg mb-3 flex items-center gap-2">
+                  <CheckCircle size={18} />
+                  Хороший выход
+                </h3>
+                <p className="text-sm opacity-70 mb-4">
+                  Сделка, закрытая <strong className="text-white">вовремя</strong>.
+                  Цена не продолжила движение в вашу сторону более чем на 1%.
+                </p>
+                
+                <div className="bg-black/30 p-4 rounded-lg mb-4">
+                  <div className="text-xs font-mono text-green-400 mb-2">✓ Пример:</div>
+                  <p className="text-sm opacity-80 mb-2">
+                    LONG по 100₽ → Закрыли по 110₽ (+10%)
+                  </p>
+                  <p className="text-sm opacity-80 mb-2">
+                    Через 4 часа цена была 108₽ (−2% от выхода)
+                  </p>
+                  <p className="text-sm">
+                    <span className="text-green-400 font-bold">Отличный тайминг!</span> — вы вышли на максимуме
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Periods */}
+            <div className="mb-8">
+              <h3 className="text-white font-bold text-lg mb-4">📊 Периоды анализа</h3>
+              <p className="text-sm opacity-70 mb-4">
+                Eqio анализирует движение цены в трёх временных горизонтах после закрытия:
+              </p>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <div className="text-purple-400 font-bold mb-2">Краткосрочный</div>
+                  <div className="text-2xl font-bold text-white mb-1">1-4 часа</div>
+                  <p className="text-xs opacity-60">Мог ли выход быть лучше на той же свече?</p>
+                </div>
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <div className="text-purple-400 font-bold mb-2">Среднесрочный</div>
+                  <div className="text-2xl font-bold text-white mb-1">4-24 часа</div>
+                  <p className="text-xs opacity-60">Было ли продолжение на следующий день?</p>
+                </div>
+                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
+                  <div className="text-purple-400 font-bold mb-2">Долгосрочный</div>
+                  <div className="text-2xl font-bold text-white mb-1">1-7 дней</div>
+                  <p className="text-xs opacity-60">Развилось ли движение в тренд?</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Interpretation */}
+            <div className="mb-8 p-6 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-xl border border-purple-500/20">
+              <h3 className="text-white font-bold text-lg mb-4">🎯 Как использовать Post-Exit анализ</h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <div className="font-bold text-yellow-400 mb-2">Если много ранних выходов:</div>
+                  <ul className="text-sm space-y-1 opacity-80">
+                    <li>• Используйте trailing stop вместо фиксированного тейка</li>
+                    <li>• Закрывайте позицию частями (50% + 30% + 20%)</li>
+                    <li>• Увеличьте целевой тейк-профит</li>
+                    <li>• Дождитесь сигнала на разворот, а не цели</li>
+                  </ul>
+                </div>
+                <div>
+                  <div className="font-bold text-green-400 mb-2">Если много хороших выходов:</div>
+                  <ul className="text-sm space-y-1 opacity-80">
+                    <li>• Ваш тайминг выходов оптимален</li>
+                    <li>• Сохраняйте текущую стратегию выхода</li>
+                    <li>• Можно увеличить размер позиции</li>
+                    <li>• Фокусируйтесь на качестве входов</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Pro Tips */}
+            <div className="border-l-4 border-purple-500 pl-4 py-2">
+              <div className="flex items-center gap-2 mb-2">
+                <Crown size={16} className="text-purple-400" />
+                <span className="text-sm font-bold uppercase tracking-wider text-purple-400">Советы профессионалов</span>
+              </div>
+              <ul className="space-y-2 text-sm opacity-80">
+                <li>💡 Анализируйте отдельно прибыльные и убыточные сделки</li>
+                <li>📊 Ранний выход в убыточной сделке — это ХОРОШО (могло быть хуже)</li>
+                <li>⚠️ Если &gt;50% сделок — ранние выходы, это системная проблема</li>
+                <li>🎯 Выбирайте таймфрейм анализа близкий к вашему стилю торговли</li>
               </ul>
             </div>
           </div>
@@ -3206,6 +3717,61 @@ export default function Manual() {
                 <li>⚠️ Никогда не увеличивайте риск после серии убытков!</li>
                 <li>🎯 Eqio считает серии автоматически и предупреждает о рекордах</li>
               </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Avg Win/Loss */}
+        <section id="avg-win-loss" className="cyber-card p-8 relative overflow-hidden">
+          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-pink-500/10 rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-pink-500/20 rounded-xl">
+                <Scale className="text-pink-400" size={28} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black">AVG WIN / AVG LOSS</h2>
+                <p className="text-sm text-slate-400">Средний размер прибыльной и убыточной сделки</p>
+              </div>
+            </div>
+            
+            <div className="prose prose-invert max-w-none">
+              <p className="text-lg opacity-80 mb-6">
+                Сравнение <strong className="text-green-400">средней прибыли</strong> со 
+                <strong className="text-red-400"> средним убытком</strong> — ключевой показатель качества 
+                управления сделками.
+              </p>
+              
+              <div className="grid md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-green-500/10 rounded-xl p-4 border border-green-500/30">
+                  <h4 className="text-green-400 font-bold mb-2">Avg Win</h4>
+                  <p className="text-sm text-slate-300">
+                    Средняя прибыль по всем прибыльным сделкам. Чем выше — тем лучше вы даёте прибыли расти.
+                  </p>
+                </div>
+                <div className="bg-red-500/10 rounded-xl p-4 border border-red-500/30">
+                  <h4 className="text-red-400 font-bold mb-2">Avg Loss</h4>
+                  <p className="text-sm text-slate-300">
+                    Средний убыток по всем убыточным сделкам. Чем меньше — тем лучше вы режете убытки.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-700">
+                <h4 className="text-accent font-bold mb-3">📊 Risk/Reward Ratio</h4>
+                <code className="text-lg text-pink-400">R:R = Avg Win / |Avg Loss|</code>
+                <p className="text-sm text-slate-400 mt-2">
+                  Если R:R = 2, значит средняя прибыль вдвое больше среднего убытка.
+                </p>
+              </div>
+              
+              <h4 className="text-lg font-bold text-white mt-6 mb-3">Связь с Win Rate:</h4>
+              <p className="text-slate-300">
+                При Win Rate 40% и R:R 2:1 система прибыльна: 40% × 2 = 0.8 &gt; 60% × 1 = 0.6
+              </p>
+              <p className="text-slate-300 mt-2">
+                <strong>Формула прибыльности:</strong> Win Rate × Avg Win &gt; (1 - Win Rate) × Avg Loss
+              </p>
             </div>
           </div>
         </section>

@@ -822,15 +822,46 @@ test,123
         assert trades[0]['quantity'] == 0.5
     
     def test_parse_csv_with_long_short_direction(self):
-        """CSV с направлениями LONG/SHORT."""
+        """CSV с направлениями LONG/SHORT - должны группироваться в одну позицию."""
         csv_content = """date,symbol,direction,price,qty
 2025-01-01 10:00:00,TEST,LONG,100,10
 2025-01-01 11:00:00,TEST,SHORT,110,10
 """
         trades = parse_trade_file(csv_content.encode(), 'positions.csv')
         
+        # Теперь используется FIFO логика: LONG + SHORT = 1 закрытая сделка
+        assert len(trades) == 1
         assert trades[0]['direction'] == models.TradeDirection.LONG
-        assert trades[1]['direction'] == models.TradeDirection.SHORT
+        assert trades[0]['exit_at'] is not None
+        assert trades[0]['pnl'] == 100.0  # (110 - 100) * 10 = 100
+    
+    def test_parse_csv_fifo_grouping(self):
+        """CSV должен группировать сделки по FIFO."""
+        csv_content = """date,symbol,side,price,quantity
+2025-01-01 10:00:00,BTC,BUY,50000,1
+2025-01-01 10:30:00,BTC,BUY,49000,1
+2025-01-01 11:00:00,BTC,SELL,52000,2
+"""
+        trades = parse_trade_file(csv_content.encode(), 'btc_trades.csv')
+        
+        # 2 BUY объединяются в одну позицию, 1 SELL закрывает её
+        assert len(trades) == 1
+        assert trades[0]['quantity'] == 2
+        # Средняя цена: (50000 + 49000) / 2 = 49500
+        assert trades[0]['entry_price'] == 49500
+        # PnL: (52000 * 2) - (50000 + 49000) = 104000 - 99000 = 5000
+        assert trades[0]['pnl'] == 5000.0
+    
+    def test_parse_csv_open_position(self):
+        """CSV с незакрытой позицией."""
+        csv_content = """date,symbol,side,price,quantity
+2025-01-01 10:00:00,ETH,BUY,2500,5
+"""
+        trades = parse_trade_file(csv_content.encode(), 'eth.csv')
+        
+        assert len(trades) == 1
+        assert trades[0]['exit_at'] is None
+        assert trades[0]['pnl'] is None  # Открытая позиция
 
 
 class TestParseTradeFileErrors:

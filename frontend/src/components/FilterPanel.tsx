@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Tag, Hash, ChevronDown, X, Filter, RotateCcw } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/apiClient';
 
 export type Period = 'all' | 'today' | 'week' | 'month' | '3months' | 'year' | 'custom';
 
@@ -24,7 +26,6 @@ export interface Filters {
 interface FilterPanelProps {
   filters: Filters;
   onChange: (filters: Filters) => void;
-  getApiUrl: (path: string) => string;
 }
 
 const LIMIT_OPTIONS = [
@@ -37,10 +38,10 @@ const LIMIT_OPTIONS = [
 
 export const FilterPanel: React.FC<FilterPanelProps> = ({ 
   filters, 
-  onChange,
-  getApiUrl
+  onChange
 }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [tags, setTags] = useState<TagInfo[]>([]);
   const [openDropdown, setOpenDropdown] = useState<'period' | 'tag' | 'limit' | null>(null);
   const [showCustomDate, setShowCustomDate] = useState(false);
@@ -49,19 +50,17 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 
   // Fetch available tags
   useEffect(() => {
+    if (!user) return;
     const fetchTags = async () => {
       try {
-        const res = await fetch(getApiUrl('/tags/'));
-        if (res.ok) {
-          const data = await res.json();
-          setTags(data);
-        }
+        const data = await api.get<TagInfo[]>('/stats/tags/');
+        setTags(data);
       } catch (e) {
         console.error('Failed to fetch tags:', e);
       }
     };
     fetchTags();
-  }, [getApiUrl]);
+  }, [user]);
 
   const periods: { value: Period; label: string }[] = [
     { value: 'all', label: t.period?.all || 'All time' },

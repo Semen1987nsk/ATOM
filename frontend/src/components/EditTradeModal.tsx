@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { api } from '@/lib/apiClient';
 
 interface EditTradeModalProps {
   isOpen: boolean;
@@ -67,21 +68,11 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
 
   if (!isOpen || !trade) return null;
 
-  const getApiUrl = (path: string) => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-      const codespaceName = window.location.hostname.split('-3000')[0];
-      return `https://${codespaceName}-8000.app.github.dev${path}`;
-    }
-    return `http://localhost:8000${path}`;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch(getApiUrl(`/trades/${trade.id}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await api.patch(`/trades/${trade.id}`, {
+        body: {
           ...formData,
           entry_price: parseFloat(formData.entry_price),
           quantity: parseFloat(formData.quantity),
@@ -93,13 +84,10 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
           risk_amount: formData.risk_amount ? parseFloat(formData.risk_amount) : null,
           entry_at: new Date(formData.entry_at).toISOString(),
           tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== '')
-        }),
+        }
       });
-
-      if (response.ok) {
-        onSuccess();
-        onClose();
-      }
+      onSuccess();
+      onClose();
     } catch (error) {
       console.error('Failed to update trade:', error);
     }

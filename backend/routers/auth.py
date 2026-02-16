@@ -25,12 +25,12 @@ oauth_store = get_state_store()
 
 # ==================== AUTH ENDPOINTS ====================
 
-@router.post("/register", response_model=schemas.Token)
+@router.post("/register", response_model=schemas.TokenPair)
 @limiter.limit(REGISTER_LIMIT)
 def register(request: Request, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
     """
     Регистрация нового пользователя.
-    Возвращает JWT токен для авторизации.
+    Возвращает пару JWT токенов (access + refresh) для авторизации.
     Rate limit: 3 запроса в минуту.
     """
     existing_user = auth_service.get_user_by_email(db, user_data.email)
@@ -42,21 +42,25 @@ def register(request: Request, user_data: schemas.UserCreate, db: Session = Depe
     
     user = auth_service.create_user(db, user_data)
     
-    access_token = auth_service.create_access_token(
-        data={"sub": str(user.id), "email": user.email}
-    )
+    # Создаём пару токенов
+    access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     
     log.info(f"✅ Зарегистрирован новый пользователь: {user.email}")
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    }
 
 
-@router.post("/login", response_model=schemas.Token)
+@router.post("/login", response_model=schemas.TokenPair)
 @limiter.limit(AUTH_LIMIT)
 def login(request: Request, user_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
     """
     Вход в систему.
-    Возвращает JWT токен для авторизации.
+    Возвращает пару JWT токенов (access + refresh) для авторизации.
     Rate limit: 5 запросов в минуту (защита от brute-force).
     """
     user = auth_service.authenticate_user(db, user_data.email, user_data.password)
@@ -73,13 +77,50 @@ def login(request: Request, user_data: schemas.UserLogin, db: Session = Depends(
             detail="Аккаунт деактивирован"
         )
     
-    access_token = auth_service.create_access_token(
-        data={"sub": str(user.id), "email": user.email}
-    )
+    # Создаём пару токенов
+    access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     
     log.info(f"🔑 Вход пользователя: {user.email}")
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    }
+
+
+@router.post("/refresh", response_model=schemas.TokenPair)
+@limiter.limit(AUTH_LIMIT)
+def refresh_tokens(
+    request: Request,
+    token_request: schemas.TokenRefreshRequest,
+    db: Session = Depends(database.get_db)
+):
+    """
+    Обновление токенов по refresh токену.
+    
+    Используйте этот endpoint когда access токен истёк.
+    Refresh токен должен быть валиден.
+    """
+    result = auth_service.refresh_tokens(token_request.refresh_token, db)
+    
+    if result is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Refresh токен недействителен или истёк"
+        )
+    
+    access_token, refresh_token = result
+    
+    log.debug("🔄 Токены обновлены")
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    }
 
 
 @router.get("/me", response_model=schemas.UserResponse)
@@ -246,13 +287,16 @@ async def oauth_callback(
             
             log.info(f"👤 Создан OAuth пользователь: {email} через {provider}")
         
-        jwt_token = auth_service.create_access_token(data={"sub": user.email})
+        # Создаём пару токенов
+        access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
         
         log.info(f"🔐 OAuth вход: {email} через {provider}")
         
         return {
-            "access_token": jwt_token,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
+            "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             "user": {
                 "id": user.id,
                 "email": user.email,

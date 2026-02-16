@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Wallet, DollarSign } from 'lucide-react';
-import { useSettings, Currency } from '@/contexts/SettingsContext';
+import { X, Settings, Wallet, DollarSign, TrendingDown } from 'lucide-react';
+import { useSettings, Currency, MAECalculationMethod } from '@/contexts/SettingsContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 
 interface SettingsModalProps {
@@ -23,10 +23,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const { language } = useLanguage();
   const [deposit, setDeposit] = useState(settings.initialDeposit.toString());
   const [currency, setCurrency] = useState<Currency>(settings.currency);
+  const [maeMethod, setMaeMethod] = useState<MAECalculationMethod>(settings.maeCalculationMethod);
 
   useEffect(() => {
     setDeposit(settings.initialDeposit.toString());
     setCurrency(settings.currency);
+    setMaeMethod(settings.maeCalculationMethod);
   }, [settings, isOpen]);
 
   if (!isOpen) return null;
@@ -36,6 +38,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     updateSettings({
       initialDeposit: depositValue,
       currency: currency,
+      maeCalculationMethod: maeMethod,
     });
     onClose();
   };
@@ -47,6 +50,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       depositHint: 'Размер вашего торгового капитала',
       currency: 'Валюта',
       currencyHint: 'Валюта отображения',
+      maeMethod: 'Расчёт MAE',
+      maeMethodHint: 'От какой цены считать просадку',
+      maeWeighted: 'Средневзвеш.',
+      maeFirst: 'Первый вход',
+      maeWeightedDesc: 'От средней цены всех входов',
+      maeFirstDesc: 'От цены первой сделки',
       save: 'Сохранить',
       cancel: 'Отмена',
     },
@@ -56,6 +65,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       depositHint: 'Your trading capital size',
       currency: 'Currency',
       currencyHint: 'Display currency',
+      maeMethod: 'MAE Calculation',
+      maeMethodHint: 'Price basis for drawdown calculation',
+      maeWeighted: 'Weighted Avg',
+      maeFirst: 'First Entry',
+      maeWeightedDesc: 'From average of all entries',
+      maeFirstDesc: 'From first trade price',
       save: 'Save',
       cancel: 'Cancel',
     },
@@ -121,6 +136,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               ))}
             </div>
             <p className="text-[10px] opacity-40 mt-1">{text.currencyHint}</p>
+          </div>
+
+          {/* MAE Calculation Method */}
+          <div>
+            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1 flex items-center gap-1">
+              <TrendingDown size={12} />
+              {text.maeMethod}
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setMaeMethod('weighted_average')}
+                className={`p-3 border text-center transition-colors ${
+                  maeMethod === 'weighted_average' 
+                    ? 'border-accent bg-accent/10 text-accent' 
+                    : 'border-border hover:border-accent/50'
+                }`}
+              >
+                <div className="text-sm font-bold">{text.maeWeighted}</div>
+                <div className="text-[9px] opacity-50 mt-1">{text.maeWeightedDesc}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMaeMethod('first_entry')}
+                className={`p-3 border text-center transition-colors ${
+                  maeMethod === 'first_entry' 
+                    ? 'border-accent bg-accent/10 text-accent' 
+                    : 'border-border hover:border-accent/50'
+                }`}
+              >
+                <div className="text-sm font-bold">{text.maeFirst}</div>
+                <div className="text-[9px] opacity-50 mt-1">{text.maeFirstDesc}</div>
+              </button>
+            </div>
+            <p className="text-[10px] opacity-40 mt-1">{text.maeMethodHint}</p>
           </div>
 
           {/* Actions */}

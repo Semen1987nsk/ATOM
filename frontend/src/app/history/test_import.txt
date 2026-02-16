@@ -1,0 +1,11 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, Trash2, Zap, Upload, Plus, Filter, Edit2, ChevronDown, ChevronRight, Lock } from 'lucide-react';
+import { AddTradeModal } from '@/components/AddTradeModal';
+import { EditTradeModal } from '@/components/EditTradeModal';
+import CloseTradeModal from '@/components/CloseTradeModal';
+import { ImportPreviewModal } from '@/components/ImportPreviewModal';
+import ThemeToggle from '@/components/ThemeToggle';
+import { TradeHistorySkeleton } from '@/components/Skeleton';
