@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -86,12 +87,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             </div>
             
             {/* Home link */}
-            <a
+            <Link
               href="/"
               className="inline-block text-sm text-accent hover:underline"
             >
               ← Вернуться на главную
-            </a>
+            </Link>
           </div>
         </div>
       );

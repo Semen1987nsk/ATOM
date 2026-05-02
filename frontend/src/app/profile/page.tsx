@@ -24,7 +24,7 @@ interface Subscription {
 }
 
 function ProfileContent() {
-  const { user, token, logout, updateProfile, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, logout, updateProfile, isLoading: authLoading } = useAuth();
   
   const [name, setName] = useState(user?.name || '');
   const [isEditing, setIsEditing] = useState(false);
@@ -41,12 +41,12 @@ function ProfileContent() {
   
   // Загрузка подписки
   useEffect(() => {
-    if (token) {
+    if (isAuthenticated) {
       api.get<Subscription>('/auth/subscription')
         .then(data => setSubscription(data))
         .catch(err => console.error('Failed to load subscription:', err));
     }
-  }, [token]);
+  }, [isAuthenticated]);
   
   const handleSave = async () => {
     setIsSaving(true);

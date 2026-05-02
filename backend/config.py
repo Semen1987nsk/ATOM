@@ -80,6 +80,16 @@ def _resolve_secret_key() -> str:
     return dev_key
 
 
+def _resolve_auto_init_db() -> bool:
+    """Определяет, можно ли автоматически создавать таблицы при старте."""
+    auto_init = os.getenv("AUTO_INIT_DB")
+    if auto_init is not None:
+        return auto_init.lower() == "true"
+
+    is_debug = os.getenv("DEBUG", "false").lower() == "true"
+    return is_debug
+
+
 class Settings:
     """Настройки приложения из переменных окружения"""
     
@@ -95,12 +105,24 @@ class Settings:
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    ACCESS_TOKEN_COOKIE_NAME: str = os.getenv("ACCESS_TOKEN_COOKIE_NAME", "atom_access_token")
+    REFRESH_TOKEN_COOKIE_NAME: str = os.getenv("REFRESH_TOKEN_COOKIE_NAME", "atom_refresh_token")
+    CSRF_COOKIE_NAME: str = os.getenv("CSRF_COOKIE_NAME", "atom_csrf_token")
+    CSRF_HEADER_NAME: str = os.getenv("CSRF_HEADER_NAME", "X-CSRF-Token")
+    AUTH_COOKIE_DOMAIN: str | None = os.getenv("AUTH_COOKIE_DOMAIN") or None
+    AUTH_COOKIE_PATH: str = os.getenv("AUTH_COOKIE_PATH", "/")
+    AUTH_COOKIE_SAMESITE: str = os.getenv("AUTH_COOKIE_SAMESITE", "lax")
+    AUTH_COOKIE_SECURE: bool = os.getenv("AUTH_COOKIE_SECURE", "true" if os.getenv("DEBUG", "false").lower() != "true" else "false").lower() == "true"
     
     # ==================== DATABASE ====================
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./atom.db")
+    AUTO_INIT_DB: bool = _resolve_auto_init_db()
     
     # ==================== REDIS ====================
     REDIS_URL: str = os.getenv("REDIS_URL", "")
+    RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+    RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", os.getenv("REDIS_URL", ""))
+    RATE_LIMIT_STRATEGY: str = os.getenv("RATE_LIMIT_STRATEGY", "fixed-window")
     
     # ==================== CORS ====================
     # Разделённый запятыми список origins, или * для разрешения всех
@@ -111,6 +133,20 @@ class Settings:
     # ==================== LOGGING ====================
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    ENABLE_FILE_LOGGING: bool = os.getenv("ENABLE_FILE_LOGGING", "true").lower() == "true"
+    LOG_DIR: str = os.getenv("LOG_DIR", str(Path(__file__).resolve().parent.parent / "logs"))
+
+    # ==================== INTEGRATIONS ====================
+    OAUTH_HTTP_TIMEOUT_SECONDS: float = float(os.getenv("OAUTH_HTTP_TIMEOUT_SECONDS", "15"))
+    OPEN_POSITION_SYNC_LOOKBACK_DAYS: int = int(os.getenv("OPEN_POSITION_SYNC_LOOKBACK_DAYS", "30"))
+
+    # ==================== PROXY / IP ====================
+    # Comma-separated list of trusted proxy IPs/CIDRs.
+    # X-Forwarded-For will ONLY be trusted from these sources.
+    # Empty = trust no proxy (use socket IP directly).
+    TRUSTED_PROXIES: List[str] = [
+        p.strip() for p in os.getenv("TRUSTED_PROXIES", "").split(",") if p.strip()
+    ]
 
 
 # Глобальный экземпляр настроек

@@ -3,20 +3,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth, RequireAuth } from '@/contexts/AuthContext';
 import { api, ApiError } from '@/lib/apiClient';
-import { useRouter } from 'next/navigation';
+import NextImage from 'next/image';
 import Link from 'next/link';
 import { 
   Users, TrendingUp, Activity, Target, Shield, ArrowLeft,
-  Search, ChevronDown, ChevronUp, UserCheck, UserX, Crown,
-  BarChart3, PieChart, Calendar, Clock, AlertTriangle,
-  RefreshCw, Download, Filter, Loader2, DollarSign, CreditCard,
+  Search, ChevronDown, UserCheck, UserX, Crown,
+  BarChart3, PieChart, AlertTriangle,
+  RefreshCw, Loader2, DollarSign, CreditCard,
   Zap, TrendingDown, Repeat, FileText, Plus, Edit, Trash2, Eye, 
-  EyeOff, Save, X, Image, Tag
+  EyeOff, Save, X, Image as ImageIcon
 } from 'lucide-react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, 
-  BarChart, Bar, Legend, Funnel, FunnelChart, LabelList
+  BarChart, Bar
 } from 'recharts';
 
 // Цвета для графиков
@@ -82,6 +82,18 @@ interface FunnelStep {
   count: number;
   rate: number;
 }
+
+type ChartDatum = Record<string, string | number>;
+
+type ActiveTab = 'overview' | 'users' | 'revenue' | 'analytics' | 'blog';
+
+const ADMIN_TABS = [
+  { id: 'overview', label: 'Обзор', icon: BarChart3 },
+  { id: 'revenue', label: 'Выручка', icon: DollarSign },
+  { id: 'users', label: 'Пользователи', icon: Users },
+  { id: 'blog', label: 'Блог', icon: FileText },
+  { id: 'analytics', label: 'Аналитика', icon: PieChart },
+] as const satisfies ReadonlyArray<{ id: ActiveTab; label: string; icon: typeof BarChart3 }>;
 
 interface RevenueStats {
   overview: {
@@ -157,8 +169,7 @@ interface ArticleData {
 }
 
 function AdminDashboard() {
-  const { user, token } = useAuth();
-  const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<UserData[]>([]);
@@ -182,7 +193,7 @@ function AdminDashboard() {
   const pageSize = 20;
   
   // Active tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'revenue' | 'analytics' | 'blog'>('overview');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   
   // Blog state
   const [articles, setArticles] = useState<ArticleData[]>([]);
@@ -200,8 +211,14 @@ function AdminDashboard() {
     is_featured: false
   });
 
+  const registrationSourceChartData: ChartDatum[] = sources.map((item) => ({
+    source: item.source,
+    count: item.count,
+    percentage: item.percentage,
+  }));
+
   const fetchData = useCallback(async () => {
-    if (!token) return;
+    if (!isAuthenticated) return;
     
     setLoading(true);
     setError(null);
@@ -247,7 +264,7 @@ function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [token, currentPage, sortBy, sortOrder, searchQuery, sourceFilter]);
+  }, [isAuthenticated, currentPage, sortBy, sortOrder, searchQuery, sourceFilter]);
 
   useEffect(() => {
     fetchData();
@@ -459,16 +476,10 @@ function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 border-b border-white/10 pb-2 overflow-x-auto">
-          {[
-            { id: 'overview', label: 'Обзор', icon: BarChart3 },
-            { id: 'revenue', label: 'Выручка', icon: DollarSign },
-            { id: 'users', label: 'Пользователи', icon: Users },
-            { id: 'blog', label: 'Блог', icon: FileText },
-            { id: 'analytics', label: 'Аналитика', icon: PieChart },
-          ].map(tab => (
+          {ADMIN_TABS.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                 activeTab === tab.id 
                   ? 'bg-purple-500/20 text-purple-400' 
@@ -610,7 +621,7 @@ function AdminDashboard() {
                       <ResponsiveContainer width="50%" height={200}>
                         <RechartsPie>
                           <Pie
-                            data={sources as any}
+                            data={registrationSourceChartData}
                             dataKey="count"
                             nameKey="source"
                             cx="50%"
@@ -1287,14 +1298,17 @@ function AdminDashboard() {
                             <td className="p-3">
                               <div className="flex items-start gap-3">
                                 {article.cover_image ? (
-                                  <img 
-                                    src={article.cover_image} 
-                                    alt="" 
+                                  <NextImage
+                                    src={article.cover_image}
+                                    alt={article.title}
+                                    width={64}
+                                    height={40}
+                                    unoptimized
                                     className="w-16 h-10 object-cover rounded"
                                   />
                                 ) : (
                                   <div className="w-16 h-10 bg-secondary rounded flex items-center justify-center">
-                                    <Image size={16} className="text-muted-foreground" />
+                                    <ImageIcon size={16} className="text-muted-foreground" />
                                   </div>
                                 )}
                                 <div>

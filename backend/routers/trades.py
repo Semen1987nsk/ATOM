@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, 
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
+import asyncio
 
 from decimal import Decimal
 
@@ -17,6 +18,7 @@ import market_service
 import ai_service
 from moex_service import get_moex_service
 import pnl_service
+from capital_service import sync_initial_balance
 from logger import get_logger
 
 log = get_logger("trades")
@@ -371,7 +373,14 @@ async def import_trades(
             # Также обновляем initial_balance аккаунта если это первый снимок
             account = db.query(models.Account).filter(models.Account.id == account_id).first()
             if account and (account.initial_balance is None or account.initial_balance == 0):
-                account.initial_balance = initial_balance
+                sync_initial_balance(
+                    db,
+                    account_id,
+                    float(initial_balance),
+                    date=date_start,
+                    note=f"Initial balance imported from {file.filename}",
+                    commit=False,
+                )
         except Exception as e:
             log.warning(f"Could not save initial balance snapshot: {e}")
     
@@ -656,8 +665,8 @@ async def get_unrealized_pnl(
         return []
     
     tickers = list(set(t.symbol for t in open_trades))
-    current_prices = market_data_service.get_current_prices(tickers)
-    futures_specs = market_data_service.get_futures_specs(tickers)
+    current_prices = await asyncio.to_thread(market_data_service.get_current_prices, tickers)
+    futures_specs = await asyncio.to_thread(market_data_service.get_futures_specs, tickers)
     
     results = []
     for trade in open_trades:

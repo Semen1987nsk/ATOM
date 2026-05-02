@@ -45,6 +45,8 @@ interface GroupItem {
   }>;
 }
 
+type LimitPreset = typeof LIMIT_PRESETS[number];
+
 interface AnalysisResponse {
   group_by: string;
   items?: GroupItem[];
@@ -103,6 +105,10 @@ type SortField = 'edge_ratio' | 'quality_score' | 'win_rate' | 'total_pnl' | 'tr
 type PeriodType = 'all' | 'week' | 'month' | '3months' | 'year';
 
 const LIMIT_PRESETS = ['all', '20', '50', '100', '200'] as const;
+
+function isLimitPreset(value: string): value is LimitPreset {
+  return (LIMIT_PRESETS as readonly string[]).includes(value);
+}
 
 export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps) {
   // Get global filter settings
@@ -276,8 +282,8 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
       item.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
     ?.sort((a, b) => {
-      const aVal = (a as any)[sortField] || 0;
-      const bVal = (b as any)[sortField] || 0;
+      const aVal = a[sortField] || 0;
+      const bVal = b[sortField] || 0;
       return sortAsc ? aVal - bVal : bVal - aVal;
     }) || [];
 
@@ -477,14 +483,14 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
               <button
                 onClick={() => { setShowCustomLimitInput(true); setCustomLimit(''); }}
                 className={`px-2 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
-                  !LIMIT_PRESETS.includes(tradesLimit as any)
+                  !isLimitPreset(tradesLimit)
                     ? 'bg-cyan-500/20 text-cyan-400'
                     : 'text-slate-500 hover:text-white'
                 }`}
                 title="Ввести своё число"
               >
                 <Edit3 size={10} />
-                {!LIMIT_PRESETS.includes(tradesLimit as any) ? tradesLimit : '...'}
+                {!isLimitPreset(tradesLimit) ? tradesLimit : '...'}
               </button>
             )}
           </div>

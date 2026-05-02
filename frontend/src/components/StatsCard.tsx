@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { HelpCircle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
@@ -22,56 +22,12 @@ interface StatsCardProps {
 // Tooltip компонент с Portal - рендерится вне DOM-дерева карточки
 const Tooltip: React.FC<{
   text: string;
-  targetRef: React.RefObject<HTMLButtonElement | null>;
+  position: { top: number; left: number };
   isVisible: boolean;
-}> = ({ text, targetRef, isVisible }) => {
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [mounted, setMounted] = useState(false);
+}> = ({ text, position, isVisible }) => {
   const tooltipRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (isVisible && targetRef.current) {
-      const targetRect = targetRef.current.getBoundingClientRect();
-      const tooltipWidth = 288; // w-72 = 18rem = 288px
-      const tooltipHeight = 120; // примерная высота
-      const padding = 16;
-      
-      // Рассчитываем позицию - tooltip появляется СВЕРХУ от иконки
-      let top = targetRect.top - tooltipHeight - 12; // 12px отступ
-      let left = targetRect.left + targetRect.width / 2 - tooltipWidth / 2;
-      
-      // Если не помещается сверху (слишком близко к верху экрана)
-      // показываем СЛЕВА от карточки
-      if (top < padding) {
-        // Позиционируем слева от карточки
-        top = targetRect.top - 20;
-        left = targetRect.left - tooltipWidth - 20;
-        
-        // Если не помещается слева, показываем справа
-        if (left < padding) {
-          left = targetRect.right + 20;
-        }
-      }
-      
-      // Не выходим за правый край
-      if (left + tooltipWidth > window.innerWidth - padding) {
-        left = window.innerWidth - tooltipWidth - padding;
-      }
-      
-      // Не выходим за левый край
-      if (left < padding) {
-        left = padding;
-      }
-      
-      setPosition({ top, left });
-    }
-  }, [isVisible, targetRef]);
-
-  if (!mounted) return null;
+  if (typeof document === 'undefined') return null;
 
   return createPortal(
     <div
@@ -123,7 +79,42 @@ export const StatsCard: React.FC<StatsCardProps> = ({
   secondaryLabel
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
   const helpRef = useRef<HTMLButtonElement>(null);
+
+  const updateTooltipPosition = (element: HTMLButtonElement) => {
+    const targetRect = element.getBoundingClientRect();
+    const tooltipWidth = 288;
+    const tooltipHeight = 120;
+    const padding = 16;
+
+    let top = targetRect.top - tooltipHeight - 12;
+    let left = targetRect.left + targetRect.width / 2 - tooltipWidth / 2;
+
+    if (top < padding) {
+      top = targetRect.top - 20;
+      left = targetRect.left - tooltipWidth - 20;
+
+      if (left < padding) {
+        left = targetRect.right + 20;
+      }
+    }
+
+    if (left + tooltipWidth > window.innerWidth - padding) {
+      left = window.innerWidth - tooltipWidth - padding;
+    }
+
+    if (left < padding) {
+      left = padding;
+    }
+
+    setTooltipPosition({ top, left });
+  };
+
+  const handleTooltipShow = (event: React.MouseEvent<HTMLButtonElement> | React.FocusEvent<HTMLButtonElement>) => {
+    updateTooltipPosition(event.currentTarget);
+    setShowTooltip(true);
+  };
 
   return (
     <div className={`cyber-card p-6 flex flex-col gap-2 relative group ${className}`}>
@@ -164,9 +155,9 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             <>
               <button
                 ref={helpRef}
-                onMouseEnter={() => setShowTooltip(true)}
+                onMouseEnter={handleTooltipShow}
                 onMouseLeave={() => setShowTooltip(false)}
-                onFocus={() => setShowTooltip(true)}
+                onFocus={handleTooltipShow}
                 onBlur={() => setShowTooltip(false)}
                 className="text-gray-500 hover:text-accent transition-colors duration-200 focus:outline-none focus:text-accent"
                 aria-label="Показать подсказку"
@@ -177,7 +168,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
               {/* Tooltip через Portal */}
               <Tooltip 
                 text={tooltipText} 
-                targetRef={helpRef} 
+                position={tooltipPosition}
                 isVisible={showTooltip} 
               />
             </>

@@ -193,9 +193,10 @@ async def delete_setup(
     if not db_setup:
         raise HTTPException(status_code=404, detail="Сетап не найден")
     
-    # Обнуляем setup_id у связанных сделок
+    # Обнуляем setup_id у связанных сделок ТОЛЬКО текущего аккаунта
     db.query(models.Trade).filter(
-        models.Trade.setup_id == setup_id
+        models.Trade.setup_id == setup_id,
+        models.Trade.account_id == account_id
     ).update({"setup_id": None})
     
     db.delete(db_setup)

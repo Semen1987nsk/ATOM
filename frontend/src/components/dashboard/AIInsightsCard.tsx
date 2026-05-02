@@ -48,7 +48,7 @@ export function AIInsightsCard({ recommendations, optimalF }: AIInsightsCardProp
       
       <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
         <AlertTriangle size={16} className="text-accent animate-pulse" />
-        AI Insights
+        AI Инсайты
         <span className="ml-auto badge-accent text-[8px]">LIVE</span>
       </h2>
       <div className="space-y-4 relative z-10">

@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { 
   X, Link2, Unlink, RefreshCw, CheckCircle, AlertCircle, 
-  Clock, Settings, Zap, Shield, ArrowRight, Loader2,
-  ChevronDown, ExternalLink
+  Zap, Shield, ArrowRight, Loader2,
+  ChevronDown
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 
@@ -106,7 +106,7 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
       } else {
         setVerifyError(data.error || 'Не удалось получить счета');
       }
-    } catch (error) {
+    } catch {
       setVerifyError('Ошибка соединения с API');
     } finally {
       setVerifying(false);
@@ -130,8 +130,8 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
       await fetchConnections();
       setStep('list');
       onConnectionChange?.();
-    } catch (error: any) {
-      setVerifyError(error?.detail || 'Ошибка подключения');
+    } catch (error: unknown) {
+      setVerifyError(error instanceof Error ? error.message : 'Ошибка подключения');
     } finally {
       setConnecting(false);
     }
@@ -152,7 +152,7 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
         await fetchConnections();
         onConnectionChange?.();
       }
-    } catch (error) {
+    } catch {
       setSyncResult({ success: false, message: 'Ошибка синхронизации' });
     } finally {
       setSyncing(null);
@@ -183,7 +183,7 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
               <Zap className="w-5 h-5 text-black" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Auto-Sync</h2>
+              <h2 className="text-lg font-bold text-white">Авто-синхронизация</h2>
               <p className="text-xs text-gray-400">Автоматический импорт сделок</p>
             </div>
           </div>

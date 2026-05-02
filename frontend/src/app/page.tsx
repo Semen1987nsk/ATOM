@@ -22,8 +22,6 @@ import {
   AuthButton,
   StatsGrid,
   AdvancedStatsGrid,
-  EquityChart,
-  RecentTradesCard,
   AIInsightsCard,
   PostExitCard,
   TagStatsCard,
@@ -31,7 +29,6 @@ import {
   MAEMFEAnalysisPanel
 } from '@/components/dashboard';
 import PortfolioCard from '@/components/dashboard/PortfolioCard';
-import EquityCurveCard from '@/components/dashboard/EquityCurveCard';
 import { api } from '@/lib/apiClient';
 
 interface Trade {
@@ -44,6 +41,7 @@ interface Trade {
   commission?: number;
   entry_price: number;
   quantity: number;
+  entry_at: string;
   setup_name?: string;
   timeframe?: string;
   tags?: string[];
@@ -59,6 +57,16 @@ interface DashboardData {
   total_pnl: number;
   unrealized_pnl?: number;
   total_pnl_with_unrealized?: number;
+  initial_balance?: number | null;
+  current_balance?: number | null;
+  period_start_balance?: number | null;
+  period_end_balance?: number | null;
+  period_start_date?: string | null;
+  period_start_net_deposit?: number;
+  period_start_realized_pnl?: number;
+  period_start_balance_reliable?: boolean;
+  period_start_balance_source?: string;
+  period_start_balance_reason?: string | null;
   win_rate: number;
   total_trades: number;
   profitable_trades: number;
@@ -98,10 +106,11 @@ export default function Home() {
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
   const { user, isLoading: authLoading } = useAuth();
-  
+
   const [stats, setStats] = useState<DashboardData | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionInProgress, setActionInProgress] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -113,7 +122,7 @@ export default function Home() {
   const [selectedTradeToClose, setSelectedTradeToClose] = useState<Trade | null>(null);
   const [logs, setLogs] = useState<{msg: string, time: string}[]>([]);
   const [mounted, setMounted] = useState(false);
-  
+
   const [filters, setFilters] = useState<Filters>({
     period: 'all',
     tag: undefined,
@@ -122,6 +131,25 @@ export default function Home() {
     endDate: undefined
   });
 
+  const effectiveInitialDeposit = stats?.period_start_balance_reliable !== false && stats?.period_start_balance && stats.period_start_balance > 0
+    ? stats.period_start_balance
+    : null;
+
+  const hasScopedPeriodFilter = Boolean(
+    settings.tradesStartTradeId ||
+    settings.tradesStartDate ||
+    filters.period !== 'all' ||
+    filters.tag ||
+    filters.limit
+  );
+
+  const capitalLabel = hasScopedPeriodFilter ? 'Капитал на старт периода:' : 'Стартовый капитал:';
+
+  const totalPnlWithUnrealized = stats ? (stats.total_pnl_with_unrealized ?? stats.total_pnl) : null;
+  const totalPnlPct = effectiveInitialDeposit && totalPnlWithUnrealized !== null
+    ? (totalPnlWithUnrealized / effectiveInitialDeposit) * 100
+    : null;
+
   const hasData = trades.length > 0;
 
   const addLog = (msg: string) => {
@@ -129,7 +157,7 @@ export default function Home() {
     setLogs(prev => [{msg, time}, ...prev].slice(0, 5));
   };
 
-  const fetchData = useCallback(async (currentFilters?: Filters) => {
+  const fetchData = useCallback(async () => {
     // Если пользователь не авторизован - не загружаем данные
     if (!user) {
       setStats(null);
@@ -137,12 +165,13 @@ export default function Home() {
       setLoading(false);
       return;
     }
-    
+
+    setLoading(true);
     try {
       let statsUrl = '/stats/';
       const params = new URLSearchParams();
-      const f = currentFilters || filters;
-      
+      const f = filters;
+
       // Применяем глобальную настройку tradesStartDate/tradesStartTradeId
       if (settings.tradesStartTradeId) {
         params.append('start_trade_id', settings.tradesStartTradeId.toString());
@@ -158,9 +187,6 @@ export default function Home() {
       }
       if (f.tag) params.append('tag', f.tag);
       if (f.limit) params.append('limit', f.limit.toString());
-      if (settings.initialDeposit && settings.initialDeposit > 0) {
-        params.append('initial_deposit', settings.initialDeposit.toString());
-      }
       if (settings.maeCalculationMethod) {
         params.append('mae_method', settings.maeCalculationMethod);
       }
@@ -192,7 +218,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [user, filters, settings.initialDeposit, settings.maeCalculationMethod, settings.tradesStartDate, settings.tradesStartTradeId, t.logs.synchronized, t.logs.syncFailed]);
+  }, [user, filters, settings.maeCalculationMethod, settings.tradesStartDate, settings.tradesStartTradeId, t.logs.synchronized, t.logs.syncFailed]);
 
   useEffect(() => {
     setMounted(true);
@@ -201,7 +227,8 @@ export default function Home() {
 
   const handleFiltersChange = (newFilters: Filters) => {
     setFilters(newFilters);
-    fetchData(newFilters);
+    // fetchData will be triggered automatically via useEffect when filters state changes
+    // (fetchData depends on filters via useCallback deps) — no need to call it here
   };
 
   const openCloseModal = (trade: Trade) => {
@@ -210,7 +237,8 @@ export default function Home() {
   };
 
   const handleCloseTradeConfirm = async (exitPrice: number, exitReason: string) => {
-    if (!selectedTradeToClose) return;
+    if (!selectedTradeToClose || actionInProgress) return;
+    setActionInProgress(true);
     try {
       await api.patch(`/trades/${selectedTradeToClose.id}/close`, {
         body: {
@@ -224,11 +252,15 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to close trade:', error);
       addLog(t.logs.closeFailed);
+    } finally {
+      setActionInProgress(false);
     }
   };
 
   const handleDelete = async (tradeId: number) => {
-    if (!confirm('Are you sure you want to delete this trade?')) return;
+    if (actionInProgress) return;
+    if (!confirm('Вы уверены, что хотите удалить эту сделку?')) return;
+    setActionInProgress(true);
     try {
       await api.delete(`/trades/${tradeId}`);
       fetchData();
@@ -236,6 +268,8 @@ export default function Home() {
     } catch (error) {
       console.error('Delete failed:', error);
       addLog(t.logs.purgeFailed);
+    } finally {
+      setActionInProgress(false);
     }
   };
 
@@ -280,7 +314,7 @@ export default function Home() {
             </div>
 
             {/* Scroll hint */}
-            <button 
+            <button
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               className="mt-8 text-muted-foreground/50 hover:text-accent transition-colors animate-bounce"
             >
@@ -503,7 +537,7 @@ export default function Home() {
                 </p>
                 <div className="space-y-2 text-xs text-muted-foreground">
                   <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Автоимпорт через Tinkoff Invest API</div>
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Портфель и equity curve в реальном времени</div>
+                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Портфель и баланс в реальном времени</div>
                   <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Автоматический расчёт комиссий</div>
                 </div>
               </div>
@@ -608,16 +642,23 @@ export default function Home() {
           </p>
           <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
             <Wallet size={14} className="text-accent" />
-            <span className="text-slate-400">Депозит:</span>
-            <span className="font-bold text-accent">{formatCurrency(settings.initialDeposit)}</span>
-            {stats?.total_pnl !== undefined && (
-              <span className={`text-xs ${(stats.total_pnl_with_unrealized ?? stats.total_pnl) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ({(stats.total_pnl_with_unrealized ?? stats.total_pnl) >= 0 ? '+' : ''}{(((stats.total_pnl_with_unrealized ?? stats.total_pnl) / settings.initialDeposit) * 100).toFixed(2)}%)
+            <span className="text-slate-400">{capitalLabel}</span>
+            <span className="font-bold text-accent">
+              {effectiveInitialDeposit ? formatCurrency(effectiveInitialDeposit) : 'недоступно'}
+            </span>
+            {totalPnlPct !== null && totalPnlWithUnrealized !== null && (
+              <span className={`text-xs ${totalPnlWithUnrealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                ({totalPnlWithUnrealized >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+              </span>
+            )}
+            {stats?.period_start_balance_reliable === false && stats?.period_start_balance_reason && (
+              <span className="text-xs text-amber-400">
+                {stats.period_start_balance_reason}
               </span>
             )}
             {settings.tradesStartDate && (
               <span className="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded-full border border-accent/30">
-                📅 С {settings.tradesStartTradeSymbol 
+                📅 С {settings.tradesStartTradeSymbol
                   ? `${settings.tradesStartTradeSymbol} (${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})})`
                   : new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})
                 }
@@ -659,7 +700,7 @@ export default function Home() {
               <button onClick={() => setIsSetupModalOpen(true)} className="btn-secondary flex items-center gap-2" title="Управление сетапами">
                 <Target size={14} />
               </button>
-              <SyncStatusIndicator 
+              <SyncStatusIndicator
                 onTradesUpdated={fetchData}
                 onOpenBrokerModal={() => setIsBrokerModalOpen(true)}
               />
@@ -689,10 +730,10 @@ export default function Home() {
       </header>
 
       {/* Modals */}
-      <AddTradeModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSuccess={() => { fetchData(); addLog('New position initialized'); }} 
+      <AddTradeModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => { fetchData(); addLog('Новая позиция создана'); }}
       />
       <CloseTradeModal
         isOpen={isCloseModalOpen}
@@ -705,12 +746,12 @@ export default function Home() {
       <ImportPreviewModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onSuccess={() => { fetchData(); addLog('Import completed'); }}
+        onSuccess={() => { fetchData(); addLog('Импорт завершён'); }}
       />
       <DepositManagerModal
         isOpen={isDepositModalOpen}
         onClose={() => setIsDepositModalOpen(false)}
-        onUpdate={() => { fetchData(); addLog('Deposit updated'); }}
+        onUpdate={() => { fetchData(); addLog('Депозит обновлён'); }}
       />
       <SetupManagerModal
         isOpen={isSetupModalOpen}
@@ -719,7 +760,7 @@ export default function Home() {
       <BrokerConnectModal
         isOpen={isBrokerModalOpen}
         onClose={() => setIsBrokerModalOpen(false)}
-        onConnectionChange={() => { fetchData(); addLog('Broker sync completed'); }}
+        onConnectionChange={() => { fetchData(); addLog('Синхронизация с брокером завершена'); }}
       />
 
       {/* Auth Required Modal */}
@@ -797,37 +838,22 @@ export default function Home() {
       <AdvancedStatsGrid stats={stats} hasData={hasData} />
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 space-y-4">
-          <EquityChart data={stats?.equity_curve || []} />
-          <RecentTradesCard
-            trades={trades}
-            onOpenCloseModal={openCloseModal}
-            onDelete={handleDelete}
-            onOpenAddModal={() => setIsModalOpen(true)}
-          />
-        </div>
-
-        <div className="space-y-4">
+      <div className="space-y-4">
           {/* Portfolio Widget - показывает баланс и метрики */}
           <PortfolioCard />
-          
-          {/* Equity Curve - график роста депозита */}
-          <EquityCurveCard />
-          
+
           <AIInsightsCard
             recommendations={stats?.mae_mfe_analysis?.recommendations || []}
             optimalF={stats?.optimal_f || 0}
           />
-          <MAEMFEAnalysisPanel 
+          <MAEMFEAnalysisPanel
             onRecalculate={() => fetchData()}
           />
-          <PostExitCard 
+          <PostExitCard
             tradesCount={trades.length}
             onRecalculate={() => fetchData()}
           />
           <TagStatsCard tagStats={stats?.tag_stats || []} />
-        </div>
       </div>
 
       {/* Terminal Log */}

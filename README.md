@@ -70,7 +70,7 @@ ATOM/
 │   │   │   ├── blog/             # Блог (список + статья)
 │   │   │   ├── help/             # Центр помощи (FAQ)
 │   │   │   ├── pricing/          # Тарифы
-│   │   │   ├── history/          # История сделок
+│   │   │   ├── history/          # Дневник сделок
 │   │   │   └── manual/           # Мануал
 │   │   ├── components/      # React компоненты
 │   │   ├── contexts/        # React Context (Auth, Settings)

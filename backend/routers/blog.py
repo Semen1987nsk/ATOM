@@ -22,6 +22,9 @@ def get_articles(
     featured: bool = False,
     db: Session = Depends(database.get_db)
 ):
+    # Enforce sane bounds
+    limit = max(1, min(limit, 100))
+    skip = max(0, skip)
     """Получение списка опубликованных статей"""
     articles = blog_service.get_articles(
         db, skip=skip, limit=limit, category=category,

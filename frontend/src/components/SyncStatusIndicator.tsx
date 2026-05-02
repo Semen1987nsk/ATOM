@@ -214,7 +214,7 @@ export default function SyncStatusIndicator({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap size={16} className="text-yellow-400" />
-                <span className="font-semibold text-white">Auto-Sync</span>
+                <span className="font-semibold text-white">Авто-синхронизация</span>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 connection.auto_sync_enabled 

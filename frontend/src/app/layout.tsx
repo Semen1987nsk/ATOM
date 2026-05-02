@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Eqio",
-  description: "AI-Powered Trading Intelligence System",
+  description: "Система торговой аналитики на базе ИИ",
 };
 
 export default function RootLayout({

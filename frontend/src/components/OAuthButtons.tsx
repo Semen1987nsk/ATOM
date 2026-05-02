@@ -8,6 +8,17 @@ interface OAuthProvider {
   name: string;
 }
 
+interface OAuthUser {
+  id: number;
+  email: string;
+  name?: string | null;
+  oauth_provider?: string | null;
+}
+
+interface OAuthCallbackResponse {
+  user: OAuthUser;
+}
+
 // Иконки провайдеров
 const ProviderIcon = ({ provider }: { provider: string }) => {
   switch (provider) {
@@ -63,7 +74,7 @@ const getProviderStyles = (provider: string) => {
 };
 
 interface OAuthButtonsProps {
-  onSuccess?: (token: string, user: any) => void;
+  onSuccess?: (user: OAuthUser) => void;
   onError?: (error: string) => void;
 }
 
@@ -73,7 +84,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
 
   useEffect(() => {
     // Получаем список доступных провайдеров
-    fetch(getApiUrl('/auth/oauth/providers'))
+    fetch(getApiUrl('/auth/oauth/providers'), { credentials: 'include' })
       .then(res => res.json())
       .then(data => setProviders(data))
       .catch(() => setProviders([]));
@@ -95,7 +106,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
           const redirectUri = `${window.location.origin}${window.location.pathname}`;
           const response = await fetch(
             getApiUrl(`/auth/oauth/${provider}/callback?code=${code}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`),
-            { method: 'POST' }
+            { method: 'POST', credentials: 'include' }
           );
           
           if (!response.ok) {
@@ -103,15 +114,13 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
             throw new Error(error.detail || 'Ошибка авторизации');
           }
           
-          const data = await response.json();
-          
-          // Сохраняем токен
-          localStorage.setItem('token', data.access_token);
+          const data: OAuthCallbackResponse = await response.json();
+          window.dispatchEvent(new Event('auth:login'));
           
           // Очищаем URL от параметров OAuth
           window.history.replaceState({}, '', window.location.pathname);
           
-          onSuccess?.(data.access_token, data.user);
+          onSuccess?.(data.user);
         } catch (err) {
           onError?.(err instanceof Error ? err.message : 'Ошибка авторизации');
         } finally {
@@ -129,7 +138,8 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
     try {
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
       const response = await fetch(
-        getApiUrl(`/auth/oauth/${providerId}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`)
+        getApiUrl(`/auth/oauth/${providerId}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`),
+        { credentials: 'include' }
       );
       
       if (!response.ok) {
@@ -140,7 +150,6 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
       
       // Сохраняем провайдера для callback
       localStorage.setItem('oauth_provider', providerId);
-      localStorage.setItem('oauth_state', data.state);
       
       // Редиректим на страницу авторизации провайдера
       window.location.href = data.authorize_url;

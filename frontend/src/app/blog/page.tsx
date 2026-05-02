@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { getApiUrl } from '@/lib/apiClient';
 import { 
-  ArrowLeft, Search, Eye, Heart, Calendar, Tag, User,
+  ArrowLeft, Search, Eye, Heart, Calendar, User,
   Newspaper, BookOpen, TrendingUp, Lightbulb, Sparkles,
   ChevronRight
 } from 'lucide-react';
@@ -62,10 +63,13 @@ function ArticleCard({ article }: { article: Article }) {
         {/* Cover Image */}
         <div className="aspect-video bg-secondary relative overflow-hidden">
           {article.cover_image ? (
-            <img 
+            <Image
               src={article.cover_image} 
               alt={article.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              fill
+              sizes="(max-width: 768px) 100vw, 33vw"
+              unoptimized
+              className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/20 to-purple-600/20">
@@ -141,10 +145,13 @@ function FeaturedArticle({ article }: { article: Article }) {
           {/* Cover Image */}
           <div className="aspect-video md:aspect-auto bg-secondary relative overflow-hidden">
             {article.cover_image ? (
-              <img 
+              <Image
                 src={article.cover_image} 
                 alt={article.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                unoptimized
+                className="object-cover group-hover:scale-105 transition-transform duration-300"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/30 to-purple-600/30 min-h-[200px]">
@@ -199,19 +206,16 @@ export default function BlogPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [popularArticles, setPopularArticles] = useState<Article[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [selectedCategory]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (selectedCategory) params.append('category', selectedCategory);
-      if (searchQuery) params.append('search', searchQuery);
+      if (appliedSearchQuery) params.append('search', appliedSearchQuery);
       
       const [articlesRes, featuredRes, categoriesRes, popularRes] = await Promise.all([
         fetch(getApiUrl(`/blog/articles?${params}`)),
@@ -229,11 +233,15 @@ export default function BlogPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedCategory, appliedSearchQuery]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    loadData();
+    setAppliedSearchQuery(searchInput.trim());
   };
 
   const totalArticles = categories.reduce((sum, cat) => sum + cat.count, 0);
@@ -260,8 +268,8 @@ export default function BlogPage() {
               <input
                 type="text"
                 placeholder="Поиск статей..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 pr-4 py-2 bg-secondary border border-border rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
@@ -320,7 +328,7 @@ export default function BlogPage() {
             <Newspaper size={48} className="mx-auto mb-4 text-muted-foreground" />
             <h2 className="text-xl font-semibold mb-2">Статей пока нет</h2>
             <p className="text-muted-foreground">
-              {searchQuery ? 'По вашему запросу ничего не найдено' : 'Скоро здесь появятся интересные материалы'}
+              {appliedSearchQuery ? 'По вашему запросу ничего не найдено' : 'Скоро здесь появятся интересные материалы'}
             </p>
           </div>
         ) : (

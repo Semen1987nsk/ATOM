@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import ru from './locales/ru.json';
 import en from './locales/en.json';
 
@@ -16,19 +16,19 @@ interface LanguageContextType {
 
 const translations: Record<Language, Translations> = { ru, en };
 
+function getInitialLanguage(): Language {
+  if (typeof window === 'undefined') {
+    return 'ru';
+  }
+
+  const saved = localStorage.getItem('language');
+  return saved === 'en' || saved === 'ru' ? saved : 'ru';
+}
+
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>('ru');
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    const saved = localStorage.getItem('language') as Language;
-    if (saved && (saved === 'ru' || saved === 'en')) {
-      setLanguageState(saved);
-    }
-  }, []);
+  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
@@ -46,11 +46,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     t: translations[language],
     toggleLanguage,
   };
-
-  // Prevent hydration mismatch
-  if (!mounted) {
-    return <LanguageContext.Provider value={{ ...value, t: translations.ru }}>{children}</LanguageContext.Provider>;
-  }
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }

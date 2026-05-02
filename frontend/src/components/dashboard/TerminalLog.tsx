@@ -24,7 +24,7 @@ export function TerminalLog({ logs }: TerminalLogProps) {
       <div className="flex items-center gap-2 mb-3 opacity-50">
         <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
         <span className="text-[10px] font-mono uppercase tracking-widest">{t.logs.title}</span>
-        <span className="text-[9px] opacity-50 ml-auto font-mono">{logs.length} entries</span>
+        <span className="text-[9px] opacity-50 ml-auto font-mono">{logs.length} записей</span>
       </div>
       <div className="space-y-1 font-mono text-[10px] max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-accent/20 scrollbar-track-transparent">
         {logs.map((log, i) => (
@@ -41,7 +41,7 @@ export function TerminalLog({ logs }: TerminalLogProps) {
         ))}
         {logs.length === 0 && (
           <div className="opacity-20 italic py-4 text-center">
-            <span className="animate-pulse">_</span> Awaiting system events...
+            <span className="animate-pulse">_</span> Ожидание системных событий...
           </div>
         )}
       </div>

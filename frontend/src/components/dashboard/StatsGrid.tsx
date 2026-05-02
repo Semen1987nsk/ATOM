@@ -41,7 +41,7 @@ interface DashboardData {
   profit_factor: number;
   r_expectancy: number;
   recovery_factor: number;
-  total_roi: number;
+  total_roi: number | null;
   expected_ghpr: number;
   sortino_ratio: number;
   max_drawdown_pct: number;
@@ -55,6 +55,8 @@ interface DashboardData {
   avg_win: number;
   avg_loss: number;
   calmar_ratio: { calmar_ratio: number; rating: string };
+  period_start_balance_reliable?: boolean;
+  period_start_balance_reason?: string | null;
 }
 
 interface StatsGridProps {
@@ -180,10 +182,10 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
       <StatsCard 
         title={t.stats.totalRoi.title} 
         value={formatStatPercent(stats?.total_roi, 2)} 
-        description={hasData ? t.stats.totalRoi.description : ''}
+        description={hasData ? (stats?.period_start_balance_reliable === false ? 'ROI скрыт: нет надёжной базы периода' : t.stats.totalRoi.description) : ''}
         trend={hasData && stats?.total_roi && stats.total_roi > 0 ? 'up' : hasData && stats?.total_roi && stats.total_roi < 0 ? 'down' : undefined}
         icon={<Wallet size={18} />}
-        tooltipText={t.stats.totalRoi.tooltip}
+        tooltipText={stats?.period_start_balance_reliable === false ? (stats?.period_start_balance_reason || t.stats.totalRoi.tooltip) : t.stats.totalRoi.tooltip}
         manualAnchor="roi"
       />
       <StatsCard 

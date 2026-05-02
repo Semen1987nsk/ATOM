@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Settings, Wallet, DollarSign, TrendingDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Settings, DollarSign, TrendingDown } from 'lucide-react';
 import { useSettings, Currency, MAECalculationMethod } from '@/contexts/SettingsContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 
@@ -21,22 +21,41 @@ const currencies: { value: Currency; label: string; symbol: string }[] = [
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { settings, updateSettings } = useSettings();
   const { language } = useLanguage();
-  const [deposit, setDeposit] = useState(settings.initialDeposit.toString());
-  const [currency, setCurrency] = useState<Currency>(settings.currency);
-  const [maeMethod, setMaeMethod] = useState<MAECalculationMethod>(settings.maeCalculationMethod);
-
-  useEffect(() => {
-    setDeposit(settings.initialDeposit.toString());
-    setCurrency(settings.currency);
-    setMaeMethod(settings.maeCalculationMethod);
-  }, [settings, isOpen]);
 
   if (!isOpen) return null;
 
+  return (
+    <SettingsModalContent
+      key={`settings-${settings.currency}-${settings.maeCalculationMethod}`}
+      onClose={onClose}
+      initialCurrency={settings.currency}
+      initialMaeMethod={settings.maeCalculationMethod}
+      updateSettings={updateSettings}
+      language={language}
+    />
+  );
+};
+
+interface SettingsModalContentProps {
+  onClose: () => void;
+  initialCurrency: Currency;
+  initialMaeMethod: MAECalculationMethod;
+  updateSettings: (newSettings: { currency: Currency; maeCalculationMethod: MAECalculationMethod }) => void;
+  language: 'ru' | 'en';
+}
+
+const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
+  onClose,
+  initialCurrency,
+  initialMaeMethod,
+  updateSettings,
+  language,
+}) => {
+  const [currency, setCurrency] = useState<Currency>(initialCurrency);
+  const [maeMethod, setMaeMethod] = useState<MAECalculationMethod>(initialMaeMethod);
+
   const handleSave = () => {
-    const depositValue = parseFloat(deposit) || 10000;
     updateSettings({
-      initialDeposit: depositValue,
       currency: currency,
       maeCalculationMethod: maeMethod,
     });
@@ -46,8 +65,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const t = {
     ru: {
       title: 'Настройки',
-      deposit: 'Начальный депозит',
-      depositHint: 'Размер вашего торгового капитала',
       currency: 'Валюта',
       currencyHint: 'Валюта отображения',
       maeMethod: 'Расчёт MAE',
@@ -61,8 +78,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     },
     en: {
       title: 'Settings',
-      deposit: 'Initial Deposit',
-      depositHint: 'Your trading capital size',
       currency: 'Currency',
       currencyHint: 'Display currency',
       maeMethod: 'MAE Calculation',
@@ -94,24 +109,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         </h2>
         
         <div className="space-y-6 relative z-10">
-          {/* Deposit */}
-          <div>
-            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1 flex items-center gap-1">
-              <Wallet size={12} />
-              {text.deposit}
-            </label>
-            <input 
-              type="number"
-              min="0"
-              step="100"
-              className="input-cyber text-lg font-bold"
-              placeholder="10000"
-              value={deposit}
-              onChange={e => setDeposit(e.target.value)}
-            />
-            <p className="text-[10px] opacity-40 mt-1">{text.depositHint}</p>
-          </div>
-
           {/* Currency */}
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1 flex items-center gap-1">

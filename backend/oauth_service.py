@@ -8,6 +8,7 @@ import httpx
 from typing import Optional
 from urllib.parse import urlencode
 from dataclasses import dataclass
+from config import settings
 
 # OAuth Provider Configuration
 @dataclass
@@ -96,9 +97,14 @@ def get_provider(provider_id: str) -> Optional[OAuthProvider]:
     return PROVIDERS.get(provider_id)
 
 
+def _build_async_client() -> httpx.AsyncClient:
+    """Создаёт HTTP клиент с безопасными таймаутами для внешних OAuth провайдеров."""
+    return httpx.AsyncClient(timeout=settings.OAUTH_HTTP_TIMEOUT_SECONDS)
+
+
 async def exchange_code_for_token(provider: OAuthProvider, code: str, redirect_uri: str) -> dict:
     """Обменять authorization code на access token"""
-    async with httpx.AsyncClient() as client:
+    async with _build_async_client() as client:
         response = await client.post(
             provider.token_url,
             data={
@@ -116,7 +122,7 @@ async def exchange_code_for_token(provider: OAuthProvider, code: str, redirect_u
 
 async def get_user_info(provider: OAuthProvider, access_token: str) -> dict:
     """Получить информацию о пользователе от провайдера"""
-    async with httpx.AsyncClient() as client:
+    async with _build_async_client() as client:
         # Yandex использует другой формат
         if "yandex" in provider.token_url:
             response = await client.get(

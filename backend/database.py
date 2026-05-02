@@ -7,16 +7,17 @@ import os
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool, QueuePool
 
 # Импорт моделей для создания таблиц
 import models
+from config import settings
 
 # ==================== КОНФИГУРАЦИЯ ====================
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./atom.db")
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
 # Определяем тип базы данных
 IS_SQLITE = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
@@ -155,7 +156,7 @@ def check_db_connection() -> bool:
     """
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return True
     except Exception:
         return False

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Edit2, Target, CheckCircle, TrendingUp, TrendingDown, Save } from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Target, Save } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 
 interface Setup {
@@ -150,7 +150,7 @@ export const SetupManagerModal: React.FC<SetupManagerModalProps> = ({ isOpen, on
                 <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Название</label>
                 <input 
                   className="input-cyber"
-                  placeholder="Breakout, Mean Reversion..."
+                  placeholder="Пробой, Возврат к среднему..."
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
                 />

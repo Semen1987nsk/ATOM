@@ -466,7 +466,7 @@ def parse_margin_fees(contents: bytes) -> Dict[str, float]:
                         if date_str not in margin_fees:
                             margin_fees[date_str] = 0
                         margin_fees[date_str] += amt
-                    except:
+                    except (ValueError, TypeError):
                         pass
     
     return margin_fees
@@ -619,7 +619,7 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
             
             def parse_comm(val):
                 try: return abs(float(val)) if pd.notna(val) else 0.0
-                except: return 0.0
+                except (ValueError, TypeError): return 0.0
             
             # User correction: Broker commission already includes exchange and clearing fees
             commission = parse_comm(comm_broker)
@@ -791,7 +791,7 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
         # Парсим дату комиссии
         try:
             fee_date = datetime.strptime(fee_date_str, "%d.%m.%Y").date()
-        except:
+        except (ValueError, TypeError):
             continue
         
         # Находим позиции, которые были перенесены через ночь на эту дату
@@ -853,8 +853,9 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
         # Try Tinkoff Excel parser first if it looks like a report
         try:
             return parse_tinkoff_excel(contents)
-        except:
+        except Exception:
             # Fallback to generic excel parser (implemented below via pandas)
+            log.debug("Tinkoff Excel parser failed, falling back to generic parser")
             pass
 
     try:
@@ -915,6 +916,7 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     # Собираем raw сделки
     raw_trades = []
     fee_col = get_col('fee')
+    row_side_values = []
     
     for _, row in df.iterrows():
         try:
@@ -924,6 +926,7 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
 
             # Парсинг направления
             raw_side = str(row[side_col]).lower()
+            row_side_values.append(raw_side)
             if 'buy' in raw_side or 'long' in raw_side:
                 direction = models.TradeDirection.LONG
             elif 'sell' in raw_side or 'short' in raw_side:
@@ -934,13 +937,19 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
             # Числовые поля
             price = float(row[price_col])
             quantity = float(row[qty_col])
+            pnl = None
+            if pnl_col and pd.notna(row.get(pnl_col)):
+                try:
+                    pnl = float(row[pnl_col])
+                except Exception:
+                    pnl = None
             
             # Комиссия
             commission = 0.0
             if fee_col and pd.notna(row.get(fee_col)):
                 try:
                     commission = abs(float(row[fee_col]))
-                except:
+                except (ValueError, TypeError):
                     pass
 
             raw_trades.append({
@@ -949,6 +958,7 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
                 "entry_price": price,
                 "quantity": quantity,
                 "entry_at": entry_at,
+                "pnl": pnl,
                 "commission": commission,
                 "deal_sum": price * quantity,
                 "swap": 0.0,
@@ -963,22 +973,72 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     if not raw_trades:
         return trades
     
-    # Сортируем по времени для корректной FIFO логики
+    # Сортируем по времени для корректной обработки
     raw_trades.sort(key=lambda x: x['entry_at'])
-    
-    # Используем TradeManager для группировки позиций
-    manager = TradeManager()
-    for trade_data in raw_trades:
-        manager.process_trade(trade_data)
-    
-    # Финализируем и получаем результат
-    result = manager.finalize()
-    
-    # Очищаем временные поля
-    fields_to_remove = ['deal_sum', '_total_cost', '_deal_sum']
-    for trade in result:
-        for field in fields_to_remove:
-            trade.pop(field, None)
+
+    def should_group_as_positions() -> bool:
+        # Явные LONG/SHORT CSV обычно описывают уже позиции, а не отдельные execution rows.
+        if any('long' in side or 'short' in side for side in row_side_values):
+            return True
+
+        # BUY/SELL CSV агрегируем только если видно усреднение/пирамидинг:
+        # повторный вход тем же символом в том же направлении до закрытия.
+        open_directions = {}
+        for trade in raw_trades:
+            symbol = trade['symbol']
+            direction = trade['direction']
+            current_direction = open_directions.get(symbol)
+
+            if current_direction is None:
+                open_directions[symbol] = direction
+                continue
+
+            if current_direction == direction:
+                return True
+
+            open_directions.pop(symbol, None)
+
+        return False
+
+    if should_group_as_positions():
+        manager = TradeManager()
+        for trade_data in raw_trades:
+            manager.process_trade(trade_data)
+
+        result = manager.finalize()
+
+        fields_to_remove = ['deal_sum', '_total_cost', '_deal_sum']
+        for trade in result:
+            for field in fields_to_remove:
+                trade.pop(field, None)
+    else:
+        result = []
+        for trade in raw_trades:
+            clean_trade = trade.copy()
+            clean_trade.pop('deal_sum', None)
+            clean_trade.setdefault('asset_name', None)
+            clean_trade.setdefault('asset_type', 'Stock')
+            clean_trade.setdefault('exit_at', None)
+            clean_trade.setdefault('exit_price', None)
+            clean_trade.setdefault('exit_reason', None)
+            clean_trade.setdefault('entry_commission', clean_trade.get('commission', 0.0))
+            clean_trade.setdefault('exit_commission', 0.0)
+            clean_trade.setdefault('holding_time_minutes', None)
+            clean_trade.setdefault('currency', 'RUB')
+            clean_trade.setdefault('operations', [{
+                "type": "entry",
+                "time": clean_trade['entry_at'].strftime("%H:%M:%S") if isinstance(clean_trade.get('entry_at'), datetime) else str(clean_trade.get('entry_at')),
+                "date": clean_trade['entry_at'].strftime("%d.%m.%Y") if isinstance(clean_trade.get('entry_at'), datetime) else str(clean_trade.get('entry_at')),
+                "price": clean_trade.get('entry_price'),
+                "qty": clean_trade.get('quantity'),
+                "commission": clean_trade.get('commission', 0.0),
+                "direction": clean_trade['direction'].value if hasattr(clean_trade.get('direction'), 'value') else str(clean_trade.get('direction')),
+            }])
+            if clean_trade.get('pnl') is not None:
+                clean_trade['net_pnl'] = clean_trade['pnl'] - clean_trade['commission'] - clean_trade['swap']
+            else:
+                clean_trade['net_pnl'] = None
+            result.append(clean_trade)
     
     # Сортируем по дате входа для корректного отображения в UI
     result.sort(key=lambda x: x.get('entry_at') or datetime.min)

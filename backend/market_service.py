@@ -1,4 +1,6 @@
 import requests
+import threading
+import time as _time
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta, time
 from logger import get_logger
@@ -8,6 +10,77 @@ log = get_logger("market")
 
 # Московская временная зона
 MSK_TZ = pytz.timezone('Europe/Moscow')
+
+
+# ═══════════════════════════════════════════════════
+#  Простой TTL-кэш (thread-safe)
+# ═══════════════════════════════════════════════════
+
+class _TTLCache:
+    """Примитивный кэш с временем жизни записей (thread-safe)."""
+
+    def __init__(self, default_ttl: float = 30.0):
+        self._store: Dict[str, Tuple[float, object]] = {}  # key -> (expires_at, value)
+        self._lock = threading.Lock()
+        self._default_ttl = default_ttl
+
+    def get(self, key: str):
+        """Возвращает значение или None, если устарело / отсутствует."""
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None
+            expires_at, value = entry
+            if _time.monotonic() > expires_at:
+                del self._store[key]
+                return None
+            return value
+
+    def set(self, key: str, value, ttl: float | None = None):
+        with self._lock:
+            self._store[key] = (_time.monotonic() + (ttl or self._default_ttl), value)
+
+    def clear(self):
+        with self._lock:
+            self._store.clear()
+
+
+# Глобальный кэш цен — TTL 30 секунд
+_price_cache = _TTLCache(default_ttl=30.0)
+# Глобальный кэш спецификаций фьючерсов — TTL 300 секунд (меняются редко)
+_specs_cache = _TTLCache(default_ttl=300.0)
+
+# ═══════════════════════════════════════════════════
+#  HTTP GET with retry + exponential backoff
+# ═══════════════════════════════════════════════════
+
+_MOEX_MAX_RETRIES = 2
+_MOEX_BACKOFF = (1.0, 3.0)
+
+
+def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
+    """GET with retry for MOEX ISS. Returns parsed JSON or None."""
+    for attempt in range(_MOEX_MAX_RETRIES + 1):
+        try:
+            resp = requests.get(url, timeout=timeout)
+            if resp.status_code == 200:
+                return resp.json()
+            if resp.status_code in (429, 500, 502, 503) and attempt < _MOEX_MAX_RETRIES:
+                _time.sleep(_MOEX_BACKOFF[attempt])
+                continue
+            log.warning(f"MOEX API {resp.status_code} for {url}")
+            return None
+        except (requests.Timeout, requests.ConnectionError) as e:
+            if attempt < _MOEX_MAX_RETRIES:
+                _time.sleep(_MOEX_BACKOFF[attempt])
+                continue
+            log.warning(f"MOEX API error after retries for {url}: {e}")
+            return None
+        except Exception as e:
+            log.warning(f"MOEX API unexpected error for {url}: {e}")
+            return None
+    return None
+
 
 # Праздники MOEX 2025-2026 (торги не проводятся)
 MOEX_HOLIDAYS = {
@@ -53,48 +126,66 @@ class MarketService:
             "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities.json" 
         ]
 
+    def _to_msk(self, dt: datetime) -> datetime:
+        """
+        Нормализует datetime к часовому поясу биржи (MSK).
+
+        Для domain-логики рынка naive datetime трактуем как локальное время MOEX,
+        а не как UTC. Это соответствует пользовательским вводам, тестам и формату
+        времени свечей MOEX ISS.
+        """
+        if dt.tzinfo is None:
+            return MSK_TZ.localize(dt)
+        return dt.astimezone(MSK_TZ)
+
     def get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
         """
         Fetches current prices from MOEX ISS (Stocks, Futures, Currencies).
         Returns a dictionary {ticker: price}.
+        Uses a 30-second TTL cache to avoid hammering MOEX on every request.
         """
-        prices = {}
-        
-        # Optimization: If no tickers requested, don't fetch
         if not tickers:
             return {}
 
-        log.debug(f"Fetching prices for {len(tickers)} tickers: {tickers}")
+        prices: Dict[str, float] = {}
+        missing: List[str] = []
+
+        # Check cache first
+        for t in tickers:
+            cached = _price_cache.get(f"price:{t}")
+            if cached is not None:
+                prices[t] = cached
+            else:
+                missing.append(t)
+
+        if not missing:
+            return prices
+
+        log.debug(f"Fetching prices for {len(missing)} tickers (cache miss): {missing}")
 
         for url in self.sources:
             try:
-                response = requests.get(url, timeout=5)
-                data = response.json()
-                
-                if 'marketdata' not in data:
+                data = _moex_get(url)
+                if not data or 'marketdata' not in data:
                     continue
 
                 columns = data['marketdata']['columns']
                 rows = data['marketdata']['data']
                 
-                # Find indices for SECID and LAST
                 try:
                     secid_idx = columns.index('SECID')
                     last_idx = columns.index('LAST')
                 except ValueError:
                     continue
 
-                # Create a map of all available prices in this source
                 for row in rows:
                     ticker = row[secid_idx]
                     price = row[last_idx]
                     
-                    # Some instruments might have None as price (not traded yet today)
-                    if price is not None:
-                        # Only add if it's one of the requested tickers (optimization)
-                        # OR if we want to cache everything (but here we filter)
-                        if ticker in tickers:
-                            prices[ticker] = float(price)
+                    if price is not None and ticker in missing:
+                        price_f = float(price)
+                        prices[ticker] = price_f
+                        _price_cache.set(f"price:{ticker}", price_f)
             
             except Exception as e:
                 log.warning(f"Error fetching MOEX data from {url}: {e}")
@@ -107,44 +198,54 @@ class MarketService:
         """
         Fetches futures specifications (MINSTEP, STEPPRICE) from MOEX.
         Returns a dictionary {ticker: {minstep: float, stepprice: float}}.
+        Uses a 5-minute TTL cache (specs change rarely).
         """
-        specs = {}
-        
         if not tickers:
             return {}
+
+        specs: Dict[str, Dict] = {}
+        missing: List[str] = []
+
+        for t in tickers:
+            cached = _specs_cache.get(f"spec:{t}")
+            if cached is not None:
+                specs[t] = cached
+            else:
+                missing.append(t)
+
+        if not missing:
+            return specs
         
-        # Futures securities endpoint
         url = "https://iss.moex.com/iss/engines/futures/markets/forts/boards/RFUD/securities.json"
         
         try:
-            response = requests.get(url, timeout=5)
-            data = response.json()
-            
-            if 'securities' not in data:
-                return {}
+            data = _moex_get(url)
+            if not data or 'securities' not in data:
+                return specs
             
             columns = data['securities']['columns']
             rows = data['securities']['data']
             
-            # Find indices
             try:
                 secid_idx = columns.index('SECID')
                 minstep_idx = columns.index('MINSTEP')
                 stepprice_idx = columns.index('STEPPRICE')
             except ValueError:
                 log.warning("Missing required columns in MOEX futures response")
-                return {}
+                return specs
             
             for row in rows:
                 ticker = row[secid_idx]
-                if ticker in tickers:
+                if ticker in missing:
                     minstep = row[minstep_idx]
                     stepprice = row[stepprice_idx]
                     if minstep is not None and stepprice is not None:
-                        specs[ticker] = {
+                        spec = {
                             'minstep': float(minstep),
                             'stepprice': float(stepprice)
                         }
+                        specs[ticker] = spec
+                        _specs_cache.set(f"spec:{ticker}", spec)
         
         except Exception as e:
             log.warning(f"Error fetching MOEX futures specs: {e}")
@@ -156,12 +257,7 @@ class MarketService:
         """Проверяет, является ли дата торговым днём MOEX"""
         # Конвертируем в MSK для корректной проверки даты
         if isinstance(date, datetime):
-            if date.tzinfo is None:
-                # Предполагаем UTC
-                date_utc = pytz.utc.localize(date)
-                date_msk = date_utc.astimezone(MSK_TZ)
-            else:
-                date_msk = date.astimezone(MSK_TZ)
+            date_msk = self._to_msk(date)
             d = date_msk.date()
         else:
             d = date
@@ -183,13 +279,7 @@ class MarketService:
         if not self.is_trading_day(dt):
             return False
         
-        # Конвертируем в MSK если нужно
-        if dt.tzinfo is None:
-            # Предполагаем UTC, конвертируем в MSK
-            dt_utc = pytz.utc.localize(dt)
-            dt_msk = dt_utc.astimezone(MSK_TZ)
-        else:
-            dt_msk = dt.astimezone(MSK_TZ)
+        dt_msk = self._to_msk(dt)
         
         t = dt_msk.time()
         
@@ -210,12 +300,7 @@ class MarketService:
         # Максимум 14 дней вперёд (на случай новогодних праздников)
         for _ in range(14 * 24):  # 14 дней в часах
             if self.is_trading_day(current):
-                # Конвертируем в MSK (предполагаем UTC если без timezone)
-                if current.tzinfo is None:
-                    current_utc = pytz.utc.localize(current)
-                    current_msk = current_utc.astimezone(MSK_TZ)
-                else:
-                    current_msk = current.astimezone(MSK_TZ)
+                current_msk = self._to_msk(current)
                 
                 t = current_msk.time()
                 
@@ -402,28 +487,17 @@ class MarketService:
                 except Exception as e:
                     log.warning(f"Failed to parse operation times: {e}")
         
-        # Конвертируем время в MSK для корректного запроса свечей
-        # ВАЖНО: Время сделок в UTC, свечи MOEX в MSK
-        if actual_entry_time.tzinfo is None:
-            entry_utc = pytz.utc.localize(actual_entry_time)
-        else:
-            entry_utc = actual_entry_time.astimezone(pytz.utc)
-        
-        if exit_time.tzinfo is None:
-            exit_utc = pytz.utc.localize(exit_time)
-        else:
-            exit_utc = exit_time.astimezone(pytz.utc)
-        
-        # Конвертируем в московское время
-        entry_msk = entry_utc.astimezone(MSK_TZ)
-        exit_msk = exit_utc.astimezone(MSK_TZ)
+        # Приводим время сделки к часовому поясу биржи.
+        # Для naive datetime считаем, что время уже задано в локальном времени MOEX.
+        entry_msk = self._to_msk(actual_entry_time)
+        exit_msk = self._to_msk(exit_time)
         
         # Расширяем период на 1 час для надёжности (уже в MSK)
         start_date = entry_msk - timedelta(hours=1)
         end_date = exit_msk + timedelta(hours=1)
         
-        log.debug(f"MAE/MFE period: UTC entry={actual_entry_time} -> MSK={entry_msk}")
-        log.debug(f"MAE/MFE period: UTC exit={exit_time} -> MSK={exit_msk}")
+        log.debug(f"MAE/MFE period: entry={actual_entry_time} -> MSK={entry_msk}")
+        log.debug(f"MAE/MFE period: exit={exit_time} -> MSK={exit_msk}")
         log.debug(f"Fetching candles from {start_date} to {end_date}")
         
         # Определяем интервал на основе длительности сделки

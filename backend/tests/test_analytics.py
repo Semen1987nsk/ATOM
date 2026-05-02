@@ -4,6 +4,8 @@ Tests for analytics module (Optimal f, SQN, Z-Score, etc.)
 import pytest
 import sys
 import os
+from datetime import datetime
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -122,6 +124,67 @@ class TestMAEMFEAnalysis:
         result = analytics.analyze_mae_mfe([])
         assert "recommendations" in result
 
+    def test_mae_mfe_uses_net_pnl_for_winner_classification(self):
+        """Winner/loser buckets should follow net_pnl when commissions turn a gross win into a net loss."""
+        trades = [
+            SimpleNamespace(
+                entry_at=datetime(2025, 1, 6, 10, 0),
+                exit_at=datetime(2025, 1, 6, 12, 0),
+                entry_price=100,
+                exit_price=101,
+                mae_price=97,
+                mfe_price=105,
+                quantity=10,
+                pnl=10,
+                net_pnl=-5,
+                direction=SimpleNamespace(value='long'),
+                operations=[],
+            ),
+            SimpleNamespace(
+                entry_at=datetime(2025, 1, 7, 10, 0),
+                exit_at=datetime(2025, 1, 7, 12, 0),
+                entry_price=100,
+                exit_price=110,
+                mae_price=98,
+                mfe_price=112,
+                quantity=10,
+                pnl=100,
+                net_pnl=95,
+                direction=SimpleNamespace(value='long'),
+                operations=[],
+            ),
+        ]
+        result = analytics.analyze_mae_mfe(trades)
+        assert result["winners_vs_losers"]["winners"]["count"] == 1
+        assert result["winners_vs_losers"]["losers"]["count"] == 1
+
+
+class TestTimePatterns:
+    """Tests for time-pattern aggregation."""
+
+    def test_time_patterns_exact_aggregates(self):
+        """Should aggregate day, hour and month stats from net PnL values."""
+        trades = [
+            SimpleNamespace(entry_at=datetime(2025, 1, 6, 10, 0), pnl=100, net_pnl=95),
+            SimpleNamespace(entry_at=datetime(2025, 1, 6, 11, 0), pnl=-50, net_pnl=-55),
+            SimpleNamespace(entry_at=datetime(2025, 2, 4, 10, 0), pnl=70, net_pnl=70),
+        ]
+        result = analytics.analyze_time_patterns(trades)
+        assert result["day_stats"] == [
+            {"day": "Пн", "total_pnl": 40.0, "trades": 2, "win_rate": 50.0},
+            {"day": "Вт", "total_pnl": 70.0, "trades": 1, "win_rate": 100.0},
+        ]
+        assert result["hour_stats"] == [
+            {"hour": "10:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
+            {"hour": "11:00", "total_pnl": -55.0, "trades": 1, "win_rate": 0.0},
+        ]
+        assert result["month_stats"] == [
+            {"month": "Янв", "total_pnl": 40.0, "trades": 2, "win_rate": 50.0},
+            {"month": "Фев", "total_pnl": 70.0, "trades": 1, "win_rate": 100.0},
+        ]
+        assert result["best_day"]["day"] == "Вт"
+        assert result["worst_day"]["day"] == "Пн"
+
 
 class TestSharpeSortino:
     """Tests for Sharpe and Sortino ratios."""
@@ -146,6 +209,12 @@ class TestSharpeSortino:
         assert result["sortino_ratio"] > 0
         assert result["sharpe_ratio"] > 0
 
+    def test_sortino_uses_standard_downside_deviation(self):
+        """Sortino should use downside deviation over all periods, not std of only losing trades."""
+        pnl = [100, -50, 80, -30]
+        result = analytics.calculate_sharpe_sortino(pnl)
+        assert result["sortino_ratio"] == 0.86
+
 
 class TestDrawdownStats:
     """Tests for drawdown calculations."""
@@ -161,6 +230,33 @@ class TestDrawdownStats:
         result = analytics.calculate_drawdown_stats(pnl, initial_balance=0)
         # Peak = 150, Trough = 20, DD = 130
         assert result["max_drawdown_abs"] == 130
+
+    def test_current_drawdown_uses_latest_balance_vs_peak(self):
+        """Should calculate current drawdown from the latest balance relative to the historical peak."""
+        pnl = [100, -40, 20, -10]  # Peak balance = 1100, final balance = 1070
+        result = analytics.calculate_drawdown_stats(pnl, initial_balance=1000)
+        assert result["max_drawdown_abs"] == 40
+        assert result["current_drawdown_pct"] == 2.73
+
+
+class TestCalmarRatio:
+    """Tests for Calmar Ratio calculation."""
+
+    def test_calmar_ratio_exact_values(self):
+        """Should calculate exact CAGR, drawdown and Calmar ratio on a controlled dataset."""
+        pnl = [100, -50, -30, 80, 100]
+        result = analytics.calculate_calmar_ratio(pnl, initial_balance=1000, period_years=1.0)
+        assert result["cagr_pct"] == 20.0
+        assert result["max_drawdown_pct"] == 7.27
+        assert result["calmar_ratio"] == 2.75
+        assert result["rating"] == "Отлично"
+
+    def test_calmar_ratio_requires_positive_initial_balance(self):
+        """Should not divide by zero when starting balance is missing."""
+        pnl = [100, -50, -30, 80, 100]
+        result = analytics.calculate_calmar_ratio(pnl, initial_balance=0, period_years=1.0)
+        assert result["calmar_ratio"] == 0
+        assert result["rating"] == "Недостаточно данных"
 
 
 class TestWinLossStats:
@@ -199,6 +295,15 @@ class TestStreaks:
         assert result["current_streak"] == 4
         assert result["current_streak_type"] == "WIN"
 
+    def test_current_loss_streak_ignores_breakeven_trades(self):
+        """Breakeven trades should not reset the current streak; the latest non-zero streak should be returned."""
+        pnl = [5, -1, -2, 0]
+        result = analytics.calculate_streaks(pnl)
+        assert result["max_win_streak"] == 1
+        assert result["max_loss_streak"] == 2
+        assert result["current_streak"] == 2
+        assert result["current_streak_type"] == "LOSS"
+
 
 class TestKellyCriterion:
     """Tests for Kelly Criterion calculation."""
@@ -233,6 +338,17 @@ class TestMonteCarlo:
         assert "worst_case_5pct" in result
         assert "best_case_95pct" in result
 
+    def test_monte_carlo_seeded_contract(self):
+        """Seeded Monte Carlo run should remain stable for the current vectorized implementation."""
+        pnl = [100, 50, -30, 80, -20, 120, -40, 90, 60, -10]
+        analytics.np.random.seed(42)
+        result = analytics.monte_carlo_simulation(pnl, num_simulations=100, num_trades=10)
+        assert result["median_return"] == 400.0
+        assert result["worst_case_5pct"] == 59.5
+        assert result["best_case_95pct"] == 691.5
+        assert result["avg_max_drawdown"] == 60.3
+        assert result["ruin_probability"] == 0.0
+
 
 class TestRiskOfRuin:
     """Tests for Risk of Ruin calculation."""
@@ -266,6 +382,14 @@ class TestTailRatio:
         assert "avg_top_10pct_win" in result
         assert "avg_top_10pct_loss" in result
 
+    def test_tail_ratio_exact_top_decile_values(self):
+        """Tail ratio should use the average of the best and worst deciles."""
+        pnl = [100, 80, 60, 40, 20, 10, -5, -10, -20, -50]
+        result = analytics.calculate_tail_ratio(pnl)
+        assert result["avg_top_10pct_win"] == 100
+        assert result["avg_top_10pct_loss"] == 50
+        assert result["tail_ratio"] == 2.0
+
 
 class TestRDistribution:
     """Tests for R-distribution analysis."""
@@ -284,6 +408,15 @@ class TestRDistribution:
         assert result["pct_above_1r"] > 0
         assert result["pct_above_2r"] >= 0
 
+    def test_r_distribution_exact_percentages(self):
+        """Should calculate exact R-distribution percentages on a controlled sample."""
+        pnl = [100, -50, 40, 0]
+        risk = [50, 50, 20, 10]
+        result = analytics.calculate_r_distribution(pnl, risk)
+        assert result["pct_positive_r"] == 50.0
+        assert result["pct_above_1r"] == 50.0
+        assert result["pct_above_2r"] == 50.0
+
 
 class TestTradeDuration:
     """Tests for Trade Duration analysis."""
@@ -292,3 +425,17 @@ class TestTradeDuration:
         """Should return 0 for empty trades."""
         result = analytics.calculate_trade_duration([])
         assert result["avg_duration_hours"] == 0
+
+    def test_trade_duration_exact_values(self):
+        """Should calculate exact average and median durations from closed trades."""
+        trades = [
+            SimpleNamespace(entry_at=datetime(2025, 1, 1, 10, 0), exit_at=datetime(2025, 1, 1, 12, 0), pnl=100, net_pnl=95),
+            SimpleNamespace(entry_at=datetime(2025, 1, 2, 10, 0), exit_at=datetime(2025, 1, 2, 13, 30), pnl=-50, net_pnl=-55),
+            SimpleNamespace(entry_at=datetime(2025, 1, 3, 10, 0), exit_at=datetime(2025, 1, 3, 11, 0), pnl=20, net_pnl=20),
+        ]
+        result = analytics.calculate_trade_duration(trades)
+        assert result["avg_duration_hours"] == 2.2
+        assert result["avg_win_duration_hours"] == 1.5
+        assert result["avg_loss_duration_hours"] == 3.5
+        assert result["median_duration_hours"] == 2.0
+        assert result["total_closed_trades"] == 3

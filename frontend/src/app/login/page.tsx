@@ -8,7 +8,7 @@ import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-rea
 import { OAuthButtons } from '@/components/OAuthButtons';
 
 export default function LoginPage() {
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { login, refreshUser, isAuthenticated, isLoading: authLoading } = useAuth();
   const router = useRouter();
   
   const [email, setEmail] = useState('');
@@ -66,7 +66,7 @@ export default function LoginPage() {
             <span className="text-foreground">io</span>
           </Link>
           <p className="text-sm text-muted-foreground mt-2">
-            AI-Powered Trading Intelligence
+            Торговая аналитика на базе ИИ
           </p>
         </div>
         
@@ -161,7 +161,10 @@ export default function LoginPage() {
           {/* OAuth Buttons */}
           <div className="mt-6">
             <OAuthButtons 
-              onSuccess={() => router.push('/')}
+              onSuccess={async () => {
+                await refreshUser();
+                router.push('/');
+              }}
               onError={(err) => setError(err)}
             />
           </div>

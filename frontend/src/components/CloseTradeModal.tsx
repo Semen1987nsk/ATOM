@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface CloseTradeModalProps {
   isOpen: boolean;
@@ -21,6 +21,17 @@ const EXIT_REASONS = [
   "Other"
 ];
 
+const EXIT_REASON_LABELS: Record<string, string> = {
+  "Strategy": "Стратегия",
+  "Target": "Цель",
+  "Stop-loss": "Стоп-лосс",
+  "Trailing stop": "Трейлинг",
+  "Time": "Время",
+  "Panic": "Паника",
+  "Manual": "Вручную",
+  "Other": "Другое"
+};
+
 export default function CloseTradeModal({
   isOpen,
   onClose,
@@ -28,20 +39,29 @@ export default function CloseTradeModal({
   tradeTicker,
   tradeDirection
 }: CloseTradeModalProps) {
+  if (!isOpen) return null;
+
+  return (
+    <CloseTradeModalContent
+      key={`${tradeTicker ?? 'trade'}-${tradeDirection ?? 'dir'}-${isOpen ? 'open' : 'closed'}`}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      tradeTicker={tradeTicker}
+      tradeDirection={tradeDirection}
+    />
+  );
+}
+
+function CloseTradeModalContent({
+  onClose,
+  onConfirm,
+  tradeTicker,
+  tradeDirection,
+}: Omit<CloseTradeModalProps, 'isOpen'>) {
   const [exitPrice, setExitPrice] = useState("");
   const [exitReason, setExitReason] = useState("Strategy");
   const [customReason, setCustomReason] = useState("");
   const [error, setError] = useState("");
-
-  // Reset form when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setExitPrice("");
-      setExitReason("Strategy");
-      setCustomReason("");
-      setError("");
-    }
-  }, [isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,8 +81,6 @@ export default function CloseTradeModal({
     onConfirm(price, reason);
     onClose();
   };
-
-  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto animate-fadeIn">
@@ -145,7 +163,7 @@ export default function CloseTradeModal({
                         : "bg-surface border border-border text-gray-300 hover:border-accent/50"
                     }`}
                   >
-                    {reason}
+                    {EXIT_REASON_LABELS[reason] || reason}
                   </button>
                 ))}
               </div>

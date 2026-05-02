@@ -7,7 +7,6 @@ export type Theme = 'dark' | 'light';
 export type MAECalculationMethod = 'weighted_average' | 'first_entry';
 
 export interface Settings {
-  initialDeposit: number;
   currency: Currency;
   currencySymbol: string;
   theme: Theme;
@@ -33,7 +32,6 @@ const currencySymbols: Record<Currency, string> = {
 };
 
 const defaultSettings: Settings = {
-  initialDeposit: 10000,
   currency: 'USD',
   currencySymbol: '$',
   theme: 'dark',
@@ -43,39 +41,40 @@ const defaultSettings: Settings = {
   tradesStartTradeSymbol: null,
 };
 
+function getInitialSettings(): Settings {
+  if (typeof window === 'undefined') {
+    return defaultSettings;
+  }
+
+  const saved = localStorage.getItem('tradingSettings');
+  if (!saved) {
+    return defaultSettings;
+  }
+
+  try {
+    const parsed = JSON.parse(saved);
+    const { initialDeposit: _legacyInitialDeposit, ...parsedWithoutLegacy } = parsed;
+    const currency = parsed.currency as Currency | undefined;
+    return {
+      ...defaultSettings,
+      ...parsedWithoutLegacy,
+      currencySymbol: currency ? currencySymbols[currency] || '$' : defaultSettings.currencySymbol,
+      theme: parsed.theme || defaultSettings.theme,
+    };
+  } catch {
+    return defaultSettings;
+  }
+}
+
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [mounted, setMounted] = useState(false);
+  const [settings, setSettings] = useState<Settings>(getInitialSettings);
 
   // Применяем тему к document
   useEffect(() => {
-    if (mounted) {
-      document.documentElement.setAttribute('data-theme', settings.theme);
-    }
-  }, [settings.theme, mounted]);
-
-  useEffect(() => {
-    setMounted(true);
-    const saved = localStorage.getItem('tradingSettings');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const theme = parsed.theme || 'dark';
-        setSettings({
-          ...defaultSettings,
-          ...parsed,
-          currencySymbol: currencySymbols[parsed.currency as Currency] || '$',
-          theme,
-        });
-        // Применяем тему сразу при загрузке
-        document.documentElement.setAttribute('data-theme', theme);
-      } catch {
-        // Use defaults
-      }
-    }
-  }, []);
+    document.documentElement.setAttribute('data-theme', settings.theme);
+  }, [settings.theme]);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
     setSettings(prev => {
@@ -86,7 +85,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           ? currencySymbols[newSettings.currency] 
           : prev.currencySymbol,
       };
-      localStorage.setItem('tradingSettings', JSON.stringify(updated));
+      try {
+        localStorage.setItem('tradingSettings', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to persist settings to localStorage:', e);
+      }
       return updated;
     });
   };
@@ -109,14 +112,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     
     return `${amount < 0 ? '-' : ''}${symbol}${formatted}`;
   };
-
-  if (!mounted) {
-    return (
-      <SettingsContext.Provider value={{ settings: defaultSettings, updateSettings, formatCurrency: (a) => `$${a.toFixed(2)}`, toggleTheme: () => {} }}>
-        {children}
-      </SettingsContext.Provider>
-    );
-  }
 
   return (
     <SettingsContext.Provider value={{ settings, updateSettings, formatCurrency, toggleTheme }}>

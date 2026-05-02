@@ -1,10 +1,11 @@
 """
 Auth Router — регистрация, вход, профиль, OAuth
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from datetime import datetime
 import secrets
+import httpx
 
 import database
 import models
@@ -27,7 +28,7 @@ oauth_store = get_state_store()
 
 @router.post("/register", response_model=schemas.TokenPair)
 @limiter.limit(REGISTER_LIMIT)
-def register(request: Request, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
+def register(request: Request, response: Response, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
     """
     Регистрация нового пользователя.
     Возвращает пару JWT токенов (access + refresh) для авторизации.
@@ -44,6 +45,7 @@ def register(request: Request, user_data: schemas.UserCreate, db: Session = Depe
     
     # Создаём пару токенов
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
+    auth_service.set_auth_cookies(response, request, access_token, refresh_token)
     
     log.info(f"✅ Зарегистрирован новый пользователь: {user.email}")
     
@@ -57,7 +59,7 @@ def register(request: Request, user_data: schemas.UserCreate, db: Session = Depe
 
 @router.post("/login", response_model=schemas.TokenPair)
 @limiter.limit(AUTH_LIMIT)
-def login(request: Request, user_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
+def login(request: Request, response: Response, user_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
     """
     Вход в систему.
     Возвращает пару JWT токенов (access + refresh) для авторизации.
@@ -79,6 +81,7 @@ def login(request: Request, user_data: schemas.UserLogin, db: Session = Depends(
     
     # Создаём пару токенов
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
+    auth_service.set_auth_cookies(response, request, access_token, refresh_token)
     
     log.info(f"🔑 Вход пользователя: {user.email}")
     
@@ -94,7 +97,8 @@ def login(request: Request, user_data: schemas.UserLogin, db: Session = Depends(
 @limiter.limit(AUTH_LIMIT)
 def refresh_tokens(
     request: Request,
-    token_request: schemas.TokenRefreshRequest,
+    response: Response,
+    token_request: schemas.TokenRefreshRequest | None = None,
     db: Session = Depends(database.get_db)
 ):
     """
@@ -103,7 +107,18 @@ def refresh_tokens(
     Используйте этот endpoint когда access токен истёк.
     Refresh токен должен быть валиден.
     """
-    result = auth_service.refresh_tokens(token_request.refresh_token, db)
+    refresh_token = auth_service.get_refresh_token_from_request(
+        request,
+        token_request.refresh_token if token_request else None,
+    )
+
+    if not refresh_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Refresh токен отсутствует"
+        )
+
+    result = auth_service.refresh_tokens(refresh_token, db)
     
     if result is None:
         raise HTTPException(
@@ -112,6 +127,7 @@ def refresh_tokens(
         )
     
     access_token, refresh_token = result
+    auth_service.set_auth_cookies(response, request, access_token, refresh_token)
     
     log.debug("🔄 Токены обновлены")
     
@@ -121,6 +137,14 @@ def refresh_tokens(
         "token_type": "bearer",
         "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     }
+
+
+@router.post("/logout", status_code=204)
+def logout(request: Request, response: Response):
+    """Завершить сессию и очистить auth cookies."""
+    auth_service.clear_auth_cookies(response, request)
+    response.status_code = 204
+    return response
 
 
 @router.get("/me", response_model=schemas.UserResponse)
@@ -161,27 +185,38 @@ def update_current_user(
 
 @router.post("/change-password")
 def change_password(
-    old_password: str,
-    new_password: str,
+    password_data: schemas.ChangePasswordRequest,
     current_user: models.User = Depends(auth_service.get_current_user),
     db: Session = Depends(database.get_db)
 ):
     """
     Изменить пароль текущего пользователя.
     """
-    if not auth_service.verify_password(old_password, current_user.hashed_password):
+    if not current_user.hashed_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Для OAuth-аккаунта смена пароля недоступна"
+        )
+
+    if not auth_service.verify_password(password_data.old_password, current_user.hashed_password):
         raise HTTPException(
             status_code=400,
             detail="Неверный текущий пароль"
         )
     
-    if len(new_password) < 6:
+    if password_data.old_password == password_data.new_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Новый пароль должен отличаться от текущего"
+        )
+
+    if len(password_data.new_password) < 6:
         raise HTTPException(
             status_code=400,
             detail="Новый пароль должен быть минимум 6 символов"
         )
     
-    current_user.hashed_password = auth_service.get_password_hash(new_password)
+    current_user.hashed_password = auth_service.get_password_hash(password_data.new_password)
     db.commit()
     
     log.info(f"🔒 Пароль изменён для пользователя: {current_user.email}")
@@ -221,6 +256,7 @@ def oauth_authorize(request: Request, provider: str, redirect_uri: str):
 @limiter.limit(AUTH_LIMIT)
 async def oauth_callback(
     request: Request,
+    response: Response,
     provider: str,
     code: str,
     state: str,
@@ -289,6 +325,7 @@ async def oauth_callback(
         
         # Создаём пару токенов
         access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
+        auth_service.set_auth_cookies(response, request, access_token, refresh_token)
         
         log.info(f"🔐 OAuth вход: {email} через {provider}")
         
@@ -305,6 +342,17 @@ async def oauth_callback(
             }
         }
         
-    except Exception as e:
-        log.error(f"❌ OAuth ошибка для {provider}: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Ошибка авторизации: {str(e)}")
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        log.warning(f"⏱️ OAuth timeout for {provider}: {exc}")
+        raise HTTPException(status_code=504, detail="OAuth провайдер не ответил вовремя")
+    except httpx.HTTPStatusError as exc:
+        log.warning(f"❌ OAuth provider HTTP error for {provider}: {exc}")
+        raise HTTPException(status_code=502, detail="Ошибка ответа OAuth провайдера")
+    except httpx.HTTPError as exc:
+        log.warning(f"❌ OAuth transport error for {provider}: {exc}")
+        raise HTTPException(status_code=502, detail="Ошибка соединения с OAuth провайдером")
+    except Exception as exc:
+        log.error(f"❌ OAuth ошибка для {provider}: {exc}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка OAuth авторизации")

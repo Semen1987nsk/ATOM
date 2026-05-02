@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
 import { getApiUrl } from '@/lib/apiClient';
-import { 
-  ArrowLeft, Eye, Heart, Calendar, Tag, User, Share2, 
-  Clock, ChevronRight, Newspaper, BookOpen, TrendingUp, 
-  Lightbulb, Sparkles, Copy, Check
+import {
+  ArrowLeft, Eye, Heart, Calendar, Tag, Share2,
+  Clock, ChevronRight, Newspaper, BookOpen, TrendingUp,
+  Lightbulb, Sparkles, Check
 } from 'lucide-react';
 
 interface Article {
@@ -60,10 +61,10 @@ const categoryColors: Record<string, string> = {
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);
-  return date.toLocaleDateString('ru-RU', { 
-    day: 'numeric', 
-    month: 'long', 
-    year: 'numeric' 
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
   });
 }
 
@@ -75,7 +76,7 @@ function estimateReadTime(content: string): number {
 
 // Simple markdown renderer
 function renderMarkdown(content: string): string {
-  let html = content
+  const html = content
     // Headers
     .replace(/^### (.*$)/gim, '<h3 class="text-xl font-semibold mt-6 mb-3">$1</h3>')
     .replace(/^## (.*$)/gim, '<h2 class="text-2xl font-bold mt-8 mb-4">$1</h2>')
@@ -102,7 +103,7 @@ function renderMarkdown(content: string): string {
     .replace(/\n\n/g, '</p><p class="mb-4">')
     // Line breaks
     .replace(/\n/g, '<br />');
-  
+
   return `<p class="mb-4">${html}</p>`;
 }
 
@@ -112,10 +113,13 @@ function RelatedArticleCard({ article }: { article: Article }) {
       <article className="card p-0 overflow-hidden hover:border-accent/50 transition-all">
         <div className="aspect-video bg-secondary relative overflow-hidden">
           {article.cover_image ? (
-            <img 
-              src={article.cover_image} 
+            <Image
+              src={article.cover_image}
               alt={article.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              fill
+              sizes="(max-width: 768px) 100vw, 33vw"
+              unoptimized
+              className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/20 to-purple-600/20">
@@ -140,20 +144,16 @@ function RelatedArticleCard({ article }: { article: Article }) {
 export default function ArticlePage() {
   const params = useParams();
   const slug = params.slug as string;
-  
+
   const [article, setArticle] = useState<Article | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    loadArticle();
-  }, [slug]);
-
-  const loadArticle = async () => {
+  const loadArticle = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const res = await fetch(getApiUrl(`/blog/article/${slug}`));
       if (!res.ok) {
@@ -165,16 +165,20 @@ export default function ArticlePage() {
         return;
       }
       setArticle(await res.json());
-    } catch (err) {
+    } catch {
       setError('Не удалось загрузить статью');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [slug]);
+
+  useEffect(() => {
+    loadArticle();
+  }, [loadArticle]);
 
   const handleShare = async () => {
     const url = window.location.href;
-    
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -182,7 +186,7 @@ export default function ArticlePage() {
           text: article?.excerpt,
           url: url
         });
-      } catch (err) {
+      } catch {
         // User cancelled or error
       }
     } else {
@@ -242,14 +246,14 @@ export default function ArticlePage() {
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link 
-            href="/blog" 
+          <Link
+            href="/blog"
             className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft size={20} />
             <span>Блог</span>
           </Link>
-          
+
           <div className="flex items-center gap-2">
             <button
               onClick={handleShare}
@@ -272,30 +276,30 @@ export default function ArticlePage() {
               {categoryIcons[article.category]}
               {categoryNames[article.category]}
             </span>
-            
+
             <span className="text-muted-foreground text-sm flex items-center gap-1">
               <Calendar size={14} />
               {article.published_at ? formatDate(article.published_at) : formatDate(article.created_at)}
             </span>
-            
+
             <span className="text-muted-foreground text-sm flex items-center gap-1">
               <Clock size={14} />
               {readTime} мин чтения
             </span>
           </div>
-          
+
           {/* Title */}
           <h1 className="text-3xl md:text-4xl font-bold mb-4">
             {article.title}
           </h1>
-          
+
           {/* Excerpt */}
           {article.excerpt && (
             <p className="text-xl text-muted-foreground mb-6">
               {article.excerpt}
             </p>
           )}
-          
+
           {/* Author & Stats */}
           <div className="flex items-center justify-between py-4 border-y border-border mb-8">
             <div className="flex items-center gap-3">
@@ -309,7 +313,7 @@ export default function ArticlePage() {
                 <p className="text-sm text-muted-foreground">Автор статьи</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4 text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Eye size={18} />
@@ -321,31 +325,34 @@ export default function ArticlePage() {
               </span>
             </div>
           </div>
-          
+
           {/* Cover Image */}
           {article.cover_image && (
-            <div className="aspect-video rounded-xl overflow-hidden mb-8">
-              <img 
-                src={article.cover_image} 
+            <div className="aspect-video rounded-xl overflow-hidden mb-8 relative">
+              <Image
+                src={article.cover_image}
                 alt={article.title}
-                className="w-full h-full object-cover"
+                fill
+                sizes="(max-width: 1024px) 100vw, 896px"
+                unoptimized
+                className="object-cover"
               />
             </div>
           )}
-          
+
           {/* Content — sanitized to prevent XSS */}
-          <div 
+          <div
             className="prose prose-invert max-w-none"
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(article.content)) }}
           />
-          
+
           {/* Tags */}
           {article.tags && article.tags.length > 0 && (
             <div className="mt-8 pt-6 border-t border-border">
               <div className="flex items-center gap-2 flex-wrap">
                 <Tag size={16} className="text-muted-foreground" />
                 {article.tags.map(tag => (
-                  <Link 
+                  <Link
                     key={tag}
                     href={`/blog?tag=${tag}`}
                     className="px-3 py-1 bg-secondary hover:bg-secondary/80 rounded-full text-sm transition-colors"
@@ -357,7 +364,7 @@ export default function ArticlePage() {
             </div>
           )}
         </article>
-        
+
         {/* Related Articles */}
         {article.related_articles && article.related_articles.length > 0 && (
           <section className="mt-12 pt-8 border-t border-border">
@@ -369,7 +376,7 @@ export default function ArticlePage() {
             </div>
           </section>
         )}
-        
+
         {/* CTA */}
         <section className="mt-12 card bg-gradient-to-br from-accent/10 to-purple-600/10 border-accent/30 text-center">
           <h2 className="text-xl font-bold mb-2">Начните вести торговый дневник</h2>

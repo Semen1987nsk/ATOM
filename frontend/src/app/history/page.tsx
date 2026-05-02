@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Zap, Upload, Plus, Filter, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, GripVertical, BarChart2, Loader2, Calendar, Save, Check } from 'lucide-react';
+import { ArrowLeft, Trash2, Upload, Plus, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, BarChart2, Loader2, Calendar, Check } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import { EditTradeModal } from '@/components/EditTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
@@ -11,6 +12,8 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
 import { useSettings } from '@/contexts/SettingsContext';
 import { api, getApiUrl } from '@/lib/apiClient';
+
+type SortMode = 'latest_activity' | 'opened_at' | 'closed_at';
 
 // Конфигурация колонок
 interface ColumnConfig {
@@ -27,19 +30,23 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'entry', label: 'Вход', defaultVisible: true },
   { id: 'exit', label: 'Выход', defaultVisible: true },
   { id: 'quantity', label: 'Кол-во', defaultVisible: true },
+  { id: 'setup', label: 'Сетап', defaultVisible: true },
+  { id: 'timeframe', label: 'ТФ', defaultVisible: true },
   { id: 'pnl', label: 'PnL', defaultVisible: true },
   { id: 'status', label: 'Статус', defaultVisible: true },
+  { id: 'tags', label: 'Теги', defaultVisible: false },
   { id: 'commission', label: 'Комиссия', defaultVisible: false },
   { id: 'swap', label: 'Своп', defaultVisible: false },
-  { id: 'setup', label: 'Сетап', defaultVisible: false },
   { id: 'confidence', label: 'Уверенность', defaultVisible: false },
   { id: 'risk', label: 'Риск', defaultVisible: false },
   { id: 'rMultiple', label: 'R-Multiple', defaultVisible: false },
-  { id: 'tags', label: 'Теги', defaultVisible: false },
   { id: 'leverage', label: 'Плечо', defaultVisible: false },
 ];
 
+const DIARY_PROMOTED_COLUMNS = ['setup', 'timeframe'];
+
 const STORAGE_KEY = 'eqio_history_columns';
+const SORT_STORAGE_KEY = 'eqio_history_sort';
 
 interface Trade {
   id: number;
@@ -95,6 +102,7 @@ interface Trade {
     qty: number;
     commission: number;
     direction: string;
+    note?: string;
   }>;
   holding_time_minutes?: number;
   r_multiple?: number;
@@ -102,6 +110,18 @@ interface Trade {
   entry_reason?: string; // Причина/логика входа (для ИИ анализа)
   mae_price?: number; // Maximum Adverse Excursion - худшая цена
   mfe_price?: number; // Maximum Favorable Excursion - лучшая цена
+}
+
+function getTradeSortTimestamp(trade: Trade, sortMode: SortMode): number {
+  if (sortMode === 'opened_at') {
+    return new Date(trade.entry_at).getTime();
+  }
+
+  if (sortMode === 'closed_at') {
+    return trade.exit_at ? new Date(trade.exit_at).getTime() : Number.NEGATIVE_INFINITY;
+  }
+
+  return new Date(trade.exit_at || trade.entry_at).getTime();
 }
 
 export default function HistoryPage() {
@@ -119,8 +139,7 @@ export default function HistoryPage() {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [selectedTradeToClose, setSelectedTradeToClose] = useState<Trade | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [unrealizedData, setUnrealizedData] = useState<{[key: number]: {pnl: number, price: number}}>({});
+  const [unrealizedData, setUnrealizedData] = useState<Record<number, { pnl: number; price: number }>>({});
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -128,13 +147,29 @@ export default function HistoryPage() {
   const [isCalculatingMAE, setIsCalculatingMAE] = useState(false);
   const [maeCalculationResult, setMaeCalculationResult] = useState<{updated: number, failed: number} | null>(null);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(SORT_STORAGE_KEY);
+      if (saved === 'latest_activity' || saved === 'opened_at' || saved === 'closed_at') {
+        return saved;
+      }
+    }
+    return 'latest_activity';
+  });
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
     // Загружаем из localStorage при инициализации
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         try {
-          return new Set(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          const savedColumns = new Set(Array.isArray(parsed) ? parsed : []);
+
+          DIARY_PROMOTED_COLUMNS.forEach((columnId) => {
+            savedColumns.add(columnId);
+          });
+
+          return savedColumns;
         } catch {
           // Если ошибка парсинга, используем дефолтные
         }
@@ -142,7 +177,7 @@ export default function HistoryPage() {
     }
     return new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id));
   });
-  
+
   // Horizontal scroll state
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -174,13 +209,13 @@ export default function HistoryPage() {
       const timeoutId = setTimeout(updateScrollState, 100);
       container.addEventListener('scroll', updateScrollState);
       window.addEventListener('resize', updateScrollState);
-      
+
       // Also use ResizeObserver for more reliable detection
       const resizeObserver = new ResizeObserver(() => {
         updateScrollState();
       });
       resizeObserver.observe(container);
-      
+
       return () => {
         clearTimeout(timeoutId);
         container.removeEventListener('scroll', updateScrollState);
@@ -204,8 +239,8 @@ export default function HistoryPage() {
   const fetchUnrealizedPnL = async () => {
     try {
         const data = await api.get<Array<{trade_id: number; unrealized_pnl: number; current_price: number}>>('/trades/unrealized-pnl');
-        const map: any = {};
-        data.forEach((item: any) => {
+      const map: Record<number, { pnl: number; price: number }> = {};
+      data.forEach((item) => {
             map[item.trade_id] = { pnl: item.unrealized_pnl, price: item.current_price };
         });
         setUnrealizedData(map);
@@ -228,7 +263,7 @@ export default function HistoryPage() {
 
   const handleCloseTradeConfirm = async (exitPrice: number, exitReason: string) => {
     if (!selectedTradeToClose) return;
-    
+
     try {
       await api.patch(`/trades/${selectedTradeToClose.id}/close`, {
         body: {
@@ -249,7 +284,7 @@ export default function HistoryPage() {
   };
 
   const handleDelete = async (tradeId: number) => {
-    if (!confirm('Are you sure you want to delete this trade?')) return;
+    if (!confirm('Вы уверены, что хотите удалить эту сделку?')) return;
     try {
       await api.delete(`/trades/${tradeId}`);
       fetchTrades();
@@ -283,22 +318,22 @@ export default function HistoryPage() {
     // To check if 'trade' is an addition, we look for OLDER trades (which are AFTER it in the array)
     // that overlap with it.
     // Actually, it's safer to look at the whole list.
-    
-    const isAddition = trades.some(other => 
+
+    const isAddition = trades.some(other =>
       other.id !== trade.id && // Not self
       other.symbol === trade.symbol && // Same symbol
       other.direction === trade.direction && // Same direction
       new Date(other.entry_at).getTime() < new Date(trade.entry_at).getTime() && // Other started BEFORE this one
       (other.exit_at ? new Date(other.exit_at).getTime() > new Date(trade.entry_at).getTime() : true) // Other ended AFTER this one started (or is still open)
     );
-    
+
     return { ...trade, isAddition };
   });
-  
+
   const filteredTrades = enrichedTrades.filter(t => {
     const matchesTag = selectedTag ? t.tags?.includes(selectedTag) : true;
     const matchesDirection = filterDirection === 'ALL' ? true : t.direction.toUpperCase() === filterDirection;
-    
+
     // Фильтр по дате/сделке начала из настроек
     let matchesStart = true;
     if (settings.tradesStartTradeId) {
@@ -311,36 +346,20 @@ export default function HistoryPage() {
       // Если только дата — показываем сделки с начала этого дня
       matchesStart = new Date(t.entry_at) >= new Date(settings.tradesStartDate);
     }
-    
+
     return matchesTag && matchesDirection && matchesStart;
   });
 
-  // Grouping Logic
-  const groups: { [key: string]: Trade[] } = {};
-  filteredTrades.forEach(trade => {
-    const key = trade.exit_at 
-      ? `${trade.symbol}-${trade.direction}-${trade.exit_at}`
-      : `${trade.symbol}-${trade.direction}-OPEN`;
-      
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(trade);
-  });
+  const sortedTrades = [...filteredTrades].sort(
+    (a, b) => {
+      const primaryDiff = getTradeSortTimestamp(b, sortMode) - getTradeSortTimestamp(a, sortMode);
+      if (primaryDiff !== 0) {
+        return primaryDiff;
+      }
 
-  const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
-    const groupA = groups[a];
-    const groupB = groups[b];
-    const getDate = (t: Trade) => new Date(t.exit_at || t.entry_at).getTime();
-    const maxDateA = Math.max(...groupA.map(getDate));
-    const maxDateB = Math.max(...groupB.map(getDate));
-    return maxDateB - maxDateA;
-  });
-
-  const toggleGroup = (key: string) => {
-    const newSet = new Set(expandedGroups);
-    if (newSet.has(key)) newSet.delete(key);
-    else newSet.add(key);
-    setExpandedGroups(newSet);
-  };
+      return new Date(b.entry_at).getTime() - new Date(a.entry_at).getTime();
+    }
+  );
 
   const toggleTrade = (tradeId: number) => {
     const newSet = new Set(expandedTrades);
@@ -399,27 +418,27 @@ export default function HistoryPage() {
       <header className="mb-8 flex justify-between items-center">
         <div>
           <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-foreground transition-colors mb-2 font-mono text-xs uppercase tracking-widest">
-            <ArrowLeft size={14} /> Return to Dashboard
+            <ArrowLeft size={14} /> Вернуться на дашборд
           </Link>
           <h1 className="text-3xl font-black tracking-tighter italic">
-            TRADE <span className="text-accent">HISTORY</span>
+            ДНЕВНИК <span className="text-accent">СДЕЛОК</span>
           </h1>
         </div>
         <div className="flex gap-3 items-center">
           <ThemeToggle />
           <div className="relative">
-            <button 
+            <button
               onClick={() => setShowColumnSettings(!showColumnSettings)}
               className={`p-2 rounded-lg border transition-all cursor-pointer ${
-                showColumnSettings 
-                  ? 'border-accent bg-accent/20 text-accent' 
+                showColumnSettings
+                  ? 'border-accent bg-accent/20 text-accent'
                   : 'border-border hover:border-accent/50 text-slate-400 hover:text-accent'
               }`}
               title="Настройки колонок"
             >
               <Settings size={18} />
             </button>
-            
+
             {/* Column Settings Panel */}
             {showColumnSettings && (
               <div className="absolute right-0 top-12 z-50 bg-slate-900 border border-border rounded-xl shadow-2xl p-4 w-72">
@@ -428,14 +447,14 @@ export default function HistoryPage() {
                     <Settings size={16} className="text-accent" />
                     Колонки таблицы
                   </h3>
-                  <button 
+                  <button
                     onClick={() => setShowColumnSettings(false)}
                     className="text-slate-400 hover:text-white"
                   >
                     <X size={18} />
                   </button>
                 </div>
-                
+
                 <div className="space-y-1 max-h-80 overflow-y-auto">
                   {ALL_COLUMNS.map(col => (
                     <button
@@ -456,7 +475,7 @@ export default function HistoryPage() {
                     </button>
                   ))}
                 </div>
-                
+
                 <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
                   <span className="text-xs text-slate-500">
                     {visibleColumns.size} из {ALL_COLUMNS.length} колонок
@@ -472,7 +491,7 @@ export default function HistoryPage() {
             )}
           </div>
           {trades.length > 0 && (
-            <button 
+            <button
               onClick={() => setShowDeleteConfirm(true)}
               className="btn-danger flex items-center gap-2 cursor-pointer"
               title="Удалить все сделки"
@@ -482,7 +501,7 @@ export default function HistoryPage() {
             </button>
           )}
           {trades.filter(t => t.exit_at && (!t.mae_price || !t.mfe_price)).length > 0 && (
-            <button 
+            <button
               onClick={() => calculateMAEMFE()}
               disabled={isCalculatingMAE}
               className="btn-secondary flex items-center gap-2 cursor-pointer disabled:opacity-50"
@@ -501,32 +520,32 @@ export default function HistoryPage() {
               ✓ Обновлено: {maeCalculationResult.updated}{maeCalculationResult.failed > 0 && `, пропущено: ${maeCalculationResult.failed}`}
             </span>
           )}
-          <button 
+          <button
             onClick={() => setIsImportModalOpen(true)}
             className="btn-secondary flex items-center gap-2 cursor-pointer"
           >
             <Upload size={14} />
-            Import
+            Импорт
           </button>
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="btn-primary flex items-center gap-2"
           >
-            <Plus size={14} /> Log Position
+            <Plus size={14} /> Новая позиция
           </button>
         </div>
       </header>
 
-      <AddTradeModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSuccess={() => fetchTrades()} 
+      <AddTradeModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => fetchTrades()}
       />
 
-      <EditTradeModal 
-        isOpen={isEditModalOpen} 
-        onClose={() => setIsEditModalOpen(false)} 
-        onSuccess={() => fetchTrades()} 
+      <EditTradeModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={() => fetchTrades()}
         trade={selectedTrade}
       />
 
@@ -560,12 +579,12 @@ export default function HistoryPage() {
                 <p className="text-slate-400 text-sm">Это действие нельзя отменить</p>
               </div>
             </div>
-            
+
             <p className="text-slate-300 mb-6">
-              Вы уверены, что хотите удалить <span className="font-bold text-red-400">{trades.length}</span> сделок? 
+              Вы уверены, что хотите удалить <span className="font-bold text-red-400">{trades.length}</span> сделок?
               Все данные будут безвозвратно потеряны.
             </p>
-            
+
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
@@ -600,25 +619,25 @@ export default function HistoryPage() {
         <div className="flex flex-wrap gap-4 mb-6 items-center">
           {/* Direction Filter */}
           <div className="flex items-center border border-border rounded-none overflow-hidden">
-            <button 
+            <button
               onClick={() => setFilterDirection('ALL')}
               className={`px-3 py-1.5 text-xs font-mono uppercase transition-colors ${filterDirection === 'ALL' ? 'bg-accent text-black font-bold' : 'hover:bg-white/10 text-slate-300'}`}
             >
-              All Sides
+              Все
             </button>
             <div className="w-px h-full bg-border"></div>
-            <button 
+            <button
               onClick={() => setFilterDirection('LONG')}
               className={`px-3 py-1.5 text-xs font-mono uppercase transition-colors ${filterDirection === 'LONG' ? 'bg-green-500 text-black font-bold' : 'hover:bg-white/10 text-green-400'}`}
             >
-              Long
+              Лонг
             </button>
             <div className="w-px h-full bg-border"></div>
-            <button 
+            <button
               onClick={() => setFilterDirection('SHORT')}
               className={`px-3 py-1.5 text-xs font-mono uppercase transition-colors ${filterDirection === 'SHORT' ? 'bg-red-500 text-black font-bold' : 'hover:bg-white/10 text-red-400'}`}
             >
-              Short
+              Шорт
             </button>
           </div>
 
@@ -643,21 +662,21 @@ export default function HistoryPage() {
                 }
               }}
               className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono border transition-colors ${
-                settings.tradesStartDate 
-                  ? 'border-accent text-accent bg-accent/10' 
+                settings.tradesStartDate
+                  ? 'border-accent text-accent bg-accent/10'
                   : 'border-border text-slate-400 hover:text-slate-300 hover:border-accent/50'
               }`}
               title="Фильтр по дате начала"
             >
               <Calendar size={14} />
-              {settings.tradesStartDate 
+              {settings.tradesStartDate
                 ? settings.tradesStartTradeSymbol
                   ? `С ${settings.tradesStartTradeSymbol} (${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})})`
                   : `С ${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}`
                 : 'Дата начала'
               }
             </button>
-            
+
             {showDatePicker && (
               <div className="absolute top-20 left-4 z-50 bg-slate-900 border border-border rounded-xl shadow-2xl p-4 min-w-80">
                 <div className="flex flex-col gap-3">
@@ -667,7 +686,7 @@ export default function HistoryPage() {
                       <X size={16} />
                     </button>
                   </div>
-                  
+
                   {/* Шаг 1: Выбор даты */}
                   <div>
                     <label className="text-xs text-slate-400 mb-1 block">1. Выберите дату:</label>
@@ -696,7 +715,7 @@ export default function HistoryPage() {
                       style={{ colorScheme: 'dark' }}
                     />
                   </div>
-                  
+
                   {/* Шаг 2: Выбор сделки (если есть сделки за эту дату) */}
                   {tempStartDate && tradesForSelectedDate.length > 0 && (
                     <div>
@@ -721,6 +740,10 @@ export default function HistoryPage() {
                             }`}
                           >
                             <div className="flex items-center justify-between">
+                              {(() => {
+                                const pnlPreviewValue = trade.net_pnl ?? trade.pnl;
+                                return (
+                                  <>
                               <span className="font-mono">
                                 {new Date(trade.entry_at).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}
                                 {' '}
@@ -730,27 +753,34 @@ export default function HistoryPage() {
                                 {' '}
                                 {trade.symbol}
                               </span>
-                              <span className={trade.pnl && trade.pnl > 0 ? 'text-green-400' : 'text-red-400'}>
-                                {trade.pnl ? `${trade.pnl > 0 ? '+' : ''}${trade.pnl.toFixed(0)}₽` : 'OPEN'}
+                              <span className={pnlPreviewValue !== null && pnlPreviewValue !== undefined && pnlPreviewValue >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                {trade.exit_at
+                                  ? (pnlPreviewValue !== null && pnlPreviewValue !== undefined
+                                      ? `${pnlPreviewValue > 0 ? '+' : ''}${pnlPreviewValue.toFixed(0)}₽`
+                                      : '0₽')
+                                  : 'ОТКРЫТА'}
                               </span>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
-                  
+
                   {tempStartDate && tradesForSelectedDate.length === 0 && (
                     <p className="text-xs text-yellow-500">⚠️ Нет сделок за выбранную дату</p>
                   )}
-                  
+
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        const selectedTrade = tempStartTradeId 
+                        const selectedTrade = tempStartTradeId
                           ? tradesForSelectedDate.find(t => t.id === tempStartTradeId)
                           : null;
-                        updateSettings({ 
+                        updateSettings({
                           tradesStartDate: tempStartDate || null,
                           tradesStartTradeId: tempStartTradeId,
                           tradesStartTradeSymbol: selectedTrade ? selectedTrade.symbol : null
@@ -769,7 +799,7 @@ export default function HistoryPage() {
                           setTempStartDate('');
                           setTempStartTradeId(null);
                           setTradesForSelectedDate([]);
-                          updateSettings({ 
+                          updateSettings({
                             tradesStartDate: null,
                             tradesStartTradeId: null,
                             tradesStartTradeSymbol: null
@@ -782,7 +812,7 @@ export default function HistoryPage() {
                       </button>
                     )}
                   </div>
-                  
+
                   <p className="text-xs text-slate-500">
                     Эта настройка влияет на все расчеты и дашборд
                   </p>
@@ -793,38 +823,51 @@ export default function HistoryPage() {
 
           <div className="w-px h-6 bg-border mx-2 hidden sm:block"></div>
 
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+              Сортировка
+            </label>
+            <select
+              value={sortMode}
+              onChange={(e) => {
+                const nextSortMode = e.target.value as SortMode;
+                setSortMode(nextSortMode);
+                localStorage.setItem(SORT_STORAGE_KEY, nextSortMode);
+              }}
+              className="bg-slate-900 border border-border text-slate-200 text-xs font-mono px-3 py-1.5 rounded-lg focus:outline-none focus:border-accent"
+            >
+              <option value="latest_activity">Последняя активность</option>
+              <option value="opened_at">По дате открытия</option>
+              <option value="closed_at">По дате закрытия</option>
+            </select>
+          </div>
+
           {/* Tag Filter */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar max-w-full">
-            <button 
+            <button
               onClick={() => setSelectedTag(null)}
               className={`text-xs font-mono px-3 py-1.5 border whitespace-nowrap ${!selectedTag ? 'border-accent text-accent' : 'border-border text-slate-400 hover:text-slate-300'}`}
             >
-              ALL TAGS
+              ВСЕ ТЕГИ
             </button>
             {allTags.map(tag => (
-              <button 
+              <button
                 key={tag}
                 onClick={() => setSelectedTag(tag)}
-                className={`text-xs font-mono px-3 py-1.5 border whitespace-nowrap ${selectedTag === tag ? 'border-accent text-accent' : 'border-border text-slate-400 hover:text-slate-300'}`}
+                className={`text-xs font-mono px-3 py-1.5 border whitespace-nowrap transition-colors ${selectedTag === tag ? 'border-accent text-accent bg-accent/10' : 'border-border text-slate-400 hover:text-slate-300 hover:border-accent/40'}`}
               >
-                #{tag.toUpperCase()}
+                #{tag}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Horizontal Scroll Navigation */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-slate-500 font-mono">
-            {canScrollLeft || canScrollRight ? '← → Прокрутите для просмотра всех колонок' : ''}
-          </div>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={() => scrollTable('left')}
               disabled={!canScrollLeft}
               className={`p-2 rounded-lg border transition-all ${
-                canScrollLeft 
-                  ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 cursor-pointer' 
+                canScrollLeft
+                  ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 cursor-pointer'
                   : 'border-border/30 text-slate-600 cursor-not-allowed'
               }`}
               title="Прокрутить влево"
@@ -835,8 +878,8 @@ export default function HistoryPage() {
               onClick={() => scrollTable('right')}
               disabled={!canScrollRight}
               className={`p-2 rounded-lg border transition-all ${
-                canScrollRight 
-                  ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 cursor-pointer' 
+                canScrollRight
+                  ? 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20 cursor-pointer'
                   : 'border-border/30 text-slate-600 cursor-not-allowed'
               }`}
               title="Прокрутить вправо"
@@ -849,19 +892,19 @@ export default function HistoryPage() {
         {/* Table Container with scroll shadows */}
         <div className="relative">
           {/* Left shadow indicator */}
-          <div 
+          <div
             className={`absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-900/90 to-transparent pointer-events-none z-10 transition-opacity duration-200 ${
               canScrollLeft ? 'opacity-100' : 'opacity-0'
             }`}
           />
           {/* Right shadow indicator */}
-          <div 
+          <div
             className={`absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900/90 to-transparent pointer-events-none z-10 transition-opacity duration-200 ${
               canScrollRight ? 'opacity-100' : 'opacity-0'
             }`}
           />
-          
-          <div 
+
+          <div
             ref={scrollContainerRef}
             className="overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-accent/30 hover:scrollbar-thumb-accent/50"
             style={{ maxHeight: 'calc(100vh - 300px)' }}
@@ -870,15 +913,16 @@ export default function HistoryPage() {
               <thead className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur-sm">
               <tr className="text-xs font-mono uppercase text-slate-400 border-b border-border">
                   <th className="py-2 pl-2 w-8"></th>
-                  {isColumnVisible('date') && <th className="py-2 w-24">Дата</th>}
+                  {isColumnVisible('date') && <th className="py-2 w-40">Даты</th>}
                   {isColumnVisible('ticker') && <th className="py-2 w-20">Тикер</th>}
                   {isColumnVisible('direction') && <th className="py-2 w-14">Стор.</th>}
                   {isColumnVisible('entry') && <th className="py-2 w-20">Вход</th>}
                   {isColumnVisible('exit') && <th className="py-2 w-20">Выход</th>}
                   {isColumnVisible('quantity') && <th className="py-2 w-16">Кол-во</th>}
+                  {isColumnVisible('setup') && <th className="py-2 w-24">Сетап</th>}
+                  {isColumnVisible('timeframe') && <th className="py-2 w-14">ТФ</th>}
                   {isColumnVisible('commission') && <th className="py-2 w-20">Комис.</th>}
                   {isColumnVisible('swap') && <th className="py-2 w-16">Своп</th>}
-                  {isColumnVisible('setup') && <th className="py-2 w-20">Сетап</th>}
                   {isColumnVisible('confidence') && <th className="py-2 w-12">Увер.</th>}
                   {isColumnVisible('risk') && <th className="py-2 w-20">Риск</th>}
                   {isColumnVisible('rMultiple') && <th className="py-2 w-16">R</th>}
@@ -890,10 +934,10 @@ export default function HistoryPage() {
               </tr>
             </thead>
             <tbody className="text-sm">
-              {filteredTrades.map((trade) => {
+              {sortedTrades.map((trade) => {
                 const isExpanded = expandedTrades.has(trade.id);
                 const hasDetails = trade.setup_name || trade.news_event || trade.notes || trade.entry_reason || trade.tags?.length || trade.operations?.length || trade.mood || trade.discipline || trade.screenshot_url || trade.setup;
-                
+
                 const formatHoldingTime = (minutes: number | undefined) => {
                   if (!minutes) return '-';
                   if (minutes < 60) return `${minutes}м`;
@@ -902,12 +946,12 @@ export default function HistoryPage() {
                 };
 
                 const pnlValue = trade.net_pnl ?? trade.pnl;
-                const unrealized = !trade.exit_at && unrealizedData[trade.id];
+                const unrealized = trade.exit_at ? undefined : unrealizedData[trade.id];
 
                 return (
                   <React.Fragment key={trade.id}>
                     {/* Компактная строка */}
-                    <tr 
+                    <tr
                       className={`border-b border-border/30 hover:bg-white/5 transition-colors ${hasDetails ? 'cursor-pointer' : ''}`}
                       onClick={() => hasDetails && toggleTrade(trade.id)}
                     >
@@ -919,19 +963,35 @@ export default function HistoryPage() {
                           </button>
                         )}
                       </td>
-                      
+
                       {/* Дата */}
                       {isColumnVisible('date') && (
                         <td className="py-2 font-mono text-xs">
-                          <div>
-                            {new Date(trade.exit_at || trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}
-                            <span className="text-slate-500 ml-1 text-[10px]">
-                              {new Date(trade.exit_at || trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </span>
+                          <div className="flex flex-col gap-1 leading-tight">
+                            <div>
+                              <span className="text-[9px] uppercase tracking-wide text-slate-500 mr-1">ВХ</span>
+                              <span>{new Date(trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span>
+                              <span className="text-slate-500 ml-1 text-[10px]">
+                                {new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase tracking-wide text-slate-500 mr-1">ВЫХ</span>
+                              {trade.exit_at ? (
+                                <>
+                                  <span>{new Date(trade.exit_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span>
+                                  <span className="text-slate-500 ml-1 text-[10px]">
+                                    {new Date(trade.exit_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-accent/80">ОТКРЫТА</span>
+                              )}
+                            </div>
                           </div>
                         </td>
                       )}
-                      
+
                       {/* Тикер */}
                       {isColumnVisible('ticker') && (
                         <td className="py-2">
@@ -941,63 +1001,79 @@ export default function HistoryPage() {
                           )}
                         </td>
                       )}
-                      
+
                       {/* Сторона */}
                       {isColumnVisible('direction') && (
                         <td className="py-2">
                           <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
                             trade.direction === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                           }`}>
-                            {trade.isAddition ? '+ ADD' : (trade.direction === 'long' ? 'LONG' : 'SHORT')}
+                            {trade.isAddition ? '+ ДОБ.' : (trade.direction === 'long' ? 'ЛОНГ' : 'ШОРТ')}
                           </span>
                         </td>
                       )}
-                      
+
                       {/* Вход */}
                       {isColumnVisible('entry') && (
                         <td className="py-2 font-mono text-xs">
                           {trade.entry_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })}
                         </td>
                       )}
-                      
+
                       {/* Выход */}
                       {isColumnVisible('exit') && (
                         <td className="py-2 font-mono text-xs">
-                          {trade.exit_price 
+                          {trade.exit_price
                             ? trade.exit_price.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
                             : <span className="text-slate-500">—</span>
                           }
                         </td>
                       )}
-                      
+
                       {/* Кол-во */}
                       {isColumnVisible('quantity') && (
                         <td className="py-2 font-mono text-xs">
                           {trade.quantity.toLocaleString('ru-RU')}
                         </td>
                       )}
-                      
+
+                      {/* Сетап */}
+                      {isColumnVisible('setup') && (
+                        <td className="py-2 text-xs max-w-24">
+                          {trade.setup ? (
+                            <div className="flex items-center gap-1 truncate">
+                              <span style={{ color: trade.setup.color }}>{trade.setup.icon}</span>
+                              <span className="truncate" style={{ color: trade.setup.color }}>{trade.setup.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 truncate block">{trade.setup_name || '—'}</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Таймфрейм */}
+                      {isColumnVisible('timeframe') && (
+                        <td className="py-2 text-center">
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                            {trade.timeframe || '—'}
+                          </span>
+                        </td>
+                      )}
+
                       {/* Комиссия */}
                       {isColumnVisible('commission') && (
                         <td className="py-2 font-mono text-xs text-red-400">
                           {(trade.commission || 0) > 0 ? `-${Number(trade.commission).toFixed(0)}` : '—'}
                         </td>
                       )}
-                      
+
                       {/* Своп */}
                       {isColumnVisible('swap') && (
                         <td className="py-2 font-mono text-xs text-red-400">
                           {(trade.swap || 0) > 0 ? `-${Number(trade.swap).toFixed(0)}` : '—'}
                         </td>
                       )}
-                      
-                      {/* Сетап */}
-                      {isColumnVisible('setup') && (
-                        <td className="py-2 font-mono text-xs text-slate-400 truncate max-w-20">
-                          {trade.setup_name || '—'}
-                        </td>
-                      )}
-                      
+
                       {/* Уверенность */}
                       {isColumnVisible('confidence') && (
                         <td className="py-2 text-center">
@@ -1010,14 +1086,14 @@ export default function HistoryPage() {
                           ) : '—'}
                         </td>
                       )}
-                      
+
                       {/* Риск */}
                       {isColumnVisible('risk') && (
                         <td className="py-2 font-mono text-xs">
                           {trade.risk_amount ? `${trade.risk_amount.toLocaleString('ru-RU')} ₽` : '—'}
                         </td>
                       )}
-                      
+
                       {/* R-Multiple */}
                       {isColumnVisible('rMultiple') && (
                         <td className="py-2 font-mono text-xs">
@@ -1028,7 +1104,7 @@ export default function HistoryPage() {
                           ) : '—'}
                         </td>
                       )}
-                      
+
                       {/* PnL */}
                       {isColumnVisible('pnl') && (() => {
                         // Расчёт процента между ценами входа и выхода
@@ -1048,7 +1124,7 @@ export default function HistoryPage() {
                               : ((trade.entry_price - trade.exit_price) / trade.entry_price * 100);
                           }
                         }
-                        
+
                         return (
                           <td className="py-2 font-mono font-bold">
                             {unrealized ? (
@@ -1075,7 +1151,7 @@ export default function HistoryPage() {
                           </td>
                         );
                       })()}
-                      
+
                       {/* Статус */}
                       {isColumnVisible('status') && (
                         <td className="py-2">
@@ -1090,7 +1166,7 @@ export default function HistoryPage() {
                           )}
                         </td>
                       )}
-                      
+
                       {/* Теги */}
                       {isColumnVisible('tags') && (
                         <td className="py-2">
@@ -1106,34 +1182,34 @@ export default function HistoryPage() {
                           </div>
                         </td>
                       )}
-                      
+
                       {/* Плечо */}
                       {isColumnVisible('leverage') && (
                         <td className="py-2 font-mono text-xs text-center">
                           {trade.leverage ? `${trade.leverage}x` : '—'}
                         </td>
                       )}
-                      
+
                       {/* Действия */}
                       <td className="py-2 pr-2">
                         <div className="flex justify-end gap-1">
                           {!trade.exit_at && (
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); openCloseModal(trade); }} 
-                              className="text-yellow-500/50 hover:text-yellow-500 p-1" 
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openCloseModal(trade); }}
+                              className="text-yellow-500/50 hover:text-yellow-500 p-1"
                               title="Закрыть"
                             >
                               <Lock size={14} />
                             </button>
                           )}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleEdit(trade); }} 
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleEdit(trade); }}
                             className="text-accent/50 hover:text-accent p-1"
                           >
                             <Edit2 size={14} />
                           </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleDelete(trade.id); }} 
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(trade.id); }}
                             className="text-red-500/50 hover:text-red-500 p-1"
                           >
                             <Trash2 size={14} />
@@ -1141,7 +1217,7 @@ export default function HistoryPage() {
                         </div>
                       </td>
                     </tr>
-                    
+
                     {/* Развёрнутые детали */}
                     {isExpanded && (
                       <tr className="bg-slate-800/30 border-b border-border/30">
@@ -1163,7 +1239,7 @@ export default function HistoryPage() {
                               <span className="text-slate-500 block mb-1">Событие</span>
                               <span className="font-medium">{trade.news_event || '-'}</span>
                             </div>
-                            
+
                             {/* Психо-метрики */}
                             <div>
                               <span className="text-slate-500 block mb-1">Настроение</span>
@@ -1209,7 +1285,7 @@ export default function HistoryPage() {
                                 {trade.holding_time_minutes ? formatHoldingTime(trade.holding_time_minutes) : '-'}
                               </span>
                             </div>
-                            
+
                             {/* Вторая строка */}
                             <div>
                               <span className="text-slate-500 block mb-1">SL</span>
@@ -1226,7 +1302,7 @@ export default function HistoryPage() {
                             <div>
                               <span className="text-slate-500 block mb-1">R-Multiple</span>
                               <span className={`font-mono font-bold ${
-                                trade.r_multiple && trade.r_multiple >= 1 ? 'text-green-400' : 
+                                trade.r_multiple && trade.r_multiple >= 1 ? 'text-green-400' :
                                 trade.r_multiple && trade.r_multiple < 0 ? 'text-red-400' : ''
                               }`}>
                                 {trade.r_multiple ? `${trade.r_multiple.toFixed(2)}R` : '-'}
@@ -1240,7 +1316,7 @@ export default function HistoryPage() {
                               <span className="text-slate-500 block mb-1">Плечо</span>
                               <span className="font-mono">{trade.leverage ? `${trade.leverage}x` : '-'}</span>
                             </div>
-                            
+
                             {/* MAE/MFE Анализ */}
                             {trade.exit_at && (trade.mae_price || trade.mfe_price) && (
                               <div className="col-span-full border border-accent/20 rounded-lg p-3 bg-accent/5">
@@ -1250,7 +1326,7 @@ export default function HistoryPage() {
                                     <span className="text-slate-500 text-[10px]">(нет данных)</span>
                                   )}
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                   {/* MAE */}
                                   <div>
@@ -1260,14 +1336,14 @@ export default function HistoryPage() {
                                     </span>
                                     {trade.mae_price && trade.entry_price && (
                                       <span className="text-red-400/70 text-[10px] ml-1">
-                                        ({trade.direction === 'long' 
+                                        ({trade.direction === 'long'
                                           ? `-${(((trade.entry_price - trade.mae_price) / trade.entry_price) * 100).toFixed(2)}%`
                                           : `-${(((trade.mae_price - trade.entry_price) / trade.entry_price) * 100).toFixed(2)}%`
                                         })
                                       </span>
                                     )}
                                   </div>
-                                  
+
                                   {/* MFE */}
                                   <div>
                                     <span className="text-slate-500 block mb-1 text-[10px]">MFE (лучшая цена)</span>
@@ -1276,24 +1352,24 @@ export default function HistoryPage() {
                                     </span>
                                     {trade.mfe_price && trade.entry_price && (
                                       <span className="text-green-400/70 text-[10px] ml-1">
-                                        (+{trade.direction === 'long' 
+                                        (+{trade.direction === 'long'
                                           ? (((trade.mfe_price - trade.entry_price) / trade.entry_price) * 100).toFixed(2)
                                           : (((trade.entry_price - trade.mfe_price) / trade.entry_price) * 100).toFixed(2)
                                         }%)
                                       </span>
                                     )}
                                   </div>
-                                  
+
                                   {/* Edge Ratio */}
                                   {trade.mae_price && trade.mfe_price && trade.entry_price && (
                                     <div>
                                       <span className="text-slate-500 block mb-1 text-[10px]">Edge Ratio (MFE/MAE)</span>
                                       {(() => {
-                                        const maeMove = trade.direction === 'long' 
-                                          ? trade.entry_price - trade.mae_price 
+                                        const maeMove = trade.direction === 'long'
+                                          ? trade.entry_price - trade.mae_price
                                           : trade.mae_price - trade.entry_price;
-                                        const mfeMove = trade.direction === 'long' 
-                                          ? trade.mfe_price - trade.entry_price 
+                                        const mfeMove = trade.direction === 'long'
+                                          ? trade.mfe_price - trade.entry_price
                                           : trade.entry_price - trade.mfe_price;
                                         const edgeRatio = maeMove > 0 ? mfeMove / maeMove : 0;
                                         return (
@@ -1307,13 +1383,13 @@ export default function HistoryPage() {
                                       </span>
                                     </div>
                                   )}
-                                  
+
                                   {/* Capture Ratio */}
                                   {trade.mfe_price && trade.entry_price && trade.exit_price && (
                                     <div>
                                       <span className="text-slate-500 block mb-1 text-[10px]">Capture (захват MFE)</span>
                                       {(() => {
-                                        const maxProfit = trade.direction === 'long' 
+                                        const maxProfit = trade.direction === 'long'
                                           ? (trade.mfe_price - trade.entry_price) * trade.quantity
                                           : (trade.entry_price - trade.mfe_price) * trade.quantity;
                                         const actualProfit = trade.pnl || 0;
@@ -1330,7 +1406,7 @@ export default function HistoryPage() {
                                     </div>
                                   )}
                                 </div>
-                                
+
                                 {/* Visual representation */}
                                 {trade.mae_price && trade.mfe_price && trade.entry_price && trade.exit_price && (
                                   <div className="mt-3 pt-3 border-t border-slate-700/50">
@@ -1345,22 +1421,22 @@ export default function HistoryPage() {
                                           const exitPos = ((trade.exit_price - min) / range) * 100;
                                           const maePos = ((trade.mae_price - min) / range) * 100;
                                           const mfePos = ((trade.mfe_price - min) / range) * 100;
-                                          
+
                                           return (
                                             <>
                                               {/* MAE to MFE range */}
-                                              <div 
+                                              <div
                                                 className="absolute h-full bg-gradient-to-r from-red-500/30 via-slate-600 to-green-500/30"
                                                 style={{ left: `${maePos}%`, width: `${mfePos - maePos}%` }}
                                               />
                                               {/* Entry marker */}
-                                              <div 
+                                              <div
                                                 className="absolute w-1 h-full bg-white"
                                                 style={{ left: `${entryPos}%` }}
                                                 title={`Вход: ${trade.entry_price}`}
                                               />
                                               {/* Exit marker */}
-                                              <div 
+                                              <div
                                                 className="absolute w-1 h-full bg-accent"
                                                 style={{ left: `${exitPos}%` }}
                                                 title={`Выход: ${trade.exit_price}`}
@@ -1379,7 +1455,7 @@ export default function HistoryPage() {
                                 )}
                               </div>
                             )}
-                            
+
                             {/* Нет данных MAE/MFE - показываем кнопку расчёта */}
                             {trade.exit_at && !trade.mae_price && !trade.mfe_price && (
                               <div className="col-span-full border border-slate-700 rounded-lg p-3 bg-slate-800/30">
@@ -1406,7 +1482,7 @@ export default function HistoryPage() {
                                 </div>
                               </div>
                             )}
-                            
+
                             {/* Теги на всю ширину */}
                             {trade.tags && trade.tags.length > 0 && (
                               <div className="col-span-full">
@@ -1420,7 +1496,7 @@ export default function HistoryPage() {
                                 </div>
                               </div>
                             )}
-                            
+
                             {/* Логика входа */}
                             {trade.entry_reason && (
                               <div className="col-span-full">
@@ -1428,26 +1504,29 @@ export default function HistoryPage() {
                                 <span className="font-medium">{trade.entry_reason}</span>
                               </div>
                             )}
-                            
+
                             {/* Скриншот */}
                             {trade.screenshot_url && (
                               <div className="col-span-full">
                                 <span className="text-slate-500 block mb-1">📷 Скриншот графика</span>
-                                <a 
-                                  href={getApiUrl(trade.screenshot_url)} 
-                                  target="_blank" 
+                                <a
+                                  href={getApiUrl(trade.screenshot_url)}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="block"
                                 >
-                                  <img 
-                                    src={getApiUrl(trade.screenshot_url)} 
-                                    alt="Trade screenshot" 
+                                  <Image
+                                    src={getApiUrl(trade.screenshot_url)}
+                                    alt="Скриншот сделки"
+                                    width={640}
+                                    height={160}
+                                    unoptimized
                                     className="max-w-md h-40 object-cover rounded-lg border border-border hover:border-accent transition-colors cursor-pointer"
                                   />
                                 </a>
                               </div>
                             )}
-                            
+
                             {/* Заметки */}
                             {trade.notes && (
                               <div className="col-span-full">
@@ -1455,7 +1534,7 @@ export default function HistoryPage() {
                                 <p className="text-slate-300 whitespace-pre-wrap bg-slate-800/50 p-2 rounded-lg">{trade.notes}</p>
                               </div>
                             )}
-                            
+
                             {/* Операции */}
                             {trade.operations && trade.operations.length > 0 && (
                               <div className="col-span-full">

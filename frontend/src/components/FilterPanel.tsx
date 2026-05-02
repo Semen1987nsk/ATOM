@@ -63,13 +63,13 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   }, [user]);
 
   const periods: { value: Period; label: string }[] = [
-    { value: 'all', label: t.period?.all || 'All time' },
-    { value: 'today', label: t.period?.today || 'Today' },
-    { value: 'week', label: t.period?.week || 'Week' },
-    { value: 'month', label: t.period?.month || 'Month' },
-    { value: '3months', label: t.period?.['3months'] || '3 Months' },
-    { value: 'year', label: t.period?.year || 'Year' },
-    { value: 'custom', label: t.period?.custom || 'Custom' },
+    { value: 'all', label: t.period?.all || 'Все время' },
+    { value: 'today', label: t.period?.today || 'Сегодня' },
+    { value: 'week', label: t.period?.week || '7 дней' },
+    { value: 'month', label: t.period?.month || '30 дней' },
+    { value: '3months', label: t.period?.['3months'] || '3 месяца' },
+    { value: 'year', label: t.period?.year || 'Год' },
+    { value: 'custom', label: t.period?.custom || 'Период' },
   ];
 
   const handlePeriodSelect = (period: Period) => {
@@ -116,7 +116,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
     if (filters.period === 'custom' && filters.startDate) {
       return `${filters.startDate}${filters.endDate ? ' → ' + filters.endDate : ''}`;
     }
-    return periods.find(p => p.value === filters.period)?.label || t.period?.all || 'All';
+    return periods.find(p => p.value === filters.period)?.label || t.period?.all || 'Все';
   };
 
   const getTagLabel = () => {
@@ -124,14 +124,14 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       const tagInfo = tags.find(t => t.tag === filters.tag);
       return tagInfo ? `#${tagInfo.tag} (${tagInfo.count})` : `#${filters.tag}`;
     }
-    return t.filters?.allTags || 'All tags';
+    return t.filters?.allTags || 'Все теги';
   };
 
   const getLimitLabel = () => {
     if (filters.limit) {
-      return `${t.filters?.last || 'Last'} ${filters.limit}`;
+      return `${t.filters?.last || 'Последние'} ${filters.limit}`;
     }
-    return t.filters?.allTrades || 'All trades';
+    return t.filters?.allTrades || 'Все сделки';
   };
 
   return (
@@ -139,7 +139,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       <div className="flex items-center gap-1 text-accent mr-2">
         <Filter size={14} />
         <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">
-          {t.filters?.title || 'Filters'}
+          {t.filters?.title || 'Фильтры'}
         </span>
       </div>
 
@@ -194,7 +194,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
                 !filters.tag ? 'text-accent bg-accent/5' : ''
               }`}
             >
-              {t.filters?.allTags || 'All tags'}
+              {t.filters?.allTags || 'Все теги'}
             </button>
             {tags.map((tag) => (
               <button
@@ -237,7 +237,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
                   filters.limit === opt.value ? 'text-accent bg-accent/5' : ''
                 }`}
               >
-                {opt.value ? `${t.filters?.last || 'Last'} ${opt.value}` : (t.filters?.allTrades || 'All trades')}
+                {opt.value ? `${t.filters?.last || 'Последние'} ${opt.value}` : (t.filters?.allTrades || 'Все сделки')}
               </button>
             ))}
           </div>
@@ -249,10 +249,10 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         <button
           onClick={handleReset}
           className="flex items-center gap-1 px-3 py-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10 transition-colors"
-          title={t.filters?.reset || 'Reset filters'}
+          title={t.filters?.reset || 'Сбросить фильтры'}
         >
           <RotateCcw size={14} />
-          <span className="hidden sm:inline">{t.filters?.reset || 'Reset'}</span>
+          <span className="hidden sm:inline">{t.filters?.reset || 'Сбросить'}</span>
         </button>
       )}
 
@@ -272,13 +272,13 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 relative z-10">
               <Calendar size={18} className="text-accent" />
-              {t.period?.custom || 'Custom Period'}
+              {t.period?.custom || 'Период'}
             </h3>
             
             <div className="space-y-4 relative z-10">
               <div>
                 <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">
-                  {t.filters?.startDate || 'Start Date'}
+                  {t.filters?.startDate || 'Начало периода'}
                 </label>
                 <input
                   type="date"
@@ -289,7 +289,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
               </div>
               <div>
                 <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">
-                  {t.filters?.endDate || 'End Date'} ({t.filters?.optional || 'optional'})
+                  {t.filters?.endDate || 'Конец периода'} ({t.filters?.optional || 'опционально'})
                 </label>
                 <input
                   type="date"
@@ -303,7 +303,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
                 disabled={!customStart}
                 className="btn-primary w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t.filters?.apply || 'Apply'}
+                {t.filters?.apply || 'Применить'}
               </button>
             </div>
           </div>

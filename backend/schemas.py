@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
@@ -30,8 +30,7 @@ class UserResponse(BaseModel):
     oauth_provider: Optional[str] = None
     registration_source: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserUpdate(BaseModel):
     """Схема для обновления профиля"""
@@ -54,13 +53,19 @@ class TokenPair(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     """Запрос на обновление токенов"""
-    refresh_token: str
+    refresh_token: Optional[str] = None
 
 
 class TokenData(BaseModel):
     """Данные из токена"""
     user_id: Optional[int] = None
     email: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    """Запрос на смену пароля"""
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
 
 
 # ==================== DEPOSIT SCHEMAS ====================
@@ -81,9 +86,10 @@ class DepositOperationResponse(BaseModel):
     date: datetime
     note: Optional[str] = None
     created_at: datetime
+    source: str = "manual"
+    can_delete: bool = True
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AccountBalanceResponse(BaseModel):
     """Информация о балансе аккаунта"""
@@ -94,6 +100,13 @@ class AccountBalanceResponse(BaseModel):
     total_withdrawals: float
     total_pnl: float
     currency: str
+    net_deposit: float = 0
+    local_current_balance: float = 0
+    journal_pnl: float = 0
+    broker_current_balance: Optional[float] = None
+    broker_pnl: Optional[float] = None
+    pnl_gap: Optional[float] = None
+    balance_source: str = "journal"
 
 class EquityCurvePoint(BaseModel):
     """Точка кривой капитала"""
@@ -101,6 +114,16 @@ class EquityCurvePoint(BaseModel):
     balance: float
     pnl_cumulative: float
     deposit_balance: float  # Баланс без учёта PnL (только депозиты)
+
+
+class BalanceSnapshotResponse(BaseModel):
+    id: int
+    date: datetime
+    balance: float
+    source: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ==================== TRADE SCHEMAS ====================
@@ -212,8 +235,7 @@ class Setup(SetupBase):
     avg_pnl: Optional[float] = 0
     total_pnl: Optional[float] = 0
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Trade(TradeBase):
@@ -233,13 +255,22 @@ class Trade(TradeBase):
     # Setup relation (simplified)
     setup: Optional[SetupBase] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class DashboardStats(BaseModel):
     total_pnl: float
     unrealized_pnl: float = 0
     total_pnl_with_unrealized: float = 0
+    initial_balance: float = 0
+    current_balance: float = 0
+    period_start_balance: Optional[float] = None
+    period_end_balance: float = 0
+    period_start_date: Optional[str] = None
+    period_start_net_deposit: float = 0
+    period_start_realized_pnl: float = 0
+    period_start_balance_reliable: bool = True
+    period_start_balance_source: str = "derived"
+    period_start_balance_reason: Optional[str] = None
     win_rate: float
     total_trades: int
     profitable_trades: int
@@ -250,7 +281,7 @@ class DashboardStats(BaseModel):
     profit_factor: float = 0
     r_expectancy: float = 0
     recovery_factor: float = 0
-    total_roi: float = 0
+    total_roi: Optional[float] = None
     expected_ghpr: float = 0
     sortino_ratio: float = 0
     max_drawdown_pct: float = 0
@@ -327,8 +358,7 @@ class ArticleResponse(BaseModel):
     meta_title: Optional[str] = None
     meta_description: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ArticleListItem(BaseModel):
     """Краткая информация о статье для списка"""
@@ -345,5 +375,4 @@ class ArticleListItem(BaseModel):
     created_at: datetime
     published_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

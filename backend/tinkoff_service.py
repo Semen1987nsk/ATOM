@@ -22,15 +22,18 @@ PnL-ФОРМУЛЫ:
 
 import logging
 import httpx
+import time as _time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from decimal import Decimal, ROUND_HALF_UP
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 from models import Trade, TradeDirection, BrokerConnection, Account, BalanceSnapshot, CapitalOperation
+from capital_service import sync_initial_balance
 from utils.datetime_utils import utc_now_naive
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -151,18 +154,55 @@ class TinkoffService:
 
     # ───────────── HTTP ─────────────
 
+    _MAX_RETRIES = 3
+    _RETRY_BACKOFF = (1.0, 3.0, 8.0)          # seconds
+    _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
     def _make_request(self, method: str, endpoint: str, data: dict = None) -> dict:
         url = f"{TINKOFF_API_BASE}{endpoint}"
-        with httpx.Client(timeout=30.0) as client:
-            if method == "GET":
-                response = client.get(url, headers=self.headers, params=data)
-            else:
-                response = client.post(url, headers=self.headers, json=data or {})
-            if response.status_code != 200:
+        last_exc: Exception = Exception("Unknown error")
+        for attempt in range(self._MAX_RETRIES + 1):
+            try:
+                with httpx.Client(timeout=30.0) as client:
+                    if method == "GET":
+                        response = client.get(url, headers=self.headers, params=data)
+                    else:
+                        response = client.post(url, headers=self.headers, json=data or {})
+
+                if response.status_code == 200:
+                    return response.json()
+
+                if response.status_code in self._RETRYABLE_STATUS and attempt < self._MAX_RETRIES:
+                    wait = self._RETRY_BACKOFF[attempt] if attempt < len(self._RETRY_BACKOFF) else 10.0
+                    logger.warning(
+                        f"Tinkoff API {response.status_code} on {endpoint}, "
+                        f"retry {attempt + 1}/{self._MAX_RETRIES} in {wait}s"
+                    )
+                    _time.sleep(wait)
+                    continue
+
                 error_text = response.text
                 logger.error(f"Tinkoff API error {response.status_code}: {error_text}")
                 raise Exception(f"API Error {response.status_code}: {error_text}")
-            return response.json()
+
+            except httpx.TimeoutException as e:
+                last_exc = e
+                if attempt < self._MAX_RETRIES:
+                    wait = self._RETRY_BACKOFF[attempt] if attempt < len(self._RETRY_BACKOFF) else 10.0
+                    logger.warning(f"Tinkoff API timeout on {endpoint}, retry {attempt + 1} in {wait}s")
+                    _time.sleep(wait)
+                    continue
+                raise Exception(f"API Timeout after {self._MAX_RETRIES} retries: {e}") from e
+            except httpx.ConnectError as e:
+                last_exc = e
+                if attempt < self._MAX_RETRIES:
+                    wait = self._RETRY_BACKOFF[attempt] if attempt < len(self._RETRY_BACKOFF) else 10.0
+                    logger.warning(f"Tinkoff API connect error on {endpoint}, retry {attempt + 1} in {wait}s")
+                    _time.sleep(wait)
+                    continue
+                raise Exception(f"API Connect error after {self._MAX_RETRIES} retries: {e}") from e
+
+        raise last_exc
 
     # ───────────── Token verification ─────────────
 
@@ -438,6 +478,12 @@ class TinkoffService:
             else:
                 from_date = utc_now_naive() - timedelta(days=30)
 
+        from_date = self._expand_from_date_for_open_positions(
+            db=db,
+            account_id=connection.account_id,
+            from_date=from_date,
+        )
+
         to_date = utc_now_naive()
         logger.info(f"Syncing trades from {from_date} to {to_date}")
 
@@ -450,15 +496,50 @@ class TinkoffService:
             # FIFO-трекинг -> ClosedTrade + open positions
             closed_trades, open_positions = self._build_trades_fifo(operations)
 
+            portfolio = None
+            broker_open_symbols = None
+            try:
+                portfolio = self.get_portfolio(connection.broker_account_id)
+                broker_open_symbols = self._extract_broker_open_symbols(portfolio)
+                open_positions, ghost_open_positions = self._split_open_positions_by_broker_portfolio(
+                    open_positions,
+                    broker_open_symbols,
+                )
+                if ghost_open_positions:
+                    operations, closed_trades, open_positions, ghost_open_positions, from_date = self._backfill_history_for_ghost_positions(
+                        broker_account_id=connection.broker_account_id,
+                        from_date=from_date,
+                        operations=operations,
+                        ghost_positions=ghost_open_positions,
+                        broker_open_symbols=broker_open_symbols,
+                    )
+                for position in ghost_open_positions:
+                    instrument = self.get_instrument_info(position["figi"]) or {}
+                    symbol = instrument.get("ticker", position["figi"])
+                    logger.warning(
+                        "Skipping ghost open position for %s: absent from broker portfolio",
+                        symbol,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to fetch portfolio before open-position reconciliation: {e}")
+
             logger.info(
                 f"FIFO result: {len(closed_trades)} closed trades, "
                 f"{len(open_positions)} open positions"
             )
 
+            # Pre-load ALL account trades into memory for O(1) dedup lookups (eliminates N+1)
+            all_trades = db.query(Trade).filter(
+                Trade.account_id == connection.account_id,
+            ).all()
+            trades_by_symbol: Dict[str, List] = defaultdict(list)
+            for _t in all_trades:
+                trades_by_symbol[_t.symbol].append(_t)
+
             # Сохраняем закрытые сделки
             for ct in closed_trades:
                 try:
-                    status = self._save_closed_trade(db, connection.account_id, ct)
+                    status = self._save_closed_trade(db, connection.account_id, ct, _cache=trades_by_symbol)
                     if status == "new":
                         result["new_trades"] += 1
                     elif status == "updated":
@@ -473,7 +554,7 @@ class TinkoffService:
             # Сохраняем открытые позиции
             for op_pos in open_positions:
                 try:
-                    status = self._save_open_position(db, connection.account_id, op_pos)
+                    status = self._save_open_position(db, connection.account_id, op_pos, _cache=trades_by_symbol)
                     if status == "new":
                         result["new_trades"] += 1
                     elif status == "updated":
@@ -485,6 +566,25 @@ class TinkoffService:
                     logger.error(f"Error saving open position {op_pos['figi']}: {e}\n{traceback.format_exc()}")
                     result["errors"].append(f"{op_pos['figi']} (open): {e}")
 
+            reconciliation_stats = self._reconcile_stale_open_trades(
+                db=db,
+                account_id=connection.account_id,
+                broker_open_symbols=broker_open_symbols,
+            )
+            result["reconciled_closed"] = reconciliation_stats["closed"]
+            result["reconciled_deleted"] = reconciliation_stats["deleted"]
+
+            cleanup_stats = self._cleanup_stale_autosync_trades(
+                db=db,
+                account_id=connection.account_id,
+                from_date=from_date,
+                canonical_signatures_by_symbol=self._build_canonical_trade_signatures(
+                    closed_trades=closed_trades,
+                    open_positions=open_positions,
+                ),
+            )
+            result["cleanup_deleted"] = cleanup_stats["deleted"]
+
             # Статус подключения
             connection.last_sync_at = utc_now_naive()
             connection.last_sync_status = "success" if not result["errors"] else "partial"
@@ -493,7 +593,8 @@ class TinkoffService:
 
             # Balance snapshot
             try:
-                portfolio = self.get_portfolio(connection.broker_account_id)
+                if portfolio is None:
+                    portfolio = self.get_portfolio(connection.broker_account_id)
                 self._save_balance_snapshot(db, connection.account_id, portfolio)
                 result["portfolio"] = {
                     "total_balance": float(portfolio["total_balance"]),
@@ -520,6 +621,67 @@ class TinkoffService:
             result["errors"].append(str(e))
 
         return result
+
+    def _expand_from_date_for_open_positions(
+        self,
+        db: Session,
+        account_id: int,
+        from_date: datetime,
+    ) -> datetime:
+        """
+        Для инкрементальной синхронизации расширяет окно назад до самой ранней
+        открытой autosync-позиции.
+
+        Иначе при закрытии позиции, открытой раньше `last_sync_at - 1 day`,
+        в окне могут оказаться только операции выхода — и FIFO ошибочно соберёт
+        новую обратную позицию вместо закрытия существующей.
+        """
+        open_trades = db.query(Trade).filter(
+            Trade.account_id == account_id,
+            Trade.exit_at == None,  # noqa: E711
+        ).all()
+
+        earliest_open_context = None
+        for trade in open_trades:
+            tags = trade.tags or []
+            operations = trade.operations or []
+            if "#autosync" not in tags:
+                continue
+            if not trade.entry_at and not operations:
+                continue
+
+            candidate_times = []
+            if trade.entry_at:
+                candidate_times.append(trade.entry_at)
+
+            for operation in operations:
+                if not isinstance(operation, dict):
+                    continue
+                operation_time = operation.get("time")
+                parsed_operation_time = self._parse_date(operation_time) if operation_time else None
+                if parsed_operation_time:
+                    candidate_times.append(parsed_operation_time)
+
+            if not candidate_times:
+                continue
+
+            trade_context_start = min(candidate_times) - timedelta(days=settings.OPEN_POSITION_SYNC_LOOKBACK_DAYS)
+            if earliest_open_context is None or trade_context_start < earliest_open_context:
+                earliest_open_context = trade_context_start
+
+        if earliest_open_context is None:
+            return from_date
+
+        expanded_from_date = earliest_open_context
+        if expanded_from_date < from_date:
+            logger.info(
+                "Expanded sync window from %s to %s to include open autosync positions",
+                from_date,
+                expanded_from_date,
+            )
+            return expanded_from_date
+
+        return from_date
 
     # ═══════════════════════════════════════════════════
     #  FIFO ENGINE — ядро импорта
@@ -590,7 +752,7 @@ class TinkoffService:
         closed: List[ClosedTrade] = []
 
         # Текущая открытая позиция
-        fifo_queue: List[FifoLot] = []          # FIFO-очередь входов
+        fifo_queue: deque[FifoLot] = deque()    # FIFO-очередь входов (deque для O(1) popleft)
         entry_lots_closed: List[FifoLot] = []   # лоты входов, уже закрытые (для ClosedTrade)
         exit_lots: List[FifoLot] = []           # выходы текущей позиции
         direction: Optional[str] = None         # "LONG" / "SHORT" / None
@@ -664,7 +826,7 @@ class TinkoffService:
                             op_id=op_id,
                         )
                         exit_lots.append(exit_lot)
-                        entry_lots_closed.append(fifo_queue.pop(0))
+                        entry_lots_closed.append(fifo_queue.popleft())
                     else:
                         # Частично закрываем фронтальный FIFO-лот
                         closed_qty = remaining_qty
@@ -792,14 +954,14 @@ class TinkoffService:
     ) -> list:
         """Формирует JSON-массив для поля Trade.operations."""
         ops = []
-        for lot in entry_lots:
+        for lot in entry_lots or []:
             ops.append({
                 "type": "entry", "price": float(lot.price), "qty": lot.qty,
                 "time": lot.date.isoformat() if lot.date else None,
                 "payment": float(lot.payment), "commission": float(lot.commission),
                 "op_id": lot.op_id,
             })
-        for lot in exit_lots:
+        for lot in exit_lots or []:
             ops.append({
                 "type": "exit", "price": float(lot.price), "qty": lot.qty,
                 "time": lot.date.isoformat() if lot.date else None,
@@ -808,40 +970,390 @@ class TinkoffService:
             })
         return ops
 
+    @staticmethod
+    def _normalize_operation_signature(operations: Optional[List[Dict[str, Any]]]) -> tuple:
+        """Строит стабильную hashable signature по операциям сделки."""
+        signature = []
+        for operation in operations or []:
+            if not isinstance(operation, dict):
+                continue
+            op_id = operation.get("op_id") or operation.get("id") or ""
+            qty = operation.get("qty", 0)
+            try:
+                qty_value = int(qty)
+            except (TypeError, ValueError):
+                qty_value = 0
+            signature.append((
+                operation.get("type"),
+                str(op_id),
+                qty_value,
+                operation.get("time"),
+                operation.get("note"),
+            ))
+        return tuple(signature)
+
+    def _build_canonical_trade_signatures(
+        self,
+        closed_trades: List[ClosedTrade],
+        open_positions: List[Dict[str, Any]],
+    ) -> Dict[str, set[tuple]]:
+        """Возвращает canonical signatures всех сделок из текущего sync window."""
+        signatures_by_symbol: Dict[str, set[tuple]] = defaultdict(set)
+
+        for closed_trade in closed_trades:
+            instrument = self.get_instrument_info(closed_trade.figi) or {}
+            symbol = instrument.get("ticker", closed_trade.figi)
+            operations = self._build_operations_json(closed_trade.entry_lots, closed_trade.exit_lots)
+            signatures_by_symbol[symbol].add((
+                closed_trade.direction,
+                True,
+                self._normalize_operation_signature(operations),
+            ))
+
+        for open_position in open_positions:
+            instrument = self.get_instrument_info(open_position["figi"]) or {}
+            symbol = instrument.get("ticker", open_position["figi"])
+            signatures_by_symbol[symbol].add((
+                open_position["direction"],
+                False,
+                self._normalize_operation_signature(open_position.get("operations")),
+            ))
+
+        return signatures_by_symbol
+
+    def _cleanup_stale_autosync_trades(
+        self,
+        db: Session,
+        account_id: int,
+        from_date: datetime,
+        canonical_signatures_by_symbol: Dict[str, set[tuple]],
+    ) -> Dict[str, int]:
+        """
+        Удаляет stale autosync-трейды, которые попали в текущий sync window,
+        но больше не соответствуют канонической перегруппировке операций брокера.
+        """
+        if not canonical_signatures_by_symbol:
+            return {"deleted": 0}
+
+        touched_symbols = list(canonical_signatures_by_symbol.keys())
+        candidates = db.query(Trade).filter(
+            Trade.account_id == account_id,
+            Trade.symbol.in_(touched_symbols),
+            Trade.entry_at != None,  # noqa: E711
+            Trade.entry_at >= from_date,
+        ).all()
+
+        deleted = 0
+        for trade in candidates:
+            tags = trade.tags or []
+            if "#autosync" not in tags:
+                continue
+
+            signature = (
+                "LONG" if trade.direction == TradeDirection.LONG else "SHORT",
+                trade.exit_at is not None,
+                self._normalize_operation_signature(trade.operations),
+            )
+            if signature in canonical_signatures_by_symbol.get(trade.symbol, set()):
+                continue
+
+            logger.warning(
+                "Deleting stale autosync trade #%s for %s: no canonical match in current broker sync",
+                trade.id,
+                trade.symbol,
+            )
+            db.delete(trade)
+            deleted += 1
+
+        return {"deleted": deleted}
+
     def _find_existing_trade_by_ops(
-        self, db: Session, account_id: int, op_ids: List[str], symbol: str
+        self, db: Session, account_id: int, op_ids: List[str], symbol: str,
+        _cache: Optional[Dict[str, List]] = None,
     ) -> Optional[Trade]:
         """
-        Ищет Trade в БД, у которого operations содержит совпадающие op_id.
-        Совпадение: >= 50% op_ids совпадают с любой стороны.
+        Ищет Trade в БД по operation IDs.
+
+        Допустимые совпадения:
+          - exact match: наборы op_id идентичны
+          - subset match: существующая сделка является подмножеством incoming
+
+        Если передан _cache (dict: symbol -> [Trade]), использует его вместо SQL-запроса
+        (устраняет N+1 при массовом сохранении).
         """
         if not op_ids:
             return None
 
-        candidates = db.query(Trade).filter(
-            Trade.account_id == account_id,
-            Trade.symbol == symbol,
-        ).all()
+        if _cache is not None:
+            candidates = _cache.get(symbol, [])
+        else:
+            candidates = db.query(Trade).filter(
+                Trade.account_id == account_id,
+                Trade.symbol == symbol,
+            ).all()
 
         op_ids_set = set(op_ids)
-        best_match = None
-        best_overlap = 0
+        exact_match = None
+        subset_match = None
+        subset_size = -1
 
         for trade in candidates:
             existing_ids = self._get_op_ids_set(trade)
             if not existing_ids:
                 continue
-            overlap = len(op_ids_set & existing_ids)
-            min_len = min(len(op_ids_set), len(existing_ids))
-            if min_len > 0 and overlap / min_len >= 0.5:
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best_match = trade
+            if existing_ids == op_ids_set:
+                exact_match = trade
+                break
+            if existing_ids.issubset(op_ids_set) and len(existing_ids) > subset_size:
+                subset_match = trade
+                subset_size = len(existing_ids)
 
-        return best_match
+        return exact_match or subset_match
+
+    def _find_existing_open_trade(
+        self,
+        db: Session,
+        account_id: int,
+        symbol: str,
+        op_ids: List[str],
+        _cache: Optional[Dict[str, List]] = None,
+    ) -> Optional[Trade]:
+        exact_or_subset_match = self._find_existing_trade_by_ops(
+            db, account_id, op_ids, symbol, _cache=_cache,
+        )
+        if exact_or_subset_match and exact_or_subset_match.exit_at is None:
+            return exact_or_subset_match
+
+        if _cache is not None:
+            open_candidates = [
+                t for t in _cache.get(symbol, []) if t.exit_at is None
+            ]
+        else:
+            open_candidates = db.query(Trade).filter(
+                Trade.account_id == account_id,
+                Trade.symbol == symbol,
+                Trade.exit_at == None,  # noqa: E711
+            ).all()
+
+        autosync_candidates = []
+        for trade in open_candidates:
+            tags = trade.tags or []
+            if "#autosync" in tags:
+                autosync_candidates.append(trade)
+
+        if len(autosync_candidates) == 1:
+            return autosync_candidates[0]
+
+        return None
+
+    def _extract_broker_open_symbols(self, portfolio: Dict[str, Any]) -> set[str]:
+        symbols = set()
+        for position in portfolio.get("positions", []):
+            try:
+                quantity = float(position.get("quantity") or 0)
+            except (TypeError, ValueError):
+                quantity = 0.0
+            ticker = position.get("ticker")
+            if ticker and abs(quantity) > 0:
+                symbols.add(ticker)
+        return symbols
+
+    def _split_open_positions_by_broker_portfolio(
+        self,
+        open_positions: List[Dict],
+        broker_open_symbols: Optional[set[str]],
+    ) -> Tuple[List[Dict], List[Dict]]:
+        if broker_open_symbols is None:
+            return open_positions, []
+
+        filtered_positions = []
+        ghost_positions = []
+        for position in open_positions:
+            instrument = self.get_instrument_info(position["figi"]) or {}
+            symbol = instrument.get("ticker", position["figi"])
+            if symbol in broker_open_symbols:
+                filtered_positions.append(position)
+            else:
+                ghost_positions.append(position)
+
+        return filtered_positions, ghost_positions
+
+    def _filter_open_positions_by_broker_portfolio(
+        self,
+        open_positions: List[Dict],
+        broker_open_symbols: Optional[set[str]],
+    ) -> List[Dict]:
+        filtered_positions, ghost_positions = self._split_open_positions_by_broker_portfolio(
+            open_positions,
+            broker_open_symbols,
+        )
+        for position in ghost_positions:
+            instrument = self.get_instrument_info(position["figi"]) or {}
+            symbol = instrument.get("ticker", position["figi"])
+            logger.warning(
+                "Skipping ghost open position for %s: absent from broker portfolio",
+                symbol,
+            )
+        return filtered_positions
+
+    def _merge_operations(self, base_operations: List[Dict], extra_operations: List[Dict]) -> List[Dict]:
+        merged_by_id: Dict[str, Dict] = {}
+        without_id: List[Dict] = []
+
+        for operation in [*base_operations, *extra_operations]:
+            operation_id = operation.get("id")
+            if operation_id:
+                merged_by_id[str(operation_id)] = operation
+            else:
+                without_id.append(operation)
+
+        merged = list(merged_by_id.values())
+        merged.extend(without_id)
+        return merged
+
+    def _backfill_history_for_ghost_positions(
+        self,
+        broker_account_id: str,
+        from_date: datetime,
+        operations: List[Dict],
+        ghost_positions: List[Dict],
+        broker_open_symbols: Optional[set[str]],
+    ) -> Tuple[List[Dict], List[ClosedTrade], List[Dict], List[Dict], datetime]:
+        """
+        Если sync-окно начинается внутри исторической позиции, FIFO может собрать
+        ghost open position. Для таких FIGI догружаем историю назад чанками.
+        """
+        if not ghost_positions:
+            closed_trades, open_positions = self._build_trades_fifo(operations)
+            return operations, closed_trades, open_positions, [], from_date
+
+        current_from_date = from_date
+        merged_operations = list(operations)
+        remaining_ghosts = ghost_positions
+        lower_bound = from_date - timedelta(days=365)
+        attempts = 0
+
+        while remaining_ghosts and current_from_date > lower_bound:
+            attempts += 1
+            next_from_date = max(lower_bound, current_from_date - timedelta(days=30))
+            target_figis = {position["figi"] for position in remaining_ghosts}
+
+            older_operations = self.get_operations(
+                broker_account_id,
+                next_from_date,
+                current_from_date,
+            )
+            relevant_older_operations = [
+                operation for operation in older_operations
+                if operation.get("figi") in target_figis
+            ]
+
+            merged_operations = self._merge_operations(merged_operations, relevant_older_operations)
+            closed_trades, rebuilt_open_positions = self._build_trades_fifo(merged_operations)
+            filtered_open_positions, remaining_ghosts = self._split_open_positions_by_broker_portfolio(
+                rebuilt_open_positions,
+                broker_open_symbols,
+            )
+
+            logger.info(
+                "Ghost-position backfill attempt %s: from %s to %s, figis=%s, older_ops=%s, remaining_ghosts=%s",
+                attempts,
+                next_from_date,
+                current_from_date,
+                sorted(target_figis),
+                len(relevant_older_operations),
+                len(remaining_ghosts),
+            )
+
+            current_from_date = next_from_date
+
+        final_closed_trades, final_open_positions = self._build_trades_fifo(merged_operations)
+        filtered_open_positions, remaining_ghosts = self._split_open_positions_by_broker_portfolio(
+            final_open_positions,
+            broker_open_symbols,
+        )
+        return merged_operations, final_closed_trades, filtered_open_positions, remaining_ghosts, current_from_date
+
+    def _get_trade_operation_times(self, trade: Trade) -> List[datetime]:
+        times: List[datetime] = []
+        if trade.entry_at:
+            times.append(trade.entry_at)
+        for operation in trade.operations or []:
+            if not isinstance(operation, dict):
+                continue
+            operation_time = operation.get("time")
+            parsed_operation_time = self._parse_date(operation_time) if operation_time else None
+            if parsed_operation_time:
+                times.append(parsed_operation_time)
+        return times
+
+    def _reconcile_stale_open_trades(
+        self,
+        db: Session,
+        account_id: int,
+        broker_open_symbols: Optional[set[str]],
+    ) -> Dict[str, int]:
+        if broker_open_symbols is None:
+            return {"closed": 0, "deleted": 0}
+
+        open_trades = db.query(Trade).filter(
+            Trade.account_id == account_id,
+            Trade.exit_at == None,  # noqa: E711
+        ).all()
+
+        closed_trades = db.query(Trade).filter(
+            Trade.account_id == account_id,
+            Trade.exit_at != None,  # noqa: E711
+        ).all()
+
+        covered_op_ids_by_symbol: Dict[str, set[str]] = defaultdict(set)
+        for trade in closed_trades:
+            tags = trade.tags or []
+            if "#autosync" not in tags:
+                continue
+            covered_op_ids_by_symbol[trade.symbol].update(self._get_op_ids_set(trade))
+
+        reconciliation = {"closed": 0, "deleted": 0}
+        for trade in open_trades:
+            tags = trade.tags or []
+            if "#autosync" not in tags:
+                continue
+            if trade.symbol in broker_open_symbols:
+                continue
+
+            open_op_ids = self._get_op_ids_set(trade)
+            covered_op_ids = covered_op_ids_by_symbol.get(trade.symbol, set())
+            if open_op_ids and open_op_ids.issubset(covered_op_ids):
+                logger.warning(
+                    "Deleting stale open trade #%s for %s: all operation ids are already covered by closed trades",
+                    trade.id,
+                    trade.symbol,
+                )
+                db.delete(trade)
+                reconciliation["deleted"] += 1
+                continue
+
+            operation_times = self._get_trade_operation_times(trade)
+            reconciled_exit_at = max(operation_times) if operation_times else utc_now_naive()
+            trade.exit_at = reconciled_exit_at
+            trade.exit_reason = trade.exit_reason or "Broker sync reconciliation"
+            if "#reconciled" not in tags:
+                trade.tags = [*tags, "#reconciled"]
+            if trade.entry_at and trade.exit_at:
+                delta = trade.exit_at - trade.entry_at
+                trade.holding_time_minutes = max(int(delta.total_seconds() / 60), 0)
+            reconciliation["closed"] += 1
+            logger.warning(
+                "Closed stale open trade #%s for %s during broker reconciliation",
+                trade.id,
+                trade.symbol,
+            )
+
+        return reconciliation
 
     def _save_closed_trade(
-        self, db: Session, account_id: int, ct: ClosedTrade
+        self, db: Session, account_id: int, ct: ClosedTrade,
+        _cache: Optional[Dict[str, List]] = None,
     ) -> str:
         """Сохраняет ClosedTrade в БД. Возвращает 'new' / 'updated' / 'skipped'."""
         instrument = self.get_instrument_info(ct.figi)
@@ -856,7 +1368,7 @@ class TinkoffService:
         operations_json = self._build_operations_json(ct.entry_lots, ct.exit_lots)
 
         # Дедупликация по op_ids
-        existing = self._find_existing_trade_by_ops(db, account_id, ct.op_ids, symbol)
+        existing = self._find_existing_trade_by_ops(db, account_id, ct.op_ids, symbol, _cache=_cache)
 
         if existing:
             existing.entry_price = ct.entry_price
@@ -903,7 +1415,8 @@ class TinkoffService:
         return "new"
 
     def _save_open_position(
-        self, db: Session, account_id: int, pos: Dict
+        self, db: Session, account_id: int, pos: Dict,
+        _cache: Optional[Dict[str, List]] = None,
     ) -> str:
         """Сохраняет открытую позицию в БД."""
         instrument = self.get_instrument_info(pos["figi"])
@@ -916,12 +1429,13 @@ class TinkoffService:
         symbol = instrument["ticker"]
         direction = TradeDirection.LONG if pos["direction"] == "LONG" else TradeDirection.SHORT
 
-        # Ищем существующую открытую сделку по символу
-        existing = db.query(Trade).filter(
-            Trade.account_id == account_id,
-            Trade.symbol == symbol,
-            Trade.exit_at == None,  # noqa: E711
-        ).first()
+        existing = self._find_existing_open_trade(
+            db=db,
+            account_id=account_id,
+            symbol=symbol,
+            op_ids=pos.get("op_ids", []),
+            _cache=_cache,
+        )
 
         if existing:
             existing.entry_price = pos["entry_price"]
@@ -1007,7 +1521,13 @@ class TinkoffService:
             net_deposit = total_dep - total_wd
             account = db.query(Account).filter(Account.id == account_id).first()
             if account and total_dep > 0:
-                account.initial_balance = net_deposit
+                sync_initial_balance(
+                    db,
+                    account_id,
+                    float(net_deposit),
+                    note="Initial balance synced from broker net deposits",
+                    commit=False,
+                )
                 logger.info(f"Account initial_balance = {net_deposit} (Dep: {total_dep}, Wd: {total_wd})")
                 db.commit()
 

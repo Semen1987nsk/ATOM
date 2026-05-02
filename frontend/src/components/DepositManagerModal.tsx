@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Plus, Minus, Wallet, TrendingUp, Calendar, Trash2, Edit2, DollarSign } from 'lucide-react';
+import { X, Plus, Minus, Wallet, Calendar, Trash2, DollarSign } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 
 interface DepositOperation {
@@ -11,6 +11,8 @@ interface DepositOperation {
   balance_after: number;
   date: string;
   note: string | null;
+  source?: 'manual' | 'broker';
+  can_delete?: boolean;
 }
 
 interface BalanceInfo {
@@ -21,6 +23,13 @@ interface BalanceInfo {
   total_withdrawals: number;
   total_pnl: number;
   currency: string;
+  net_deposit: number;
+  local_current_balance: number;
+  journal_pnl: number;
+  broker_current_balance?: number | null;
+  broker_pnl?: number | null;
+  pnl_gap?: number | null;
+  balance_source: 'journal' | 'broker_live';
 }
 
 interface DepositManagerModalProps {
@@ -34,6 +43,8 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
   const [history, setHistory] = useState<DepositOperation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [balanceReportFile, setBalanceReportFile] = useState<File | null>(null);
+  const [uploadingBalanceReport, setUploadingBalanceReport] = useState(false);
   
   // Форма добавления операции
   const [showForm, setShowForm] = useState(false);
@@ -52,7 +63,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
       ]);
       setBalance(balanceData);
       setHistory(historyData);
-    } catch (err) {
+    } catch {
       setError('Ошибка загрузки данных');
     } finally {
       setLoading(false);
@@ -98,8 +109,8 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
       // Обновляем данные
       await fetchData();
       onUpdate?.();
-    } catch (err: any) {
-      setError(err?.detail || err?.message || 'Неизвестная ошибка');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
     } finally {
       setSubmitting(false);
     }
@@ -112,8 +123,27 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
       await api.delete(`/deposits/${id}`);
       await fetchData();
       onUpdate?.();
-    } catch (err) {
+    } catch {
       setError('Ошибка при удалении');
+    }
+  };
+
+  const handleBalanceReportImport = async () => {
+    if (!balanceReportFile) return;
+
+    setUploadingBalanceReport(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', balanceReportFile);
+      await api.upload('/deposits/import-balance-report', formData);
+      setBalanceReportFile(null);
+      await fetchData();
+      onUpdate?.();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Ошибка импорта отчёта');
+    } finally {
+      setUploadingBalanceReport(false);
     }
   };
 
@@ -142,6 +172,8 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
       default: return type;
     }
   };
+
+  const isBrokerBacked = balance?.balance_source === 'broker_live' || (balance?.broker_current_balance ?? null) !== null;
 
   if (!isOpen) return null;
 
@@ -172,29 +204,38 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
               {balance && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-slate-700/50 rounded-xl p-4">
-                    <div className="text-sm text-slate-400 mb-1">Начальный</div>
+                    <div className="text-sm text-slate-400 mb-1">{isBrokerBacked ? 'Чистый ввод' : 'Начальный'}</div>
                     <div className="text-lg font-bold text-white">
-                      {formatCurrency(balance.initial_balance)}
+                      {formatCurrency(isBrokerBacked ? balance.net_deposit : balance.initial_balance)}
                     </div>
                   </div>
                   <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
-                    <div className="text-sm text-slate-400 mb-1">Текущий баланс</div>
+                    <div className="text-sm text-slate-400 mb-1">{isBrokerBacked ? 'Баланс брокера' : 'Текущий баланс'}</div>
                     <div className="text-lg font-bold text-green-400">
                       {formatCurrency(balance.current_balance)}
                     </div>
                   </div>
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
-                    <div className="text-sm text-slate-400 mb-1">Внесено</div>
+                    <div className="text-sm text-slate-400 mb-1">Всего вводов</div>
                     <div className="text-lg font-bold text-blue-400">
                       +{formatCurrency(balance.total_deposits)}
                     </div>
                   </div>
                   <div className={`${balance.total_pnl >= 0 ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'} border rounded-xl p-4`}>
-                    <div className="text-sm text-slate-400 mb-1">Прибыль</div>
+                    <div className="text-sm text-slate-400 mb-1">{isBrokerBacked ? 'PnL по брокеру' : 'Прибыль'}</div>
                     <div className={`text-lg font-bold ${balance.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {balance.total_pnl >= 0 ? '+' : ''}{formatCurrency(balance.total_pnl)}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {balance && isBrokerBacked && typeof balance.pnl_gap === 'number' && Math.abs(balance.pnl_gap) >= 1 && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-sm">
+                  <div className="font-medium mb-1">Обнаружено расхождение между брокером и локальным журналом</div>
+                  <div>Брокерский PnL: {formatCurrency(balance.broker_pnl ?? balance.total_pnl)}</div>
+                  <div>Локальный PnL по журналу: {formatCurrency(balance.journal_pnl)}</div>
+                  <div>Разница: {formatCurrency(balance.pnl_gap)}</div>
                 </div>
               )}
 
@@ -231,6 +272,30 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                   </button>
                 </div>
               )}
+
+              <div className="bg-slate-700/30 rounded-xl p-4 space-y-3 border border-slate-600/50">
+                <div>
+                  <div className="text-sm font-medium text-white">Импорт баланса из отчёта брокера</div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    Загрузите Excel-отчёт с входящим/исходящим остатком. Снимки баланса будут сохранены как исторические якоря для точного расчёта капитала на старт периода.
+                  </div>
+                </div>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={(e) => setBalanceReportFile(e.target.files?.[0] || null)}
+                    className="flex-1 text-sm text-slate-300 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-slate-600 file:text-white hover:file:bg-slate-500"
+                  />
+                  <button
+                    onClick={handleBalanceReportImport}
+                    disabled={!balanceReportFile || uploadingBalanceReport}
+                    className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50"
+                  >
+                    {uploadingBalanceReport ? 'Импорт...' : 'Импортировать баланс'}
+                  </button>
+                </div>
+              </div>
 
               {/* Add Form */}
               {showForm && (
@@ -333,6 +398,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                             <div className="text-sm text-white">{getOperationLabel(op.operation_type)}</div>
                             <div className="text-xs text-slate-500">
                               {formatDate(op.date)}
+                              {op.source && ` • ${op.source === 'broker' ? 'Брокер' : 'Ручная'}`}
                               {op.note && ` • ${op.note}`}
                             </div>
                           </div>
@@ -343,13 +409,15 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                           }`}>
                             {op.amount >= 0 ? '+' : ''}{formatCurrency(op.amount)}
                           </div>
-                          <button
-                            onClick={() => handleDelete(op.id)}
-                            className="p-1 text-slate-500 hover:text-red-400 transition-colors"
-                            title="Удалить"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {op.can_delete !== false && (
+                            <button
+                              onClick={() => handleDelete(op.id)}
+                              className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                              title="Удалить"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

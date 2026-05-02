@@ -16,7 +16,7 @@ export default function ThemeToggle() {
           : 'linear-gradient(135deg, #87CEEB 0%, #f0f8ff 100%)',
         border: `1px solid ${isDark ? '#333' : '#ccc'}`,
       }}
-      aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+      aria-label={isDark ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
     >
       {/* Sun icon */}
       <span

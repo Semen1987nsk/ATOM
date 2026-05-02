@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Clock, AlertTriangle, CheckCircle, Eye, X, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/apiClient';
 
 interface PeriodStats {
@@ -80,6 +79,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
   const [loadingTrades, setLoadingTrades] = useState(false);
   const [tradesError, setTradesError] = useState<string | null>(null);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
+  const cleanupTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const timeframes = [
     { value: '1m', label: '1 мин', periods: '15м, 1ч, 4ч' },
@@ -96,6 +96,9 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
+      }
+      if (cleanupTimeout.current) {
+        clearTimeout(cleanupTimeout.current);
       }
     };
   }, []);
@@ -147,7 +150,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
       }
-      setTimeout(() => {
+      cleanupTimeout.current = setTimeout(() => {
         setCalculating(false);
         setProgress(0);
       }, 1500);

@@ -5,18 +5,21 @@ Broker Integration API
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+import asyncio
 
 from database import get_db
 from models import BrokerConnection, BrokerType, Account, BalanceSnapshot, CapitalOperation, Trade
 from tinkoff_service import TinkoffService
 from auth_service import get_current_user, get_user_account
 import models
+from capital_service import sync_initial_balance
 from utils.datetime_utils import utc_now_naive
 from sync_scheduler import scheduler
 from sqlalchemy import func
+from crypto_utils import encrypt_token, decrypt_token
 
 router = APIRouter(prefix="/broker", tags=["broker"])
 
@@ -58,8 +61,7 @@ class BrokerConnectionResponse(BaseModel):
     total_synced_trades: int
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SyncResultResponse(BaseModel):
@@ -90,7 +92,7 @@ async def verify_broker_token(
         raise HTTPException(status_code=400, detail="РџРѕРєР° РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РўРёРЅСЊРєРѕС„С„")
     
     service = TinkoffService(request.api_token)
-    result = service.verify_token()
+    result = await asyncio.to_thread(service.verify_token)
     
     if not result["valid"]:
         return TokenVerifyResponse(
@@ -130,7 +132,7 @@ async def connect_broker(
     
     # РџСЂРѕРІРµСЂСЏРµРј С‚РѕРєРµРЅ
     service = TinkoffService(request.api_token)
-    verify_result = service.verify_token()
+    verify_result = await asyncio.to_thread(service.verify_token)
     
     if not verify_result["valid"]:
         raise HTTPException(
@@ -166,7 +168,7 @@ async def connect_broker(
     connection = BrokerConnection(
         account_id=account.id,
         broker=BrokerType.TINKOFF,
-        api_token=request.api_token,  # TODO: Encrypt in production!
+        api_token=encrypt_token(request.api_token),
         broker_account_id=request.broker_account_id,
         auto_sync_enabled=request.auto_sync_enabled,
         sync_interval_minutes=request.sync_interval_minutes,
@@ -244,8 +246,9 @@ async def sync_broker_trades(
     if connection.broker != BrokerType.TINKOFF:
         raise HTTPException(status_code=400, detail="РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РўРёРЅСЊРєРѕС„С„")
     
-    service = TinkoffService(connection.api_token)
-    result = service.sync_trades(
+    service = TinkoffService(decrypt_token(connection.api_token))
+    result = await asyncio.to_thread(
+        service.sync_trades,
         db=db,
         connection=connection,
         force_full_sync=force_full_sync
@@ -423,8 +426,8 @@ async def get_portfolio(
         raise HTTPException(status_code=404, detail="РќРµС‚ Р°РєС‚РёРІРЅС‹С… РїРѕРґРєР»СЋС‡РµРЅРёР№ Рє Р±СЂРѕРєРµСЂСѓ")
     
     try:
-        service = TinkoffService(conn.api_token)
-        portfolio = service.get_portfolio(conn.broker_account_id)
+        service = TinkoffService(decrypt_token(conn.api_token))
+        portfolio = await asyncio.to_thread(service.get_portfolio, conn.broker_account_id)
         
         # РўР°РєР¶Рµ РїРѕР»СѓС‡Р°РµРј initial_balance РёР· Р°РєРєР°СѓРЅС‚Р° РґР»СЏ СЂР°СЃС‡С‘С‚Р° ROI
         account = db.query(Account).filter(Account.id == conn.account_id).first()
@@ -576,8 +579,13 @@ async def set_initial_balance(
     if not conn:
         raise HTTPException(status_code=404, detail="No active broker connections")
     
-    account.initial_balance = initial_balance
-    db.commit()
+    sync_initial_balance(
+        db,
+        account.id,
+        initial_balance,
+        note="Initial balance set from broker portfolio",
+        commit=True,
+    )
     return {"success": True, "initial_balance": initial_balance}
 
 
@@ -638,5 +646,6 @@ async def get_net_deposit_on_date(
         "withdrawals": float(withdrawals),
         "realized_pnl": realized_pnl,
         "commissions": commissions,
-        "net_deposit": total_balance  # Р’РѕР·РІСЂР°С‰Р°РµРј СЌС‚Рѕ РєР°Рє "initial_balance" РґР»СЏ ROI
+        "net_deposit": net_deposit,
+        "equity_on_date": total_balance,
     }

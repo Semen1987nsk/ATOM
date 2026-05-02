@@ -7,54 +7,83 @@ from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
 import json
+import threading
 
 import database
 import models
 import schemas
 import analytics
 import auth_service
+from capital_service import get_capital_flow_events, get_net_deposit_as_of, has_broker_capital_operations
 from utils import utc_now_naive
 from logger import get_logger
 from tinkoff_service import TinkoffService
+from crypto_utils import decrypt_token
+import asyncio
 
 log = get_logger("stats")
 
 router = APIRouter(tags=["stats"])
+tags_router = APIRouter(tags=["stats"])
 
-# Simple in-memory cache for stats
+# Thread-safe in-memory cache for stats
 _stats_cache = {}
+_cache_lock = threading.Lock()
 _cache_ttl = 30  # seconds
+_cache_max_size = 100
 
 def _get_cache_key(account_id, **kwargs):
     """Generate cache key from parameters"""
     params = {k: v for k, v in kwargs.items() if v is not None}
     params['account_id'] = account_id
     key_str = json.dumps(params, sort_keys=True, default=str)
-    return hashlib.md5(key_str.encode()).hexdigest()
+    return hashlib.sha256(key_str.encode()).hexdigest()
 
 def _get_cached(key):
-    """Get value from cache if not expired"""
-    if key in _stats_cache:
-        value, timestamp = _stats_cache[key]
-        if (datetime.now() - timestamp).total_seconds() < _cache_ttl:
-            return value
-        del _stats_cache[key]
+    """Get value from cache if not expired (thread-safe)"""
+    with _cache_lock:
+        if key in _stats_cache:
+            value, timestamp = _stats_cache[key]
+            if (datetime.now() - timestamp).total_seconds() < _cache_ttl:
+                return value
+            _stats_cache.pop(key, None)
     return None
 
 def _set_cached(key, value):
-    """Set value in cache"""
-    _stats_cache[key] = (value, datetime.now())
-    # Clean old entries (keep max 100)
-    if len(_stats_cache) > 100:
-        oldest_keys = sorted(_stats_cache.keys(), 
-                           key=lambda k: _stats_cache[k][1])[:50]
-        for k in oldest_keys:
-            del _stats_cache[k]
+    """Set value in cache (thread-safe)"""
+    with _cache_lock:
+        _stats_cache[key] = (value, datetime.now())
+        # Clean old entries (keep max _cache_max_size)
+        if len(_stats_cache) > _cache_max_size:
+            sorted_keys = sorted(_stats_cache.keys(),
+                               key=lambda k: _stats_cache[k][1])
+            for k in sorted_keys[:len(_stats_cache) - _cache_max_size // 2]:
+                _stats_cache.pop(k, None)
+
+
+def _get_trades_state_fingerprint(trades):
+    """Create a stable fingerprint for the filtered trade set used by /stats/."""
+    payload = []
+    for trade in trades:
+        payload.append({
+            "id": trade.id,
+            "pnl": float(trade.pnl) if trade.pnl is not None else None,
+            "net_pnl": float(trade.net_pnl) if trade.net_pnl is not None else None,
+            "risk_amount": float(trade.risk_amount) if trade.risk_amount is not None else None,
+            "entry_at": trade.entry_at.isoformat() if trade.entry_at else None,
+            "exit_at": trade.exit_at.isoformat() if trade.exit_at else None,
+            "tags": trade.tags or [],
+            "mae_price": float(trade.mae_price) if trade.mae_price is not None else None,
+            "mfe_price": float(trade.mfe_price) if trade.mfe_price is not None else None,
+        })
+    state = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(state.encode()).hexdigest()
 
 
 # get_account_id is now centralized in auth_service
 
 
+@tags_router.get("/tags/")
 @router.get("/tags/")
 async def get_all_tags(
     db: Session = Depends(database.get_db),
@@ -66,7 +95,7 @@ async def get_all_tags(
         models.Trade.account_id == account_id,
         models.Trade.pnl != None
     ).all()
-    
+
     tag_stats = {}
     for t in trades:
         if not t.tags:
@@ -79,7 +108,7 @@ async def get_all_tags(
             tag_stats[tag_lower]["pnl"] += float(t.pnl or 0)
             if t.pnl and t.pnl > 0:
                 tag_stats[tag_lower]["wins"] += 1
-    
+
     result = []
     for tag, data in tag_stats.items():
         result.append({
@@ -88,7 +117,7 @@ async def get_all_tags(
             "pnl": round(data["pnl"], 2),
             "win_rate": round((data["wins"] / data["count"]) * 100, 1) if data["count"] > 0 else 0
         })
-    
+
     return sorted(result, key=lambda x: x["count"], reverse=True)
 
 
@@ -107,26 +136,18 @@ async def get_stats(
 ):
     """Get trading statistics with optional filters: time period, tag, and trade count limit."""
     account_id = auth_service.get_account_id(db, current_user)
-    
-    # Check cache first
-    cache_key = _get_cache_key(account_id, period=period, start_date=start_date, 
-                               end_date=end_date, start_trade_id=start_trade_id,
-                               tag=tag, limit=limit, mae_method=mae_method)
-    cached = _get_cached(cache_key)
-    if cached:
-        log.debug(f"Stats cache hit for key {cache_key[:8]}")
-        # Пересчитываем ROI с актуальным initial_deposit (не кэшируется)
-        if initial_deposit and initial_deposit > 0:
-            cached_copy = dict(cached)
-            total_pnl = cached_copy.get('total_pnl', 0)
-            cached_copy['total_roi'] = round((total_pnl / initial_deposit * 100), 2)
-            return cached_copy
-        return cached
-    
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    account_initial_balance = float(account.initial_balance or 0) if account else 0
+    broker_conn = db.query(models.BrokerConnection).filter(
+        models.BrokerConnection.account_id == account_id,
+        models.BrokerConnection.is_active == True
+    ).first()
+    broker_backed = has_broker_capital_operations(db, account_id)
+
     # Build date filter
     date_filter = None
     now = utc_now_naive()
-    
+
     # Если указан конкретный trade_id — находим его и фильтруем по дате этой сделки
     if start_trade_id:
         start_trade = db.query(models.Trade).filter(
@@ -150,111 +171,211 @@ async def get_stats(
             date_filter = datetime.strptime(start_date, "%Y-%m-%d")
         except ValueError:
             pass
-    
+
     # Query trades with filter
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.pnl != None
     )
-    
+
     if date_filter:
         query = query.filter(
-            (models.Trade.exit_at >= date_filter) | 
+            (models.Trade.exit_at >= date_filter) |
             ((models.Trade.exit_at == None) & (models.Trade.entry_at >= date_filter))
         )
-    
+
     if period == "custom" and end_date:
         try:
             end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
             query = query.filter(
-                (models.Trade.exit_at < end_dt) | 
+                (models.Trade.exit_at < end_dt) |
                 ((models.Trade.exit_at == None) & (models.Trade.entry_at < end_dt))
             )
         except ValueError:
             pass
-    
+
     all_trades = query.order_by(models.Trade.exit_at.desc()).all()
-    
+
     # Filter by tag if specified
     if tag:
         tag_lower = tag.lower()
         all_trades = [t for t in all_trades if t.tags and any(tg.lower() == tag_lower for tg in t.tags)]
-    
+
     # Apply limit (last N trades)
     if limit and limit > 0:
         all_trades = all_trades[:limit]
-    
+
     trades = all_trades
-    
+
+    trades_fingerprint = _get_trades_state_fingerprint(trades)
+    cache_key = _get_cache_key(account_id, period=period, start_date=start_date,
+                               end_date=end_date, start_trade_id=start_trade_id,
+                               tag=tag, limit=limit, mae_method=mae_method,
+                               initial_deposit=initial_deposit,
+                               account_initial_balance=account_initial_balance,
+                               trades_fingerprint=trades_fingerprint)
+    cached = _get_cached(cache_key)
+    if cached:
+        log.debug(f"Stats cache hit for key {cache_key[:8]}")
+        return cached
+
     total_trades = len(trades)
     if total_trades == 0:
         return {
             "total_pnl": 0,
+            "unrealized_pnl": 0,
+            "total_pnl_with_unrealized": 0,
+            "initial_balance": account_initial_balance,
+            "current_balance": account_initial_balance,
+            "period_start_balance": account_initial_balance,
+            "period_end_balance": account_initial_balance,
+            "period_start_date": date_filter.isoformat() if date_filter else None,
+            "period_start_net_deposit": get_net_deposit_as_of(db, account_id, date_filter) if date_filter else account_initial_balance,
+            "period_start_realized_pnl": 0,
+            "period_start_balance_reliable": True,
+            "period_start_balance_source": "account_initial_balance",
+            "period_start_balance_reason": None,
             "win_rate": 0,
             "total_trades": 0,
             "profitable_trades": 0,
             "optimal_f": 0
         }
-    
+
     # Use net_pnl if available, else pnl
     def get_pnl(t):
         return float(t.net_pnl if t.net_pnl is not None else t.pnl)
-    
+
     total_pnl = sum(get_pnl(t) for t in trades)
     profitable_trades = len([t for t in trades if get_pnl(t) > 0])
     win_rate = (profitable_trades / total_trades) * 100
-    
+
     # Расчет Optimal f
     pnls = [get_pnl(t) for t in trades]
     risks = [float(t.risk_amount) if t.risk_amount else 0 for t in trades]  # 0 если риск не указан
     opt_f_data = analytics.calculate_optimal_f(pnls, risks)
-    
+
     # Расчет SQN
     sqn_data = analytics.calculate_sqn(pnls, risks)
 
     # Расчет Z-Score
     z_score_data = analytics.calculate_z_score(pnls)
-    
+
     # Расчет Advanced Stats
     adv_stats = analytics.calculate_advanced_stats(pnls, risks)
 
     # Анализ MAE/MFE
     mae_mfe_data = analytics.analyze_mae_mfe(trades, mae_method=mae_method or 'weighted_average')
-    
+
     # Расчет кривой эквити (хронологический порядок)
     sorted_trades = sorted(trades, key=lambda x: x.exit_at if x.exit_at else x.entry_at)
     pnls_sorted = [get_pnl(t) for t in sorted_trades]
-    
-    # Получаем начальный баланс из аккаунта
-    account = db.query(models.Account).filter(models.Account.id == account_id).first()
-    base_initial_balance = float(account.initial_balance or 0) if account else 0
-    
-    # Если применён фильтр, рассчитываем баланс на момент начала фильтра
-    # путём суммирования PnL всех сделок ДО фильтра
-    starting_balance = base_initial_balance
-    if date_filter:
-        # Получаем все закрытые сделки ДО даты фильтра
+
+    base_initial_balance = account_initial_balance
+
+    period_start_date = date_filter
+    if period_start_date is None and sorted_trades:
+        first_trade = sorted_trades[0]
+        period_start_date = first_trade.entry_at or first_trade.exit_at
+
+    pnl_before = 0.0
+    if period_start_date:
         trades_before_filter = db.query(models.Trade).filter(
             models.Trade.account_id == account_id,
             models.Trade.pnl != None,
             models.Trade.exit_at != None,
-            models.Trade.exit_at < date_filter
+            models.Trade.exit_at < period_start_date
         ).all()
-        
-        # Суммируем их PnL для получения баланса на начало фильтра
         pnl_before = sum(float(t.net_pnl if t.net_pnl is not None else t.pnl) for t in trades_before_filter)
-        starting_balance = base_initial_balance + pnl_before
-        log.debug(f"Filter applied: {len(trades_before_filter)} trades before, starting_balance={starting_balance:.2f}")
-    
+
+    starting_net_deposit = get_net_deposit_as_of(db, account_id, period_start_date) if period_start_date else get_net_deposit_as_of(db, account_id)
+    starting_balance = starting_net_deposit + pnl_before
+    if not period_start_date:
+        starting_balance = base_initial_balance if base_initial_balance > 0 else starting_balance
+
+    period_start_balance_reliable = True
+    period_start_balance_source = "derived"
+    period_start_balance_reason = None
+    public_period_start_balance = starting_balance
+
+    if broker_backed and period_start_date:
+        first_snapshot = db.query(models.BalanceSnapshot).filter(
+            models.BalanceSnapshot.account_id == account_id,
+        ).order_by(models.BalanceSnapshot.date.asc()).first()
+        latest_snapshot_before_period = db.query(models.BalanceSnapshot).filter(
+            models.BalanceSnapshot.account_id == account_id,
+            models.BalanceSnapshot.date <= period_start_date,
+        ).order_by(models.BalanceSnapshot.date.desc()).first()
+        earliest_capital_op = db.query(models.CapitalOperation).filter(
+            models.CapitalOperation.account_id == account_id,
+        ).order_by(models.CapitalOperation.date.asc()).first()
+
+        if latest_snapshot_before_period:
+            snapshot_balance = float(latest_snapshot_before_period.balance or 0)
+            snapshot_date = latest_snapshot_before_period.date
+            delta_pnl_since_snapshot = db.query(models.Trade).filter(
+                models.Trade.account_id == account_id,
+                models.Trade.exit_at.isnot(None),
+                models.Trade.exit_at >= snapshot_date,
+                models.Trade.exit_at < period_start_date,
+            ).all()
+            delta_pnl_value = sum(float(t.net_pnl if t.net_pnl is not None else t.pnl or 0) for t in delta_pnl_since_snapshot)
+            delta_capital_value = sum(event["amount"] for event in get_capital_flow_events(
+                db,
+                account_id,
+                start=snapshot_date,
+                end=period_start_date,
+            ))
+            public_period_start_balance = snapshot_balance + delta_pnl_value + delta_capital_value
+            period_start_balance_source = "snapshot_plus_events"
+        elif first_snapshot and first_snapshot.date > period_start_date and earliest_capital_op and broker_conn and broker_conn.sync_from_date and earliest_capital_op.date < broker_conn.sync_from_date:
+            period_start_balance_reliable = False
+            public_period_start_balance = None
+            period_start_balance_source = "unavailable_pre_snapshot"
+            period_start_balance_reason = (
+                "Нет снимка брокерского баланса на дату старта периода, а история счёта началась раньше даты синхронизации. "
+                "Чтобы восстановить точный капитал, импортируйте брокерский отчёт с входящим/исходящим остатком за нужный период."
+            )
+
+    period_end_boundary = now
+    if period == "custom" and end_date:
+        try:
+            period_end_boundary = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            period_end_boundary = now
+
+    equity_events = []
+    if period_start_date:
+        for flow in get_capital_flow_events(db, account_id, start=period_start_date, end=period_end_boundary):
+            equity_events.append({
+                "date": flow["date"],
+                "amount": float(flow["amount"]),
+                "kind": "capital",
+            })
+    for trade in sorted_trades:
+        equity_events.append({
+            "date": trade.exit_at if trade.exit_at else trade.entry_at,
+            "amount": get_pnl(trade),
+            "kind": "trade",
+        })
+
+    equity_events.sort(key=lambda event: (event["date"], 0 if event["kind"] == "capital" else 1))
     equity_curve = []
     current_balance = starting_balance
-    for t in sorted_trades:
-        current_balance += get_pnl(t)
+    for event in equity_events:
+        current_balance += event["amount"]
+        event_date = event["date"]
+        if event_date is None:
+            continue
         equity_curve.append({
-            "date": (t.exit_at if t.exit_at else t.entry_at).strftime("%Y-%m-%d %H:%M"),
+            "date": event_date.strftime("%Y-%m-%d %H:%M"),
             "balance": round(current_balance, 2)
         })
-    
+
+    if period_start_date:
+        log.debug(
+            f"Period start recalculated: net_deposit={starting_net_deposit:.2f}, pnl_before={pnl_before:.2f}, starting_balance={starting_balance:.2f}"
+        )
+
     # Расчет статистики по тегам
     tag_performance = {}
     for t in trades:
@@ -268,7 +389,7 @@ async def get_stats(
             tag_performance[tag_key]["total"] += 1
             if get_pnl(t) > 0:
                 tag_performance[tag_key]["wins"] += 1
-    
+
     tag_stats = []
     for tag_key, data in tag_performance.items():
         tag_stats.append({
@@ -278,20 +399,20 @@ async def get_stats(
             "count": data["total"]
         })
     tag_stats = sorted(tag_stats, key=lambda x: x["pnl"], reverse=True)
-    
+
     # Расчет дополнительных метрик
     sortino_data = analytics.calculate_sharpe_sortino(pnls)
-    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted)
+    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted, initial_balance=starting_balance)
     win_loss_data = analytics.calculate_win_loss_stats(pnls)
     streaks_data = analytics.calculate_streaks(pnls_sorted)
     tail_ratio_data = analytics.calculate_tail_ratio(pnls)
     r_distribution_data = analytics.calculate_r_distribution(pnls, risks)
     trade_duration_data = analytics.calculate_trade_duration(trades)
-    
+
     # Monte Carlo и Time Patterns
     monte_carlo_data = analytics.monte_carlo_simulation(pnls)
     time_patterns_data = analytics.analyze_time_patterns(trades)
-    
+
     # Calmar Ratio
     if len(sorted_trades) >= 2:
         first_trade_date = sorted_trades[0].entry_at
@@ -300,8 +421,20 @@ async def get_stats(
         period_years = max(trading_days / 365, 0.1)
     else:
         period_years = 1.0
-    calmar_data = analytics.calculate_calmar_ratio(pnls_sorted, initial_balance=initial_deposit or 100000, period_years=period_years)
-    
+    period_start_balance = public_period_start_balance if public_period_start_balance is not None else None
+    if initial_deposit and initial_deposit > 0:
+        period_start_balance = initial_deposit
+        period_start_balance_reliable = True
+        period_start_balance_source = "manual_override"
+        period_start_balance_reason = None
+
+    calmar_initial_balance = starting_balance if starting_balance > 0 else base_initial_balance
+    calmar_data = analytics.calculate_calmar_ratio(
+        pnls_sorted,
+        initial_balance=calmar_initial_balance,
+        period_years=period_years,
+    )
+
     # Risk of Ruin
     avg_win = win_loss_data.get("avg_win", 0)
     avg_loss = abs(win_loss_data.get("avg_loss", 1))
@@ -311,13 +444,9 @@ async def get_stats(
     # Get unrealized PnL from open positions
     unrealized_pnl = 0.0
     try:
-        broker_conn = db.query(models.BrokerConnection).filter(
-            models.BrokerConnection.account_id == account_id,
-            models.BrokerConnection.is_active == True
-        ).first()
         if broker_conn:
-            service = TinkoffService(broker_conn.api_token)
-            portfolio = service.get_portfolio(broker_conn.broker_account_id)
+            service = TinkoffService(decrypt_token(broker_conn.api_token))
+            portfolio = await asyncio.to_thread(service.get_portfolio, broker_conn.broker_account_id)
             if portfolio and portfolio.get('positions'):
                 for pos in portfolio['positions']:
                     unrealized_pnl += float(pos.get('unrealized_pnl', 0) or 0)
@@ -338,7 +467,7 @@ async def get_stats(
         "profit_factor": adv_stats.get("profit_factor", 0),
         "r_expectancy": adv_stats.get("r_expectancy", 0),
         "recovery_factor": adv_stats.get("recovery_factor", 0),
-        "total_roi": round((total_pnl / initial_deposit * 100), 2) if initial_deposit and initial_deposit > 0 else 0,
+        "total_roi": round((total_pnl / period_start_balance * 100), 2) if period_start_balance and period_start_balance > 0 and period_start_balance_reliable else None,
         "expected_ghpr": opt_f_data.get("geometric_mean", 0),
         "sortino_ratio": sortino_data.get("sortino_ratio", 0),
         "max_drawdown_pct": drawdown_data.get("max_drawdown_pct", 0),
@@ -364,8 +493,16 @@ async def get_stats(
         "tag_stats": tag_stats,
         "initial_balance": base_initial_balance,
         "current_balance": current_balance if equity_curve else base_initial_balance,
+        "period_start_balance": period_start_balance,
+        "period_end_balance": current_balance if equity_curve else period_start_balance,
+        "period_start_date": period_start_date.isoformat() if period_start_date else None,
+        "period_start_net_deposit": starting_net_deposit,
+        "period_start_realized_pnl": pnl_before,
+        "period_start_balance_reliable": period_start_balance_reliable,
+        "period_start_balance_source": period_start_balance_source,
+        "period_start_balance_reason": period_start_balance_reason,
     }
-    
+
     # Cache the result
     _set_cached(cache_key, result)
     return result
@@ -386,13 +523,13 @@ async def get_mae_mfe_analysis(
 ):
     """
     Универсальный MAE/MFE анализ с группировкой.
-    
+
     group_by:
     - overall: общий анализ всех сделок
     - tag: группировка по тегам (стратегиям)
     - symbol: группировка по тикерам
     - setup: группировка по сетапам
-    
+
     filter_value: конкретный тег/тикер/сетап для детального анализа
     limit: последние N сделок (20, 50, 100, 200)
     period: week, month, 3months, year
@@ -400,7 +537,7 @@ async def get_mae_mfe_analysis(
     """
     account_id = auth_service.get_account_id(db, current_user)
     now = utc_now_naive()
-    
+
     # Базовый запрос
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
@@ -408,7 +545,7 @@ async def get_mae_mfe_analysis(
         models.Trade.mae_price != None,
         models.Trade.mfe_price != None
     )
-    
+
     # Фильтр по start_trade_id (глобальный фильтр из настроек)
     if start_trade_id:
         start_trade = db.query(models.Trade).filter(
@@ -418,7 +555,7 @@ async def get_mae_mfe_analysis(
         if start_trade:
             # Фильтруем сделки начиная с даты входа этой сделки
             query = query.filter(models.Trade.entry_at >= start_trade.entry_at)
-    
+
     # Фильтр по периоду
     if period:
         if period == 'week':
@@ -431,25 +568,25 @@ async def get_mae_mfe_analysis(
             date_filter = now - timedelta(days=365)
         else:
             date_filter = None
-        
+
         if date_filter:
             query = query.filter(models.Trade.exit_at >= date_filter)
-    
+
     # Фильтры типа актива и направления
     if asset_type:
         query = query.filter(models.Trade.asset_type == asset_type)
     if direction:
         query = query.filter(models.Trade.direction == direction)
-    
+
     # Сортировка по дате закрытия (новые сначала) для применения limit
     query = query.order_by(models.Trade.exit_at.desc())
-    
+
     # Применяем лимит на последние N сделок
     if limit and limit > 0:
         query = query.limit(limit)
-    
+
     trades = query.all()
-    
+
     if not trades:
         return {
             "group_by": group_by,
@@ -457,17 +594,17 @@ async def get_mae_mfe_analysis(
             "total_trades": 0,
             "summary": None
         }
-    
+
     # Группировка
     from collections import defaultdict
     import numpy as np
-    
+
     if group_by == 'overall':
         # Общий анализ
         result = _analyze_trades_mae_mfe(trades, mae_method)
         result["group_by"] = "overall"
         return result
-    
+
     elif group_by == 'tag':
         # Группировка по тегам (включая системные для полноты анализа)
         groups = defaultdict(list)
@@ -477,7 +614,7 @@ async def get_mae_mfe_analysis(
                     groups[tag].append(t)
             else:
                 groups['Без тега'].append(t)
-        
+
         if filter_value:
             if filter_value in groups:
                 result = _analyze_trades_mae_mfe(groups[filter_value], mae_method)
@@ -486,7 +623,7 @@ async def get_mae_mfe_analysis(
                 result["recommendations"] = _generate_strategy_recommendations(result)
                 return result
             return {"group_by": "tag", "filter_value": filter_value, "items": [], "total_trades": 0}
-        
+
         items = []
         for name, group_trades in groups.items():
             if len(group_trades) >= 2:
@@ -496,22 +633,22 @@ async def get_mae_mfe_analysis(
                     "trades_count": len(group_trades),
                     **analysis
                 })
-        
+
         items.sort(key=lambda x: x.get("edge_ratio", 0), reverse=True)
-        
+
         return {
             "group_by": "tag",
             "items": items,
             "total_trades": len(trades),
             "total_groups": len(items)
         }
-    
+
     elif group_by == 'symbol':
         # Группировка по тикерам
         groups = defaultdict(list)
         for t in trades:
             groups[t.symbol].append(t)
-        
+
         if filter_value:
             if filter_value in groups:
                 result = _analyze_trades_mae_mfe(groups[filter_value], mae_method)
@@ -524,7 +661,7 @@ async def get_mae_mfe_analysis(
                 result["recommendations"] = _generate_strategy_recommendations(result)
                 return result
             return {"group_by": "symbol", "filter_value": filter_value, "items": [], "total_trades": 0}
-        
+
         items = []
         for symbol, group_trades in groups.items():
             if len(group_trades) >= 1:
@@ -537,27 +674,27 @@ async def get_mae_mfe_analysis(
                     "trades_count": len(group_trades),
                     **analysis
                 })
-        
+
         items.sort(key=lambda x: x.get("edge_ratio", 0), reverse=True)
-        
+
         return {
             "group_by": "symbol",
             "items": items,
             "total_trades": len(trades),
             "total_groups": len(items)
         }
-    
+
     elif group_by == 'setup':
         # Группировка по сетапам
         groups = defaultdict(list)
         setups = {s.id: s.name for s in db.query(models.Setup).filter(models.Setup.account_id == account_id).all()}
-        
+
         for t in trades:
             if t.setup_id and t.setup_id in setups:
                 groups[setups[t.setup_id]].append(t)
             else:
                 groups['Без сетапа'].append(t)
-        
+
         if filter_value:
             if filter_value in groups:
                 result = _analyze_trades_mae_mfe(groups[filter_value], mae_method)
@@ -566,7 +703,7 @@ async def get_mae_mfe_analysis(
                 result["recommendations"] = _generate_strategy_recommendations(result)
                 return result
             return {"group_by": "setup", "filter_value": filter_value, "items": [], "total_trades": 0}
-        
+
         items = []
         for name, group_trades in groups.items():
             if len(group_trades) >= 1:
@@ -576,28 +713,28 @@ async def get_mae_mfe_analysis(
                     "trades_count": len(group_trades),
                     **analysis
                 })
-        
+
         items.sort(key=lambda x: x.get("edge_ratio", 0), reverse=True)
-        
+
         return {
             "group_by": "setup",
             "items": items,
             "total_trades": len(trades),
             "total_groups": len(items)
         }
-    
+
     return {"error": "Invalid group_by parameter"}
 
 
 def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dict:
     """Анализирует MAE/MFE для группы сделок
-    
+
     mae_method:
         - 'weighted_average': от средневзвешенной цены входа (по умолчанию)
         - 'first_entry': от цены первого входа
     """
     import numpy as np
-    
+
     mae_values = []
     mfe_values = []
     efficiencies = []
@@ -605,7 +742,7 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
     wins = 0
     win_pnls = []  # Для расчёта реального R:R
     loss_pnls = []
-    
+
     for t in trades:
         # Определяем базовую цену в зависимости от метода
         if mae_method == 'first_entry' and t.operations:
@@ -618,10 +755,10 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
         else:
             # По умолчанию - средневзвешенная цена
             entry_price = float(t.entry_price) if t.entry_price else 0
-        
+
         if entry_price == 0:
             continue
-        
+
         is_long = t.direction.value == 'long' if hasattr(t.direction, 'value') else t.direction == 'long'
         pnl = float(t.pnl) if t.pnl else 0
         pnl_sum += pnl
@@ -630,18 +767,18 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
             win_pnls.append(pnl)
         elif pnl < 0:
             loss_pnls.append(abs(pnl))
-        
+
         mae_price = float(t.mae_price) if t.mae_price else entry_price
         mfe_price = float(t.mfe_price) if t.mfe_price else entry_price
         exit_price = float(t.exit_price) if t.exit_price else entry_price
-        
+
         if is_long:
             mae_pct = max(0, (entry_price - mae_price) / entry_price * 100)
             mfe_pct = max(0, (mfe_price - entry_price) / entry_price * 100)
         else:
             mae_pct = max(0, (mae_price - entry_price) / entry_price * 100)
             mfe_pct = max(0, (entry_price - mfe_price) / entry_price * 100)
-        
+
         if mfe_pct > 0:
             if is_long:
                 actual_pct = (exit_price - entry_price) / entry_price * 100
@@ -650,29 +787,29 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
             efficiency = max(0, min(100, actual_pct / mfe_pct * 100))
         else:
             efficiency = 0
-        
+
         mae_values.append(mae_pct)
         mfe_values.append(mfe_pct)
         efficiencies.append(efficiency)
-    
+
     if not mae_values:
         return {"trades_count": 0, "avg_mae": 0, "avg_mfe": 0, "edge_ratio": 0}
-    
+
     mae_arr = np.array(mae_values)
     mfe_arr = np.array(mfe_values)
     eff_arr = np.array(efficiencies)
-    
+
     avg_mae = float(np.mean(mae_arr))
     avg_mfe = float(np.mean(mfe_arr))
     edge_ratio = avg_mfe / avg_mae if avg_mae > 0 else 0
-    
+
     # Реальные показатели на основе фактических результатов
     avg_win = float(np.mean(win_pnls)) if win_pnls else 0
     avg_loss = float(np.mean(loss_pnls)) if loss_pnls else 0
     real_rr = avg_win / avg_loss if avg_loss > 0 else 0
     profit_factor = sum(win_pnls) / sum(loss_pnls) if loss_pnls and sum(loss_pnls) > 0 else 0
     required_winrate = 1 / (1 + real_rr) * 100 if real_rr > 0 else 100
-    
+
     return {
         "trades_count": len(trades),
         "wins": wins,
@@ -708,7 +845,7 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
 def _calculate_quality_score(avg_mae: float, avg_mfe: float, edge_ratio: float, win_rate: float) -> int:
     """Рассчитывает оценку качества от 0 до 100"""
     score = 0
-    
+
     if edge_ratio >= 3:
         score += 40
     elif edge_ratio >= 2:
@@ -717,23 +854,23 @@ def _calculate_quality_score(avg_mae: float, avg_mfe: float, edge_ratio: float, 
         score += 20
     elif edge_ratio >= 1:
         score += 10
-    
+
     score += min(30, win_rate * 40)
-    
+
     if avg_mae <= 1:
         score += 30
     elif avg_mae <= 2:
         score += 20
     elif avg_mae <= 3:
         score += 10
-    
+
     return min(100, int(score))
 
 
 def _generate_strategy_recommendations(analysis: dict) -> list:
     """Генерирует рекомендации для стратегии/группы с иконками и обоснованием"""
     recommendations = []
-    
+
     edge = analysis.get("edge_ratio", 0)
     mae = analysis.get("avg_mae", 0)
     mfe = analysis.get("avg_mfe", 0)
@@ -741,7 +878,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
     wr = analysis.get("win_rate", 0)
     quality = analysis.get("quality_score", 0)
     trades_count = analysis.get("trades_count", 0)
-    
+
     # Реальные показатели
     real_rr = analysis.get("real_rr", 0)
     profit_factor = analysis.get("profit_factor", 0)
@@ -749,13 +886,13 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
     avg_win = analysis.get("avg_win", 0)
     avg_loss = analysis.get("avg_loss", 0)
     total_pnl = analysis.get("total_pnl", 0)
-    
+
     mae_percentiles = analysis.get("mae_percentiles", {})
     mfe_percentiles = analysis.get("mfe_percentiles", {})
-    
+
     # Edge Ratio Analysis - с учётом реальной прибыльности
     is_profitable = total_pnl > 0
-    
+
     if edge >= 2.5:
         recommendations.append({
             "type": "success",
@@ -794,7 +931,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
                 "icon": "⚠️",
                 "text": f"Edge Ratio ({edge:.2f}x). Цена чаще идёт против вас. Улучшите точки входа или дождитесь лучших сетапов."
             })
-    
+
     # MAE Analysis with actionable advice
     if mae > 5:
         recommendations.append({
@@ -820,7 +957,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
             "icon": "👍",
             "text": f"Хороший MAE ({mae:.1f}%). Точки входа достаточно точные, минимальные просадки после открытия позиции."
         })
-    
+
     # MFE Analysis
     if mfe >= 5:
         recommendations.append({
@@ -834,7 +971,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
             "icon": "📊",
             "text": f"Низкий MFE ({mfe:.1f}%). Позиции не достигают значительной прибыли. Возможно стоит удерживать позиции дольше или торговать более волатильные инструменты."
         })
-    
+
     # Efficiency Analysis
     if eff < 25:
         recommendations.append({
@@ -854,12 +991,12 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
             "icon": "🏆",
             "text": f"Отличная эффективность ({eff:.0f}%). Вы хорошо реализуете потенциал движения. Продолжайте в том же духе."
         })
-    
+
     # Stop-Loss Recommendation based on percentiles
     mae_p50 = mae_percentiles.get("p50", 0)
     mae_p75 = mae_percentiles.get("p75", 0)
     mae_max = mae_percentiles.get("max", 0)
-    
+
     if mae_p75 > 0:
         # Calculate optimal stop based on distribution
         if mae_max > mae_p75 * 2:
@@ -874,12 +1011,12 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
                 "icon": "🛡️",
                 "text": f"СТОП-ЛОСС: Оптимальный уровень {mae_p75:.1f}% (p75). Обоснование: 75% ваших сделок не уходят ниже этого уровня, при этом вы не выбиваетесь по шуму."
             })
-    
+
     # Take-Profit Recommendation based on percentiles
     mfe_p25 = mfe_percentiles.get("p25", 0)
     mfe_p50 = mfe_percentiles.get("p50", 0)
     mfe_p75 = mfe_percentiles.get("p75", 0)
-    
+
     if mfe_p25 > 0 and mfe_p50 > 0:
         if eff < 50:
             recommendations.append({
@@ -893,13 +1030,13 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
                 "icon": "🎯",
                 "text": f"ТЕЙК-ПРОФИТ: Оптимальный — {mfe_p50:.1f}% (медиана, достижимо в 50% сделок). Для максимизации — {mfe_p75:.1f}% (только 25% сделок достигают этого уровня)."
             })
-    
+
     # Risk/Reward recommendation - используем РЕАЛЬНЫЕ данные!
     if real_rr > 0:
         # Используем реальный R:R на основе фактических результатов
         is_profitable = total_pnl > 0
         winrate_ok = wr >= required_wr
-        
+
         if is_profitable and profit_factor >= 1.5:
             recommendations.append({
                 "type": "success",
@@ -932,7 +1069,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
             "icon": "⚖️",
             "text": f"Потенциальный R:R = {rr:.2f}:1 (тейк {mfe_p25:.1f}% / стоп {mae_p75:.1f}%)."
         })
-    
+
     # Quality Score recommendation - с учётом реальной прибыльности
     if is_profitable and profit_factor >= 1.5:
         recommendations.append({
@@ -958,7 +1095,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
             "icon": "📊",
             "text": f"Рейтинг {quality}/100. Требуется анализ: улучшите точки входа или управление позицией."
         })
-    
+
     # Sample size warning
     if trades_count < 10:
         recommendations.append({
@@ -966,7 +1103,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
             "icon": "📊",
             "text": f"Внимание: анализ основан на {trades_count} сделках. Для статистически значимых выводов рекомендуется минимум 30 сделок."
         })
-    
+
     return recommendations
 
 
@@ -981,13 +1118,13 @@ async def get_mae_mfe_by_symbol(
 ):
     """
     MAE/MFE анализ по тикерам.
-    
+
     - Без параметров: возвращает сводку по всем тикерам
     - С symbol: детальный анализ конкретного тикера
     - Фильтры: asset_type (Stock/Futures), direction (long/short)
     """
     account_id = auth_service.get_account_id(db, current_user)
-    
+
     # Базовый запрос
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
@@ -995,7 +1132,7 @@ async def get_mae_mfe_by_symbol(
         models.Trade.mae_price != None,
         models.Trade.mfe_price != None
     )
-    
+
     # Применяем фильтры
     if asset_type:
         query = query.filter(models.Trade.asset_type == asset_type)
@@ -1003,16 +1140,16 @@ async def get_mae_mfe_by_symbol(
         query = query.filter(models.Trade.direction == direction)
     if symbol:
         query = query.filter(models.Trade.symbol == symbol)
-    
+
     trades = query.all()
-    
+
     if not trades:
         return {
             "symbols": [],
             "total_trades": 0,
             "filters_applied": {"symbol": symbol, "asset_type": asset_type, "direction": direction}
         }
-    
+
     # Группируем по тикерам
     from collections import defaultdict
     symbol_data = defaultdict(lambda: {
@@ -1024,28 +1161,28 @@ async def get_mae_mfe_by_symbol(
         "wins": 0,
         "total": 0
     })
-    
+
     for t in trades:
         s = t.symbol
         entry_price = float(t.entry_price) if t.entry_price else 0
         if entry_price == 0:
             continue
-            
+
         is_long = t.direction.value == 'long' if hasattr(t.direction, 'value') else t.direction == 'long'
         pnl = float(t.pnl) if t.pnl else 0
-        
+
         # Рассчитываем MAE/MFE в процентах
         mae_price = float(t.mae_price) if t.mae_price else entry_price
         mfe_price = float(t.mfe_price) if t.mfe_price else entry_price
         exit_price = float(t.exit_price) if t.exit_price else entry_price
-        
+
         if is_long:
             mae_pct = max(0, (entry_price - mae_price) / entry_price * 100)
             mfe_pct = max(0, (mfe_price - entry_price) / entry_price * 100)
         else:
             mae_pct = max(0, (mae_price - entry_price) / entry_price * 100)
             mfe_pct = max(0, (entry_price - mfe_price) / entry_price * 100)
-        
+
         # Эффективность: сколько от MFE забрали
         if mfe_pct > 0:
             if is_long:
@@ -1055,7 +1192,7 @@ async def get_mae_mfe_by_symbol(
             efficiency = max(0, min(100, actual_profit_pct / mfe_pct * 100))
         else:
             efficiency = 0
-        
+
         symbol_data[s]["trades"].append(t)
         symbol_data[s]["mae_values"].append(mae_pct)
         symbol_data[s]["mfe_values"].append(mfe_pct)
@@ -1063,28 +1200,28 @@ async def get_mae_mfe_by_symbol(
         symbol_data[s]["pnl_sum"] += pnl
         symbol_data[s]["wins"] += 1 if pnl > 0 else 0
         symbol_data[s]["total"] += 1
-    
+
     # Формируем результат
     import numpy as np
     symbols_result = []
-    
+
     for sym, data in symbol_data.items():
         if not data["mae_values"]:
             continue
-            
+
         mae_arr = np.array(data["mae_values"])
         mfe_arr = np.array(data["mfe_values"])
         eff_arr = np.array(data["efficiencies"])
-        
+
         # Получаем название актива из первой сделки
         first_trade = data["trades"][0]
         asset_name = first_trade.asset_name or sym
         asset_type_val = first_trade.asset_type or "Unknown"
-        
+
         avg_mae = float(np.mean(mae_arr))
         avg_mfe = float(np.mean(mfe_arr))
         edge_ratio = avg_mfe / avg_mae if avg_mae > 0 else 0
-        
+
         symbols_result.append({
             "symbol": sym,
             "asset_name": asset_name,
@@ -1112,29 +1249,29 @@ async def get_mae_mfe_by_symbol(
             # Оценка качества тикера
             "quality_score": _calculate_symbol_quality(avg_mae, avg_mfe, edge_ratio, data["wins"] / data["total"] if data["total"] > 0 else 0)
         })
-    
+
     # Сортируем по edge_ratio (лучшие сверху)
     symbols_result.sort(key=lambda x: x["edge_ratio"], reverse=True)
-    
+
     # Если запросили конкретный тикер - добавляем рекомендации
     if symbol and len(symbols_result) == 1:
         sym_data = symbols_result[0]
         sym_data["recommendations"] = _generate_symbol_recommendations(sym_data)
-        
+
         # Добавляем детальную статистику по направлениям
-        long_trades = [t for t in symbol_data[symbol]["trades"] 
+        long_trades = [t for t in symbol_data[symbol]["trades"]
                        if (t.direction.value if hasattr(t.direction, 'value') else t.direction) == 'long']
-        short_trades = [t for t in symbol_data[symbol]["trades"] 
+        short_trades = [t for t in symbol_data[symbol]["trades"]
                         if (t.direction.value if hasattr(t.direction, 'value') else t.direction) == 'short']
-        
+
         sym_data["by_direction"] = {
             "long": {"count": len(long_trades), "pnl": sum(float(t.pnl or 0) for t in long_trades)},
             "short": {"count": len(short_trades), "pnl": sum(float(t.pnl or 0) for t in short_trades)}
         }
-    
+
     # Добавляем общую статистику
     all_edge_ratios = [s["edge_ratio"] for s in symbols_result if s["edge_ratio"] > 0]
-    
+
     return {
         "symbols": symbols_result,
         "total_trades": len(trades),
@@ -1153,14 +1290,14 @@ async def get_mae_mfe_by_symbol(
 def _calculate_symbol_quality(avg_mae: float, avg_mfe: float, edge_ratio: float, win_rate: float) -> int:
     """
     Рассчитывает оценку качества тикера от 0 до 100.
-    
+
     Факторы:
     - Edge Ratio (MFE/MAE): чем выше, тем лучше
     - Win Rate: процент выигрышей
     - Низкий MAE: меньше просадка = лучше
     """
     score = 0
-    
+
     # Edge Ratio (до 40 баллов)
     if edge_ratio >= 3:
         score += 40
@@ -1170,10 +1307,10 @@ def _calculate_symbol_quality(avg_mae: float, avg_mfe: float, edge_ratio: float,
         score += 20
     elif edge_ratio >= 1:
         score += 10
-    
+
     # Win Rate (до 30 баллов)
     score += min(30, win_rate * 0.4)
-    
+
     # Низкий MAE (до 30 баллов) - меньше 2% = отлично
     if avg_mae <= 1:
         score += 30
@@ -1181,21 +1318,21 @@ def _calculate_symbol_quality(avg_mae: float, avg_mfe: float, edge_ratio: float,
         score += 20
     elif avg_mae <= 3:
         score += 10
-    
+
     return min(100, int(score))
 
 
 def _generate_symbol_recommendations(sym_data: dict) -> list:
     """Генерирует рекомендации для конкретного тикера."""
     recommendations = []
-    
+
     edge_ratio = sym_data["edge_ratio"]
     avg_mae = sym_data["avg_mae_pct"]
     avg_mfe = sym_data["avg_mfe_pct"]
     efficiency = sym_data["avg_efficiency"]
     win_rate = sym_data["win_rate"]
     quality = sym_data["quality_score"]
-    
+
     # Оценка edge ratio
     if edge_ratio >= 2:
         recommendations.append({
@@ -1215,7 +1352,7 @@ def _generate_symbol_recommendations(sym_data: dict) -> list:
             "icon": "⚠️",
             "text": f"Низкий Edge Ratio ({edge_ratio}x) — риск превышает потенциал прибыли. Рассмотрите исключение из торговли"
         })
-    
+
     # Оценка MAE
     if avg_mae > 3:
         recommendations.append({
@@ -1229,7 +1366,7 @@ def _generate_symbol_recommendations(sym_data: dict) -> list:
             "icon": "🎯",
             "text": f"Низкий MAE ({avg_mae:.1f}%) — отличные точки входа с минимальной просадкой"
         })
-    
+
     # Оценка эффективности
     if efficiency < 30:
         recommendations.append({
@@ -1243,7 +1380,7 @@ def _generate_symbol_recommendations(sym_data: dict) -> list:
             "icon": "💰",
             "text": f"Высокая эффективность ({efficiency:.0f}%) — вы хорошо забираете прибыль"
         })
-    
+
     # Общая рекомендация
     if quality >= 70:
         recommendations.append({
@@ -1257,7 +1394,7 @@ def _generate_symbol_recommendations(sym_data: dict) -> list:
             "icon": "🚫",
             "text": f"Рейтинг {quality}/100 — рассмотрите исключение этого инструмента из торговли"
         })
-    
+
     return recommendations
 
 
@@ -1270,36 +1407,36 @@ async def audit_trades(
     Полный аудит всех сделок - проверяет корректность PnL
     """
     account_id = auth_service.get_account_id(db, current_user)
-    
+
     trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at != None,
         models.Trade.pnl != None
     ).order_by(models.Trade.exit_at).all()
-    
+
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     initial_balance = float(account.initial_balance or 0) if account else 0
-    
+
     errors = []
     warnings = []
     total_gross_pnl = 0
     total_commission = 0
     total_net_pnl = 0
-    
+
     for t in trades:
         pnl = float(t.pnl) if t.pnl else 0
         net_pnl = float(t.net_pnl) if t.net_pnl else 0
         commission = float(t.commission) if t.commission else 0
-        
+
         direction = str(t.direction).split('.')[-1]
         entry = float(t.entry_price) if t.entry_price else 0
         exit_p = float(t.exit_price) if t.exit_price else 0
         qty = float(t.quantity) if t.quantity else 0
-        
+
         total_gross_pnl += pnl
         total_commission += commission
         total_net_pnl += net_pnl
-        
+
         # Check 1: net_pnl = pnl - commission?
         expected_net = pnl - commission
         if abs(net_pnl - expected_net) > 0.1:
@@ -1311,7 +1448,7 @@ async def audit_trades(
                 'expected_net': expected_net,
                 'diff': net_pnl - expected_net
             })
-        
+
         # Check 2: PnL direction matches price movement (skip futures)
         is_futures = any(c.isdigit() for c in t.symbol[-3:]) if t.symbol else False
         if not is_futures and entry > 0 and exit_p > 0:
@@ -1321,9 +1458,9 @@ async def audit_trades(
             else:
                 expected_profit = exit_p < entry
                 calc_pnl = (entry - exit_p) * qty
-            
+
             actual_profit = pnl > 0
-            
+
             if expected_profit != actual_profit and abs(pnl) > 1:
                 errors.append({
                     'id': t.id,
@@ -1334,7 +1471,7 @@ async def audit_trades(
                     'exit': exit_p,
                     'pnl': pnl
                 })
-            
+
             # Large diff from calculated
             if abs(pnl - calc_pnl) > 100:
                 warnings.append({
@@ -1345,7 +1482,7 @@ async def audit_trades(
                     'calculated_pnl': calc_pnl,
                     'diff': pnl - calc_pnl
                 })
-    
+
     return {
         'total_trades': len(trades),
         'date_range': {

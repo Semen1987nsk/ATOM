@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { 
   HelpCircle, Mail, MessageCircle, ChevronDown, ChevronUp,
-  ArrowLeft, Search, BookOpen, Zap, CreditCard, Upload,
+  ArrowLeft, Search, BookOpen, Zap, CreditCard,
   BarChart3, Shield, Settings, ExternalLink, Send
 } from 'lucide-react';
 

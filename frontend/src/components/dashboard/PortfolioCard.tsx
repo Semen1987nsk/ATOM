@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Wallet, TrendingUp, TrendingDown, RefreshCw, 
+import {
+  Wallet, TrendingUp, TrendingDown, RefreshCw,
   PieChart, DollarSign, BarChart3, AlertCircle,
   ChevronDown, ChevronUp, Settings, Calendar
 } from 'lucide-react';
@@ -59,10 +59,7 @@ interface BalanceHistory {
   metrics: BalanceHistoryMetrics | null;
 }
 
-interface PortfolioCardProps {
-}
-
-export default function PortfolioCard({}: PortfolioCardProps) {
+export default function PortfolioCard() {
   const { user } = useAuth();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [history, setHistory] = useState<BalanceHistory | null>(null);
@@ -95,16 +92,16 @@ export default function PortfolioCard({}: PortfolioCardProps) {
         api.get<Portfolio>('/broker/portfolio'),
         api.get<BalanceHistory>('/broker/balance-history', { params: { days: 30 } })
       ]);
-      
+
       setPortfolio(portfolioData);
       if (portfolioData.initial_balance) {
         setInitialBalanceInput(portfolioData.initial_balance.toString());
       }
-      
+
       setHistory(historyData);
-      
+
       setError(null);
-    } catch (e) {
+    } catch {
       setError('Не удалось загрузить портфель');
     } finally {
       setLoading(false);
@@ -114,14 +111,41 @@ export default function PortfolioCard({}: PortfolioCardProps) {
   useEffect(() => {
     fetchPortfolio();
     if (!user) return;
-    const interval = setInterval(fetchPortfolio, 60000); // Обновляем каждую минуту
-    return () => clearInterval(interval);
+
+    // Smart polling: pause when tab is hidden to save bandwidth/battery
+    let interval: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (interval) clearInterval(interval);
+      interval = setInterval(fetchPortfolio, 60000);
+    };
+
+    const stopPolling = () => {
+      if (interval) { clearInterval(interval); interval = null; }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPortfolio(); // refresh immediately when tab becomes visible
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [fetchPortfolio, user]);
 
   const saveInitialBalance = async () => {
     const value = parseFloat(initialBalanceInput);
     if (isNaN(value) || value <= 0) return;
-    
+
     try {
       await api.post('/broker/set-initial-balance', { params: { initial_balance: value } });
       setEditingInitial(false);
@@ -199,7 +223,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={fetchPortfolio}
             className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
             title="Обновить"
@@ -234,7 +258,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
             </div>
             <div className="font-semibold">{formatMoney(portfolio.cash)}</div>
           </div>
-          <div 
+          <div
             className="bg-slate-800/50 rounded-lg p-3 cursor-pointer hover:bg-slate-700/50 transition-colors relative group"
             onClick={() => {
               setExpanded(true);
@@ -253,7 +277,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
               <ChevronDown className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
             <div className="font-semibold">
-              {portfolio.futures_value > 0 
+              {portfolio.futures_value > 0
                 ? formatMoney(portfolio.futures_value)
                 : formatMoney(portfolio.total_balance - portfolio.cash)
               }
@@ -268,14 +292,14 @@ export default function PortfolioCard({}: PortfolioCardProps) {
               <span className="text-slate-400 text-sm">Чистые вложения</span>
               <span className="text-slate-600 text-[10px]" title="Сумма пополнений минус выводы">(депозиты − выводы)</span>
             </div>
-            <button 
+            <button
               onClick={() => setEditingInitial(!editingInitial)}
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <Settings className="w-3 h-3" />
             </button>
           </div>
-          
+
           {editingInitial ? (
             <div className="flex flex-col gap-2 w-full relative">
               <div className="flex items-center gap-2">
@@ -286,21 +310,21 @@ export default function PortfolioCard({}: PortfolioCardProps) {
                   className="flex-1 bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm min-w-0"
                   placeholder="Сумма"
                 />
-                <button 
+                <button
                   onClick={() => setShowDatePicker(!showDatePicker)}
                   className={`p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 ${showDatePicker ? 'text-accent' : ''}`}
                   title="Рассчитать на дату"
                 >
                   <Calendar className="w-4 h-4" />
                 </button>
-                <button 
+                <button
                   onClick={saveInitialBalance}
                   className="px-2 py-1 bg-accent text-white rounded text-sm whitespace-nowrap"
                 >
                   OK
                 </button>
               </div>
-              
+
               {showDatePicker && (
                 <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-1 p-3 bg-slate-800 rounded border border-slate-700 absolute top-full left-0 z-20 w-full shadow-xl mt-1">
                   {/* Quick Date Presets */}
@@ -326,7 +350,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
                       </button>
                     ))}
                   </div>
-                  
+
                   {/* Custom Date */}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-400 whitespace-nowrap">Или дата:</span>
@@ -347,7 +371,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
                       {isCalculating ? <RefreshCw className="w-3 h-3 animate-spin" /> : '✓'}
                     </button>
                   </div>
-                  
+
                   <p className="text-[10px] text-slate-500">
                     Расчёт: пополнения − выводы + PnL сделок − комиссии
                   </p>
@@ -395,7 +419,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
           {metrics && (
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-slate-800/50 rounded-lg p-3">
-                <div className="text-slate-400 text-xs mb-1">Max Drawdown</div>
+                <div className="text-slate-400 text-xs mb-1">Макс. просадка</div>
                 <div className="font-semibold text-red-400">
                   -{metrics.max_drawdown_percent}%
                 </div>
@@ -407,7 +431,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
                 </div>
               </div>
               <div className="bg-slate-800/50 rounded-lg p-3">
-                <div className="text-slate-400 text-xs mb-1">Profit Factor</div>
+                <div className="text-slate-400 text-xs mb-1">Профит-фактор</div>
                 <div className="font-semibold text-cyan-400">
                   {metrics.profit_factor}
                 </div>
@@ -461,7 +485,7 @@ export default function PortfolioCard({}: PortfolioCardProps) {
                 Открытые позиции ({portfolio.positions.length})
                 {showPositions ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
               </button>
-              
+
               {showPositions && (
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                   {portfolio.positions.map((pos, idx) => (

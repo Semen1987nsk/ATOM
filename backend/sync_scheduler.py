@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import BrokerConnection, BrokerType
 from tinkoff_service import TinkoffService
+from crypto_utils import decrypt_token
 from utils.datetime_utils import utc_now_naive
 from logger import get_logger
 
@@ -80,11 +81,24 @@ class SyncScheduler:
                 
                 # Проверяем нужна ли синхронизация
                 if self._should_sync(conn, now):
-                    # Запускаем синхронизацию в отдельной задаче
-                    asyncio.create_task(self._sync_connection(conn.id))
+                    # Запускаем синхронизацию в отдельной задаче с обработкой ошибок
+                    task = asyncio.create_task(self._sync_connection(conn.id))
+                    task.add_done_callback(self._handle_task_result)
         finally:
             db.close()
     
+    def _handle_task_result(self, task: asyncio.Task) -> None:
+        """Обработка результатов фоновых задач - логирование необработанных исключений"""
+        try:
+            exc = task.exception()
+            if exc is not None:
+                log.error(f"Sync task failed with unhandled exception: {exc}")
+                log.error(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        except asyncio.CancelledError:
+            pass
+        except asyncio.InvalidStateError:
+            pass
+
     def _should_sync(self, conn: BrokerConnection, now: datetime) -> bool:
         """Определяет нужно ли синхронизировать подключение"""
         if not conn.last_sync_at:
@@ -109,8 +123,10 @@ class SyncScheduler:
             log.info(f"🔄 Auto-syncing broker connection #{connection_id}")
             
             if conn.broker == BrokerType.TINKOFF:
-                service = TinkoffService(conn.api_token)
-                result = service.sync_trades(db=db, connection=conn, force_full_sync=False)
+                service = TinkoffService(decrypt_token(conn.api_token))
+                result = await asyncio.to_thread(
+                    service.sync_trades, db=db, connection=conn, force_full_sync=False
+                )
                 
                 if result["success"]:
                     log.info(

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   Check, X, Zap, Crown, Building2, ArrowRight, 
-  Shield, Clock, BarChart3, Brain, Users, Headphones,
+  Shield, Clock, BarChart3, Headphones,
   ChevronDown, ChevronUp
 } from 'lucide-react';
 
@@ -24,7 +24,7 @@ const plans = [
       { text: '1 торговый счёт', included: true },
       { text: 'Базовая статистика', included: true },
       { text: 'Импорт из Excel/PDF', included: true },
-      { text: 'История сделок', included: true },
+      { text: 'Дневник сделок', included: true },
       { text: 'AI-анализ сделок', included: false },
       { text: 'Продвинутая аналитика', included: false },
       { text: 'Экспорт отчётов', included: false },
@@ -47,7 +47,7 @@ const plans = [
       { text: 'До 5 торговых счетов', included: true },
       { text: 'Полная статистика', included: true },
       { text: 'Импорт из Excel/PDF', included: true },
-      { text: 'История сделок', included: true },
+      { text: 'Дневник сделок', included: true },
       { text: 'AI-анализ сделок', included: true },
       { text: 'Продвинутая аналитика', included: true },
       { text: 'Экспорт отчётов', included: true },
@@ -70,7 +70,7 @@ const plans = [
       { text: 'Безлимит счетов', included: true },
       { text: 'Полная статистика', included: true },
       { text: 'Импорт из любых источников', included: true },
-      { text: 'История сделок', included: true },
+      { text: 'Дневник сделок', included: true },
       { text: 'AI-анализ сделок', included: true },
       { text: 'Продвинутая аналитика', included: true },
       { text: 'Экспорт отчётов', included: true },
@@ -108,7 +108,7 @@ const faqs = [
 ];
 
 export default function PricingPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 

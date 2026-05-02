@@ -11,9 +11,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from models import Base
 import models
+from rate_limiter import reset_rate_limiter_storage
 
 # Test database (in-memory SQLite)
 TEST_DATABASE_URL = "sqlite:///:memory:"
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter_between_tests():
+    """Изолирует состояние in-memory rate limiter между тестами."""
+    reset_rate_limiter_storage()
+    try:
+        yield
+    finally:
+        reset_rate_limiter_storage()
 
 @pytest.fixture(scope="function")
 def db_session():

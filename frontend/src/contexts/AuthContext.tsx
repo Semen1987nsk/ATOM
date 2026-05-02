@@ -1,6 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { api, ApiError, clearAuthTokens } from '@/lib/apiClient';
 
 // ==================== TYPES ====================
 
@@ -17,13 +19,6 @@ export interface User {
   registration_source?: string | null;
 }
 
-interface TokenPair {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-}
-
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -36,87 +31,6 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
 }
 
-// ==================== STORAGE KEYS ====================
-
-const ACCESS_TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
-const TOKEN_EXPIRY_KEY = 'token_expiry';
-
-// ==================== API ====================
-
-function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-    const codespaceName = window.location.hostname.split('-3000')[0];
-    return `https://${codespaceName}-8000.app.github.dev`;
-  }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-}
-
-async function apiRequest<T>(
-  endpoint: string, 
-  options: RequestInit = {},
-  token?: string | null,
-  throwOn401: boolean = true
-): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.headers as Record<string, string>,
-  };
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  
-  const response = await fetch(`${getApiBase()}${endpoint}`, {
-    ...options,
-    headers,
-  });
-  
-  if (!response.ok) {
-    // Для 401 можем тихо вернуть null вместо ошибки
-    if (response.status === 401 && !throwOn401) {
-      return null as T;
-    }
-    const error = await response.json().catch(() => ({ detail: 'Ошибка сервера' }));
-    throw new Error(error.detail || 'Ошибка запроса');
-  }
-  
-  return response.json();
-}
-
-// ==================== TOKEN HELPERS ====================
-
-function saveTokens(tokens: TokenPair) {
-  localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
-  localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
-  
-  // Сохраняем время истечения (с запасом 1 минута)
-  const expiryTime = Date.now() + (tokens.expires_in - 60) * 1000;
-  localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
-}
-
-function clearTokens() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem(TOKEN_EXPIRY_KEY);
-  // Также очищаем старый ключ от OAuth
-  localStorage.removeItem('token');
-}
-
-function getAccessToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
-}
-
-function getRefreshToken(): string | null {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-function isTokenExpired(): boolean {
-  const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-  if (!expiry) return true;
-  return Date.now() > parseInt(expiry, 10);
-}
-
 // ==================== CONTEXT ====================
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -126,200 +40,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Ref для предотвращения множественных refresh запросов
-  const isRefreshing = useRef(false);
-  const refreshPromise = useRef<Promise<string | null> | null>(null);
-  
-  // Функция обновления токенов
-  const refreshTokens = useCallback(async (): Promise<string | null> => {
-    // Если уже идёт обновление, ждём его завершения
-    if (isRefreshing.current && refreshPromise.current) {
-      return refreshPromise.current;
-    }
-    
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      return null;
-    }
-    
-    isRefreshing.current = true;
-    
-    refreshPromise.current = (async () => {
-      try {
-        console.log('[Auth] Refreshing tokens...');
-        const response = await apiRequest<TokenPair>('/auth/refresh', {
-          method: 'POST',
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        
-        saveTokens(response);
-        setToken(response.access_token);
-        console.log('[Auth] Tokens refreshed successfully');
-        return response.access_token;
-      } catch (error) {
-        console.error('[Auth] Failed to refresh tokens:', error);
-        clearTokens();
-        setToken(null);
-        setUser(null);
-        return null;
-      } finally {
-        isRefreshing.current = false;
-        refreshPromise.current = null;
-      }
-    })();
-    
-    return refreshPromise.current;
-  }, []);
-  
-  // Функция для получения валидного токена
-  const getValidToken = useCallback(async (): Promise<string | null> => {
-    const accessToken = getAccessToken();
-    
-    if (!accessToken) {
-      return null;
-    }
-    
-    // Если токен истёк, обновляем
-    if (isTokenExpired()) {
-      return refreshTokens();
-    }
-    
-    return accessToken;
-  }, [refreshTokens]);
-  
   // Загрузка пользователя
-  const fetchCurrentUser = useCallback(async (authToken: string) => {
+  const fetchCurrentUser = useCallback(async () => {
     try {
-      console.log('[Auth] Fetching current user...');
-      const userData = await apiRequest<User | null>('/auth/me', {}, authToken, false);
-      
-      if (userData) {
-        console.log('[Auth] User data received:', userData.email);
-        setUser(userData);
-        setToken(authToken);
-      } else {
-        // Токен невалидный, пробуем обновить
-        const newToken = await refreshTokens();
-        if (newToken) {
-          const retryUserData = await apiRequest<User | null>('/auth/me', {}, newToken, false);
-          if (retryUserData) {
-            setUser(retryUserData);
-            return;
-          }
-        }
-        // Если всё равно не получилось — очищаем
-        clearTokens();
-        setToken(null);
-        setUser(null);
-      }
+      const userData = await api.get<User>('/auth/me');
+      setUser(userData);
+      setToken('cookie-session');
     } catch (error) {
-      console.error('[Auth] Failed to fetch user:', error);
-      clearTokens();
+      if (!(error instanceof ApiError && error.status === 401)) {
+        console.error('[Auth] Failed to fetch user:', error);
+      }
+      clearAuthTokens();
       setToken(null);
       setUser(null);
     } finally {
       setIsLoading(false);
     }
-  }, [refreshTokens]);
+  }, []);
   
   // При загрузке проверяем токен
   useEffect(() => {
-    const initAuth = async () => {
-      const accessToken = await getValidToken();
-      if (accessToken) {
-        await fetchCurrentUser(accessToken);
-      } else {
-        setIsLoading(false);
-      }
-    };
-    
-    initAuth();
-  }, [fetchCurrentUser, getValidToken]);
-  
-  // Автоматическое обновление токена за 1 минуту до истечения
-  useEffect(() => {
-    if (!token) return;
-    
-    const checkAndRefresh = () => {
-      const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-      if (!expiry) return;
-      
-      const timeLeft = parseInt(expiry, 10) - Date.now();
-      
-      // Обновляем за 1 минуту до истечения
-      if (timeLeft > 0 && timeLeft < 60 * 1000) {
-        refreshTokens();
-      }
-    };
-    
-    // Проверяем каждые 30 секунд
-    const interval = setInterval(checkAndRefresh, 30 * 1000);
-    
-    return () => clearInterval(interval);
-  }, [token, refreshTokens]);
+    void fetchCurrentUser();
+  }, [fetchCurrentUser]);
   
   const login = async (email: string, password: string) => {
-    console.log('[Auth] Attempting login for:', email);
-    const response = await apiRequest<TokenPair>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
+    await api.post('/auth/login', {
+      body: { email, password },
+      noAuth: true,
     });
-    
-    console.log('[Auth] Login successful');
-    saveTokens(response);
-    setToken(response.access_token);
-    await fetchCurrentUser(response.access_token);
+    await fetchCurrentUser();
   };
   
   const register = async (email: string, password: string, name?: string) => {
-    console.log('[Auth] Attempting registration for:', email);
-    const response = await apiRequest<TokenPair>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name }),
+    await api.post('/auth/register', {
+      body: { email, password, name },
+      noAuth: true,
     });
-    
-    console.log('[Auth] Registration successful');
-    saveTokens(response);
-    setToken(response.access_token);
-    await fetchCurrentUser(response.access_token);
+    await fetchCurrentUser();
   };
   
-  const logout = () => {
-    console.log('[Auth] Logging out');
-    clearTokens();
-    setToken(null);
-    setUser(null);
-  };
+  const logout = useCallback(() => {
+    void api.post('/auth/logout', { noAuth: true }).catch(() => undefined).finally(() => {
+      clearAuthTokens();
+      setToken(null);
+      setUser(null);
+      setIsLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleAuthLogout = () => {
+      logout();
+    };
+
+    window.addEventListener('auth:logout', handleAuthLogout);
+    return () => window.removeEventListener('auth:logout', handleAuthLogout);
+  }, [logout]);
   
   const updateProfile = async (data: { name?: string; settings?: Record<string, unknown> }) => {
-    const validToken = await getValidToken();
-    if (!validToken) throw new Error('Не авторизован');
-    
-    const updatedUser = await apiRequest<User>('/auth/me', {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }, validToken);
+    const updatedUser = await api.put<User>('/auth/me', { body: data });
     
     setUser(updatedUser);
   };
   
   // Обновить данные пользователя (для OAuth callback)
-  const refreshUser = async () => {
-    // Проверяем старый ключ от OAuth
-    const oauthToken = localStorage.getItem('token');
-    if (oauthToken) {
-      // OAuth возвращает только access_token, сохраняем его
-      localStorage.setItem(ACCESS_TOKEN_KEY, oauthToken);
-      localStorage.removeItem('token');
-      await fetchCurrentUser(oauthToken);
-      return;
-    }
-    
-    const validToken = await getValidToken();
-    if (validToken) {
-      await fetchCurrentUser(validToken);
-    }
-  };
+  const refreshUser = useCallback(async () => {
+    await fetchCurrentUser();
+  }, [fetchCurrentUser]);
+
+  useEffect(() => {
+    const handleAuthLogin = () => {
+      void refreshUser();
+    };
+
+    window.addEventListener('auth:login', handleAuthLogin);
+    return () => window.removeEventListener('auth:login', handleAuthLogin);
+  }, [refreshUser]);
   
   const value: AuthContextType = {
     user,
@@ -350,10 +146,15 @@ export function useAuth(): AuthContextType {
   return context;
 }
 
-// ==================== HELPER COMPONENTS ====================
-
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [isAuthenticated, isLoading, router]);
   
   if (isLoading) {
     return (
@@ -364,10 +165,6 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
   
   if (!isAuthenticated) {
-    // Редирект на логин
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
     return null;
   }
   

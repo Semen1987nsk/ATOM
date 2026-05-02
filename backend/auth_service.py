@@ -9,11 +9,12 @@
 from datetime import datetime, timedelta
 from utils import utc_now_naive
 from typing import Optional, Tuple
+from hmac import compare_digest
 import secrets
 
 import bcrypt
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -30,9 +31,120 @@ REFRESH_SECRET_KEY = settings.REFRESH_SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
+ACCESS_TOKEN_COOKIE_NAME = settings.ACCESS_TOKEN_COOKIE_NAME
+REFRESH_TOKEN_COOKIE_NAME = settings.REFRESH_TOKEN_COOKIE_NAME
+CSRF_COOKIE_NAME = settings.CSRF_COOKIE_NAME
+CSRF_HEADER_NAME = settings.CSRF_HEADER_NAME
 
 # Bearer токен для авторизации
 security = HTTPBearer(auto_error=False)
+
+
+def _should_use_secure_cookie(request: Request) -> bool:
+    """Определяет, должен ли cookie быть secure для текущего запроса."""
+    if settings.AUTH_COOKIE_SECURE:
+        return True
+    return request.url.scheme == "https"
+
+
+def _base_cookie_params(request: Request) -> dict:
+    return {
+        "httponly": True,
+        "secure": _should_use_secure_cookie(request),
+        "samesite": settings.AUTH_COOKIE_SAMESITE,
+        "path": settings.AUTH_COOKIE_PATH,
+        "domain": settings.AUTH_COOKIE_DOMAIN,
+    }
+
+
+def _csrf_cookie_params(request: Request) -> dict:
+    return {
+        "httponly": False,
+        "secure": _should_use_secure_cookie(request),
+        "samesite": settings.AUTH_COOKIE_SAMESITE,
+        "path": settings.AUTH_COOKIE_PATH,
+        "domain": settings.AUTH_COOKIE_DOMAIN,
+    }
+
+
+def create_csrf_token() -> str:
+    """Создать CSRF токен для double-submit cookie защиты."""
+    return secrets.token_urlsafe(32)
+
+
+def set_auth_cookies(response: Response, request: Request, access_token: str, refresh_token: str) -> None:
+    """Установить access/refresh cookies с безопасными атрибутами."""
+    csrf_token = create_csrf_token()
+
+    response.set_cookie(
+        key=ACCESS_TOKEN_COOKIE_NAME,
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        **_base_cookie_params(request),
+    )
+    response.set_cookie(
+        key=REFRESH_TOKEN_COOKIE_NAME,
+        value=refresh_token,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        **_base_cookie_params(request),
+    )
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        **_csrf_cookie_params(request),
+    )
+
+
+def clear_auth_cookies(response: Response, request: Request) -> None:
+    """Очистить auth cookies."""
+    cookie_params = {
+        "path": settings.AUTH_COOKIE_PATH,
+        "domain": settings.AUTH_COOKIE_DOMAIN,
+        "secure": _should_use_secure_cookie(request),
+        "httponly": True,
+        "samesite": settings.AUTH_COOKIE_SAMESITE,
+    }
+    response.delete_cookie(ACCESS_TOKEN_COOKIE_NAME, **cookie_params)
+    response.delete_cookie(REFRESH_TOKEN_COOKIE_NAME, **cookie_params)
+    response.delete_cookie(CSRF_COOKIE_NAME, **_csrf_cookie_params(request))
+
+
+def get_access_token_from_request(request: Request, credentials: Optional[HTTPAuthorizationCredentials]) -> Optional[str]:
+    """Извлечь access token из Bearer header или httpOnly cookie."""
+    if credentials is not None:
+        return credentials.credentials
+    return request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+
+
+def get_refresh_token_from_request(request: Request, refresh_token: Optional[str] = None) -> Optional[str]:
+    """Извлечь refresh token из body или httpOnly cookie."""
+    if refresh_token:
+        return refresh_token
+    return request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)
+
+
+def is_cookie_authenticated_request(request: Request) -> bool:
+    """Определить, использует ли запрос cookie-based auth вместо Bearer header."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        return False
+
+    return bool(
+        request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+        or request.cookies.get(REFRESH_TOKEN_COOKIE_NAME)
+    )
+
+
+def validate_csrf_request(request: Request) -> bool:
+    """Проверить double-submit CSRF токен для cookie-auth запроса."""
+    cookie_token = request.cookies.get(CSRF_COOKIE_NAME)
+    header_token = request.headers.get(CSRF_HEADER_NAME)
+
+    if not cookie_token or not header_token:
+        return False
+
+    return compare_digest(cookie_token, header_token)
 
 
 # ==================== ПАРОЛИ ====================
@@ -274,6 +386,7 @@ def update_user(db: Session, user: models.User, user_data: schemas.UserUpdate) -
 # ==================== DEPENDENCY ДЛЯ ЗАЩИЩЁННЫХ ЭНДПОИНТОВ ====================
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> models.User:
@@ -287,10 +400,11 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    if credentials is None:
+    token = get_access_token_from_request(request, credentials)
+
+    if token is None:
         raise credentials_exception
-    
-    token = credentials.credentials
+
     token_data = decode_access_token(token)
     
     if token_data is None:
@@ -311,6 +425,7 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> Optional[models.User]:
@@ -318,11 +433,11 @@ async def get_current_user_optional(
     Опциональная версия - не выбрасывает ошибку если токена нет.
     Полезно для эндпоинтов, которые работают и с авторизацией и без.
     """
-    if credentials is None:
+    token = get_access_token_from_request(request, credentials)
+    if token is None:
         return None
     
     try:
-        token = credentials.credentials
         token_data = decode_access_token(token)
         
         if token_data is None:

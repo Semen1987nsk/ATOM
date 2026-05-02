@@ -21,7 +21,7 @@
     "custom": "Custom"
   },
   "nav": {
-    "tradeHistory": "Trade History",
+    "tradeHistory": "Trade Journal",
     "systemManual": "System Manual",
     "importData": "Import Data",
     "exportCsv": "Export CSV",
@@ -165,8 +165,6 @@
     }
   },
   "charts": {
-    "equityCurve": "Equity Curve",
-    "recentTrades": "Recent Trades & AI Analysis",
     "viewAll": "VIEW ALL",
     "noTrades": "NO TRADES MATCHING FILTER",
     "dataPoints": "points"

@@ -104,7 +104,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
             <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">
-                  Start Date
+                  Начало периода
                 </label>
                 <input
                   type="date"
@@ -116,7 +116,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
               
               <div>
                 <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">
-                  End Date (optional)
+                  Конец периода (опционально)
                 </label>
                 <input
                   type="date"
@@ -131,14 +131,14 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
                   onClick={() => setShowCustom(false)}
                   className="flex-1 border border-border py-2 text-xs font-bold uppercase hover:bg-border transition-colors"
                 >
-                  Cancel
+                  Отмена
                 </button>
                 <button
                   onClick={handleCustomApply}
                   disabled={!startDate}
                   className="flex-1 bg-accent text-black py-2 text-xs font-bold uppercase hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Apply
+                  Применить
                 </button>
               </div>
             </div>

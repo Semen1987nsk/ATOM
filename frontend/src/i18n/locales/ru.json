@@ -21,7 +21,7 @@
     "custom": "Период"
   },
   "nav": {
-    "tradeHistory": "История Сделок",
+    "tradeHistory": "Дневник Сделок",
     "systemManual": "Руководство",
     "importData": "Импорт",
     "exportCsv": "Экспорт CSV",
@@ -165,8 +165,6 @@
     }
   },
   "charts": {
-    "equityCurve": "Кривая Капитала",
-    "recentTrades": "Последние Сделки и AI Анализ",
     "viewAll": "СМОТРЕТЬ ВСЕ",
     "noTrades": "НЕТ СДЕЛОК ПО ФИЛЬТРУ",
     "dataPoints": "точек"

@@ -53,7 +53,7 @@ interface ImportPreviewModalProps {
 }
 
 export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { token } = useAuth(); // Получаем токен из контекста авторизации
+  const { isAuthenticated } = useAuth();
   
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
@@ -85,7 +85,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
   const handlePreview = async () => {
     if (!file) return;
     
-    if (!token) {
+    if (!isAuthenticated) {
       setError('Необходимо войти в аккаунт для импорта сделок');
       return;
     }
@@ -448,7 +448,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                 )}
                 {saveBalance && (preview.balance_info.initial_balance !== null || manualBalance) && (
                   <div className="mt-3 p-2 bg-green-500/10 border border-green-500/20 rounded text-xs text-green-400">
-                    ✓ Баланс будет сохранён для расчёта кривой капитала и ROI
+                    ✓ Баланс будет сохранён для расчёта исторической базы и ROI
                   </div>
                 )}
               </div>

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Brain, Target, Smile, CheckCircle, Upload, Image, Trash2 } from 'lucide-react';
+import NextImage from 'next/image';
+import { X, Brain, Target, Smile, CheckCircle, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 
 interface AddTradeModalProps {
@@ -143,12 +144,12 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
           <X size={20} />
         </button>
         
-        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">LOG NEW POSITION</h2>
+        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">НОВАЯ ПОЗИЦИЯ</h2>
         
         <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Symbol</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Тикер</label>
               <input 
                 required
                 className="input-cyber"
@@ -158,7 +159,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               />
             </div>
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Asset Name</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Название</label>
               <input 
                 className="input-cyber"
                 placeholder="Bitcoin"
@@ -170,35 +171,35 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Type</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Тип</label>
               <select 
                 className="input-cyber"
                 value={formData.asset_type}
                 onChange={e => setFormData({...formData, asset_type: e.target.value})}
               >
-                <option value="Stock">Stock</option>
-                <option value="Futures">Futures</option>
-                <option value="Bond">Bond</option>
-                <option value="Crypto">Crypto</option>
-                <option value="Forex">Forex</option>
+                <option value="Stock">Акция</option>
+                <option value="Futures">Фьючерс</option>
+                <option value="Bond">Облигация</option>
+                <option value="Crypto">Крипто</option>
+                <option value="Forex">Форекс</option>
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Direction</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Направление</label>
               <select 
                 className="input-cyber"
                 value={formData.direction}
                 onChange={e => setFormData({...formData, direction: e.target.value})}
               >
-                <option value="long">LONG</option>
-                <option value="short">SHORT</option>
+                <option value="long">ЛОНГ</option>
+                <option value="short">ШОРТ</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Entry Price</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Цена входа</label>
               <input 
                 required
                 type="number" step="any"
@@ -208,7 +209,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               />
             </div>
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Quantity</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Количество</label>
               <input 
                 required
                 type="number" step="any"
@@ -221,7 +222,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Leverage</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Плечо</label>
               <input 
                 type="number" step="any"
                 className="input-cyber"
@@ -230,7 +231,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               />
             </div>
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Commission</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Комиссия</label>
               <input 
                 type="number" step="any"
                 className="input-cyber"
@@ -257,14 +258,14 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               ) : (
                 <input 
                   className="input-cyber"
-                  placeholder="Breakout, Reversal..."
+                  placeholder="Пробой, Разворот..."
                   value={formData.setup_name}
                   onChange={e => setFormData({...formData, setup_name: e.target.value})}
                 />
               )}
             </div>
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Timeframe</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Таймфрейм</label>
               <select 
                 className="input-cyber"
                 value={formData.timeframe}
@@ -283,7 +284,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Stop Loss</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Стоп-лосс</label>
               <input 
                 type="number" step="any"
                 className="input-cyber"
@@ -292,7 +293,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               />
             </div>
             <div>
-              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Risk Amount ($)</label>
+              <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Сумма риска</label>
               <input 
                 type="number" step="any"
                 className="input-cyber"
@@ -392,13 +393,16 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
           {/* Скриншот */}
           <div>
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1 flex items-center gap-1">
-              <Image size={10} /> Скриншот графика
+              <ImageIcon size={10} /> Скриншот графика
             </label>
             {screenshotPreview ? (
               <div className="relative group">
-                <img 
+                <NextImage
                   src={screenshotPreview} 
                   alt="Preview" 
+                  width={512}
+                  height={128}
+                  unoptimized
                   className="w-full h-32 object-cover rounded-lg border border-border"
                 />
                 <button
@@ -437,10 +441,10 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
           </div>
 
           <div>
-            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Tags (comma separated)</label>
+            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Теги (через запятую)</label>
             <input 
               className="input-cyber"
-              placeholder="Trend, FOMO, Breakout"
+              placeholder="Тренд, FOMO, Пробой"
               value={formData.tags}
               onChange={e => setFormData({...formData, tags: e.target.value})}
             />
@@ -450,7 +454,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             type="submit"
             className="btn-primary w-full py-3 text-center justify-center"
           >
-            Initialize Position
+            Открыть позицию
           </button>
         </form>
       </div>

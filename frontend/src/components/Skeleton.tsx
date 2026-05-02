@@ -1,5 +1,7 @@
 "use client";
 
+const CHART_BAR_HEIGHTS = [34, 57, 43, 76, 52, 68, 39, 73, 47, 61, 42, 70];
+
 interface SkeletonProps {
   className?: string;
   style?: React.CSSProperties;
@@ -188,7 +190,7 @@ export function ChartSkeleton({ height = "h-64" }: { height?: string }) {
               key={i} 
               className="flex-1 skeleton-shimmer rounded-t"
               style={{ 
-                height: `${30 + Math.random() * 60}%`,
+                height: `${CHART_BAR_HEIGHTS[i % CHART_BAR_HEIGHTS.length]}%`,
                 animationDelay: `${i * 0.05}s`
               }}
             />

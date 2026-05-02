@@ -8,7 +8,7 @@ import { UserPlus, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, User, CheckCir
 import { OAuthButtons } from '@/components/OAuthButtons';
 
 export default function RegisterPage() {
-  const { register, isAuthenticated } = useAuth();
+  const { register, refreshUser, isAuthenticated } = useAuth();
   const router = useRouter();
   
   const [name, setName] = useState('');
@@ -238,7 +238,10 @@ export default function RegisterPage() {
           {/* OAuth Buttons */}
           <div className="mt-6">
             <OAuthButtons 
-              onSuccess={() => router.push('/')}
+              onSuccess={async () => {
+                await refreshUser();
+                router.push('/');
+              }}
               onError={(err) => setError(err)}
             />
           </div>

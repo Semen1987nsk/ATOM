@@ -116,7 +116,15 @@ def apply_close_pnl(trade, exit_commission: float = 0.0) -> None:
       - exit_commission добавляется к общей комиссии.
 
     Мутирует trade in-place (не возвращает значение).
+
+    Raises:
+        ValueError: if required fields (entry_price, exit_price, quantity, direction, symbol) are None.
     """
+    # Validate required fields
+    for field in ('entry_price', 'exit_price', 'quantity', 'direction', 'symbol'):
+        if getattr(trade, field, None) is None:
+            raise ValueError(f"Cannot calculate PnL: trade.{field} is None (trade id={getattr(trade, 'id', '?')})")
+
     gross = calculate_gross_pnl(
         entry_price=float(trade.entry_price),
         exit_price=float(trade.exit_price),
@@ -206,7 +214,14 @@ def recalculate_trade_pnl(trade) -> Tuple[float, float]:
 
     Используется в POST /real-pnl/recalculate для массового
     пересчёта фьючерсных сделок с правильным point_value.
+
+    Raises:
+        ValueError: if required fields are None.
     """
+    for field in ('entry_price', 'exit_price', 'quantity', 'direction', 'symbol'):
+        if getattr(trade, field, None) is None:
+            raise ValueError(f"Cannot recalculate PnL: trade.{field} is None (trade id={getattr(trade, 'id', '?')})")
+
     gross = calculate_gross_pnl(
         entry_price=float(trade.entry_price),
         exit_price=float(trade.exit_price),

@@ -2,7 +2,7 @@
 Р РѕСѓС‚РµСЂ РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ РґРµРїРѕР·РёС‚РѕРј Рё РёСЃС‚РѕСЂРёРµР№ РёР·РјРµРЅРµРЅРёР№.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional, List
@@ -13,8 +13,68 @@ import database
 import models
 import schemas
 import auth_service
+import import_service
+from capital_service import (
+    SYNTHETIC_INITIAL_NOTE,
+    cleanup_synthetic_initial_balance_history,
+    ensure_initial_balance_history,
+    sync_initial_balance,
+)
+from crypto_utils import decrypt_token
+from tinkoff_service import TinkoffService
+from utils import utc_now_naive
 
 router = APIRouter(prefix="/deposits", tags=["deposits"])
+
+
+def _get_live_broker_balance(db: Session, account_id: int) -> float | None:
+    connection = db.query(models.BrokerConnection).filter(
+        models.BrokerConnection.account_id == account_id,
+        models.BrokerConnection.is_active == True,
+    ).first()
+    if not connection:
+        return None
+
+    try:
+        service = TinkoffService(decrypt_token(connection.api_token))
+        portfolio = service.get_portfolio(connection.broker_account_id)
+        return float(portfolio["total_balance"])
+    except Exception:
+        latest_snapshot = db.query(models.BalanceSnapshot).filter(
+            models.BalanceSnapshot.account_id == account_id,
+            models.BalanceSnapshot.source == "tinkoff_api",
+        ).order_by(models.BalanceSnapshot.date.desc()).first()
+        if latest_snapshot:
+            return float(latest_snapshot.balance or 0)
+        return None
+
+
+def _upsert_balance_snapshot(
+    db: Session,
+    *,
+    account_id: int,
+    snapshot_date: datetime,
+    balance: float,
+    source: str,
+) -> models.BalanceSnapshot:
+    existing = db.query(models.BalanceSnapshot).filter(
+        models.BalanceSnapshot.account_id == account_id,
+        models.BalanceSnapshot.date == snapshot_date,
+    ).first()
+
+    if existing:
+        existing.balance = balance
+        existing.source = source
+        return existing
+
+    snapshot = models.BalanceSnapshot(
+        account_id=account_id,
+        date=snapshot_date,
+        balance=balance,
+        source=source,
+    )
+    db.add(snapshot)
+    return snapshot
 
 
 # get_account_id is now centralized in auth_service
@@ -30,36 +90,78 @@ def get_balance(
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
-    
-    # РЎСѓРјРјР° РІСЃРµС… РїРѕРїРѕР»РЅРµРЅРёР№
-    total_deposits = db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
+    cleanup_synthetic_initial_balance_history(db, account_id, commit=True)
+    ensure_initial_balance_history(db, account_id, commit=True)
+
+    manual_initial = db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
         models.DepositHistory.account_id == account_id,
-        models.DepositHistory.operation_type == models.DepositOperationType.DEPOSIT
+        models.DepositHistory.operation_type == models.DepositOperationType.INITIAL,
+        models.DepositHistory.note != SYNTHETIC_INITIAL_NOTE,
     ).scalar() or 0
-    
-    # РЎСѓРјРјР° РІСЃРµС… СЃРЅСЏС‚РёР№ (Р°Р±СЃРѕР»СЋС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ)
-    total_withdrawals = abs(db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
+    manual_deposits = db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
         models.DepositHistory.account_id == account_id,
-        models.DepositHistory.operation_type == models.DepositOperationType.WITHDRAWAL
+        models.DepositHistory.operation_type == models.DepositOperationType.DEPOSIT,
+    ).scalar() or 0
+    manual_withdrawals = abs(db.query(func.coalesce(func.sum(models.DepositHistory.amount), 0)).filter(
+        models.DepositHistory.account_id == account_id,
+        models.DepositHistory.operation_type == models.DepositOperationType.WITHDRAWAL,
     ).scalar() or 0)
-    
-    # РЎСѓРјРјР° PnL РёР· Р·Р°РєСЂС‹С‚С‹С… СЃРґРµР»РѕРє
-    total_pnl = db.query(func.coalesce(func.sum(models.Trade.net_pnl), 0)).filter(
+
+    broker_deposits = db.query(func.coalesce(func.sum(models.CapitalOperation.amount), 0)).filter(
+        models.CapitalOperation.account_id == account_id,
+        models.CapitalOperation.operation_type == "deposit",
+    ).scalar() or 0
+    broker_withdrawals = db.query(func.coalesce(func.sum(models.CapitalOperation.amount), 0)).filter(
+        models.CapitalOperation.account_id == account_id,
+        models.CapitalOperation.operation_type == "withdrawal",
+    ).scalar() or 0
+
+    has_broker_capital = bool((float(broker_deposits) > 0) or (float(broker_withdrawals) > 0))
+
+    if has_broker_capital:
+        total_deposits = float(broker_deposits)
+        total_withdrawals = float(broker_withdrawals)
+        net_deposit = float(broker_deposits) - float(broker_withdrawals)
+    else:
+        total_deposits = float(manual_deposits)
+        total_withdrawals = float(manual_withdrawals)
+        net_deposit = float(manual_initial) + float(manual_deposits) - float(manual_withdrawals)
+
+    journal_pnl = db.query(func.coalesce(func.sum(models.Trade.net_pnl), 0)).filter(
         models.Trade.account_id == account_id,
         models.Trade.exit_at.isnot(None)
     ).scalar() or 0
-    
-    initial = float(account.initial_balance or 0)
-    current = initial + float(total_deposits) - float(total_withdrawals) + float(total_pnl)
+
+    local_current_balance = net_deposit + float(journal_pnl)
+    broker_current_balance = _get_live_broker_balance(db, account_id)
+    broker_pnl = None
+    pnl_gap = None
+    balance_source = "journal"
+    current = local_current_balance
+    total_pnl = float(journal_pnl)
+
+    if broker_current_balance is not None:
+        current = broker_current_balance
+        balance_source = "broker_live"
+        broker_pnl = broker_current_balance - net_deposit
+        total_pnl = broker_pnl
+        pnl_gap = broker_pnl - float(journal_pnl)
     
     return {
         "account_id": account_id,
-        "initial_balance": initial,
+        "initial_balance": float(account.initial_balance or 0),
         "current_balance": current,
-        "total_deposits": float(total_deposits),
-        "total_withdrawals": float(total_withdrawals),
+        "total_deposits": total_deposits,
+        "total_withdrawals": total_withdrawals,
         "total_pnl": float(total_pnl),
-        "currency": account.currency
+        "currency": account.currency,
+        "net_deposit": net_deposit,
+        "local_current_balance": local_current_balance,
+        "journal_pnl": float(journal_pnl),
+        "broker_current_balance": broker_current_balance,
+        "broker_pnl": broker_pnl,
+        "pnl_gap": pnl_gap,
+        "balance_source": balance_source,
     }
 
 
@@ -77,34 +179,16 @@ def set_initial_balance(
     if not account:
         raise HTTPException(status_code=404, detail="РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ")
     
-    operation_date = date or datetime.utcnow()
+    operation_date = date or utc_now_naive()
     
-    # РџСЂРѕРІРµСЂСЏРµРј, РµСЃС‚СЊ Р»Рё СѓР¶Рµ РЅР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚
-    existing = db.query(models.DepositHistory).filter(
-        models.DepositHistory.account_id == account_id,
-        models.DepositHistory.operation_type == models.DepositOperationType.INITIAL
-    ).first()
-    
-    if existing:
-        # РћР±РЅРѕРІР»СЏРµРј СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№
-        existing.amount = amount
-        existing.balance_after = amount
-        existing.date = operation_date
-        account.initial_balance = amount
-    else:
-        # РЎРѕР·РґР°С‘Рј РЅРѕРІС‹Р№
-        history = models.DepositHistory(
-            account_id=account_id,
-            operation_type=models.DepositOperationType.INITIAL,
-            amount=amount,
-            balance_after=amount,
-            date=operation_date,
-            note="РќР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚"
-        )
-        db.add(history)
-        account.initial_balance = amount
-    
-    db.commit()
+    sync_initial_balance(
+        db,
+        account_id,
+        amount,
+        date=operation_date,
+        note="Начальный депозит",
+        commit=True,
+    )
     
     return {"message": f"РќР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚ СѓСЃС‚Р°РЅРѕРІР»РµРЅ: {amount}", "initial_balance": amount}
 
@@ -180,23 +264,146 @@ def get_deposit_history(
 ):
     """РџРѕР»СѓС‡РёС‚СЊ РёСЃС‚РѕСЂРёСЋ РѕРїРµСЂР°С†РёР№ СЃ РґРµРїРѕР·РёС‚РѕРј"""
     account_id = auth_service.get_account_id(db, current_user)
-    
-    history = db.query(models.DepositHistory).filter(
+    cleanup_synthetic_initial_balance_history(db, account_id, commit=True)
+    ensure_initial_balance_history(db, account_id, commit=True)
+
+    manual_history = db.query(models.DepositHistory).filter(
         models.DepositHistory.account_id == account_id
-    ).order_by(models.DepositHistory.date.desc()).all()
-    
-    return [
-        {
+    ).order_by(models.DepositHistory.date.asc(), models.DepositHistory.id.asc()).all()
+    broker_history = db.query(models.CapitalOperation).filter(
+        models.CapitalOperation.account_id == account_id
+    ).order_by(models.CapitalOperation.date.asc(), models.CapitalOperation.id.asc()).all()
+
+    items = []
+    for h in manual_history:
+        if h.operation_type == models.DepositOperationType.INITIAL and h.note == SYNTHETIC_INITIAL_NOTE and broker_history:
+            continue
+        items.append({
             "id": h.id,
             "operation_type": h.operation_type.value,
             "amount": float(h.amount),
-            "balance_after": float(h.balance_after),
             "date": h.date,
             "note": h.note,
-            "created_at": h.created_at
+            "created_at": h.created_at,
+            "source": "manual",
+            "can_delete": True,
+        })
+
+    for op in broker_history:
+        items.append({
+            "id": op.id,
+            "operation_type": "deposit" if op.operation_type == "deposit" else "withdrawal",
+            "amount": float(op.amount) if op.operation_type == "deposit" else -float(op.amount),
+            "date": op.date,
+            "note": op.description,
+            "created_at": op.created_at,
+            "source": "broker",
+            "can_delete": False,
+        })
+
+    items.sort(key=lambda item: (item["date"], item["created_at"], item["id"]))
+
+    running_balance = 0.0
+    normalized = []
+    for item in items:
+        if item["operation_type"] == "initial":
+            running_balance = item["amount"]
+        else:
+            running_balance += item["amount"]
+        normalized.append({
+            **item,
+            "balance_after": running_balance,
+        })
+
+    normalized.sort(key=lambda item: (item["date"], item["created_at"], item["id"]), reverse=True)
+    return normalized
+
+
+@router.get("/balance-snapshots", response_model=List[schemas.BalanceSnapshotResponse])
+def get_balance_snapshots(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    account_id = auth_service.get_account_id(db, current_user)
+    snapshots = db.query(models.BalanceSnapshot).filter(
+        models.BalanceSnapshot.account_id == account_id,
+    ).order_by(models.BalanceSnapshot.date.asc()).all()
+
+    return [
+        {
+            "id": snapshot.id,
+            "date": snapshot.date,
+            "balance": float(snapshot.balance or 0),
+            "source": snapshot.source,
+            "created_at": snapshot.created_at,
         }
-        for h in history
+        for snapshot in snapshots
     ]
+
+
+@router.post("/import-balance-report")
+async def import_balance_report(
+    file: UploadFile = File(...),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user)
+):
+    """Импортирует входящий/исходящий остаток из брокерского Excel-отчёта как исторические снимки баланса."""
+    account_id = auth_service.get_account_id(db, current_user)
+    contents = await file.read()
+    balance_info = import_service.parse_account_balance(contents, file.filename)
+
+    initial_balance = balance_info.get("initial_balance")
+    final_balance = balance_info.get("final_balance")
+    period_start = balance_info.get("period_start")
+    period_end = balance_info.get("period_end")
+
+    if initial_balance is None and final_balance is None:
+        raise HTTPException(status_code=400, detail="В отчёте не найден входящий или исходящий остаток")
+
+    saved = []
+    source = f"balance_report:{file.filename}"
+
+    if initial_balance is not None:
+        snapshot_date = period_start
+        if snapshot_date is None:
+            raise HTTPException(status_code=400, detail="В отчёте найден входящий остаток, но не определена дата начала периода")
+        snapshot = _upsert_balance_snapshot(
+            db,
+            account_id=account_id,
+            snapshot_date=snapshot_date,
+            balance=float(initial_balance),
+            source=source,
+        )
+        saved.append(snapshot)
+
+    if final_balance is not None:
+        snapshot_date = period_end
+        if snapshot_date is None:
+            raise HTTPException(status_code=400, detail="В отчёте найден исходящий остаток, но не определена дата конца периода")
+        snapshot = _upsert_balance_snapshot(
+            db,
+            account_id=account_id,
+            snapshot_date=snapshot_date,
+            balance=float(final_balance),
+            source=source,
+        )
+        saved.append(snapshot)
+
+    db.commit()
+
+    return {
+        "message": f"Импортировано снимков баланса: {len(saved)}",
+        "snapshots": [
+            {
+                "id": snapshot.id,
+                "date": snapshot.date.isoformat() if snapshot.date else None,
+                "balance": float(snapshot.balance or 0),
+                "source": snapshot.source,
+            }
+            for snapshot in saved
+        ],
+        "hint": "Исторические снимки баланса будут использованы как якоря для более точного расчёта капитала на старт периода.",
+    }
 
 
 @router.delete("/{operation_id}")
@@ -218,9 +425,7 @@ def delete_deposit_operation(
     
     # Р•СЃР»Рё СЌС‚Рѕ РЅР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚ - РѕР±РЅСѓР»СЏРµРј initial_balance
     if operation.operation_type == models.DepositOperationType.INITIAL:
-        account = db.query(models.Account).filter(models.Account.id == account_id).first()
-        if account:
-            account.initial_balance = 0
+        sync_initial_balance(db, account_id, 0, commit=False)
     
     db.delete(operation)
     db.commit()

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
 import traceback
 
@@ -19,7 +20,7 @@ import database
 from contextlib import asynccontextmanager
 from config import settings
 from rate_limiter import limiter, rate_limit_exceeded_handler
-from middleware import RequestLoggingMiddleware
+from middleware import CSRFMiddleware, RequestContextMiddleware, RequestLoggingMiddleware, get_request_id_from_request
 from logger import get_logger
 
 # Импорт роутеров
@@ -31,6 +32,7 @@ from routers import (
     stats_router,
     market_router,
 )
+from routers.stats import tags_router
 from routers.deposits import router as deposits_router
 from routers.setups import router as setups_router
 from routers.broker import router as broker_router
@@ -39,15 +41,19 @@ from sync_scheduler import scheduler
 
 log = get_logger("api")
 
-# Инициализируем базу данных при запуске
-database.init_db()
-
 
 @asynccontextmanager
-async def lifespan(app):
+async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
     log.info("🚀 ATOM API v0.2.0 Starting...")
     log.info(f"📦 Routers: auth, trades, deposits, setups, broker, admin, blog, stats, market, real_pnl")
+
+    if settings.AUTO_INIT_DB:
+        database.init_db()
+        log.warning("⚠️ AUTO_INIT_DB enabled: database schema ensured via SQLAlchemy create_all()")
+    else:
+        log.info("🗄️ AUTO_INIT_DB disabled: expecting schema to be managed via migrations")
+
     await scheduler.start()
     log.info("🔄 Auto-sync scheduler started")
     yield
@@ -92,9 +98,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     
     return JSONResponse(
         status_code=422,
+        headers={"X-Request-ID": get_request_id_from_request(request)},
         content={
             "detail": "Ошибка валидации данных",
-            "errors": errors
+            "errors": errors,
+            "request_id": get_request_id_from_request(request),
         }
     )
 
@@ -110,15 +118,21 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     if settings.DEBUG:
         return JSONResponse(
             status_code=500,
+            headers={"X-Request-ID": get_request_id_from_request(request)},
             content={
                 "detail": "Ошибка базы данных",
-                "error": str(exc)
+                "error": str(exc),
+                "request_id": get_request_id_from_request(request),
             }
         )
     
     return JSONResponse(
         status_code=500,
-        content={"detail": "Внутренняя ошибка сервера"}
+        headers={"X-Request-ID": get_request_id_from_request(request)},
+        content={
+            "detail": "Внутренняя ошибка сервера",
+            "request_id": get_request_id_from_request(request),
+        }
     )
 
 
@@ -133,16 +147,22 @@ async def global_exception_handler(request: Request, exc: Exception):
     if settings.DEBUG:
         return JSONResponse(
             status_code=500,
+            headers={"X-Request-ID": get_request_id_from_request(request)},
             content={
                 "detail": "Необработанная ошибка",
                 "error": str(exc),
-                "traceback": traceback.format_exc()
+                "traceback": traceback.format_exc(),
+                "request_id": get_request_id_from_request(request),
             }
         )
     
     return JSONResponse(
         status_code=500,
-        content={"detail": "Внутренняя ошибка сервера"}
+        headers={"X-Request-ID": get_request_id_from_request(request)},
+        content={
+            "detail": "Внутренняя ошибка сервера",
+            "request_id": get_request_id_from_request(request),
+        }
     )
 
 
@@ -150,6 +170,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Request logging
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(CSRFMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 # CORS
 app.add_middleware(
@@ -171,6 +193,7 @@ app.include_router(broker_router)
 app.include_router(admin_router)
 app.include_router(blog_router)
 app.include_router(stats_router, prefix="/stats")
+app.include_router(tags_router)
 app.include_router(market_router)
 app.include_router(real_pnl_router, prefix="/real-pnl")
 
@@ -222,10 +245,33 @@ async def read_root():
 @app.get("/health")
 async def health_check():
     """Health check для мониторинга"""
-    return {"status": "healthy", "service": "atom-api"}
+    db_connected = database.check_db_connection()
+    status_code = 200 if db_connected else 503
+    payload = {
+        "status": "healthy" if db_connected else "degraded",
+        "service": "atom-api",
+        "database": {
+            "connected": db_connected,
+        }
+    }
+    return JSONResponse(status_code=status_code, content=payload)
 
 
 @app.get("/db-check")
 def check_db(db: Session = Depends(database.get_db)):
     """Проверка подключения к БД"""
-    return {"status": "Database is connected and tables are created"}
+    try:
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "Database is connected",
+            "connected": True,
+        }
+    except SQLAlchemyError as exc:
+        log.warning(f"Database check failed: {exc}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "Database connection failed",
+                "connected": False,
+            }
+        )
