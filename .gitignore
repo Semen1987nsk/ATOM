@@ -57,3 +57,6 @@ htmlcov/
 
 # Playwright MCP debug artifacts (local only)
 .playwright-mcp/
+
+# Claude per-project state (local only)
+.claude/

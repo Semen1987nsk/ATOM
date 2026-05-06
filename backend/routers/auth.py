@@ -14,6 +14,7 @@ import auth_service
 import oauth_service
 from oauth_state_store import get_state_store
 from rate_limiter import limiter, AUTH_LIMIT, REGISTER_LIMIT
+from utils.datetime_utils import utc_now_naive
 from logger import get_logger
 
 log = get_logger("auth")
@@ -306,7 +307,7 @@ async def oauth_callback(
             if user.oauth_provider != provider:
                 user.oauth_provider = provider
                 user.oauth_provider_id = user_info.get("provider_id")
-            user.last_login = datetime.now()
+            user.last_login = utc_now_naive()
             db.commit()
         else:
             user = models.User(
@@ -316,7 +317,7 @@ async def oauth_callback(
                 oauth_provider=provider,
                 oauth_provider_id=user_info.get("provider_id"),
                 registration_source=provider,
-                last_login=datetime.now(),
+                last_login=utc_now_naive(),
                 is_active=1,
             )
             db.add(user)

@@ -29,11 +29,26 @@ class SyncScheduler:
         self._check_interval = 60  # Проверяем каждую минуту
     
     async def start(self):
-        """Запускает планировщик"""
+        """
+        Запускает планировщик.
+
+        ВАЖНО: scheduler — process-local singleton. Если запустить под gunicorn
+        с N воркерами, каждый воркер прокрутит свой цикл и будет дублировать
+        вызовы в Tinkoff API. Включаем планировщик ТОЛЬКО на воркере с флагом
+        `IS_SCHEDULER_WORKER=true`. В однопроцессном dev — флаг не нужен,
+        дефолт выводит scheduler. В compose/k8s — выставить флаг ровно одному
+        replica, остальные пропустят запуск.
+        """
+        import os
+        is_scheduler_worker = os.getenv("IS_SCHEDULER_WORKER", "true").lower() == "true"
+        if not is_scheduler_worker:
+            log.info("⏭️ Sync scheduler skipped on this worker (IS_SCHEDULER_WORKER=false)")
+            return
+
         if self._running:
             log.warning("Scheduler already running")
             return
-        
+
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
         log.info("🔄 Sync scheduler started")

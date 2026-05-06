@@ -19,8 +19,16 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  type TooltipProps,
 } from "recharts";
+
+// recharts v3 убрал стабильный экспорт TooltipProps — используем локальный shape
+// под content-callback'а, чтобы не пытаться угадать generic параметры.
+type RechartsTooltipPayloadItem = { dataKey?: string | number; value?: number | string };
+type RechartsTooltipContentProps = {
+  active?: boolean;
+  payload?: RechartsTooltipPayloadItem[];
+  label?: string | number;
+};
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface EquityPoint {
@@ -208,7 +216,7 @@ function EquityTooltip({
   label,
   formatCurrency,
   benchmarkLabel,
-}: TooltipProps<number, string> & {
+}: RechartsTooltipContentProps & {
   formatCurrency: (n: number) => string;
   benchmarkLabel: string;
 }) {

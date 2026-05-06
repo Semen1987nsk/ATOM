@@ -1,16 +1,16 @@
 """
-Real PnL Router вЂ” РџРѕР»СѓС‡РµРЅРёРµ Р Р•РђР›Р¬РќРћР“Рћ PnL РЅР°РїСЂСЏРјСѓСЋ РёР· API Р±СЂРѕРєРµСЂР°
+Real PnL Router — Получение РЕАЛЬНОГО PnL напрямую из API брокера
 
-Р­С‚РѕС‚ СЂРѕСѓС‚РµСЂ РІРѕР·РІСЂР°С‰Р°РµС‚ С‚РѕС‡РЅС‹Рµ РґР°РЅРЅС‹Рµ Рѕ PnL, СЂР°СЃСЃС‡РёС‚Р°РЅРЅС‹Рµ РЅР° РѕСЃРЅРѕРІРµ:
-- РўРµРєСѓС‰РµРіРѕ Р±Р°Р»Р°РЅСЃР° РѕС‚ API
-- Net Deposit (РІРІРѕРґ - РІС‹РІРѕРґ)
-- Р’Р°СЂРёР°С†РёРѕРЅРЅРѕР№ РјР°СЂР¶Рё РґР»СЏ С„СЊСЋС‡РµСЂСЃРѕРІ
-- Р’СЃРµС… РєРѕРјРёСЃСЃРёР№ (Broker Fee, Margin Fee, Service Fee)
+Этот роутер возвращает точные данные о PnL, рассчитанные на основе:
+- Текущего баланса от API
+- Net Deposit (ввод - вывод)
+- Вариационной маржи для фьючерсов
+- Всех комиссий (Broker Fee, Margin Fee, Service Fee)
 
-Р¤РћР РњРЈР›Р«:
-- Real PnL = РўРµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ - Net Deposit
-- Р—Р°РєСЂС‹С‚С‹Р№ PnL = РђРєС†РёРё PnL + Varmargin + РљРѕРјРёСЃСЃРёРё + Р”СЂСѓРіРѕРµ
-- РќРµСЂРµР°Р»РёР·РѕРІР°РЅРЅС‹Р№ PnL = Real PnL - Р—Р°РєСЂС‹С‚С‹Р№ PnL
+ФОРМУЛЫ:
+- Real PnL = Текущий баланс - Net Deposit
+- Закрытый PnL = Акции PnL + Varmargin + Комиссии + Другое
+- Нереализованный PnL = Real PnL - Закрытый PnL
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -38,19 +38,19 @@ async def get_real_pnl(
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
     """
-    РџРѕР»СѓС‡РёС‚СЊ Р Р•РђР›Р¬РќР«Р™ PnL РЅР°РїСЂСЏРјСѓСЋ РёР· API Р±СЂРѕРєРµСЂР°.
+    Получить РЕАЛЬНЫЙ PnL напрямую из API брокера.
     
-    Р’РѕР·РІСЂР°С‰Р°РµС‚:
-    - real_pnl: Р¤Р°РєС‚РёС‡РµСЃРєРёР№ PnL = Р‘Р°Р»Р°РЅСЃ - Net Deposit
-    - stocks_pnl: PnL РїРѕ Р°РєС†РёСЏРј (Р·Р°РєСЂС‹С‚С‹Рµ СЃРґРµР»РєРё)
-    - futures_pnl: PnL РїРѕ С„СЊСЋС‡РµСЂСЃР°Рј (РІР°СЂРёР°С†РёРѕРЅРЅР°СЏ РјР°СЂР¶Р°)
+    Возвращает:
+    - real_pnl: Фактический PnL = Баланс - Net Deposit
+    - stocks_pnl: PnL по акциям (закрытые сделки)
+    - futures_pnl: PnL по фьючерсам (вариационная маржа)
     - broker_fee, margin_fee, service_fee: РљРѕРјРёСЃСЃРёРё
-    - unrealized_pnl: РќРµСЂРµР°Р»РёР·РѕРІР°РЅРЅС‹Р№ PnL (РѕС‚РєСЂС‹С‚С‹Рµ РїРѕР·РёС†РёРё)
+    - unrealized_pnl: Нереализованный PnL (открытые позиции)
     - roi: Return on Investment (%)
     """
     account_id = auth_service.get_account_id(db, current_user)
     
-    # РџРѕР»СѓС‡Р°РµРј РїРѕРґРєР»СЋС‡РµРЅРёРµ Рє Р±СЂРѕРєРµСЂСѓ
+    # Получаем подключение к брокеру
     connection = db.query(models.BrokerConnection).filter(
         models.BrokerConnection.account_id == account_id,
         models.BrokerConnection.is_active == True
@@ -59,13 +59,13 @@ async def get_real_pnl(
     if not connection:
         raise HTTPException(status_code=404, detail="No active broker connection")
     
-    # РРјРїРѕСЂС‚РёСЂСѓРµРј СЃРµСЂРІРёСЃ
+    # Импортируем сервис
     from tinkoff_service_v2 import TinkoffServiceV2
     
     try:
         service = TinkoffServiceV2(connection.api_token)
         
-        # РџРѕР»СѓС‡Р°РµРј С‚РµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ
+        # Получаем текущий баланс
         portfolio = service._make_request(
             "POST",
             "/tinkoff.public.invest.api.contract.v1.OperationsService/GetPortfolio",
@@ -80,13 +80,13 @@ async def get_real_pnl(
             service._money_to_decimal(portfolio.get("totalAmountEtf", {}))
         )
         
-        # РџРѕР»СѓС‡Р°РµРј РІСЃРµ РѕРїРµСЂР°С†РёРё
-        from_date = datetime(2020, 1, 1)  # РќР°С‡Р°Р»Рѕ РёСЃС‚РѕСЂРёРё
+        # Получаем все операции
+        from_date = datetime(2020, 1, 1)  # Начало истории
         to_date = datetime.now()
         
         operations = service.get_operations(connection.broker_account_id, from_date, to_date)
         
-        # Р Р°СЃСЃС‡РёС‚С‹РІР°РµРј РІСЃРµ РєРѕРјРїРѕРЅРµРЅС‚С‹
+        # Рассчитываем все компоненты
         net_deposit = Decimal(0)
         stocks_pnl = Decimal(0)
         varmargin = Decimal(0)
@@ -103,9 +103,9 @@ async def get_real_pnl(
             if op_type == "OPERATION_TYPE_INPUT":
                 net_deposit += payment
             elif op_type == "OPERATION_TYPE_OUTPUT":
-                net_deposit += payment  # РћС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№
+                net_deposit += payment  # Отрицательный
             elif op_type in ["OPERATION_TYPE_BUY", "OPERATION_TYPE_SELL"]:
-                # РџСЂРѕРІРµСЂСЏРµРј С‚РёРї РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°
+                # Проверяем тип инструмента
                 if figi:
                     info = service.get_instrument_info(figi)
                     if info and info.get("instrument_type") != "INSTRUMENT_TYPE_FUTURES":
@@ -115,15 +115,15 @@ async def get_real_pnl(
             elif op_type == "OPERATION_TYPE_WRITING_OFF_VARMARGIN":
                 varmargin += payment
             elif op_type == "OPERATION_TYPE_BROKER_FEE":
-                broker_fee += payment  # РћС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№
+                broker_fee += payment  # Отрицательный
             elif op_type == "OPERATION_TYPE_MARGIN_FEE":
-                margin_fee += payment  # РћС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№
+                margin_fee += payment  # Отрицательный
             elif op_type == "OPERATION_TYPE_SERVICE_FEE":
-                service_fee += payment  # РћС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№
+                service_fee += payment  # Отрицательный
             elif op_type in ["OPERATION_TYPE_TAX", "OPERATION_TYPE_INP_MULTI", "OPERATION_TYPE_OPTION_EXPIRATION"]:
                 other += payment
         
-        # Р Р°СЃС‡С‘С‚С‹
+        # Расчёты
         net_deposit_float = float(net_deposit)
         real_pnl = current_balance - net_deposit_float
         

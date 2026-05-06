@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppShell } from '@/components/AppShell';
-import { 
-  Check, X, Zap, Crown, Building2, ArrowRight, 
+import { api } from '@/lib/apiClient';
+import {
+  Check, X, Zap, Crown, Building2, ArrowRight,
   Shield, Clock, BarChart3, Headphones,
   ChevronDown, ChevronUp
 } from 'lucide-react';
@@ -112,6 +113,15 @@ export default function PricingPage() {
   const { isAuthenticated } = useAuth();
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<string>('free');
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    api.get<{ plan: string }>('/payments/me')
+      .then((d) => setCurrentPlan(d.plan?.toLowerCase() || 'free'))
+      .catch(() => {/* not logged in or backend down — оставляем free */});
+  }, [isAuthenticated]);
 
   const getPrice = (basePrice: number | null) => {
     if (basePrice === null) return null;
@@ -119,7 +129,26 @@ export default function PricingPage() {
     return billingPeriod === 'yearly' ? Math.round(basePrice * 10 / 12) : basePrice;
   };
 
-  const currentPlan = 'free'; // TODO: получить из API
+  async function handleSubscribe(planId: string) {
+    if (!isAuthenticated) {
+      window.location.href = '/login?next=/pricing';
+      return;
+    }
+    if (planId === 'free' || planId === 'corporate') return;
+    setCheckoutLoading(planId);
+    try {
+      const r = await api.post<{ confirmation_url: string }>('/payments/checkout-link', {
+        body: { plan: planId },
+      });
+      // Реальный YooKassa redirect, или stub-confirm в DEV
+      window.location.href = r.confirmation_url;
+    } catch (e) {
+      alert('Не удалось создать оплату. Попробуйте позже.');
+      console.error(e);
+    } finally {
+      setCheckoutLoading(null);
+    }
+  }
 
   return (
     <AppShell pageTitle="Тарифы">
@@ -213,17 +242,24 @@ export default function PricingPage() {
 
                 {/* CTA Button */}
                 <button
-                  className={`w-full py-3 rounded-lg font-medium transition-all mb-6 ${
+                  onClick={() => handleSubscribe(plan.id)}
+                  className={`w-full py-3 rounded-lg font-medium transition-all mb-6 disabled:opacity-60 ${
                     isCurrent
                       ? 'bg-secondary text-muted-foreground cursor-default'
                       : plan.popular
                       ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:shadow-lg hover:shadow-purple-500/25'
                       : 'bg-secondary hover:bg-secondary/80'
                   }`}
-                  disabled={isCurrent}
+                  disabled={isCurrent || checkoutLoading === plan.id}
                 >
-                  {isCurrent ? 'Текущий план' : plan.cta}
-                  {!isCurrent && <ArrowRight size={16} className="inline ml-2" />}
+                  {isCurrent
+                    ? 'Текущий план'
+                    : checkoutLoading === plan.id
+                    ? 'Создаём оплату…'
+                    : plan.cta}
+                  {!isCurrent && checkoutLoading !== plan.id && (
+                    <ArrowRight size={16} className="inline ml-2" />
+                  )}
                 </button>
 
                 {/* Features */}

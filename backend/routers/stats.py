@@ -1,7 +1,7 @@
 """
 Stats Router — статистика торговли, аналитика, теги
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
@@ -14,6 +14,7 @@ import auth_service
 from capital_service import get_capital_flow_events, get_net_deposit_as_of, has_broker_capital_operations
 from utils import utc_now_naive
 from logger import get_logger
+from rate_limiter import limiter, API_LIMIT
 from tinkoff_service import TinkoffService
 from crypto_utils import decrypt_token
 from moex_service import get_moex_service
@@ -39,6 +40,14 @@ def _get_cached(key):
 
 def _set_cached(key, value):
     stats_cache.set(key, value)
+
+
+async def _build_imoex_overlay_async(equity_curve: list) -> list:
+    """
+    Async-обёртка вокруг sync `MoexService.get_index_history`. Без неё блокирует
+    event loop на ~0.3-2 сек на холодном кэше — для async-handler это убийственно.
+    """
+    return await asyncio.to_thread(_build_imoex_overlay, equity_curve)
 
 
 def _build_imoex_overlay(equity_curve: list) -> list:
@@ -483,7 +492,7 @@ async def get_stats(
         "time_patterns": time_patterns_data,
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
-        "imoex_curve": _build_imoex_overlay(equity_curve),
+        "imoex_curve": await _build_imoex_overlay_async(equity_curve),
         "tag_stats": tag_stats,
         "initial_balance": base_initial_balance,
         "current_balance": current_balance if equity_curve else base_initial_balance,
@@ -587,9 +596,10 @@ def _build_equity_curve(trades) -> list:
 #  /advanced — продвинутые quant-метрики (Ulcer, K-Ratio, ...)
 # ──────────────────────────────────────────────────────────────────
 
-# trigger-reload
 @router.get("/advanced")
+@limiter.limit(API_LIMIT)
 async def get_advanced_stats(
+    request: Request,
     period: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),

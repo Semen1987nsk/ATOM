@@ -72,17 +72,36 @@ def encrypt_token(plaintext: str) -> str:
     return f.encrypt(plaintext.encode("utf-8")).decode("ascii")
 
 
+class TokenDecryptionError(Exception):
+    """
+    Raised when a stored broker token cannot be decrypted.
+
+    Раньше функция молча возвращала ciphertext как plaintext — это маскировало
+    случаи ротации BROKER_TOKEN_KEY, когда каждый stored token превращался в
+    битый Bearer-header и Tinkoff-API возвращал 401 без понятной диагностики.
+    """
+
+
 def decrypt_token(ciphertext: str) -> str:
     """
-    Дешифрует строку.  Если ciphertext НЕ является валидным шифротекстом
-    (например, при миграции со старых plain-text токенов), возвращает как есть.
+    Дешифрует Fernet-зашифрованный токен. Поднимает TokenDecryptionError при сбое.
+
+    ВАЖНО: ничего не возвращает «как есть». Если в БД остались plaintext-токены
+    от старой версии, мигрируй их явно (одноразовый скрипт + флаг колонки),
+    а не через тихий fallback.
     """
     if not ciphertext:
         return ""
     f = _get_fernet()
     try:
         return f.decrypt(ciphertext.encode("ascii")).decode("utf-8")
-    except (InvalidToken, Exception):
-        # Токен хранится в plaintext (до миграции) — возвращаем как есть
-        log.warning("decrypt_token: ciphertext is not valid Fernet — returning as-is (legacy plaintext?)")
-        return ciphertext
+    except InvalidToken as exc:
+        log.error(
+            "decrypt_token: InvalidToken — broker token is unreadable. "
+            "Likely BROKER_TOKEN_KEY rotated or DB has legacy plaintext. "
+            "Treat as broken connection — do NOT pass through to broker API."
+        )
+        raise TokenDecryptionError("broker token unreadable") from exc
+    except Exception as exc:
+        log.error(f"decrypt_token: unexpected error: {exc!r}")
+        raise TokenDecryptionError("broker token decryption failed") from exc

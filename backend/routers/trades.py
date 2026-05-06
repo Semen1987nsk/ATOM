@@ -1,7 +1,7 @@
 """
 Trades Router — CRUD для сделок, импорт, unrealized PnL
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, Form
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
@@ -21,10 +21,25 @@ import pnl_service
 from capital_service import sync_initial_balance
 from config import settings
 from logger import get_logger
+from rate_limiter import limiter, IMPORT_LIMIT, AI_LIMIT, API_LIMIT
+from subscription_service import enforce_trade_limit, require_pro
 
 log = get_logger("trades")
 
 router = APIRouter(prefix="/trades", tags=["trades"])
+
+
+def _direction_value(direction) -> str:
+    """
+    Нормализует поле direction (Enum/str/None) в строковое значение.
+    Используется для дедупликации import'а — ключ должен быть hashable
+    и независим от того, как пришёл direction (TradeDirection.LONG vs 'long').
+    """
+    if direction is None:
+        return ""
+    if hasattr(direction, "value"):
+        return str(direction.value).lower()
+    return str(direction).lower()
 
 
 async def _read_upload_with_limit(file: UploadFile) -> bytes:
@@ -60,12 +75,13 @@ market_data_service = market_service.MarketService()
 
 @router.post("/", response_model=schemas.Trade)
 async def create_trade(
-    trade: schemas.TradeCreate, 
+    trade: schemas.TradeCreate,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
     account_id = auth_service.get_account_id(db, current_user)
-    
+    enforce_trade_limit(db, current_user)
+
     # Check for existing open trades for this symbol
     open_trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
@@ -210,8 +226,10 @@ async def create_trade(
 # ==================== IMPORT PREVIEW ====================
 
 @router.post("/import/preview")
+@limiter.limit(IMPORT_LIMIT)
 async def preview_import(
-    file: UploadFile = File(...), 
+    request: Request,
+    file: UploadFile = File(...),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
@@ -230,16 +248,26 @@ async def preview_import(
     # Парсим информацию о балансе из файла
     balance_info = import_service.parse_account_balance(contents, file.filename)
     
+    # Bulk-загрузка существующих сделок ОДНИМ запросом — раньше для 5K-строчного
+    # отчёта было 5K SELECT (N+1). Строим локальный индекс по dedup-ключу.
+    existing_rows = db.query(
+        models.Trade.id, models.Trade.symbol, models.Trade.direction, models.Trade.entry_at
+    ).filter(models.Trade.account_id == account_id).all()
+    existing_index = {
+        (sym, _direction_value(direction), entry_at): _id
+        for _id, sym, direction, entry_at in existing_rows
+    }
+
     # Проверяем каждую сделку на дубликат
     preview_items = []
     for idx, trade_dict in enumerate(trades_data):
-        existing = db.query(models.Trade).filter(
-            models.Trade.account_id == account_id,
-            models.Trade.symbol == trade_dict['symbol'],
-            models.Trade.direction == trade_dict['direction'],
-            models.Trade.entry_at == trade_dict['entry_at']
-        ).first()
-        
+        dedup_key = (
+            trade_dict.get('symbol'),
+            _direction_value(trade_dict.get('direction')),
+            trade_dict.get('entry_at'),
+        )
+        existing_id = existing_index.get(dedup_key)
+
         # Форматируем для превью
         entry_at = trade_dict.get('entry_at')
         exit_at = trade_dict.get('exit_at')
@@ -256,8 +284,8 @@ async def preview_import(
             "quantity": trade_dict.get('quantity'),
             "pnl": trade_dict.get('pnl'),
             "net_pnl": trade_dict.get('net_pnl'),
-            "is_duplicate": existing is not None,
-            "existing_id": existing.id if existing else None,
+            "is_duplicate": existing_id is not None,
+            "existing_id": existing_id,
             "is_open": trade_dict.get('exit_at') is None,
         })
     
@@ -291,7 +319,9 @@ async def preview_import(
 
 
 @router.post("/import", response_model=schemas.ImportResultResponse, status_code=200)
+@limiter.limit(IMPORT_LIMIT)
 async def import_trades(
+    request: Request,
     file: UploadFile = File(...),
     start_index: Optional[int] = Form(None),
     end_index: Optional[int] = Form(None),
@@ -317,6 +347,9 @@ async def import_trades(
     Дубликаты определяются по: symbol + direction + entry_at
     """
     account_id = auth_service.get_account_id(db, current_user)
+    # FREE-tier gate. Проверяем ДО парсинга файла — если у юзера уже 50+
+    # сделок, не тратим CPU на парсинг 5K-строчного отчёта.
+    enforce_trade_limit(db, current_user)
 
     contents = await _read_upload_with_limit(file)
     try:
@@ -346,24 +379,38 @@ async def import_trades(
     # Кеш колонок Trade — чтобы не пересчитывать на каждой итерации.
     valid_columns = {c.name for c in models.Trade.__table__.columns}
 
+    # Bulk-загрузка существующих trade-ID одним SQL — устраняет N+1.
+    # Возвращаем id, чтобы UPDATE-ветка могла достать ORM-объект lazy.
+    existing_rows = db.query(
+        models.Trade.id, models.Trade.symbol, models.Trade.direction, models.Trade.entry_at
+    ).filter(models.Trade.account_id == account_id).all()
+    existing_index = {
+        (sym, _direction_value(direction), entry_at): _id
+        for _id, sym, direction, entry_at in existing_rows
+    }
+
     # Импорт в одной транзакции: при ЛЮБОЙ ошибке — полный откат батча.
     # Раньше частичная ошибка оставляла БД в несогласованном состоянии
     # (часть сделок уже вставлена, баланс пересчитан некорректно).
     try:
         for trade_dict in trades_to_import:
-            existing = db.query(models.Trade).filter(
-                models.Trade.account_id == account_id,
-                models.Trade.symbol == trade_dict['symbol'],
-                models.Trade.direction == trade_dict['direction'],
-                models.Trade.entry_at == trade_dict['entry_at']
-            ).first()
+            dedup_key = (
+                trade_dict.get('symbol'),
+                _direction_value(trade_dict.get('direction')),
+                trade_dict.get('entry_at'),
+            )
+            existing_id = existing_index.get(dedup_key)
 
-            if existing:
+            if existing_id is not None:
                 duplicate_count += 1
                 if skip_duplicates:
                     skipped_count += 1
                     continue
-                # Если не пропускаем, обновляем существующую сделку
+                # Не пропускаем — обновляем по ID. Один SELECT по PK — допустимо
+                # (не N+1: UPDATE-ветка обычно редкая).
+                existing = db.query(models.Trade).filter(models.Trade.id == existing_id).first()
+                if existing is None:
+                    continue
                 for key, value in trade_dict.items():
                     if key in valid_columns and key not in ('id', 'created_at'):
                         setattr(existing, key, value)
@@ -375,6 +422,8 @@ async def import_trades(
             clean_dict = {k: v for k, v in trade_dict.items() if k in valid_columns}
             db_trade = models.Trade(**clean_dict)
             db.add(db_trade)
+            # Записываем в индекс, чтобы дубликаты в ОДНОМ батче ловились тоже.
+            existing_index[dedup_key] = -1
             imported_count += 1
     except Exception as exc:
         db.rollback()
@@ -718,10 +767,12 @@ async def close_trade(
 
 
 @router.post("/{trade_id}/reanalyze")
+@limiter.limit(AI_LIMIT)
 async def reanalyze_trade(
+    request: Request,
     trade_id: int,
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user),
+    current_user: models.User = Depends(require_pro),  # AI-фича — только PRO
 ):
     """Перезапуск AI-анализа для существующей сделки (после правок)."""
     account_id = auth_service.get_account_id(db, current_user)

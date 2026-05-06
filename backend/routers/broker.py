@@ -1,6 +1,6 @@
 """
 Broker Integration API
-РџРѕРґРєР»СЋС‡РµРЅРёРµ Рє Р±СЂРѕРєРµСЂР°Рј Рё Р°РІС‚РѕСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ
+Подключение к брокерам и автосинхронизация
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,7 +19,21 @@ from capital_service import sync_initial_balance
 from utils.datetime_utils import utc_now_naive
 from sync_scheduler import scheduler
 from sqlalchemy import func
-from crypto_utils import encrypt_token, decrypt_token
+from crypto_utils import encrypt_token, decrypt_token, TokenDecryptionError
+
+
+def _decrypt_or_410(token: str) -> str:
+    """
+    Decrypt broker token; on failure return HTTP 410 Gone.
+    Тихий fallback на ciphertext убран — теперь скажем юзеру явно «переподключи».
+    """
+    try:
+        return decrypt_token(token)
+    except TokenDecryptionError:
+        raise HTTPException(
+            status_code=410,
+            detail="Подключение брокера повреждено (возможно, ключ шифрования был ротирован). Переподключите счёт.",
+        )
 
 router = APIRouter(prefix="/broker", tags=["broker"])
 
@@ -41,12 +55,12 @@ class TokenVerifyResponse(BaseModel):
 
 
 class ConnectBrokerRequest(BaseModel):
-    broker: str = Field(..., description="РўРёРї Р±СЂРѕРєРµСЂР°: tinkoff")
-    api_token: str = Field(..., min_length=10, description="API С‚РѕРєРµРЅ РѕС‚ Р±СЂРѕРєРµСЂР°")
-    broker_account_id: str = Field(..., description="ID СЃС‡С‘С‚Р° РІ Р±СЂРѕРєРµСЂРµ")
-    sync_from_date: Optional[datetime] = Field(None, description="Р”Р°С‚Р° РЅР°С‡Р°Р»Р° СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё")
-    auto_sync_enabled: bool = Field(True, description="Р’РєР»СЋС‡РёС‚СЊ Р°РІС‚РѕСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ")
-    sync_interval_minutes: int = Field(60, ge=5, le=1440, description="РРЅС‚РµСЂРІР°Р» СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё (РјРёРЅ)")
+    broker: str = Field(..., description="Тип брокера: tinkoff")
+    api_token: str = Field(..., min_length=10, description="API токен от брокера")
+    broker_account_id: str = Field(..., description="ID счёта в брокере")
+    sync_from_date: Optional[datetime] = Field(None, description="Дата начала синхронизации")
+    auto_sync_enabled: bool = Field(True, description="Включить автосинхронизацию")
+    sync_interval_minutes: int = Field(60, ge=5, le=1440, description="Интервал синхронизации (мин)")
 
 
 class BrokerConnectionResponse(BaseModel):
@@ -74,8 +88,8 @@ class SyncResultResponse(BaseModel):
 
 
 class TokenVerifyRequest(BaseModel):
-    broker: str = Field(..., description="РўРёРї Р±СЂРѕРєРµСЂР°: tinkoff")
-    api_token: str = Field(..., min_length=10, description="API С‚РѕРєРµРЅ")
+    broker: str = Field(..., description="Тип брокера: tinkoff")
+    api_token: str = Field(..., min_length=10, description="API токен")
 
 
 # ==================== ENDPOINTS ====================
@@ -85,11 +99,11 @@ async def verify_broker_token(
     request: TokenVerifyRequest
 ):
     """
-    РџСЂРѕРІРµСЂСЏРµС‚ РІР°Р»РёРґРЅРѕСЃС‚СЊ API С‚РѕРєРµРЅР° Рё РІРѕР·РІСЂР°С‰Р°РµС‚ СЃРїРёСЃРѕРє РґРѕСЃС‚СѓРїРЅС‹С… СЃС‡РµС‚РѕРІ.
-    Token РїРµСЂРµРґР°С‘С‚СЃСЏ РІ Body, Р° РЅРµ РІ Query РґР»СЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё.
+    Проверяет валидность API токена и возвращает список доступных счетов.
+    Token передаётся в Body, а не в Query для безопасности.
     """
     if request.broker.lower() != "tinkoff":
-        raise HTTPException(status_code=400, detail="РџРѕРєР° РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РўРёРЅСЊРєРѕС„С„")
+        raise HTTPException(status_code=400, detail="Пока поддерживается только Тинькофф")
     
     service = TinkoffService(request.api_token)
     result = await asyncio.to_thread(service.verify_token)
@@ -97,7 +111,7 @@ async def verify_broker_token(
     if not result["valid"]:
         return TokenVerifyResponse(
             valid=False,
-            error=result.get("error", "РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°"),
+            error=result.get("error", "Неизвестная ошибка"),
             accounts=[]
         )
     
@@ -125,33 +139,33 @@ async def connect_broker(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    РџРѕРґРєР»СЋС‡Р°РµС‚ Р±СЂРѕРєРµСЂР° Рє Р°РєРєР°СѓРЅС‚Сѓ РґР»СЏ Р°РІС‚РѕСЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё
+    Подключает брокера к аккаунту для автосинхронизации
     """
     if request.broker.lower() != "tinkoff":
-        raise HTTPException(status_code=400, detail="РџРѕРєР° РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РўРёРЅСЊРєРѕС„С„")
+        raise HTTPException(status_code=400, detail="Пока поддерживается только Тинькофф")
     
-    # РџСЂРѕРІРµСЂСЏРµРј С‚РѕРєРµРЅ
+    # Проверяем токен
     service = TinkoffService(request.api_token)
     verify_result = await asyncio.to_thread(service.verify_token)
     
     if not verify_result["valid"]:
         raise HTTPException(
             status_code=400, 
-            detail=f"РќРµРІР°Р»РёРґРЅС‹Р№ С‚РѕРєРµРЅ: {verify_result.get('error')}"
+            detail=f"Невалидный токен: {verify_result.get('error')}"
         )
     
-    # РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ РІС‹Р±СЂР°РЅРЅС‹Р№ СЃС‡С‘С‚ СЃСѓС‰РµСЃС‚РІСѓРµС‚
+    # Проверяем что выбранный счёт существует
     account_ids = [acc["id"] for acc in verify_result.get("accounts", [])]
     if request.broker_account_id not in account_ids:
         raise HTTPException(
             status_code=400,
-            detail=f"РЎС‡С‘С‚ {request.broker_account_id} РЅРµ РЅР°Р№РґРµРЅ. Р”РѕСЃС‚СѓРїРЅС‹Рµ: {account_ids}"
+            detail=f"Счёт {request.broker_account_id} не найден. Доступные: {account_ids}"
         )
     
-    # РџРѕР»СѓС‡Р°РµРј Р°РєРєР°СѓРЅС‚ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+    # Получаем аккаунт текущего пользователя
     account = get_user_account(db, current_user)
     
-    # РџСЂРѕРІРµСЂСЏРµРј РЅРµС‚ Р»Рё СѓР¶Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє СЌС‚РѕРјСѓ Р±СЂРѕРєРµСЂСЃРєРѕРјСѓ СЃС‡С‘С‚Сѓ РґР»СЏ РґР°РЅРЅРѕРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+    # Проверяем нет ли уже подключения к этому брокерскому счёту для данного пользователя
     existing = db.query(BrokerConnection).filter(
         BrokerConnection.account_id == account.id,
         BrokerConnection.broker_account_id == request.broker_account_id,
@@ -161,10 +175,10 @@ async def connect_broker(
     if existing:
         raise HTTPException(
             status_code=400,
-            detail="Р­С‚РѕС‚ Р±СЂРѕРєРµСЂСЃРєРёР№ СЃС‡С‘С‚ СѓР¶Рµ РїРѕРґРєР»СЋС‡РµРЅ"
+            detail="Этот брокерский счёт уже подключен"
         )
     
-    # РЎРѕР·РґР°С‘Рј РїРѕРґРєР»СЋС‡РµРЅРёРµ
+    # Создаём подключение
     connection = BrokerConnection(
         account_id=account.id,
         broker=BrokerType.TINKOFF,
@@ -227,12 +241,12 @@ async def get_broker_connections(
 @router.post("/connections/{connection_id}/sync", response_model=SyncResultResponse)
 async def sync_broker_trades(
     connection_id: int,
-    force_full_sync: bool = Query(False, description="РџРѕР»РЅР°СЏ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СЃ РЅР°С‡Р°Р»Р°"),
+    force_full_sync: bool = Query(False, description="Полная синхронизация с начала"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Р—Р°РїСѓСЃРєР°РµС‚ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ СЃРґРµР»РѕРє СЃ Р±СЂРѕРєРµСЂРѕРј
+    Запускает синхронизацию сделок с брокером
     """
     connection = db.query(BrokerConnection).filter(
         BrokerConnection.id == connection_id,
@@ -244,9 +258,9 @@ async def sync_broker_trades(
         raise HTTPException(status_code=404, detail="Подключение не найдено")
     
     if connection.broker != BrokerType.TINKOFF:
-        raise HTTPException(status_code=400, detail="РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РўРёРЅСЊРєРѕС„С„")
+        raise HTTPException(status_code=400, detail="Синхронизация поддерживается только для Тинькофф")
     
-    service = TinkoffService(decrypt_token(connection.api_token))
+    service = TinkoffService(_decrypt_or_410(connection.api_token))
     result = await asyncio.to_thread(
         service.sync_trades,
         db=db,
@@ -255,9 +269,9 @@ async def sync_broker_trades(
     )
     
     if result["success"]:
-        message = f"РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ Р·Р°РІРµСЂС€РµРЅР°: +{result['new_trades']} РЅРѕРІС‹С…, {result['updated_trades']} РѕР±РЅРѕРІР»РµРЅРѕ"
+        message = f"Синхронизация завершена: +{result['new_trades']} новых, {result['updated_trades']} обновлено"
     else:
-        message = f"РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СЃ РѕС€РёР±РєР°РјРё: {'; '.join(result['errors'][:2])}"
+        message = f"Синхронизация с ошибками: {'; '.join(result['errors'][:2])}"
     
     return SyncResultResponse(
         success=result["success"],
@@ -276,7 +290,7 @@ async def disconnect_broker(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    РћС‚РєР»СЋС‡Р°РµС‚ Р±СЂРѕРєРµСЂР° (РјСЏРіРєРѕРµ СѓРґР°Р»РµРЅРёРµ)
+    Отключает брокера (мягкое удаление)
     """
     connection = db.query(BrokerConnection).filter(
         BrokerConnection.id == connection_id,
@@ -287,10 +301,10 @@ async def disconnect_broker(
         raise HTTPException(status_code=404, detail="Подключение не найдено")
     
     connection.is_active = False
-    connection.api_token = ""  # РЈРґР°Р»СЏРµРј С‚РѕРєРµРЅ
+    connection.api_token = ""  # Удаляем токен
     db.commit()
     
-    return {"message": "Р‘СЂРѕРєРµСЂ РѕС‚РєР»СЋС‡С‘РЅ", "id": connection_id}
+    return {"message": "Брокер отключён", "id": connection_id}
 
 
 @router.patch("/connections/{connection_id}")
@@ -302,7 +316,7 @@ async def update_broker_connection(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    РћР±РЅРѕРІР»СЏРµС‚ РЅР°СЃС‚СЂРѕР№РєРё РїРѕРґРєР»СЋС‡РµРЅРёСЏ
+    Обновляет настройки подключения
     """
     connection = db.query(BrokerConnection).filter(
         BrokerConnection.id == connection_id,
@@ -322,7 +336,7 @@ async def update_broker_connection(
     connection.updated_at = utc_now_naive()
     db.commit()
     
-    return {"message": "РќР°СЃС‚СЂРѕР№РєРё РѕР±РЅРѕРІР»РµРЅС‹", "id": connection_id}
+    return {"message": "Настройки обновлены", "id": connection_id}
 
 
 @router.get("/sync-status")
@@ -331,9 +345,9 @@ async def get_sync_status(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ РѕР±С‰РёР№ СЃС‚Р°С‚СѓСЃ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё РґР»СЏ РґР°С€Р±РѕСЂРґР°
+    Возвращает общий статус синхронизации для дашборда
     """
-    # РџРѕР»СѓС‡Р°РµРј РІСЃРµ Р°РєС‚РёРІРЅС‹Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ
+    # Получаем все активные подключения
     account = get_user_account(db, current_user)
     connections = db.query(BrokerConnection).filter(
         BrokerConnection.account_id == account.id,
@@ -349,7 +363,7 @@ async def get_sync_status(
     
     connection_statuses = []
     for conn in connections:
-        # Р’С‹С‡РёСЃР»СЏРµРј РІСЂРµРјСЏ РґРѕ СЃР»РµРґСѓСЋС‰РµР№ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёРё
+        # Вычисляем время до следующей синхронизации
         next_sync_at = None
         if conn.auto_sync_enabled and conn.last_sync_at:
             from datetime import timedelta
@@ -383,7 +397,7 @@ async def trigger_manual_sync(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Р—Р°РїСѓСЃРєР°РµС‚ СЂСѓС‡РЅСѓСЋ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ РґР»СЏ РїРѕРґРєР»СЋС‡РµРЅРёСЏ
+    Запускает ручную синхронизацию для подключения
     """
     conn = db.query(BrokerConnection).filter(
         BrokerConnection.id == connection_id,
@@ -399,12 +413,12 @@ async def trigger_manual_sync(
     if not triggered:
         return {
             "success": False,
-            "message": "РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СѓР¶Рµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ"
+            "message": "Синхронизация уже выполняется"
         }
     
     return {
         "success": True,
-        "message": "РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ Р·Р°РїСѓС‰РµРЅР°"
+        "message": "Синхронизация запущена"
     }
 
 
@@ -414,7 +428,7 @@ async def get_portfolio(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ С‚РµРєСѓС‰РёР№ РїРѕСЂС‚С„РµР»СЊ РёР· Tinkoff API
+    Возвращает текущий портфель из Tinkoff API
     """
     account = get_user_account(db, current_user)
     conn = db.query(BrokerConnection).filter(
@@ -423,17 +437,17 @@ async def get_portfolio(
     ).first()
     
     if not conn:
-        raise HTTPException(status_code=404, detail="РќРµС‚ Р°РєС‚РёРІРЅС‹С… РїРѕРґРєР»СЋС‡РµРЅРёР№ Рє Р±СЂРѕРєРµСЂСѓ")
+        raise HTTPException(status_code=404, detail="Нет активных подключений к брокеру")
     
     try:
-        service = TinkoffService(decrypt_token(conn.api_token))
+        service = TinkoffService(_decrypt_or_410(conn.api_token))
         portfolio = await asyncio.to_thread(service.get_portfolio, conn.broker_account_id)
         
-        # РўР°РєР¶Рµ РїРѕР»СѓС‡Р°РµРј initial_balance РёР· Р°РєРєР°СѓРЅС‚Р° РґР»СЏ СЂР°СЃС‡С‘С‚Р° ROI
+        # Также получаем initial_balance из аккаунта для расчёта ROI
         account = db.query(Account).filter(Account.id == conn.account_id).first()
         initial_balance = float(account.initial_balance) if account and account.initial_balance else None
         
-        # Р Р°СЃСЃС‡РёС‚С‹РІР°РµРј ROI РµСЃР»Рё РµСЃС‚СЊ РЅР°С‡Р°Р»СЊРЅС‹Р№ Р±Р°Р»Р°РЅСЃ
+        # Рассчитываем ROI если есть начальный баланс
         total_balance = float(portfolio["total_balance"])
         roi = None
         if initial_balance and initial_balance > 0:
@@ -461,12 +475,12 @@ async def get_portfolio(
                     "instrument_type": p["instrument_type"]
                 }
                 for p in portfolio["positions"]
-                if p["ticker"] != "RUB000UTSTOM"  # РСЃРєР»СЋС‡Р°РµРј СЂСѓР±Р»Рё РєР°Рє РїРѕР·РёС†РёСЋ
+                if p["ticker"] != "RUB000UTSTOM"  # Исключаем рубли как позицию
             ],
             "updated_at": utc_now_naive().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ РїРѕСЂС‚С„РµР»СЏ: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка получения портфеля: {str(e)}")
 
 
 @router.get("/balance-history")
@@ -476,7 +490,7 @@ async def get_balance_history(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Р’РѕР·РІСЂР°С‰Р°РµС‚ РёСЃС‚РѕСЂРёСЋ Р±Р°Р»Р°РЅСЃР° РґР»СЏ РїРѕСЃС‚СЂРѕРµРЅРёСЏ Equity Curve
+    Возвращает историю баланса для построения Equity Curve
     """
     account = get_user_account(db, current_user)
     conn = db.query(BrokerConnection).filter(
@@ -498,7 +512,7 @@ async def get_balance_history(
     if not snapshots:
         return {"snapshots": [], "metrics": None}
     
-    # Р Р°СЃСЃС‡РёС‚С‹РІР°РµРј РјРµС‚СЂРёРєРё
+    # Рассчитываем метрики
     balances = [float(s.balance) for s in snapshots]
     first_balance = balances[0]
     last_balance = balances[-1]
@@ -568,7 +582,7 @@ async def set_initial_balance(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РЅР°С‡Р°Р»СЊРЅС‹Р№ Р±Р°Р»Р°РЅСЃ РґР»СЏ СЂР°СЃС‡С‘С‚Р° ROI
+    Устанавливает начальный баланс для расчёта ROI
     """
     account = get_user_account(db, current_user)
     conn = db.query(BrokerConnection).filter(
@@ -596,8 +610,8 @@ async def get_net_deposit_on_date(
     current_user: models.User = Depends(get_current_user)
 ):
     """
-    Р Р°СЃСЃС‡РёС‚С‹РІР°РµС‚ Р±Р°Р»Р°РЅСЃ РЅР° РґР°С‚Сѓ:
-    (Р’РІРѕРґС‹ - Р’С‹РІРѕРґС‹) + (Р РµР°Р»РёР·РѕРІР°РЅРЅС‹Р№ PnL - РљРѕРјРёСЃСЃРёРё)
+    Рассчитывает баланс на дату:
+    (Вводы - Выводы) + (Реализованный PnL - Комиссии)
     """
     account = get_user_account(db, current_user)
     conn = db.query(BrokerConnection).filter(
@@ -606,12 +620,12 @@ async def get_net_deposit_on_date(
     ).first()
     
     if not conn:
-        raise HTTPException(status_code=404, detail="РќРµС‚ Р°РєС‚РёРІРЅС‹С… РїРѕРґРєР»СЋС‡РµРЅРёР№")
+        raise HTTPException(status_code=404, detail="Нет активных подключений")
     
-    # Р”РµР»Р°РµРј СЃСЂРµР· РЅР° РєРѕРЅРµС† РґРЅСЏ СѓРєР°Р·Р°РЅРЅРѕР№ РґР°С‚С‹
+    # Делаем срез на конец дня указанной даты
     target_date = date.replace(hour=23, minute=59, second=59)
     
-    # 1. Р”РІРёР¶РµРЅРёРµ СЃСЂРµРґСЃС‚РІ
+    # 1. Движение средств
     deposits = db.query(func.sum(CapitalOperation.amount)).filter(
         CapitalOperation.account_id == conn.account_id,
         CapitalOperation.operation_type == "deposit",
@@ -624,7 +638,7 @@ async def get_net_deposit_on_date(
         CapitalOperation.date <= target_date
     ).scalar() or 0
     
-    # 2. Р РµР·СѓР»СЊС‚Р°С‚ С‚РѕСЂРіРѕРІР»Рё (С‚РѕР»СЊРєРѕ Р·Р°РєСЂС‹С‚С‹Рµ СЃРґРµР»РєРё)
+    # 2. Результат торговли (только закрытые сделки)
     trade_stats = db.query(
         func.sum(Trade.pnl),
         func.sum(Trade.commission)
@@ -636,7 +650,7 @@ async def get_net_deposit_on_date(
     realized_pnl = float(trade_stats[0] or 0)
     commissions = float(trade_stats[1] or 0)
     
-    # РС‚РѕРіРѕРІС‹Р№ Р±Р°Р»Р°РЅСЃ (Equity РїРѕ Р·Р°РєСЂС‹С‚С‹Рј СЃРґРµР»РєР°Рј)
+    # Итоговый баланс (Equity по закрытым сделкам)
     net_deposit = float(deposits) - float(withdrawals)
     total_balance = net_deposit + realized_pnl - commissions
     

@@ -23,9 +23,20 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  type TooltipProps,
 } from "recharts";
-import { ArrowLeft, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
+import { ArrowLeft, AlertCircle } from "lucide-react";
+
+// recharts v3 — локальный shape для content-callback'а Tooltip-а.
+type RechartsTooltipPayloadItem = {
+  dataKey?: string | number;
+  value?: number | string;
+  payload?: { ts?: number };
+};
+type RechartsTooltipContentProps = {
+  active?: boolean;
+  payload?: RechartsTooltipPayloadItem[];
+  label?: string | number;
+};
 import { AppShell } from "@/components/AppShell";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import { api } from "@/lib/apiClient";
@@ -362,7 +373,7 @@ export default function TradeReplayPage() {
   );
 }
 
-function ReplayTooltip({ active, payload }: TooltipProps<number, string>) {
+function ReplayTooltip({ active, payload }: RechartsTooltipContentProps) {
   if (!active || !payload || payload.length === 0) return null;
   const close = payload.find((p) => p.dataKey === "close")?.value;
   const high = payload.find((p) => p.dataKey === "high")?.value;
