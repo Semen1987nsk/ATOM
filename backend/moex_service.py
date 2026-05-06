@@ -8,7 +8,8 @@ MOEX ISS API Service
 
 import httpx
 import logging
-from typing import Dict, Optional
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from functools import lru_cache
 
@@ -169,6 +170,124 @@ class MoexService:
         logger.warning(f"No point_value found for {ticker}, using 1")
         return Decimal(1)
     
+    # ────────────────────────────────────────────────
+    #  Candles (для Trade Replay)
+    # ────────────────────────────────────────────────
+
+    # Нормализация interval-строк фронта в коды MOEX ISS.
+    # MOEX поддерживает: 1=1m, 10=10m, 60=1h, 24=1d, 7=1w, 31=1mo, 4=1q.
+    _INTERVAL_MAP = {
+        "1m": 1,
+        "10m": 10,
+        "1h": 60,
+        "1d": 24,
+        "1w": 7,
+        "1mo": 31,
+    }
+
+    @staticmethod
+    def normalize_interval(interval: str) -> int:
+        """Принимает '1m'/'10m'/'1h'/'1d'/'1w'/'1mo' или сразу int-код. Кидает ValueError."""
+        if isinstance(interval, int):
+            return interval
+        s = str(interval).strip().lower()
+        if s in MoexService._INTERVAL_MAP:
+            return MoexService._INTERVAL_MAP[s]
+        if s.isdigit():
+            return int(s)
+        raise ValueError(f"Unknown candle interval: {interval}")
+
+    @staticmethod
+    def auto_interval(span: timedelta) -> str:
+        """
+        Авто-подбор разрешения свечей под длину окна,
+        чтобы график не превращался в кашу/пустыню.
+        """
+        seconds = span.total_seconds()
+        if seconds <= 6 * 3600:           # ≤ 6h  → 1-min
+            return "1m"
+        if seconds <= 3 * 86400:          # ≤ 3d  → 10-min
+            return "10m"
+        if seconds <= 30 * 86400:         # ≤ 30d → 1h
+            return "1h"
+        if seconds <= 365 * 86400:        # ≤ 1y  → 1d
+            return "1d"
+        return "1w"
+
+    def get_candles(
+        self,
+        ticker: str,
+        interval: str = "1h",
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> List[Dict]:
+        """
+        Свечи с MOEX ISS. Пробует stock/shares, затем futures/forts.
+
+        Returns: list of {t (ISO), o, h, l, c, v}.
+        Возвращает [] если данных нет (тикер не найден / нерабочие дни / выходной).
+        """
+        interval_code = self.normalize_interval(interval)
+
+        # MOEX ISS принимает диапазон в формате YYYY-MM-DD HH:MM:SS.
+        # Если start/end не заданы — последние 30 дней.
+        if end is None:
+            end = datetime.utcnow()
+        if start is None:
+            start = end - timedelta(days=30)
+        params = {
+            "iss.meta": "off",
+            "iss.only": "candles",
+            "interval": interval_code,
+            "from": start.strftime("%Y-%m-%d %H:%M:%S"),
+            "till": end.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        # Порядок попыток зависит от вида тикера — экономим один RTT.
+        if self.is_futures_ticker(ticker):
+            urls = [
+                f"{MOEX_ISS_BASE}/engines/futures/markets/forts/securities/{ticker}/candles.json",
+                f"{MOEX_ISS_BASE}/engines/stock/markets/shares/securities/{ticker}/candles.json",
+            ]
+        else:
+            urls = [
+                f"{MOEX_ISS_BASE}/engines/stock/markets/shares/securities/{ticker}/candles.json",
+                f"{MOEX_ISS_BASE}/engines/futures/markets/forts/securities/{ticker}/candles.json",
+            ]
+
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                for url in urls:
+                    try:
+                        resp = client.get(url, params=params)
+                        if resp.status_code != 200:
+                            continue
+                        data = resp.json().get("candles", {})
+                        cols = data.get("columns", [])
+                        rows = data.get("data", [])
+                        if not rows:
+                            continue
+                        # MOEX columns: ['open','close','high','low','value','volume','begin','end']
+                        idx = {name: cols.index(name) for name in cols}
+                        candles = []
+                        for r in rows:
+                            candles.append({
+                                "t": r[idx["begin"]],
+                                "o": r[idx["open"]],
+                                "h": r[idx["high"]],
+                                "l": r[idx["low"]],
+                                "c": r[idx["close"]],
+                                "v": r[idx["volume"]],
+                            })
+                        return candles
+                    except httpx.RequestError as exc:
+                        logger.warning(f"MOEX candles request failed for {ticker} via {url}: {exc}")
+                        continue
+        except Exception as exc:
+            logger.error(f"Unexpected error fetching candles for {ticker}: {exc}")
+
+        return []
+
     def is_futures_ticker(self, ticker: str) -> bool:
         """
         Определить, является ли тикер фьючерсом по формату.

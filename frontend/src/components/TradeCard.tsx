@@ -5,7 +5,8 @@
  * 16-колоночная таблица на мобильном — катастрофа. На узких экранах
  * рендерим вертикальный список карточек: вся ключевая инфа за один клик.
  */
-import { TrendingUp, TrendingDown, Edit2, Trash2, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { TrendingUp, TrendingDown, Edit2, Trash2, ChevronRight, Play } from "lucide-react";
 
 interface TradeLite {
   id: number;
@@ -152,31 +153,37 @@ export function TradeCard({
       )}
 
       {/* Actions */}
-      {(onEdit || onDelete) && (
-        <div className="flex items-center justify-end gap-1 mt-3" onClick={(e) => e.stopPropagation()}>
-          {onEdit && (
-            <button
-              type="button"
-              onClick={() => onEdit(trade.id)}
-              className="btn-icon"
-              aria-label="Редактировать"
-            >
-              <Edit2 size={14} />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={() => onDelete(trade.id)}
-              className="btn-icon hover:text-[var(--danger)]"
-              aria-label="Удалить"
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
-          <ChevronRight size={14} className="text-[var(--text-tertiary)]" />
-        </div>
-      )}
+      <div className="flex items-center justify-end gap-1 mt-3" onClick={(e) => e.stopPropagation()}>
+        <Link
+          href={`/trades/${trade.id}/replay`}
+          className="btn-icon"
+          aria-label="Replay"
+          title="Trade Replay"
+        >
+          <Play size={14} />
+        </Link>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(trade.id)}
+            className="btn-icon"
+            aria-label="Редактировать"
+          >
+            <Edit2 size={14} />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(trade.id)}
+            className="btn-icon hover:text-[var(--danger)]"
+            aria-label="Удалить"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+        <ChevronRight size={14} className="text-[var(--text-tertiary)]" />
+      </div>
     </div>
   );
 }
