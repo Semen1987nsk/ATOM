@@ -3,12 +3,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Upload, Plus, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, BarChart2, Loader2, Calendar, Check } from 'lucide-react';
+import { Trash2, Upload, Plus, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, BarChart2, Loader2, Calendar, Check } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import { EditTradeModal } from '@/components/EditTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
 import { ImportPreviewModal } from '@/components/ImportPreviewModal';
-import ThemeToggle from '@/components/ThemeToggle';
+import { AppShell } from '@/components/AppShell';
+import { TradeCard } from '@/components/TradeCard';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
 import { useSettings } from '@/contexts/SettingsContext';
 import { api, getApiUrl } from '@/lib/apiClient';
@@ -413,19 +414,23 @@ export default function HistoryPage() {
 
   if (loading) return <TradeHistorySkeleton />;
 
+  // Page-specific actions для AppShell.headerRight (column settings, theme, etc).
+  // Column-settings popup стартует из той же кнопки, но теперь живёт в шапке страницы.
   return (
-    <main className="min-h-screen p-8 max-w-7xl mx-auto">
-      <header className="mb-8 flex justify-between items-center">
+    <AppShell
+      pageTitle="Дневник сделок"
+      onAddTrade={() => setIsModalOpen(true)}
+      onImport={() => setIsImportModalOpen(true)}
+    >
+    <div className="p-6 md:p-8 max-w-7xl mx-auto">
+      <div className="mb-6 flex justify-between items-center">
         <div>
-          <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-foreground transition-colors mb-2 font-mono text-xs uppercase tracking-widest">
-            <ArrowLeft size={14} /> Вернуться на дашборд
-          </Link>
-          <h1 className="text-3xl font-black tracking-tighter italic">
-            ДНЕВНИК <span className="text-accent">СДЕЛОК</span>
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight">Дневник сделок</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">
+            Все ваши закрытые и открытые позиции
+          </p>
         </div>
-        <div className="flex gap-3 items-center">
-          <ThemeToggle />
+        <div className="flex gap-2 items-center">
           <div className="relative">
             <button
               onClick={() => setShowColumnSettings(!showColumnSettings)}
@@ -534,7 +539,7 @@ export default function HistoryPage() {
             <Plus size={14} /> Новая позиция
           </button>
         </div>
-      </header>
+      </div>
 
       <AddTradeModal
         isOpen={isModalOpen}
@@ -904,9 +909,36 @@ export default function HistoryPage() {
             }`}
           />
 
+          {/* Mobile card view — viewport < md
+              Таблица 16 колонок на телефоне = катастрофа. На узких экранах
+              показываем вертикальный список карточек. */}
+          <div className="md:hidden space-y-2">
+            {sortedTrades.length === 0 ? (
+              <div className="text-center py-10 text-[13px] text-[var(--text-tertiary)]">
+                Нет сделок по текущему фильтру.
+              </div>
+            ) : (
+              sortedTrades.map((trade) => (
+                <TradeCard
+                  key={trade.id}
+                  trade={trade as Parameters<typeof TradeCard>[0]['trade']}
+                  onEdit={(id) => {
+                    const t = sortedTrades.find((tr) => tr.id === id);
+                    if (t) {
+                      setSelectedTrade(t);
+                      setIsEditModalOpen(true);
+                    }
+                  }}
+                  onDelete={(id) => handleDelete(id)}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Desktop table view — viewport >= md */}
           <div
             ref={scrollContainerRef}
-            className="overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-accent/30 hover:scrollbar-thumb-accent/50"
+            className="hidden md:block overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-accent/30 hover:scrollbar-thumb-accent/50"
             style={{ maxHeight: 'calc(100vh - 300px)' }}
           >
           <table className="w-full text-left border-collapse">
@@ -1583,6 +1615,7 @@ export default function HistoryPage() {
           </div>
         </div>
       </div>
-    </main>
+    </div>
+    </AppShell>
   );
 }

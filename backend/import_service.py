@@ -1,6 +1,6 @@
 import pandas as pd
 import io
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 from decimal import Decimal
 import models
@@ -9,6 +9,35 @@ from moex_service import get_moex_service
 from logger import get_logger
 
 log = get_logger("import")
+
+# МосБиржа торгуется в МСК (UTC+3). При импорте отчётов с naive-датами
+# мы интерпретируем их как МСК и приводим к UTC, чтобы все даты в БД
+# были в одной временной шкале (UTC-naive).
+MSK_TZ = timezone(timedelta(hours=3))
+
+
+def _normalize_to_utc_naive(value, assume_tz: timezone = MSK_TZ) -> Optional[datetime]:
+    """
+    Превращает любое значение даты (str, datetime, pandas.Timestamp) в datetime UTC-naive.
+
+    - Если datetime tz-aware — конвертируем в UTC, отбрасываем tzinfo.
+    - Если datetime naive — считаем, что он в `assume_tz` (по умолчанию МСК), и
+      переводим в UTC.
+
+    Возвращает None, если значение нельзя распарсить.
+    """
+    if value is None:
+        return None
+    try:
+        ts = pd.to_datetime(value, errors="coerce")
+    except Exception:
+        return None
+    if pd.isna(ts):
+        return None
+    dt = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=assume_tz)
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 class TradeManager:
     """
@@ -90,7 +119,8 @@ class TradeManager:
             'pnl': None,
             'net_pnl': None,
             'holding_time_minutes': None,
-            'currency': trade_data.get('currency', 'RUB'),
+            # currency: None означает «использовать дефолт аккаунта», а не подменять «RUB»
+            'currency': trade_data.get('currency') or None,
             'notes': trade_data.get('notes'),
             'tags': trade_data.get('tags', []),
             # Для расчёта средневзвешенной цены
@@ -883,8 +913,16 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
         'price': ['price', 'avg price', 'entry price', 'avg_price_usd'],
         'quantity': ['amount', 'quantity', 'executed', 'size', 'qty'],
         'pnl': ['pnl', 'realized pnl', 'profit', 'net profit'],
-        'fee': ['fee', 'commission']
+        'fee': ['fee', 'commission'],
+        'currency': ['currency', 'ccy', 'валюта', 'валюта расчётов'],
     }
+
+    # Если колонка с датой называется "date(utc)" — данные уже в UTC, иначе считаем МСК.
+    # Это спасает от рассинхрона с Binance/Bybit (UTC) vs МосБиржевыми отчётами (МСК).
+    def _detect_assume_tz(col_name: str) -> timezone:
+        if col_name and "utc" in col_name.lower():
+            return timezone.utc
+        return MSK_TZ
 
     def get_col(key):
         for candidate in col_map[key]:
@@ -909,20 +947,24 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     price_col = get_col('price')
     qty_col = get_col('quantity')
     pnl_col = get_col('pnl')
+    currency_col = get_col('currency')
 
     if not all([date_col, symbol_col, side_col, price_col, qty_col]):
          raise ValueError(f"Could not detect required columns. Found: {df.columns.tolist()}")
+
+    assume_tz = _detect_assume_tz(date_col)
 
     # Собираем raw сделки
     raw_trades = []
     fee_col = get_col('fee')
     row_side_values = []
-    
+
     for _, row in df.iterrows():
         try:
-            # Парсинг даты
-            raw_date = row[date_col]
-            entry_at = pd.to_datetime(raw_date).to_pydatetime()
+            # Парсинг даты — naive datetime интерпретируем в assume_tz и переводим в UTC.
+            entry_at = _normalize_to_utc_naive(row[date_col], assume_tz)
+            if entry_at is None:
+                continue
 
             # Парсинг направления
             raw_side = str(row[side_col]).lower()
@@ -952,6 +994,15 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
                 except (ValueError, TypeError):
                     pass
 
+            # Валюта: берём из колонки если есть, иначе оставляем None —
+            # пусть на уровне раскладки в позицию подставится дефолт по аккаунту,
+            # а не молча «RUB» для USD-инструментов.
+            currency = None
+            if currency_col and pd.notna(row.get(currency_col)):
+                cur_raw = str(row[currency_col]).strip().upper()
+                if cur_raw:
+                    currency = cur_raw
+
             raw_trades.append({
                 "symbol": str(row[symbol_col]).upper(),
                 "direction": direction,
@@ -962,6 +1013,7 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
                 "commission": commission,
                 "deal_sum": price * quantity,
                 "swap": 0.0,
+                "currency": currency,
                 "notes": f"Imported from {filename}",
                 "tags": ["Imported"]
             })
@@ -1024,7 +1076,9 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
             clean_trade.setdefault('entry_commission', clean_trade.get('commission', 0.0))
             clean_trade.setdefault('exit_commission', 0.0)
             clean_trade.setdefault('holding_time_minutes', None)
-            clean_trade.setdefault('currency', 'RUB')
+            # currency не подменяем «RUB» по умолчанию — None означает «брать из аккаунта»
+            if clean_trade.get('currency') is None:
+                clean_trade.pop('currency', None)
             clean_trade.setdefault('operations', [{
                 "type": "entry",
                 "time": clean_trade['entry_at'].strftime("%H:%M:%S") if isinstance(clean_trade.get('entry_at'), datetime) else str(clean_trade.get('entry_at')),

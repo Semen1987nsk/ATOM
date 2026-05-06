@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { getApiUrl } from '@/lib/apiClient';
+import { AppShell } from '@/components/AppShell';
 import { 
   ArrowLeft, Search, Eye, Heart, Calendar, User,
   Newspaper, BookOpen, TrendingUp, Lightbulb, Sparkles,
@@ -246,41 +247,32 @@ export default function BlogPage() {
 
   const totalArticles = categories.reduce((sum, cat) => sum + cat.count, 0);
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 hover:bg-secondary rounded-lg transition-colors">
-              <ArrowLeft size={20} />
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold">Блог ATOM</h1>
-              <p className="text-sm text-muted-foreground">{totalArticles} статей</p>
-            </div>
-          </div>
-          
-          {/* Search */}
-          <form onSubmit={handleSearch} className="hidden md:flex items-center gap-2">
-            <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Поиск статей..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-secondary border border-border rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-            <button type="submit" className="btn-primary py-2">
-              Найти
-            </button>
-          </form>
-        </div>
-      </header>
+  // Page-specific header right: поиск по статьям блога
+  const blogHeaderRight = (
+    <form onSubmit={handleSearch} className="hidden md:flex items-center gap-2">
+      <div className="relative">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+        <input
+          type="text"
+          placeholder="Поиск по блогу…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="input-cyber pl-8 py-1.5 w-56 text-[13px]"
+        />
+      </div>
+    </form>
+  );
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+  return (
+    <AppShell pageTitle="Блог" headerRight={blogHeaderRight}>
+    <div className="bg-[var(--background)]">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight">Блог</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">
+            {totalArticles} {totalArticles === 1 ? 'статья' : 'статей'} · обзоры, кейсы, метрики
+          </p>
+        </div>
         {/* Categories */}
         <div className="flex gap-2 overflow-x-auto pb-4 mb-8">
           <button
@@ -428,5 +420,6 @@ export default function BlogPage() {
         )}
       </main>
     </div>
+    </AppShell>
   );
 }

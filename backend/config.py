@@ -80,6 +80,44 @@ def _resolve_secret_key() -> str:
     return dev_key
 
 
+def _resolve_refresh_secret_key(access_secret: str) -> str:
+    """
+    Загружает REFRESH_SECRET_KEY.
+
+    - В production ОБЯЗАТЕЛЬНО задавать отдельной env-переменной.
+    - Раньше fallback был `SECRET_KEY + "_refresh_v2"` — это не отдельный
+      ключ, а derivative: компрометация одного компрометирует оба.
+    - В DEBUG-режиме разрешаем deterministic fallback с громким warning,
+      чтобы dev-сессии не инвалидировались на каждом рестарте.
+    """
+    key = os.getenv("REFRESH_SECRET_KEY")
+    is_debug = os.getenv("DEBUG", "false").lower() == "true"
+
+    if key:
+        if key == access_secret:
+            raise RuntimeError(
+                "🚨 FATAL: REFRESH_SECRET_KEY MUST be different from SECRET_KEY."
+            )
+        return key
+
+    if not is_debug:
+        raise RuntimeError(
+            "\n🚨 FATAL: REFRESH_SECRET_KEY is not set!\n"
+            "   In production REFRESH_SECRET_KEY MUST be set as a SEPARATE env-var,\n"
+            "   not derived from SECRET_KEY (single-key compromise risk).\n"
+            "   Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+        )
+
+    warnings.warn(
+        "\n⚠️  REFRESH_SECRET_KEY not set — using auto-generated dev key.\n"
+        "   This key changes on every restart. Refresh sessions will be invalidated.\n"
+        "   Set REFRESH_SECRET_KEY env var (DIFFERENT from SECRET_KEY) for persistence.",
+        UserWarning,
+        stacklevel=2,
+    )
+    return secrets.token_urlsafe(64)
+
+
 def _resolve_auto_init_db() -> bool:
     """Определяет, можно ли автоматически создавать таблицы при старте."""
     auto_init = os.getenv("AUTO_INIT_DB")
@@ -101,10 +139,15 @@ class Settings:
     # ==================== SECURITY ====================
     # Единственный источник SECRET_KEY для всего приложения
     SECRET_KEY: str = _resolve_secret_key()
-    REFRESH_SECRET_KEY: str = os.getenv("REFRESH_SECRET_KEY", SECRET_KEY + "_refresh_v2")
+    REFRESH_SECRET_KEY: str = _resolve_refresh_secret_key(SECRET_KEY)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    # bcrypt cost factor: 14 даёт ~250ms на современном CPU и защищает от GPU-bruteforce.
+    # 12 (default) уже неприемлемо для финансового SaaS в 2026.
+    BCRYPT_ROUNDS: int = int(os.getenv("BCRYPT_ROUNDS", "14"))
+    # Лимит размера файла на импорт сделок (защита от xlsx-bomb / DoS).
+    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
     ACCESS_TOKEN_COOKIE_NAME: str = os.getenv("ACCESS_TOKEN_COOKIE_NAME", "atom_access_token")
     REFRESH_TOKEN_COOKIE_NAME: str = os.getenv("REFRESH_TOKEN_COOKIE_NAME", "atom_refresh_token")
     CSRF_COOKIE_NAME: str = os.getenv("CSRF_COOKIE_NAME", "atom_csrf_token")
@@ -133,8 +176,17 @@ class Settings:
     # ==================== LOGGING ====================
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    # text — человекочитаемый (dev), json — для агрегаторов (prod)
+    LOG_FORMAT_MODE: str = os.getenv("LOG_FORMAT_MODE", "text").lower()
     ENABLE_FILE_LOGGING: bool = os.getenv("ENABLE_FILE_LOGGING", "true").lower() == "true"
     LOG_DIR: str = os.getenv("LOG_DIR", str(Path(__file__).resolve().parent.parent / "logs"))
+
+    # ==================== OBSERVABILITY (Sentry) ====================
+    # Если SENTRY_DSN пуст — Sentry не инициализируется (нет внешних отправок).
+    SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
+    SENTRY_ENVIRONMENT: str = os.getenv("SENTRY_ENVIRONMENT", "production")
+    SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.05"))
+    SENTRY_RELEASE: str = os.getenv("SENTRY_RELEASE", "")
 
     # ==================== INTEGRATIONS ====================
     OAUTH_HTTP_TIMEOUT_SECONDS: float = float(os.getenv("OAUTH_HTTP_TIMEOUT_SECONDS", "15"))

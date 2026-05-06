@@ -253,12 +253,17 @@ class TinkoffService:
                 except Exception as fe:
                     logger.warning(f"FutureBy failed for {figi}: {fe}")
 
+            # Валюту НЕ подменяем «RUB» по умолчанию: для USD-инструментов
+            # это даст молчаливо неверный P&L. Если API не вернул currency —
+            # оставим None, и заполним выше по дереву (по аккаунту/операции).
+            raw_currency = instrument.get("currency")
+            currency = raw_currency.upper() if isinstance(raw_currency, str) and raw_currency else None
             info = {
                 "figi": figi,
                 "ticker": instrument.get("ticker", figi),
                 "name": instrument.get("name", figi),
                 "lot": instrument.get("lot", 1),
-                "currency": instrument.get("currency", "RUB").upper(),
+                "currency": currency,
                 "class_code": instrument.get("classCode", ""),
                 "instrument_type": instrument_type,
                 "min_price_increment": self._money_to_decimal(instrument.get("minPriceIncrement", {})),
@@ -1358,9 +1363,11 @@ class TinkoffService:
         """Сохраняет ClosedTrade в БД. Возвращает 'new' / 'updated' / 'skipped'."""
         instrument = self.get_instrument_info(ct.figi)
         if not instrument:
+            # Не подменяем валюту «RUB» вслепую — берём дефолт аккаунта.
             instrument = {
                 "ticker": ct.figi, "name": ct.figi, "lot": 1,
-                "currency": "RUB", "instrument_type": "",
+                "currency": self._account_currency(db, account_id),
+                "instrument_type": "",
             }
 
         symbol = instrument["ticker"]
@@ -1402,7 +1409,7 @@ class TinkoffService:
             pnl=ct.pnl,
             net_pnl=ct.net_pnl,
             commission=ct.commission,
-            currency=instrument.get("currency", "RUB"),
+            currency=instrument.get("currency") or self._account_currency(db, account_id),
             operations=operations_json,
             tags=["#tinkoff", "#autosync"],
         )
@@ -1423,7 +1430,8 @@ class TinkoffService:
         if not instrument:
             instrument = {
                 "ticker": pos["figi"], "name": pos["figi"], "lot": 1,
-                "currency": "RUB", "instrument_type": "",
+                "currency": self._account_currency(db, account_id),
+                "instrument_type": "",
             }
 
         symbol = instrument["ticker"]
@@ -1461,13 +1469,21 @@ class TinkoffService:
             pnl=None,
             net_pnl=None,
             commission=pos["commission"],
-            currency=instrument.get("currency", "RUB"),
+            currency=instrument.get("currency") or self._account_currency(db, account_id),
             operations=pos["operations"],
             tags=["#tinkoff", "#autosync"],
         )
         db.add(new_trade)
         db.flush()
         return "new"
+
+    def _account_currency(self, db: Session, account_id: int) -> str:
+        """Возвращает валюту аккаунта; при отсутствии — RUB (российский ICP)."""
+        from models import Account
+        acc = db.query(Account).filter(Account.id == account_id).first()
+        if acc and acc.currency:
+            return acc.currency
+        return "RUB"
 
     # ═══════════════════════════════════════════════════
     #  CAPITAL OPERATIONS

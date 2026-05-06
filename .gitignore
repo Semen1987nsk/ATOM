@@ -54,3 +54,6 @@ frontend/node_modules/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Playwright MCP debug artifacts (local only)
+.playwright-mcp/

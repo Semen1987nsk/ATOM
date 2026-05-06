@@ -5,6 +5,7 @@ import { useAuth, RequireAuth } from '@/contexts/AuthContext';
 import { api, ApiError } from '@/lib/apiClient';
 import NextImage from 'next/image';
 import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
 import { 
   Users, TrendingUp, Activity, Target, Shield, ArrowLeft,
   Search, ChevronDown, UserCheck, UserX, Crown,
@@ -438,11 +439,8 @@ function AdminDashboard() {
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-8 relative">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-purple-500/5" />
-      <div className="absolute top-20 right-20 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
-      
+    <AppShell pageTitle="Админ-панель">
+    <main className="p-6 md:p-8">
       <div className="relative max-w-7xl mx-auto">
         {/* Header */}
         <header className="flex items-center justify-between mb-8">
@@ -1497,6 +1495,7 @@ function AdminDashboard() {
         )}
       </div>
     </main>
+    </AppShell>
   );
 }
 

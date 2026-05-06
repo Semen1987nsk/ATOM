@@ -1,0 +1,107 @@
+# ============================================================================
+#  ATOM — production-like stack для local/staging.
+#  Запуск: docker compose up --build
+#  Перед запуском: скопируй backend/.env.example → backend/.env и заполни.
+# ============================================================================
+
+services:
+
+  # ──────────────── Postgres 16 ────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: atom-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-atom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atom}
+      POSTGRES_DB: ${POSTGRES_DB:-atom}
+      # tune для финансового SaaS: WAL для durability, max_connections под пул
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # В проде НЕ выставлять наружу. Здесь — для local debug.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atom} -d ${POSTGRES_DB:-atom}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - atom-net
+
+  # ──────────────── Redis (rate-limit + OAuth state) ────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: atom-redis
+    restart: unless-stopped
+    # appendonly = AOF persistence для OAuth state (state теряется при рестарте)
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - atom-net
+
+  # ──────────────── Backend (FastAPI + gunicorn) ────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: atom-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override для compose-сети (хосты — имена сервисов).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-atom}:${POSTGRES_PASSWORD:-atom}@postgres:5432/${POSTGRES_DB:-atom}
+      REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      LOG_DIR: /var/log/atom
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Скриншоты сделок переживают рестарт
+      - uploads_data:/app/uploads
+      - logs_data:/var/log/atom
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - atom-net
+
+  # ──────────────── Nginx (TLS termination + frontend static) ────────────────
+  # В проде здесь Caddy/Traefik с auto-TLS. Для local — простой reverse-proxy.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: atom-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      # - "443:443"  # включить когда настроишь TLS
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - atom-net
+
+# ────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  logs_data:
+
+networks:
+  atom-net:
+    driver: bridge

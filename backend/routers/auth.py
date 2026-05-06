@@ -244,11 +244,17 @@ def oauth_authorize(request: Request, provider: str, redirect_uri: str):
     oauth_provider = oauth_service.get_provider(provider)
     if not oauth_provider:
         raise HTTPException(status_code=400, detail=f"Провайдер {provider} не поддерживается или не настроен")
-    
+
     state = secrets.token_urlsafe(32)
-    oauth_store.set(state, provider)
-    
-    auth_url = oauth_provider.get_authorize_url(redirect_uri, state)
+
+    # PKCE: генерируем pair и сохраняем verifier рядом со state.
+    # На callback verifier придёт обратно через стор и пойдёт в token-exchange.
+    code_verifier, code_challenge = oauth_service.generate_pkce_pair()
+    oauth_store.set(state, provider, code_verifier=code_verifier)
+
+    auth_url = oauth_provider.get_authorize_url(
+        redirect_uri, state, code_challenge=code_challenge
+    )
     return {"authorize_url": auth_url, "state": state}
 
 
@@ -265,17 +271,22 @@ async def oauth_callback(
 ):
     """
     Обработать callback от OAuth провайдера и создать/авторизовать пользователя.
+
+    Использует PKCE: code_verifier забирается из стора по state и передаётся
+    в exchange — защита от перехвата authorization code.
     """
-    if not oauth_store.validate_and_delete(state, provider):
+    state_record = oauth_store.consume(state, provider)
+    if state_record is None:
         raise HTTPException(status_code=400, detail="Неверный state параметр")
-    
+
     oauth_provider = oauth_service.get_provider(provider)
     if not oauth_provider:
         raise HTTPException(status_code=400, detail=f"Провайдер {provider} не поддерживается")
-    
+
     try:
         token_data = await oauth_service.exchange_code_for_token(
-            oauth_provider, code, redirect_uri
+            oauth_provider, code, redirect_uri,
+            code_verifier=state_record.code_verifier,
         )
         access_token = token_data.get("access_token")
         

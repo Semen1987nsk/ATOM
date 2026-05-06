@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { AppShell } from '@/components/AppShell';
 import { 
   Check, X, Zap, Crown, Building2, ArrowRight, 
   Shield, Clock, BarChart3, Headphones,
@@ -121,9 +122,9 @@ export default function PricingPage() {
   const currentPlan = 'free'; // TODO: получить из API
 
   return (
-    <main className="min-h-screen relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-purple-500/5" />
+    <AppShell pageTitle="Тарифы">
+    <main className="p-6 md:p-8 max-w-6xl mx-auto">
+      <div className="hidden" />
       <div className="absolute top-20 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
 
@@ -376,5 +377,6 @@ export default function PricingPage() {
         </div>
       </div>
     </main>
+    </AppShell>
   );
 }

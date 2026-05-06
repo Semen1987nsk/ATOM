@@ -1,18 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge, CheckCircle } from 'lucide-react';
-import ThemeToggle from '@/components/ThemeToggle';
+import { Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge, CheckCircle } from 'lucide-react';
+import { AppShell } from '@/components/AppShell';
 
 export default function Manual() {
   return (
-    <main className="min-h-screen p-8 max-w-5xl mx-auto">
-      {/* Navigation */}
-      <div className="flex justify-between items-center mb-8">
-        <Link href="/" className="inline-flex items-center gap-2 text-accent hover:text-foreground transition-colors font-mono text-xs uppercase tracking-widest">
-          <ArrowLeft size={14} /> Вернуться к терминалу
-        </Link>
-        <ThemeToggle />
+    <AppShell pageTitle="Руководство">
+    <main className="p-6 md:p-8 max-w-5xl mx-auto">
+      {/* Старая Navigation-полоска убрана — навигация теперь в sidebar */}
+      <div className="hidden">
+        <Link href="/" />
       </div>
 
       {/* Hero Section */}
@@ -3983,5 +3981,6 @@ export default function Manual() {
         </section>
       </div>
     </main>
+    </AppShell>
   );
 }

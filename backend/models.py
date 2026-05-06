@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric, Index, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric, Index, Boolean, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 import enum
 from utils.datetime_utils import utc_now_naive
@@ -120,6 +120,31 @@ class Account(Base):
     setups = relationship("Setup", back_populates="account", cascade="all, delete-orphan")
 
 
+class DailyReview(Base):
+    """
+    Daily Review — рефлексия дня + намерение на завтра.
+
+    1 строка = 1 день для конкретного account. Reflection — общий разбор дня.
+    Trade reflections (per-trade comments) хранятся в trade_reflections JSON
+    как { "trade_id": "комментарий" }.
+    """
+    __tablename__ = "daily_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    date = Column(String, nullable=False, index=True)  # YYYY-MM-DD
+    reflection = Column(String, default="")  # как прошёл день
+    intention = Column(String, default="")  # что планирую на завтра
+    trade_reflections = Column(JSON, default=dict)  # { trade_id: comment }
+    rating = Column(Integer, nullable=True)  # 1-5 общая оценка дня
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "date", name="uq_review_account_date"),
+    )
+
+
 class DepositHistory(Base):
     """История изменений депозита (пополнения/снятия)"""
     __tablename__ = "deposit_history"
@@ -204,14 +229,24 @@ class Setup(Base):
 
 class Trade(Base):
     __tablename__ = "trades"
-    
-    # Составные индексы для оптимизации частых запросов
+
+    # Составные индексы для оптимизации частых запросов + защита от дублей.
+    # UniqueConstraint спасает от двойного импорта при гонках:
+    # одна и та же сделка не может попасть в БД дважды по ключу
+    # (account_id, symbol, entry_at, direction).
     __table_args__ = (
+        UniqueConstraint(
+            'account_id', 'symbol', 'entry_at', 'direction',
+            name='uq_trades_dedup',
+        ),
         Index('ix_trades_account_symbol', 'account_id', 'symbol'),
         Index('ix_trades_symbol_entry_at', 'symbol', 'entry_at'),
         Index('ix_trades_entry_at', 'entry_at'),
         Index('ix_trades_exit_at', 'exit_at'),
         Index('ix_trades_direction', 'direction'),
+        # Composite index под частый паттерн: stats / analytics страницы
+        # фильтруют по account и сортируют/режут по диапазону дат.
+        Index('ix_trades_account_entry_exit', 'account_id', 'entry_at', 'exit_at'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -227,7 +262,9 @@ class Trade(Base):
     entry_reason = Column(String) # Причина/логика входа (для ИИ анализа)
     exit_reason = Column(String) # Причина выхода (Strategy, Time, Panic, etc.)
     quantity = Column(Numeric(precision=18, scale=8), nullable=False)
-    leverage = Column(Float, default=1.0) # Плечо
+    # leverage и r_multiple — финансовые величины, Float тут даёт накопление ошибок
+    # при последующих умножениях. Numeric(10,6) — точность до 0.000001.
+    leverage = Column(Numeric(precision=10, scale=6), default=1) # Плечо
     entry_at = Column(DateTime, nullable=False)
     exit_at = Column(DateTime)
     
@@ -273,7 +310,7 @@ class Trade(Base):
     operations = Column(JSON, default=list) # Детали операций для аккордеона
     # Пример: [{"type": "entry", "price": 14.117, "qty": 7000, "time": "09:50:45", "commission": 50}]
     
-    r_multiple = Column(Float) # PnL / Risk = сколько "R" заработал
+    r_multiple = Column(Numeric(precision=10, scale=6)) # PnL / Risk = сколько "R" заработал
     holding_time_minutes = Column(Integer) # Время удержания позиции в минутах
     
     account = relationship("Account", back_populates="trades")

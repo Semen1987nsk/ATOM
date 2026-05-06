@@ -1,0 +1,71 @@
+# ============================================================================
+#  Что НЕ копируется в Docker-образ — критично для безопасности и размера.
+# ============================================================================
+
+# Секреты — НИКОГДА в образ
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python артефакты
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+
+# Локальная БД и логи
+*.db
+*.sqlite
+*.sqlite3
+atom.db*
+logs/
+*.log
+
+# Загрузки пользователей (обычно монтируются как volume)
+uploads/
+
+# Тесты — в проде не нужны (CI прогоняет до сборки)
+tests/
+test_*.py
+*_test.py
+audit_*.py
+check_*.py
+cleanup_*.py
+pytest.ini
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Документация (не нужна в runtime)
+*.md
+!README.md
+docs/
+
+# CI/Docker мета (не нужно в самом образе)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+.github/

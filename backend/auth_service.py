@@ -155,8 +155,17 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def get_password_hash(password: str) -> str:
-    """Хеширование пароля"""
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    """
+    Хеширование пароля.
+
+    Используем явный rounds из настроек (по умолчанию 14) — bcrypt.gensalt()
+    без аргумента опирается на дефолт библиотеки (12), что недостаточно
+    в 2026 году против GPU-bruteforce.
+    """
+    return bcrypt.hashpw(
+        password.encode('utf-8'),
+        bcrypt.gensalt(rounds=settings.BCRYPT_ROUNDS),
+    ).decode('utf-8')
 
 
 # ==================== JWT ТОКЕНЫ ====================
@@ -452,13 +461,29 @@ async def get_current_user_optional(
 
 def get_user_account(db: Session, user: models.User) -> models.Account:
     """
-    Получить основной аккаунт пользователя.
-    Если нет - создаёт автоматически.
+    Возвращает АКТИВНЫЙ счёт пользователя.
+
+    Активный счёт — тот, чей id записан в user.settings['active_account_id'].
+    Если значение отсутствует или указывает на несуществующий/чужой счёт —
+    возвращаем первый по списку. Если счетов нет вообще — создаём дефолтный.
     """
+    # 1) Пытаемся прочитать activeAccount из settings
+    settings = (user.settings or {}) if isinstance(user.settings, dict) else {}
+    active_id = settings.get("active_account_id")
+
+    if active_id:
+        account = db.query(models.Account).filter(
+            models.Account.id == active_id,
+            models.Account.user_id == user.id,
+        ).first()
+        if account:
+            return account
+
+    # 2) Fallback на первый счёт пользователя
     account = db.query(models.Account).filter(
         models.Account.user_id == user.id
-    ).first()
-    
+    ).order_by(models.Account.id.asc()).first()
+
     if not account:
         # Создаём дефолтный аккаунт
         account = models.Account(
@@ -470,7 +495,7 @@ def get_user_account(db: Session, user: models.User) -> models.Account:
         db.add(account)
         db.commit()
         db.refresh(account)
-    
+
     return account
 
 

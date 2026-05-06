@@ -101,11 +101,19 @@ ATOM/
 - Сбер ID
 - Тинькофф ID
 
-### Тестовый админ
+### Создание админа
+
+Тестовый seed-аккаунт **больше не задаётся в репозитории** — это был security-ляп.
+Чтобы создать первого администратора, задай переменные окружения и запусти init-скрипт:
+
+```bash
+export ADMIN_BOOTSTRAP_EMAIL="you@example.com"
+export ADMIN_BOOTSTRAP_PASSWORD="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
+python -m scripts.create_admin   # см. docs/DEVELOPER_GUIDE.md
 ```
-Email: admin@eqio.app
-Password: admin123
-```
+
+Если в .env эти переменные не заданы — в проде admin не создаётся, а в DEBUG-режиме
+выводится предупреждение в логи.
 
 ---
 

@@ -95,11 +95,15 @@ class TestAdvancedStats:
         assert result["profit_factor"] == 4.6  # 230 / 50
     
     def test_profit_factor_no_losses(self):
-        """Should handle no-loss scenario."""
+        """No losses → PF математически не определён → None.
+
+        Phase 1 fix: раньше тут возвращалось магическое 99.99, что вводило
+        пользователя в заблуждение. Теперь возвращаем None и фронт показывает «—».
+        """
         pnl = [100, 50, 80]
         risk = [50] * 3
         result = analytics.calculate_advanced_stats(pnl, risk)
-        assert result["profit_factor"] == 99.99
+        assert result["profit_factor"] is None
     
     def test_r_expectancy(self):
         """Should correctly calculate R-expectancy."""
@@ -340,8 +344,9 @@ class TestMonteCarlo:
 
     def test_monte_carlo_seeded_contract(self):
         """Seeded Monte Carlo run should remain stable for the current vectorized implementation."""
+        import numpy as np  # local import — analytics-пакет больше не экспортирует np
         pnl = [100, 50, -30, 80, -20, 120, -40, 90, 60, -10]
-        analytics.np.random.seed(42)
+        np.random.seed(42)
         result = analytics.monte_carlo_simulation(pnl, num_simulations=100, num_trades=10)
         assert result["median_return"] == 400.0
         assert result["worst_case_5pct"] == 59.5

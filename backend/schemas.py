@@ -1,8 +1,51 @@
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from decimal import Decimal
 import models
+
+
+# ==================== GENERIC RESPONSES ====================
+# Общие схемы — для эндпоинтов, которые раньше возвращали dict без response_model.
+# Это дисциплинирует OpenAPI и не пускает наружу случайные внутренние поля.
+
+class MessageResponse(BaseModel):
+    """Простой ответ с сообщением (для action endpoints без объекта)."""
+    message: str
+    detail: Optional[str] = None
+
+
+class ImportResultResponse(BaseModel):
+    """Ответ от /trades/import."""
+    message: str
+    imported: int
+    skipped: int
+    duplicates_found: int
+    total_in_file: int
+    balance_saved: bool = False
+    range_processed: Optional[Dict[str, int]] = None
+
+
+class HealthResponse(BaseModel):
+    """Ответ /health."""
+    status: str
+    service: str
+    version: Optional[str] = None
+
+
+class ReadinessCheck(BaseModel):
+    ok: bool
+    error: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ReadinessResponse(BaseModel):
+    """Ответ /ready."""
+    status: str
+    service: str
+    version: str
+    checks: Dict[str, ReadinessCheck]
+
 
 # ==================== AUTH SCHEMAS ====================
 
@@ -10,7 +53,9 @@ class UserCreate(BaseModel):
     """Схема для регистрации пользователя"""
     email: EmailStr
     name: Optional[str] = None
-    password: str = Field(..., min_length=6)
+    # OWASP 2024: минимум 12 символов для финансового SaaS.
+    # Раньше было 6 — недопустимо при наличии денежных операций.
+    password: str = Field(..., min_length=12, max_length=128)
 
 class UserLogin(BaseModel):
     """Схема для входа"""

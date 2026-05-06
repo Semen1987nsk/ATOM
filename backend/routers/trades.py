@@ -19,11 +19,37 @@ import ai_service
 from moex_service import get_moex_service
 import pnl_service
 from capital_service import sync_initial_balance
+from config import settings
 from logger import get_logger
 
 log = get_logger("trades")
 
 router = APIRouter(prefix="/trades", tags=["trades"])
+
+
+async def _read_upload_with_limit(file: UploadFile) -> bytes:
+    """
+    Считывает UploadFile в память с проверкой лимита размера.
+
+    Защита от:
+    - DoS через гигантский xlsx-файл (xlsx-bomb).
+    - Истощения памяти — лимит из settings.MAX_UPLOAD_SIZE_MB (default 10MB).
+
+    UploadFile.read() полностью буферизирует в RAM, поэтому проверяем размер
+    после чтения. Для real-streaming можно перейти на chunk-read, но для
+    отчётов трейдеров (обычно <1MB) лимит в 10MB достаточен.
+    """
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    contents = await file.read()
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Файл слишком большой ({len(contents) // 1024} KB). "
+                   f"Лимит: {settings.MAX_UPLOAD_SIZE_MB} MB.",
+        )
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    return contents
 
 # Инициализируем сервис рыночных данных
 market_data_service = market_service.MarketService()
@@ -194,8 +220,8 @@ async def preview_import(
     Показывает какие сделки новые, а какие уже существуют (дубликаты).
     """
     account_id = auth_service.get_account_id(db, current_user)
-    
-    contents = await file.read()
+
+    contents = await _read_upload_with_limit(file)
     try:
         trades_data = import_service.parse_trade_file(contents, file.filename)
     except ValueError as e:
@@ -264,7 +290,7 @@ async def preview_import(
     }
 
 
-@router.post("/import")
+@router.post("/import", response_model=schemas.ImportResultResponse, status_code=200)
 async def import_trades(
     file: UploadFile = File(...),
     start_index: Optional[int] = Form(None),
@@ -291,8 +317,8 @@ async def import_trades(
     Дубликаты определяются по: symbol + direction + entry_at
     """
     account_id = auth_service.get_account_id(db, current_user)
-    
-    contents = await file.read()
+
+    contents = await _read_upload_with_limit(file)
     try:
         trades_data = import_service.parse_trade_file(contents, file.filename)
     except ValueError as e:
@@ -302,51 +328,61 @@ async def import_trades(
     total_in_file = len(trades_data)
     actual_start = start_index if start_index is not None else 0
     actual_end = end_index if end_index is not None else total_in_file - 1
-    
+
     # Валидация диапазона
     if actual_start < 0 or actual_start >= total_in_file:
         raise HTTPException(status_code=400, detail=f"start_index должен быть от 0 до {total_in_file - 1}")
     if actual_end < actual_start or actual_end >= total_in_file:
         raise HTTPException(status_code=400, detail=f"end_index должен быть от {actual_start} до {total_in_file - 1}")
-    
+
     # Выбираем только нужный диапазон
     trades_to_import = trades_data[actual_start:actual_end + 1]
-    
+
     imported_count = 0
     skipped_count = 0
     duplicate_count = 0
     balance_saved = False
-    
-    for trade_dict in trades_to_import:
-        existing = db.query(models.Trade).filter(
-            models.Trade.account_id == account_id,
-            models.Trade.symbol == trade_dict['symbol'],
-            models.Trade.direction == trade_dict['direction'],
-            models.Trade.entry_at == trade_dict['entry_at']
-        ).first()
-        
-        if existing:
-            duplicate_count += 1
-            if skip_duplicates:
-                skipped_count += 1
-                continue
-            else:
+
+    # Кеш колонок Trade — чтобы не пересчитывать на каждой итерации.
+    valid_columns = {c.name for c in models.Trade.__table__.columns}
+
+    # Импорт в одной транзакции: при ЛЮБОЙ ошибке — полный откат батча.
+    # Раньше частичная ошибка оставляла БД в несогласованном состоянии
+    # (часть сделок уже вставлена, баланс пересчитан некорректно).
+    try:
+        for trade_dict in trades_to_import:
+            existing = db.query(models.Trade).filter(
+                models.Trade.account_id == account_id,
+                models.Trade.symbol == trade_dict['symbol'],
+                models.Trade.direction == trade_dict['direction'],
+                models.Trade.entry_at == trade_dict['entry_at']
+            ).first()
+
+            if existing:
+                duplicate_count += 1
+                if skip_duplicates:
+                    skipped_count += 1
+                    continue
                 # Если не пропускаем, обновляем существующую сделку
-                update_columns = {c.name for c in models.Trade.__table__.columns}
                 for key, value in trade_dict.items():
-                    if key in update_columns and key not in ('id', 'created_at'):
+                    if key in valid_columns and key not in ('id', 'created_at'):
                         setattr(existing, key, value)
                 imported_count += 1
                 continue
-        
-        trade_dict["account_id"] = account_id
-        
-        # Удаляем ключи, которых нет в модели Trade (import_service может вернуть лишние)
-        valid_columns = {c.name for c in models.Trade.__table__.columns}
-        clean_dict = {k: v for k, v in trade_dict.items() if k in valid_columns}
-        db_trade = models.Trade(**clean_dict)
-        db.add(db_trade)
-        imported_count += 1
+
+            trade_dict["account_id"] = account_id
+            # Удаляем ключи, которых нет в модели Trade (import_service может вернуть лишние)
+            clean_dict = {k: v for k, v in trade_dict.items() if k in valid_columns}
+            db_trade = models.Trade(**clean_dict)
+            db.add(db_trade)
+            imported_count += 1
+    except Exception as exc:
+        db.rollback()
+        log.error(f"Import batch failed, rolled back {imported_count} pending inserts: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Импорт прерван из-за ошибки: {exc}. Изменения откачены — повторите попытку.",
+        )
     
     # Сохраняем снимки баланса если переданы
     if initial_balance is not None and balance_date_start:
@@ -405,8 +441,16 @@ async def import_trades(
                 balance_saved = True
         except Exception as e:
             log.warning(f"Could not save final balance snapshot: {e}")
-    
-    db.commit()
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log.error(f"Import commit failed, rolled back: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Не удалось сохранить импорт: {exc}. Изменения откачены — повторите попытку.",
+        )
     return {
         "message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}" + (", баланс сохранён" if balance_saved else ""),
         "imported": imported_count,
@@ -511,7 +555,7 @@ async def upload_screenshot(
     return {"url": screenshot_url, "filename": filename}
 
 
-@router.delete("/{trade_id}/screenshot")
+@router.delete("/{trade_id}/screenshot", response_model=schemas.MessageResponse)
 async def delete_screenshot(
     trade_id: int,
     db: Session = Depends(database.get_db),
@@ -519,15 +563,15 @@ async def delete_screenshot(
 ):
     """Удалить скриншот сделки"""
     account_id = auth_service.get_account_id(db, current_user)
-    
+
     trade = db.query(models.Trade).filter(
         models.Trade.id == trade_id,
         models.Trade.account_id == account_id
     ).first()
-    
+
     if not trade:
         raise HTTPException(status_code=404, detail="Сделка не найдена")
-    
+
     if trade.screenshot_url:
         # Удаляем файл
         filepath = Path(trade.screenshot_url.lstrip("/"))
@@ -535,7 +579,7 @@ async def delete_screenshot(
             filepath.unlink()
         trade.screenshot_url = None
         db.commit()
-    
+
     return {"message": "Скриншот удалён"}
 
 
@@ -563,9 +607,9 @@ async def update_trade(
     return db_trade
 
 
-@router.delete("/{trade_id}")
+@router.delete("/{trade_id}", response_model=schemas.MessageResponse)
 async def delete_trade(
-    trade_id: int, 
+    trade_id: int,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
@@ -634,21 +678,95 @@ async def close_trade(
         exit_commission=float(trade_close.exit_commission or 0),
     )
     
-    # AI Analysis
+    # AI Analysis (полный pack — psycho-метрики, последние PnL, account context)
+    account = db.query(models.Account).filter(models.Account.id == db_trade.account_id).first()
+    initial_balance = float(account.initial_balance or 0) if account else 0
+    recent_trades = db.query(models.Trade).filter(
+        models.Trade.account_id == db_trade.account_id,
+        models.Trade.id != db_trade.id,
+        models.Trade.pnl != None,
+    ).order_by(models.Trade.exit_at.desc()).limit(5).all()
+    recent_pnls = [float(t.pnl) for t in recent_trades]
+
     trade_data = {
         "symbol": db_trade.symbol,
         "direction": db_trade.direction.value,
         "pnl": float(db_trade.pnl),
+        "entry_price": float(db_trade.entry_price) if db_trade.entry_price else None,
+        "exit_price": float(db_trade.exit_price) if db_trade.exit_price else None,
+        "stop_loss": float(db_trade.stop_loss) if db_trade.stop_loss else None,
+        "take_profit": float(db_trade.take_profit) if db_trade.take_profit else None,
         "mae_price": float(db_trade.mae_price) if db_trade.mae_price else None,
         "mfe_price": float(db_trade.mfe_price) if db_trade.mfe_price else None,
+        "holding_time_minutes": db_trade.holding_time_minutes,
+        "setup_name": db_trade.setup_name,
+        "tags": db_trade.tags,
         "notes": db_trade.notes,
-        "exit_price": float(db_trade.exit_price)
+        "mood": db_trade.mood,
+        "confidence": db_trade.confidence,
+        "discipline": db_trade.discipline,
     }
-    db_trade.ai_analysis = await ai_service.analyze_trade_with_ai(trade_data)
-        
+    db_trade.ai_analysis = await ai_service.analyze_trade_with_ai(
+        trade_data,
+        account_initial_balance=initial_balance,
+        recent_pnls=recent_pnls,
+    )
+
     db.commit()
     db.refresh(db_trade)
     return db_trade
+
+
+@router.post("/{trade_id}/reanalyze")
+async def reanalyze_trade(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """Перезапуск AI-анализа для существующей сделки (после правок)."""
+    account_id = auth_service.get_account_id(db, current_user)
+    db_trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id,
+    ).first()
+    if not db_trade or db_trade.pnl is None:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Сделка не найдена или ещё открыта")
+
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    initial_balance = float(account.initial_balance or 0) if account else 0
+    recent_trades = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.id != trade_id,
+        models.Trade.pnl != None,
+    ).order_by(models.Trade.exit_at.desc()).limit(5).all()
+    recent_pnls = [float(t.pnl) for t in recent_trades]
+
+    db_trade.ai_analysis = await ai_service.analyze_trade_with_ai(
+        {
+            "symbol": db_trade.symbol,
+            "direction": db_trade.direction.value,
+            "pnl": float(db_trade.pnl),
+            "entry_price": float(db_trade.entry_price) if db_trade.entry_price else None,
+            "exit_price": float(db_trade.exit_price) if db_trade.exit_price else None,
+            "stop_loss": float(db_trade.stop_loss) if db_trade.stop_loss else None,
+            "take_profit": float(db_trade.take_profit) if db_trade.take_profit else None,
+            "mae_price": float(db_trade.mae_price) if db_trade.mae_price else None,
+            "mfe_price": float(db_trade.mfe_price) if db_trade.mfe_price else None,
+            "holding_time_minutes": db_trade.holding_time_minutes,
+            "setup_name": db_trade.setup_name,
+            "tags": db_trade.tags,
+            "notes": db_trade.notes,
+            "mood": db_trade.mood,
+            "confidence": db_trade.confidence,
+            "discipline": db_trade.discipline,
+        },
+        account_initial_balance=initial_balance,
+        recent_pnls=recent_pnls,
+    )
+    db.commit()
+    db.refresh(db_trade)
+    return db_trade.ai_analysis
 
 
 @router.get("/unrealized-pnl")

@@ -38,6 +38,14 @@ redis>=5.0.0,<6.0.0  # Optional: for distributed rate limiting
 # ==================== UTILITIES ====================
 python-dotenv>=1.0.0,<2.0.0  # Environment variables
 pytz>=2024.1  # Timezone support
+email-validator>=2.0.0,<3.0.0  # для pydantic.EmailStr
+
+# ==================== PRODUCTION RUNTIME ====================
+gunicorn>=21.2.0,<23.0.0  # WSGI manager + uvicorn workers (см. Dockerfile CMD)
+
+# ==================== OBSERVABILITY ====================
+sentry-sdk[fastapi]>=2.0.0,<3.0.0  # Error tracking; opt-in через SENTRY_DSN
+python-json-logger>=2.0.7,<3.0.0  # JSON логи для prod-агрегаторов
 
 # ==================== BROKER INTEGRATIONS ====================
 # Tinkoff Invest API - используем REST API через httpx (уже установлен)

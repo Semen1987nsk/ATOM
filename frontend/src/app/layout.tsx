@@ -5,6 +5,7 @@ import { LanguageProvider } from "@/i18n/LanguageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { QueryProvider } from "@/lib/QueryProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,13 +33,15 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ErrorBoundary>
-          <AuthProvider>
-            <LanguageProvider>
-              <SettingsProvider>
-                {children}
-              </SettingsProvider>
-            </LanguageProvider>
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <LanguageProvider>
+                <SettingsProvider>
+                  {children}
+                </SettingsProvider>
+              </LanguageProvider>
+            </AuthProvider>
+          </QueryProvider>
         </ErrorBoundary>
       </body>
     </html>

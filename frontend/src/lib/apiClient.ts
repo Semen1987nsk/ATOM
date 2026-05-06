@@ -12,7 +12,7 @@ function getApiBase(): string {
     const codespaceName = window.location.hostname.split('-3000')[0];
     return `https://${codespaceName}-8000.app.github.dev`;
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8003';
 }
 
 const CSRF_COOKIE_NAME = 'atom_csrf_token';
@@ -22,6 +22,12 @@ export function getApiUrl(path: string): string {
   return `${getApiBase()}${path}`;
 }
 
+/**
+ * ⚠️ Auth-токены живут в httpOnly cookies (см. backend/auth_service.py).
+ * Эта функция ТОЛЬКО очищает legacy-ghosts из localStorage, оставшиеся
+ * от старой версии приложения. Никогда не добавляйте сюда .setItem(...) —
+ * хранение токенов в localStorage = XSS-эксфильтрация в одну строку.
+ */
 export function clearAuthTokens() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('auth_token');
@@ -150,24 +156,39 @@ async function request<T>(
 
   let response = await fetch(url, fetchOptions);
 
-  if (response.status === 401 && !noAuth) {
+  // Auth-эндпоинты (login/register/refresh) сами «являются» аутентификацией —
+  // если они вернули 401, refresh-retry бессмысленен и приводит к ложному
+  // "Сессия истекла" вместо реального "Неверный email или пароль".
+  const isAuthEndpoint = path.startsWith('/auth/login')
+    || path.startsWith('/auth/register')
+    || path.startsWith('/auth/refresh');
+
+  if (response.status === 401 && !noAuth && !isAuthEndpoint) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       response = await fetch(url, fetchOptions);
     }
   }
 
-  if (response.status === 401) {
-    clearAuthTokens();
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('auth:logout'));
-    }
-    throw new ApiError(401, 'Сессия истекла. Войдите снова.');
-  }
-
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ detail: 'Ошибка сервера' }));
-    throw new ApiError(response.status, errorData.detail || `HTTP ${response.status}`);
+    const errorData = await response.json().catch(() => ({ detail: undefined }));
+    const detail = errorData.detail
+      || (response.status === 401
+        ? (isAuthEndpoint
+            ? 'Неверный email или пароль'
+            : 'Сессия истекла. Войдите снова.')
+        : `HTTP ${response.status}`);
+
+    // Только для ПОСТ-аутентификационных 401 (а не для login/register) —
+    // выкидываем юзера, чистим cookies, оповещаем приложение.
+    if (response.status === 401 && !isAuthEndpoint) {
+      clearAuthTokens();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('auth:logout'));
+      }
+    }
+
+    throw new ApiError(response.status, detail);
   }
 
   if (rawResponse) return response as unknown as T;

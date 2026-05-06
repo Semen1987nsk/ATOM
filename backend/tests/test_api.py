@@ -113,11 +113,21 @@ class TestRoot:
         assert response.headers.get("X-Request-ID") == "test-request-123"
     
     def test_health_check(self, test_app):
-        """Should return healthy status"""
+        """Liveness probe — лёгкая проверка процесса. Возвращает 'alive'."""
         client = test_app["client"]
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.json()["status"] == "healthy"
+        assert response.json()["status"] == "alive"
+
+    def test_readiness_check(self, test_app):
+        """Readiness probe с проверкой DB (и Redis, если включён)."""
+        client = test_app["client"]
+        response = client.get("/ready")
+        # В тестовом окружении DB подключена → ready=200, status='ready'
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ready"
+        assert body["checks"]["database"]["ok"] is True
     
     def test_db_check(self, test_app):
         """Should confirm database connection"""
@@ -141,24 +151,24 @@ class TestAuth:
         return {auth_service.CSRF_HEADER_NAME: csrf_token}
     
     def test_register_success(self, test_app):
-        """Should register new user successfully"""
+        """Should register new user successfully (password ≥ 12 chars per OWASP 2024)."""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "newuser@example.com",
-            "password": "password123",
+            "password": "Strong-Password-123",
             "name": "New User"
         })
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
-    
+
     def test_register_duplicate_email(self, test_app, test_user):
         """Should reject duplicate email"""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "test@example.com",
-            "password": "password123",
+            "password": "Strong-Password-123",
             "name": "Duplicate"
         })
         assert response.status_code == 400

@@ -5,9 +5,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
-import hashlib
-import json
-import threading
 
 import database
 import models
@@ -19,6 +16,11 @@ from utils import utc_now_naive
 from logger import get_logger
 from tinkoff_service import TinkoffService
 from crypto_utils import decrypt_token
+from services.stats_cache import (
+    stats_cache,
+    build_request_key as _get_cache_key,
+    build_trades_state_fingerprint as _get_trades_state_fingerprint,
+)
 import asyncio
 
 log = get_logger("stats")
@@ -26,58 +28,16 @@ log = get_logger("stats")
 router = APIRouter(tags=["stats"])
 tags_router = APIRouter(tags=["stats"])
 
-# Thread-safe in-memory cache for stats
-_stats_cache = {}
-_cache_lock = threading.Lock()
-_cache_ttl = 30  # seconds
-_cache_max_size = 100
 
-def _get_cache_key(account_id, **kwargs):
-    """Generate cache key from parameters"""
-    params = {k: v for k, v in kwargs.items() if v is not None}
-    params['account_id'] = account_id
-    key_str = json.dumps(params, sort_keys=True, default=str)
-    return hashlib.sha256(key_str.encode()).hexdigest()
-
+# Thin wrappers поверх services.stats_cache — сохраняют существующий
+# call-site API в этом файле. После Phase 4 можно убрать алиасы и
+# звать stats_cache.get/set напрямую.
 def _get_cached(key):
-    """Get value from cache if not expired (thread-safe)"""
-    with _cache_lock:
-        if key in _stats_cache:
-            value, timestamp = _stats_cache[key]
-            if (datetime.now() - timestamp).total_seconds() < _cache_ttl:
-                return value
-            _stats_cache.pop(key, None)
-    return None
+    return stats_cache.get(key)
+
 
 def _set_cached(key, value):
-    """Set value in cache (thread-safe)"""
-    with _cache_lock:
-        _stats_cache[key] = (value, datetime.now())
-        # Clean old entries (keep max _cache_max_size)
-        if len(_stats_cache) > _cache_max_size:
-            sorted_keys = sorted(_stats_cache.keys(),
-                               key=lambda k: _stats_cache[k][1])
-            for k in sorted_keys[:len(_stats_cache) - _cache_max_size // 2]:
-                _stats_cache.pop(k, None)
-
-
-def _get_trades_state_fingerprint(trades):
-    """Create a stable fingerprint for the filtered trade set used by /stats/."""
-    payload = []
-    for trade in trades:
-        payload.append({
-            "id": trade.id,
-            "pnl": float(trade.pnl) if trade.pnl is not None else None,
-            "net_pnl": float(trade.net_pnl) if trade.net_pnl is not None else None,
-            "risk_amount": float(trade.risk_amount) if trade.risk_amount is not None else None,
-            "entry_at": trade.entry_at.isoformat() if trade.entry_at else None,
-            "exit_at": trade.exit_at.isoformat() if trade.exit_at else None,
-            "tags": trade.tags or [],
-            "mae_price": float(trade.mae_price) if trade.mae_price is not None else None,
-            "mfe_price": float(trade.mfe_price) if trade.mfe_price is not None else None,
-        })
-    state = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(state.encode()).hexdigest()
+    stats_cache.set(key, value)
 
 
 # get_account_id is now centralized in auth_service
@@ -506,6 +466,371 @@ async def get_stats(
     # Cache the result
     _set_cached(cache_key, result)
     return result
+
+
+# ──────────────────────────────────────────────────────────────────
+#  Helper: общая загрузка сделок для /advanced и /benchmark
+# ──────────────────────────────────────────────────────────────────
+
+def _load_filtered_trades(
+    db: Session,
+    account_id: int,
+    period: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    start_trade_id: Optional[int],
+    tag: Optional[str],
+    limit: Optional[int],
+):
+    """Повторяет фильтр-логику /stats/ — единственный источник правды для
+    периода/тега/лимита. Возвращает список Trade с непустым PnL."""
+    date_filter: Optional[datetime] = None
+    now = utc_now_naive()
+
+    if start_trade_id:
+        st = db.query(models.Trade).filter(
+            models.Trade.id == start_trade_id,
+            models.Trade.account_id == account_id,
+        ).first()
+        if st:
+            date_filter = st.entry_at
+    elif period == "today":
+        date_filter = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        date_filter = now - timedelta(days=7)
+    elif period == "month":
+        date_filter = now - timedelta(days=30)
+    elif period == "3months":
+        date_filter = now - timedelta(days=90)
+    elif period == "year":
+        date_filter = now - timedelta(days=365)
+    elif period == "custom" and start_date:
+        try:
+            date_filter = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            pass
+
+    q = db.query(models.Trade).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.pnl != None,
+    )
+    if date_filter:
+        q = q.filter(
+            (models.Trade.exit_at >= date_filter)
+            | ((models.Trade.exit_at == None) & (models.Trade.entry_at >= date_filter))
+        )
+    if period == "custom" and end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            q = q.filter(
+                (models.Trade.exit_at < end_dt)
+                | ((models.Trade.exit_at == None) & (models.Trade.entry_at < end_dt))
+            )
+        except ValueError:
+            pass
+
+    trades = q.order_by(models.Trade.entry_at.asc()).all()
+    if tag:
+        tl = tag.lower()
+        trades = [t for t in trades if t.tags and any(tg.lower() == tl for tg in t.tags)]
+    if limit and limit > 0:
+        trades = trades[-limit:]
+    return trades
+
+
+def _build_equity_curve(trades) -> list:
+    """Кумулятивный баланс по PnL (без учёта депозитов — для DD-метрик это и нужно)."""
+    eq: list = []
+    running = 0.0
+    for t in trades:
+        pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
+        running += pnl
+        eq.append(running)
+    return eq
+
+
+# ──────────────────────────────────────────────────────────────────
+#  /advanced — продвинутые quant-метрики (Ulcer, K-Ratio, ...)
+# ──────────────────────────────────────────────────────────────────
+
+# trigger-reload
+@router.get("/advanced")
+async def get_advanced_stats(
+    period: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    start_trade_id: Optional[int] = Query(None),
+    tag: Optional[str] = Query(None),
+    limit: Optional[int] = Query(None),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """Quant-метрики «второго уровня» — для отдельной вкладки на дашборде."""
+    account_id = auth_service.get_account_id(db, current_user)
+    trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
+                                   start_trade_id, tag, limit)
+
+    if not trades:
+        return {"total_trades": 0, "items": {}}
+
+    equity = _build_equity_curve(trades)
+    pnls = [float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0)) for t in trades]
+    commissions = [float(t.commission or 0) for t in trades]
+    gross_pnl = sum(p for p in pnls if p > 0)
+    holding_minutes = [
+        (t.holding_time_minutes if t.holding_time_minutes is not None else None)
+        for t in trades
+    ]
+    entry_dates = [t.entry_at for t in trades if t.entry_at]
+    disciplines = [t.discipline for t in trades]
+
+    trades_for_period = [{"entry_at": t.entry_at, "pnl": float(t.pnl or 0)} for t in trades]
+    trades_with_tags = [{"tags": t.tags or [], "pnl": float(t.pnl or 0)} for t in trades]
+
+    # Drawdown статистика — нужна для Sterling/MAR
+    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
+    dd_episodes = analytics.collect_drawdown_episodes(equity)
+
+    # CAGR требует достаточной истории (3+ месяца) и реального стартового баланса.
+    # На короткой выборке аннуализированная доходность взрывается математически и
+    # становится бессмысленной (например, +20% за 30 дней → CAGR > 700%/год).
+    cagr_pct = None
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    initial_balance = float(account.initial_balance or 0) if account else 0
+    if entry_dates and len(entry_dates) >= 2 and equity and initial_balance > 0:
+        days = max((entry_dates[-1] - entry_dates[0]).days, 1)
+        if days >= 90:  # минимум 3 месяца, иначе CAGR не показываем
+            years = days / 365.0
+            final_balance = initial_balance + equity[-1]
+            if final_balance > 0:
+                cagr_pct = round((pow(final_balance / initial_balance, 1 / years) - 1) * 100, 2)
+
+    return {
+        "total_trades": len(trades),
+        "items": {
+            "ulcer_index": analytics.calculate_ulcer_index(equity),
+            "k_ratio": analytics.calculate_k_ratio(equity),
+            "sterling_ratio": analytics.calculate_sterling_ratio(cagr_pct or 0, dd_episodes),
+            "omega_ratio": analytics.calculate_omega_ratio(pnls, threshold=0),
+            "mar_ratio": analytics.calculate_mar_ratio(cagr_pct, dd_stats.get("max_drawdown_pct")),
+            "drawdown_duration": analytics.calculate_drawdown_duration(equity),
+            "hold_time_distribution": analytics.calculate_hold_time_distribution(holding_minutes, pnls),
+            "period_breakdown": analytics.calculate_period_breakdown(trades_for_period),
+            "hour_dow_heatmap": analytics.calculate_hour_dow_heatmap(trades_for_period),
+            "plan_adherence": analytics.calculate_plan_adherence(disciplines),
+            "mistake_categories": analytics.calculate_mistake_categories(trades_with_tags),
+            "commission_ratio_pct": analytics.calculate_commission_ratio(gross_pnl, commissions),
+            "trade_frequency": analytics.calculate_trade_frequency(entry_dates),
+            "rr_realized": analytics.calculate_rr_realized([
+                {
+                    "entry_price": t.entry_price,
+                    "stop_loss": t.stop_loss,
+                    "take_profit": t.take_profit,
+                    "direction": t.direction,
+                    "risk_amount": t.risk_amount,
+                    "pnl": t.pnl,
+                }
+                for t in trades
+            ]),
+            "psycho_correlations": analytics.calculate_psycho_correlations([
+                {"mood": t.mood, "confidence": t.confidence, "discipline": t.discipline, "pnl": t.pnl}
+                for t in trades
+            ]),
+            "news_event_stats": analytics.calculate_news_event_stats([
+                {"news_event": t.news_event, "pnl": t.pnl}
+                for t in trades
+            ]),
+            "exit_breakdown": analytics.calculate_exit_reason_breakdown([
+                {
+                    "exit_reason": t.exit_reason,
+                    "pnl": t.pnl,
+                    "stop_loss": t.stop_loss,
+                    "take_profit": t.take_profit,
+                }
+                for t in trades
+            ]),
+            "r_distribution": analytics.calculate_r_distribution_histogram([
+                {"r_multiple": t.r_multiple, "pnl": t.pnl}
+                for t in trades
+            ]),
+            "tax_visibility": analytics.calculate_tax_visibility([
+                {"pnl": t.pnl, "exit_at": t.exit_at}
+                for t in trades
+            ]),
+            "cagr_pct": round(cagr_pct, 2) if cagr_pct is not None else None,
+            "dd_episodes": dd_episodes,
+        },
+    }
+
+
+# ──────────────────────────────────────────────────────────────────
+#  /benchmark — анонимное сравнение с когортой
+# ──────────────────────────────────────────────────────────────────
+
+@router.get("/benchmark")
+async def get_benchmark(
+    period: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """
+    Сравнение метрик пользователя с когортой Eqio. Пока живых юзеров мало —
+    база синтетическая (academic baselines). При росте — переключается на real.
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
+                                   None, None, None)
+
+    if not trades:
+        return {
+            "cohort_size": 0,
+            "is_synthetic": True,
+            "items": [],
+            "disclaimer": "Добавьте сделки, чтобы увидеть сравнение с когортой.",
+        }
+
+    pnls = [float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0)) for t in trades]
+    risks = [float(t.risk_amount) if t.risk_amount else 0 for t in trades]
+    equity = _build_equity_curve(trades)
+
+    # Считаем те метрики, по которым у нас есть baseline
+    win_loss = analytics.calculate_win_loss_stats(pnls)
+    opt_f = analytics.calculate_optimal_f(pnls, risks)
+    sqn = analytics.calculate_sqn(pnls, risks)
+    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
+    sharpe_sortino = analytics.calculate_sharpe_sortino(pnls)
+
+    cagr_pct = None
+    entry_dates = [t.entry_at for t in trades if t.entry_at]
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    initial_balance = float(account.initial_balance or 0) if account else 0
+    if entry_dates and len(entry_dates) >= 2 and equity and initial_balance > 0:
+        days = max((entry_dates[-1] - entry_dates[0]).days, 1)
+        if days >= 90:
+            years = days / 365.0
+            final_balance = initial_balance + equity[-1]
+            if final_balance > 0:
+                cagr_pct = (pow(final_balance / initial_balance, 1 / years) - 1) * 100
+    calmar = analytics.calculate_calmar_ratio(cagr_pct or 0, dd_stats.get("max_drawdown_pct") or 0)
+    freq = analytics.calculate_trade_frequency(entry_dates)
+
+    user_metrics = {
+        "win_rate": win_loss.get("win_rate"),
+        "profit_factor": win_loss.get("profit_factor"),
+        "r_expectancy": opt_f.get("r_expectancy") if isinstance(opt_f, dict) else None,
+        "optimal_f": opt_f.get("optimal_f") if isinstance(opt_f, dict) else None,
+        "sqn": sqn.get("sqn") if isinstance(sqn, dict) else None,
+        "sortino": sharpe_sortino.get("sortino_ratio") if isinstance(sharpe_sortino, dict) else None,
+        "calmar": calmar.get("calmar_ratio") if isinstance(calmar, dict) else None,
+        "max_drawdown_pct": dd_stats.get("max_drawdown_pct"),
+        "ulcer_index": analytics.calculate_ulcer_index(equity),
+        "k_ratio": analytics.calculate_k_ratio(equity),
+        "trades_per_week": freq.get("per_week"),
+    }
+
+    # TODO Phase 5: реальная когорта берётся из агрегированной таблицы
+    #   user_metric_snapshots, обновляемой ночным джобом. Пока cohort_size=0.
+    return analytics.build_benchmark_response(user_metrics, cohort_size=0)
+
+
+# ──────────────────────────────────────────────────────────────────
+#  /setups — per-setup deep-dive (PnL, WR, RR, equity-curve)
+# ──────────────────────────────────────────────────────────────────
+
+@router.get("/setups")
+async def get_setups_breakdown(
+    period: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """
+    Группировка сделок по setup_name.
+
+    Для каждого сетапа возвращаем: total_pnl, win_rate, count, avg_r,
+    quality_score (composite), equity-curve (cum PnL по этому сетапу).
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
+                                   None, None, None)
+
+    by_setup: Dict[str, list] = {}
+    for t in trades:
+        name = t.setup_name or "Без сетапа"
+        by_setup.setdefault(name, []).append(t)
+
+    result = []
+    for name, group in by_setup.items():
+        pnls = [float(tr.net_pnl if tr.net_pnl is not None else (tr.pnl or 0)) for tr in group]
+        wins = sum(1 for p in pnls if p > 0)
+        total = sum(pnls)
+        rs = [float(tr.r_multiple) for tr in group if tr.r_multiple is not None]
+        avg_r = round(sum(rs) / len(rs), 2) if rs else None
+        # Mini equity-curve: cumulative PnL по этому сетапу
+        cum = 0.0
+        equity = []
+        for tr, p in zip(group, pnls):
+            cum += p
+            equity.append({
+                "date": tr.exit_at.isoformat() if tr.exit_at else (tr.entry_at.isoformat() if tr.entry_at else None),
+                "balance": round(cum, 2),
+            })
+        # Quality score: 0-100, composite (WR×0.4 + AvgR_normalized×0.4 + low_dd×0.2)
+        wr = (wins / len(group) * 100) if group else 0
+        avg_r_score = max(0, min(40, (avg_r or 0) * 20))
+        wr_score = wr * 0.4
+        quality = round(min(100, wr_score + avg_r_score + 20), 0)
+        result.append({
+            "setup": name,
+            "trades_count": len(group),
+            "wins": wins,
+            "losses": len(group) - wins,
+            "win_rate": round(wr, 1),
+            "total_pnl": round(total, 2),
+            "avg_pnl": round(total / len(group), 2) if group else 0,
+            "avg_r": avg_r,
+            "quality_score": int(quality),
+            "equity_curve": equity,
+            "best_trade": round(max(pnls), 2) if pnls else 0,
+            "worst_trade": round(min(pnls), 2) if pnls else 0,
+        })
+    # Сортируем по PnL
+    result.sort(key=lambda s: s["total_pnl"], reverse=True)
+    return {"total_trades": len(trades), "setups": result}
+
+
+# ──────────────────────────────────────────────────────────────────
+#  /calendar — daily PnL aggregation для Calendar heatmap
+# ──────────────────────────────────────────────────────────────────
+
+@router.get("/calendar")
+async def get_calendar_pnl(
+    period: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """
+    Дневная агрегация PnL для календарной heatmap.
+
+    Возвращает [{ date: 'YYYY-MM-DD', pnl, trades_count, win_rate }, ...]
+    отсортированные по дате. Фронт строит месячные сетки.
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
+                                   None, None, None)
+    trades_for_calendar = [
+        {"entry_at": t.entry_at, "pnl": float(t.pnl or 0)}
+        for t in trades
+    ]
+    return {
+        "total_trades": len(trades),
+        "days": analytics.calculate_daily_pnl(trades_for_calendar),
+    }
 
 
 @router.get("/mae-mfe-analysis")

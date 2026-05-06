@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Lock, Upload, BookOpen, History, Settings, Wallet, LogIn, BarChart3, HelpCircle, FileText, Target, Zap, TrendingUp, TrendingDown, Brain, Shield, GitGraph, Activity, Gauge, LineChart, Dice5, Clock, ArrowRight, ChevronDown, Percent, Repeat, Scale, Tag, Calendar } from 'lucide-react';
+import { Plus, Lock, Upload, BookOpen, LogIn, BarChart3, Target, Zap, TrendingUp, Brain, Shield, GitGraph, Activity, Clock, ArrowRight, Tag, Calendar, Wallet } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -11,22 +11,18 @@ import { DepositManagerModal } from '@/components/DepositManagerModal';
 import { SetupManagerModal } from '@/components/SetupManagerModal';
 import BrokerConnectModal from '@/components/BrokerConnectModal';
 import SyncStatusIndicator from '@/components/SyncStatusIndicator';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import ThemeToggle from '@/components/ThemeToggle';
 import { FilterPanel, Filters } from '@/components/FilterPanel';
 import { DashboardSkeleton } from '@/components/Skeleton';
+import { AppShell } from '@/components/AppShell';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  AuthButton,
   StatsGrid,
   AdvancedStatsGrid,
-  AIInsightsCard,
-  PostExitCard,
-  TagStatsCard,
-  TerminalLog,
-  MAEMFEAnalysisPanel
+  AdvancedMetricsGrid,
+  BenchmarkingView,
+  EquityCurveCard,
 } from '@/components/dashboard';
 import PortfolioCard from '@/components/dashboard/PortfolioCard';
 import { api } from '@/lib/apiClient';
@@ -120,7 +116,21 @@ export default function Home() {
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
   const [isAuthRequiredOpen, setIsAuthRequiredOpen] = useState(false);
   const [selectedTradeToClose, setSelectedTradeToClose] = useState<Trade | null>(null);
-  const [logs, setLogs] = useState<{msg: string, time: string}[]>([]);
+
+  // Tab-state дашборда. Persist в localStorage чтобы юзер вернулся туда же.
+  type DashTab = 'overview' | 'advanced' | 'benchmark';
+  const [activeTab, setActiveTab] = useState<DashTab>('overview');
+  const [advancedData, setAdvancedData] = useState<unknown | null>(null);
+  const [benchmarkData, setBenchmarkData] = useState<unknown | null>(null);
+  const [advancedLoading, setAdvancedLoading] = useState(false);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+  // Раздельные «tried» флаги — без них useEffect-зависимость от *Data
+  // создаёт бесконечный fetch при ошибке (data остаётся null → triggers retry).
+  const [advancedTried, setAdvancedTried] = useState(false);
+  const [benchmarkTried, setBenchmarkTried] = useState(false);
+  // Logs state — TerminalLog уехал из дашборда, но addLog продолжает копить
+  // события: на Phase 5 это станет источником для notification-center в шапке.
+  const [, setLogs] = useState<{msg: string, time: string}[]>([]);
   const [mounted, setMounted] = useState(false);
 
   const [filters, setFilters] = useState<Filters>({
@@ -225,6 +235,29 @@ export default function Home() {
     fetchData();
   }, [fetchData]);
 
+  // Lazy-fetch продвинутых табов. При переключении на «advanced» / «benchmark»
+  // догружаем именно их payload — не трогаем основной /stats/ запрос.
+  // Идемпотентно: tried-флаги предотвращают retry при ошибке.
+  useEffect(() => {
+    if (!user) return;
+    if (activeTab === 'advanced' && !advancedTried) {
+      setAdvancedTried(true);
+      setAdvancedLoading(true);
+      api.get('/stats/advanced')
+        .then(setAdvancedData)
+        .catch((e) => { console.error('advanced fetch failed', e); setAdvancedData(null); })
+        .finally(() => setAdvancedLoading(false));
+    }
+    if (activeTab === 'benchmark' && !benchmarkTried) {
+      setBenchmarkTried(true);
+      setBenchmarkLoading(true);
+      api.get('/stats/benchmark')
+        .then(setBenchmarkData)
+        .catch((e) => { console.error('benchmark fetch failed', e); setBenchmarkData(null); })
+        .finally(() => setBenchmarkLoading(false));
+    }
+  }, [activeTab, user, advancedTried, benchmarkTried]);
+
   const handleFiltersChange = (newFilters: Filters) => {
     setFilters(newFilters);
     // fetchData will be triggered automatically via useEffect when filters state changes
@@ -278,309 +311,328 @@ export default function Home() {
 
   // ==================== GUEST LANDING PAGE ====================
   if (!user) {
-    return (
-      <main className="min-h-screen relative overflow-hidden">
-        {/* Background effects */}
-        <div className="fixed inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-accent/[0.03] rounded-full blur-[150px]" />
-          <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-accent-secondary/[0.03] rounded-full blur-[120px]" />
-        </div>
+    // Категории метрик: bento-плитки с цветным акцентом + список метрик внутри.
+    // Принципы (после редизайна Phase 4): один цвет = одна категория, без mono/uppercase
+    // в подписях, без cyberpunk-glow — спокойный продуктовый стиль.
+    const metricCategories: Array<{
+      title: string;
+      color: 'indigo' | 'rose' | 'violet' | 'emerald' | 'amber';
+      icon: React.ReactNode;
+      blurb: string;
+      metrics: Array<{ label: string; anchor: string }>;
+    }> = [
+      {
+        title: 'Базовые показатели',
+        color: 'indigo',
+        icon: <BarChart3 size={22} />,
+        blurb: 'P&L, Win Rate, Profit Factor, SQN — то, что должно быть в каждом дневнике.',
+        metrics: [
+          { label: 'P&L и баланс', anchor: 'total-pnl' },
+          { label: 'Win Rate', anchor: 'win-rate' },
+          { label: 'Profit Factor', anchor: 'profit-factor' },
+          { label: 'SQN (Тарп)', anchor: 'sqn' },
+        ],
+      },
+      {
+        title: 'Риск-менеджмент',
+        color: 'rose',
+        icon: <Shield size={22} />,
+        blurb: 'Optimal F, Drawdown, Risk of Ruin, Monte Carlo — научный подход к риску.',
+        metrics: [
+          { label: 'Optimal F (Винс)', anchor: 'optimal-f' },
+          { label: 'Drawdown', anchor: 'drawdown' },
+          { label: 'Risk of Ruin', anchor: 'risk-of-ruin' },
+          { label: 'Monte Carlo', anchor: 'monte-carlo' },
+        ],
+      },
+      {
+        title: 'Продвинутая статистика',
+        color: 'violet',
+        icon: <GitGraph size={22} />,
+        blurb: 'Z-Score, R-Expectancy, Sortino, Recovery Factor — для системных трейдеров.',
+        metrics: [
+          { label: 'Z-Score', anchor: 'z-score' },
+          { label: 'R-Expectancy', anchor: 'r-expectancy' },
+          { label: 'Sortino Ratio', anchor: 'sortino' },
+          { label: 'Recovery Factor', anchor: 'recovery-factor' },
+        ],
+      },
+      {
+        title: 'Эффективность капитала',
+        color: 'emerald',
+        icon: <TrendingUp size={22} />,
+        blurb: 'ROI, GHPR, Tail Ratio, Calmar — насколько эффективно работает капитал.',
+        metrics: [
+          { label: 'ROI', anchor: 'roi' },
+          { label: 'GHPR', anchor: 'ghpr' },
+          { label: 'Tail Ratio', anchor: 'tail-ratio' },
+          { label: 'Calmar Ratio', anchor: 'calmar-ratio' },
+        ],
+      },
+      {
+        title: 'Поведенческий анализ',
+        color: 'amber',
+        icon: <Calendar size={22} />,
+        blurb: 'Когда вы торгуете лучше всего, какие сетапы работают, где паттерны.',
+        metrics: [
+          { label: 'Time Patterns', anchor: 'time-patterns' },
+          { label: 'Win/Loss Streaks', anchor: 'streaks' },
+          { label: 'Avg Win / Loss', anchor: 'avg-win-loss' },
+          { label: 'Теги и сетапы', anchor: 'tags' },
+        ],
+      },
+    ];
 
-        {/* ===== HERO SECTION ===== */}
-        <section className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 text-center">
-          <div className="max-w-3xl space-y-8">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-accent/30 bg-accent/5 text-accent text-xs font-mono uppercase tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              Торговая аналитика нового поколения
+    return (
+      <main className="min-h-screen bg-mesh-soft">
+        {/* ===== HEADER ===== */}
+        <header className="sticky top-0 z-30 backdrop-blur-md bg-[var(--background)]/80 border-b border-[var(--border)]">
+          <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-16">
+            <Link href="/" className="text-2xl font-bold tracking-tight no-underline">
+              <span className="text-[var(--accent)]">Eq</span>io
+            </Link>
+            <nav className="hidden md:flex items-center gap-6 text-sm text-[var(--text-secondary)]">
+              <Link href="/manual" className="hover:text-[var(--foreground)] transition-colors">Возможности</Link>
+              <Link href="/pricing" className="hover:text-[var(--foreground)] transition-colors">Тарифы</Link>
+              <Link href="/blog" className="hover:text-[var(--foreground)] transition-colors">Блог</Link>
+              <Link href="/help" className="hover:text-[var(--foreground)] transition-colors">Помощь</Link>
+            </nav>
+            <div className="flex items-center gap-2">
+              <Link href="/login" className="btn-ghost">Войти</Link>
+              <Link href="/register" className="btn-primary">Начать</Link>
+            </div>
+          </div>
+        </header>
+
+        {/* ===== HERO ===== */}
+        <section className="relative px-6 pt-20 pb-16 md:pt-28 md:pb-20">
+          <div className="max-w-5xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-pill)] bg-[var(--accent-soft)] text-[var(--accent)] text-[12px] font-medium mb-8">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+              Торговый дневник нового поколения
             </div>
 
-            {/* Title */}
-            <h1 className="text-7xl md:text-8xl font-black tracking-tighter italic">
-              <span className="text-accent">Eqio</span>
+            <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.05] mb-6">
+              Превратите свои сделки<br />
+              в <span className="text-[var(--accent)]">системный бизнес</span>
             </h1>
-            <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              Профессиональный дневник трейдера с 30+ метриками, AI&#8209;аналитикой и автоматической синхронизацией с брокером
+
+            <p className="text-lg md:text-xl text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-10">
+              Дневник трейдера с 30+ метриками, AI-разбором каждой сделки и автоматической
+              синхронизацией с Тинькофф. Бесплатно до 50 сделок в месяц.
             </p>
 
-            {/* CTA */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-              <Link href="/register" className="btn-primary px-10 py-4 flex items-center justify-center gap-2 text-base font-semibold">
-                Начать бесплатно <ArrowRight size={18} />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link href="/register" className="btn-primary" style={{ padding: '14px 28px', fontSize: '16px' }}>
+                Начать бесплатно <ArrowRight size={16} />
               </Link>
-              <Link href="/login" className="btn-secondary px-10 py-4 flex items-center justify-center gap-2 text-base">
-                <LogIn size={18} /> Войти
+              <Link href="/manual" className="btn-secondary" style={{ padding: '14px 28px', fontSize: '16px' }}>
+                <BookOpen size={16} /> Что внутри
               </Link>
             </div>
-
-            {/* Scroll hint */}
-            <button
-              onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-              className="mt-8 text-muted-foreground/50 hover:text-accent transition-colors animate-bounce"
-            >
-              <ChevronDown size={28} />
-            </button>
           </div>
         </section>
 
-        {/* ===== METRICS SHOWCASE ===== */}
-        <section id="features" className="relative z-10 py-24 px-6">
+        {/* ===== METRICS BENTO ===== */}
+        <section id="features" className="px-6 py-16 md:py-24">
           <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
-              <p className="text-accent text-xs font-mono uppercase tracking-[0.3em] mb-3">Ваш торговый терминал</p>
-              <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-4">30+ метрик в реальном времени</h2>
-              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                Каждая сделка анализируется по десяткам параметров — от базовых до продвинутых статистических моделей
+            <div className="mb-12">
+              <p className="text-sm font-medium text-[var(--accent)] mb-3">Ваш аналитический центр</p>
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
+                30+ метрик в одном месте
+              </h2>
+              <p className="text-[var(--text-secondary)] text-lg max-w-2xl">
+                Каждая сделка раскладывается на десятки параметров — от базовой статистики до
+                поведенческих паттернов.
               </p>
             </div>
 
-            {/* === Основные показатели === */}
-            <p className="text-xs font-mono text-accent/60 uppercase tracking-[0.2em] mb-3">Основные показатели</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-              {[
-                { icon: <TrendingUp size={20} />, label: 'P&L', desc: 'Прибыль/убыток с учётом комиссий и нереализованных позиций', anchor: 'total-pnl' },
-                { icon: <Target size={20} />, label: 'Win Rate', desc: 'Процент прибыльных сделок с фильтрацией по сетапам и тегам', anchor: 'win-rate' },
-                { icon: <Activity size={20} />, label: 'Profit Factor', desc: 'Отношение валовой прибыли к валовому убытку', anchor: 'profit-factor' },
-                { icon: <Gauge size={20} />, label: 'SQN', desc: 'System Quality Number — оценка качества торговой системы по Тарпу', anchor: 'sqn' },
-              ].map((m, i) => (
-                <Link key={i} href={`/manual#${m.anchor}`} className="cyber-card p-5 group hover:border-accent/40 transition-all duration-300 cursor-pointer block no-underline">
-                  <div className="text-accent mb-3 opacity-60 group-hover:opacity-100 transition-opacity">{m.icon}</div>
-                  <h3 className="font-bold text-sm mb-1">{m.label}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-2">{m.desc}</p>
-                  <span className="text-[10px] font-mono text-accent/0 group-hover:text-accent/60 transition-colors flex items-center gap-1">
-                    Подробнее <ArrowRight size={10} />
-                  </span>
-                </Link>
-              ))}
+            {/* Bento: 5 категорий, разные размеры */}
+            <div className="grid grid-cols-12 gap-4 md:gap-5">
+              {metricCategories.map((cat, idx) => {
+                // Bento layout: 1й — широкий (col-span-7), 2й — узкий (col-span-5),
+                // 3й — узкий, 4й — широкий, 5й — на всю ширину
+                const layoutClass = [
+                  'col-span-12 md:col-span-7',
+                  'col-span-12 md:col-span-5',
+                  'col-span-12 md:col-span-5',
+                  'col-span-12 md:col-span-7',
+                  'col-span-12',
+                ][idx];
+                return (
+                  <div key={cat.title} className={layoutClass}>
+                    <div className={`tile tile-${cat.color} h-full min-h-[220px] flex flex-col gap-4`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="opacity-95">{cat.icon}</div>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xl md:text-2xl font-bold leading-tight mb-2">
+                          {cat.title}
+                        </h3>
+                        <p className="text-sm leading-snug opacity-85">{cat.blurb}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {cat.metrics.map((m) => (
+                          <Link
+                            key={m.anchor}
+                            href={`/manual#${m.anchor}`}
+                            className="inline-flex items-center gap-1 px-3 py-1 rounded-[var(--radius-pill)] bg-white/15 text-white text-[12px] font-medium hover:bg-white/25 transition-colors no-underline"
+                          >
+                            {m.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            {/* === Риск-менеджмент === */}
-            <p className="text-xs font-mono text-red-400/60 uppercase tracking-[0.2em] mb-3">Риск-менеджмент</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-              {[
-                { icon: <Zap size={20} />, label: 'Optimal F', desc: 'Оптимальная доля депозита на сделку по методу Ральфа Винса', anchor: 'optimal-f' },
-                { icon: <TrendingDown size={20} />, label: 'Drawdown', desc: 'Максимальная и текущая просадка — в процентах и абсолютных значениях', anchor: 'drawdown' },
-                { icon: <Shield size={20} />, label: 'Risk of Ruin', desc: 'Вероятность потери 20% и 50% депозита на основе вашей статистики', anchor: 'risk-of-ruin' },
-                { icon: <Dice5 size={20} />, label: 'Monte Carlo', desc: '10 000 симуляций для прогноза худшего и лучшего сценариев', anchor: 'monte-carlo' },
-              ].map((m, i) => (
-                <Link key={i} href={`/manual#${m.anchor}`} className="cyber-card p-5 group hover:border-accent/40 transition-all duration-300 cursor-pointer block no-underline">
-                  <div className="text-red-400/60 mb-3 group-hover:text-red-400 transition-colors">{m.icon}</div>
-                  <h3 className="font-bold text-sm mb-1">{m.label}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-2">{m.desc}</p>
-                  <span className="text-[10px] font-mono text-accent/0 group-hover:text-accent/60 transition-colors flex items-center gap-1">
-                    Подробнее <ArrowRight size={10} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-
-            {/* === Продвинутая статистика === */}
-            <p className="text-xs font-mono text-violet-400/60 uppercase tracking-[0.2em] mb-3">Продвинутая статистика</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-              {[
-                { icon: <GitGraph size={20} />, label: 'Z-Score', desc: 'Зависимость между последовательными сделками — стрики не случайны?', anchor: 'z-score' },
-                { icon: <LineChart size={20} />, label: 'R-Expectancy', desc: 'Средний доход на единицу риска — сколько R приносит каждая сделка', anchor: 'r-expectancy' },
-                { icon: <BarChart3 size={20} />, label: 'Sortino Ratio', desc: 'Доходность относительно нисходящей волатильности', anchor: 'sortino' },
-                { icon: <TrendingUp size={20} />, label: 'Recovery Factor', desc: 'Отношение чистой прибыли к максимальной просадке', anchor: 'recovery-factor' },
-              ].map((m, i) => (
-                <Link key={i} href={`/manual#${m.anchor}`} className="cyber-card p-5 group hover:border-accent/40 transition-all duration-300 cursor-pointer block no-underline">
-                  <div className="text-violet-400/60 mb-3 group-hover:text-violet-400 transition-colors">{m.icon}</div>
-                  <h3 className="font-bold text-sm mb-1">{m.label}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-2">{m.desc}</p>
-                  <span className="text-[10px] font-mono text-accent/0 group-hover:text-accent/60 transition-colors flex items-center gap-1">
-                    Подробнее <ArrowRight size={10} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-
-            {/* === Эффективность капитала === */}
-            <p className="text-xs font-mono text-emerald-400/60 uppercase tracking-[0.2em] mb-3">Эффективность капитала</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-              {[
-                { icon: <Percent size={20} />, label: 'ROI', desc: 'Процентная доходность относительно начального депозита', anchor: 'roi' },
-                { icon: <TrendingUp size={20} />, label: 'GHPR', desc: 'Геометрическая средняя доходность с учётом сложного процента', anchor: 'ghpr' },
-                { icon: <Clock size={20} />, label: 'Tail Ratio', desc: 'Соотношение правого и левого хвостов распределения P&L', anchor: 'tail-ratio' },
-                { icon: <Activity size={20} />, label: 'Calmar Ratio', desc: 'CAGR к максимальной просадке — стабильность роста капитала', anchor: 'calmar-ratio' },
-              ].map((m, i) => (
-                <Link key={i} href={`/manual#${m.anchor}`} className="cyber-card p-5 group hover:border-accent/40 transition-all duration-300 cursor-pointer block no-underline">
-                  <div className="text-emerald-400/60 mb-3 group-hover:text-emerald-400 transition-colors">{m.icon}</div>
-                  <h3 className="font-bold text-sm mb-1">{m.label}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-2">{m.desc}</p>
-                  <span className="text-[10px] font-mono text-accent/0 group-hover:text-accent/60 transition-colors flex items-center gap-1">
-                    Подробнее <ArrowRight size={10} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-
-            {/* === Поведенческий анализ === */}
-            <p className="text-xs font-mono text-amber-400/60 uppercase tracking-[0.2em] mb-3">Поведенческий анализ</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { icon: <Calendar size={20} />, label: 'Time Patterns', desc: 'Лучшие и худшие дни и часы — когда торговать, а когда нет', anchor: 'time-patterns' },
-                { icon: <Repeat size={20} />, label: 'Win/Loss Streaks', desc: 'Максимальные серии побед и поражений, текущая серия', anchor: 'streaks' },
-                { icon: <Scale size={20} />, label: 'Avg Win / Avg Loss', desc: 'Соотношение среднего выигрыша к среднему убытку', anchor: 'avg-win-loss' },
-                { icon: <Tag size={20} />, label: 'Теги и сетапы', desc: 'P&L и win rate по каждому тегу — какие сетапы работают', anchor: 'tags' },
-              ].map((m, i) => (
-                <Link key={i} href={`/manual#${m.anchor}`} className="cyber-card p-5 group hover:border-accent/40 transition-all duration-300 cursor-pointer block no-underline">
-                  <div className="text-amber-400/60 mb-3 group-hover:text-amber-400 transition-colors">{m.icon}</div>
-                  <h3 className="font-bold text-sm mb-1">{m.label}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-2">{m.desc}</p>
-                  <span className="text-[10px] font-mono text-accent/0 group-hover:text-accent/60 transition-colors flex items-center gap-1">
-                    Подробнее <ArrowRight size={10} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-
-            {/* Guide CTA */}
             <div className="text-center mt-10">
-              <Link href="/manual" className="inline-flex items-center gap-2 text-sm text-accent hover:text-accent/80 transition-colors font-mono">
-                <BookOpen size={16} /> Полное руководство по всем метрикам <ArrowRight size={14} />
+              <Link
+                href="/manual"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline"
+              >
+                <BookOpen size={14} /> Полное руководство по метрикам <ArrowRight size={14} />
               </Link>
             </div>
           </div>
         </section>
 
-        {/* ===== MAE/MFE & POST-EXIT ===== */}
-        <section className="relative z-10 py-24 px-6 border-t border-border/50">
-          <div className="max-w-6xl mx-auto">
-            <div className="grid md:grid-cols-2 gap-16 items-start">
-              {/* MAE/MFE */}
-              <div>
-                <Link href="/manual#mae-mfe" className="flex items-center gap-3 mb-6 group no-underline">
-                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                    <Target size={20} className="text-accent" />
-                  </div>
-                  <h3 className="text-2xl font-black tracking-tight group-hover:text-accent transition-colors">MAE / MFE анализ</h3>
-                  <ArrowRight size={16} className="text-accent/0 group-hover:text-accent/60 transition-colors ml-auto" />
-                </Link>
-                <p className="text-muted-foreground mb-6 leading-relaxed">
-                  Maximum Adverse Excursion (MAE) и Maximum Favorable Excursion (MFE) — ключевые метрики для оптимизации стоп-лоссов и тейк-профитов.
-                </p>
-                <div className="space-y-4">
-                  {[
-                    { title: 'Edge Ratio', desc: 'Отношение MFE к MAE — показывает, насколько ваше преимущество перевешивает риск' },
-                    { title: 'Quality Score', desc: 'Комплексная оценка сетапа: win rate × efficiency × edge ratio' },
-                    { title: 'Группировка', desc: 'Анализ по тегам, сетапам, инструментам, таймфреймам и направлению' },
-                    { title: 'Персентили', desc: 'P25, P50, P75 распределения MAE/MFE для точной настройки стопов' },
-                  ].map((item, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="w-1.5 h-1.5 rounded-full bg-accent mt-2 shrink-0" />
-                      <div>
-                        <span className="font-semibold text-sm">{item.title}</span>
-                        <span className="text-muted-foreground text-sm"> — {item.desc}</span>
-                      </div>
-                    </div>
-                  ))}
+        {/* ===== MAE/MFE & POST-EXIT — двухколоночный feature-блок ===== */}
+        <section className="px-6 py-16 md:py-20 border-t border-[var(--border)]">
+          <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 lg:gap-16">
+            <div>
+              <Link href="/manual#mae-mfe" className="inline-flex items-center gap-3 mb-5 group no-underline">
+                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
+                  <Target size={20} />
                 </div>
-              </div>
+                <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--accent)] transition-colors">
+                  MAE / MFE анализ
+                </h3>
+              </Link>
+              <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
+                Maximum Adverse / Favorable Excursion — ключевые метрики для оптимизации стопов
+                и тейк-профитов. Считаются автоматически по реальным свечам MOEX.
+              </p>
+              <ul className="flex flex-col gap-3 list-none p-0">
+                {[
+                  ['Edge Ratio', 'отношение MFE/MAE — насколько преимущество перевешивает риск'],
+                  ['Quality Score', 'комплексная оценка сетапа: win-rate × efficiency × edge'],
+                  ['Группировка', 'по тегам, сетапам, инструментам, таймфреймам, направлению'],
+                  ['Персентили', 'P25/P50/P75 распределения для точной настройки стопов'],
+                ].map(([t, d]) => (
+                  <li key={t} className="flex gap-3 items-start">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] mt-2.5 flex-shrink-0" />
+                    <span>
+                      <span className="font-semibold">{t}</span>
+                      <span className="text-[var(--text-secondary)]"> — {d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-              {/* Post-exit analysis */}
-              <div>
-                <Link href="/manual#post-exit" className="flex items-center gap-3 mb-6 group no-underline">
-                  <div className="w-10 h-10 rounded-lg bg-accent-secondary/10 flex items-center justify-center group-hover:bg-accent-secondary/20 transition-colors">
-                    <Clock size={20} className="text-accent-secondary" />
-                  </div>
-                  <h3 className="text-2xl font-black tracking-tight group-hover:text-accent-secondary transition-colors">Post-Exit анализ</h3>
-                  <ArrowRight size={16} className="text-accent-secondary/0 group-hover:text-accent-secondary/60 transition-colors ml-auto" />
-                </Link>
-                <p className="text-muted-foreground mb-6 leading-relaxed">
-                  Что происходит с ценой после вашего выхода? Система загружает реальные свечи и считает, сколько вы оставили на столе.
-                </p>
-                <div className="space-y-4">
-                  {[
-                    { title: 'Упущенная прибыль', desc: 'Процент движения цены в вашу сторону после закрытия позиции' },
-                    { title: 'Мульти-таймфрейм', desc: 'Анализ на 15м, 1ч, 4ч, 1д — от скальпинга до свинг-трейдинга' },
-                    { title: 'Early Exit детекция', desc: 'Автоматическое выявление сделок, закрытых слишком рано' },
-                    { title: 'Реальные свечи', desc: 'Данные MOEX ISS API — точные цены, а не модели' },
-                  ].map((item, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="w-1.5 h-1.5 rounded-full bg-accent-secondary mt-2 shrink-0" />
-                      <div>
-                        <span className="font-semibold text-sm">{item.title}</span>
-                        <span className="text-muted-foreground text-sm"> — {item.desc}</span>
-                      </div>
-                    </div>
-                  ))}
+            <div>
+              <Link href="/manual#post-exit" className="inline-flex items-center gap-3 mb-5 group no-underline">
+                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--warning-soft)] text-[var(--warning)] flex items-center justify-center">
+                  <Clock size={20} />
                 </div>
-              </div>
+                <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--warning)] transition-colors">
+                  Post-Exit анализ
+                </h3>
+              </Link>
+              <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
+                Что было с ценой после вашего выхода? Система загружает реальные свечи
+                и считает, сколько вы оставили на столе.
+              </p>
+              <ul className="flex flex-col gap-3 list-none p-0">
+                {[
+                  ['Упущенная прибыль', '% движения цены в вашу сторону после закрытия'],
+                  ['Мульти-таймфрейм', '15м / 1ч / 4ч / 1д — от скальпинга до свинга'],
+                  ['Early Exit детекция', 'автоматическое выявление сделок, закрытых рано'],
+                  ['Реальные свечи', 'данные MOEX ISS API — точные цены, а не модели'],
+                ].map(([t, d]) => (
+                  <li key={t} className="flex gap-3 items-start">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)] mt-2.5 flex-shrink-0" />
+                    <span>
+                      <span className="font-semibold">{t}</span>
+                      <span className="text-[var(--text-secondary)]"> — {d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </section>
 
-        {/* ===== AI & BROKER SYNC ===== */}
-        <section className="relative z-10 py-24 px-6 border-t border-border/50">
-          <div className="max-w-6xl mx-auto">
-            <div className="grid md:grid-cols-3 gap-8">
-              {/* AI */}
-              <div className="cyber-card p-8 border-accent/20 hover:border-accent/40 transition-all duration-300">
-                <Brain size={28} className="text-accent mb-4" />
-                <h3 className="text-xl font-bold mb-3">AI-аналитика</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                  Каждая сделка оценивается нейросетью: вердикт, анализ ошибок, рекомендации и балл от 1 до 10.
-                </p>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Автоматический анализ при закрытии</div>
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Рекомендации по улучшению сетапов</div>
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Паттерны в ваших ошибках</div>
+        {/* ===== AI / BROKER / RISK — 3 features ===== */}
+        <section className="px-6 py-16 md:py-20 border-t border-[var(--border)]">
+          <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-5">
+            {[
+              {
+                icon: <Brain size={24} />,
+                title: 'AI-аналитика',
+                desc: 'Каждая сделка оценивается нейросетью: вердикт, разбор ошибок, рекомендации, балл от 1 до 10.',
+                bullets: ['Автоанализ при закрытии', 'Рекомендации по сетапам', 'Паттерны в ошибках'],
+              },
+              {
+                icon: <GitGraph size={24} />,
+                title: 'Синхронизация с брокером',
+                desc: 'Подключите Тинькофф Инвестиции — сделки, портфель и баланс загрузятся автоматически.',
+                bullets: ['Tinkoff Invest API', 'Портфель в реальном времени', 'Расчёт комиссий'],
+              },
+              {
+                icon: <Shield size={24} />,
+                title: 'Управление рисками',
+                desc: 'Optimal F, Kelly, Risk of Ruin — научный подход к размеру позиции.',
+                bullets: ['Optimal F по PnL и R', 'Drawdown в реальном времени', 'Monte Carlo 10 000 итераций'],
+              },
+            ].map((f) => (
+              <div key={f.title} className="cyber-card p-6 flex flex-col gap-4">
+                <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
+                  {f.icon}
                 </div>
-              </div>
-
-              {/* Broker sync */}
-              <div className="cyber-card p-8 border-accent/20 hover:border-accent/40 transition-all duration-300">
-                <GitGraph size={28} className="text-accent mb-4" />
-                <h3 className="text-xl font-bold mb-3">Синхронизация с брокером</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                  Подключите Тинькофф Инвестиции — сделки, портфель и баланс загрузятся автоматически.
-                </p>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Автоимпорт через Tinkoff Invest API</div>
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Портфель и баланс в реальном времени</div>
-                  <div className="flex items-center gap-2"><Zap size={12} className="text-accent" /> Автоматический расчёт комиссий</div>
+                <div>
+                  <h3 className="text-lg font-bold mb-2">{f.title}</h3>
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{f.desc}</p>
                 </div>
+                <ul className="flex flex-col gap-2 mt-auto list-none p-0">
+                  {f.bullets.map((b) => (
+                    <li key={b} className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)]">
+                      <Zap size={12} className="text-[var(--accent)] flex-shrink-0" />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
               </div>
-
-              {/* Risk management */}
-              <div className="cyber-card p-8 border-accent/20 hover:border-accent/40 transition-all duration-300">
-                <Shield size={28} className="text-accent mb-4" />
-                <h3 className="text-xl font-bold mb-3">Управление рисками</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                  Optimal F, Kelly Criterion, Risk of Ruin — научный подход к размеру позиции.
-                </p>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <Link href="/manual#optimal-f" className="flex items-center gap-2 hover:text-accent transition-colors no-underline"><Zap size={12} className="text-accent" /> Optimal F по P&L и R-мультипликаторам</Link>
-                  <Link href="/manual#drawdown" className="flex items-center gap-2 hover:text-accent transition-colors no-underline"><Zap size={12} className="text-accent" /> Drawdown tracking в реальном времени</Link>
-                  <Link href="/manual#monte-carlo" className="flex items-center gap-2 hover:text-accent transition-colors no-underline"><Zap size={12} className="text-accent" /> Monte Carlo симуляция 10 000 итераций</Link>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </section>
 
-        {/* ===== HOW IT WORKS ===== */}
-        <section className="relative z-10 py-24 px-6 border-t border-border/50">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-16">
-              <p className="text-accent text-xs font-mono uppercase tracking-[0.3em] mb-3">Начните за 2 минуты</p>
-              <h2 className="text-4xl font-black tracking-tight">Как это работает</h2>
+        {/* ===== HOW IT WORKS — 4 шага ===== */}
+        <section className="px-6 py-16 md:py-20 border-t border-[var(--border)]">
+          <div className="max-w-5xl mx-auto">
+            <div className="mb-12">
+              <p className="text-sm font-medium text-[var(--accent)] mb-3">Начните за 2 минуты</p>
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Как это работает</h2>
             </div>
-
-            <div className="grid md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
               {[
-                { step: '01', title: 'Регистрация', desc: 'Создайте аккаунт — email и пароль, или OAuth через Google/GitHub', icon: <LogIn size={20} /> },
-                { step: '02', title: 'Импорт сделок', desc: 'Подключите брокера или загрузите отчёт в формате Excel/CSV', icon: <Upload size={20} /> },
-                { step: '03', title: 'Анализ', desc: '30+ метрик рассчитываются мгновенно, AI разбирает каждую сделку', icon: <Brain size={20} /> },
-                { step: '04', title: 'Рост', desc: 'Находите паттерны, устраняйте слабости, растите как трейдер', icon: <TrendingUp size={20} /> },
-              ].map((s, i) => (
-                <div key={i} className="text-center">
-                  <div className="w-14 h-14 mx-auto mb-4 rounded-full border border-accent/30 bg-accent/5 flex items-center justify-center text-accent">
+                { step: 1, title: 'Регистрация', desc: 'Email или OAuth — Google / Яндекс / Тинькофф', icon: <LogIn size={18} /> },
+                { step: 2, title: 'Импорт сделок', desc: 'Подключите брокера или загрузите Excel/CSV', icon: <Upload size={18} /> },
+                { step: 3, title: 'Анализ', desc: '30+ метрик считаются мгновенно, AI разбирает', icon: <Brain size={18} /> },
+                { step: 4, title: 'Рост', desc: 'Находите паттерны, устраняйте слабости', icon: <TrendingUp size={18} /> },
+              ].map((s) => (
+                <div key={s.step} className="flex flex-col gap-3">
+                  <div className="w-12 h-12 rounded-[var(--radius-lg)] bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)]">
                     {s.icon}
                   </div>
-                  <div className="text-accent font-mono text-xs mb-2">{s.step}</div>
-                  <h4 className="font-bold mb-2">{s.title}</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{s.desc}</p>
+                  <div>
+                    <div className="text-[12px] font-medium text-[var(--text-tertiary)] mb-1">Шаг {s.step}</div>
+                    <h4 className="font-semibold mb-1.5">{s.title}</h4>
+                    <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">{s.desc}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -588,40 +640,39 @@ export default function Home() {
         </section>
 
         {/* ===== FINAL CTA ===== */}
-        <section className="relative z-10 py-24 px-6 border-t border-border/50">
-          <div className="max-w-2xl mx-auto text-center space-y-8">
-            <h2 className="text-4xl md:text-5xl font-black tracking-tight">
-              Готовы торговать <span className="text-accent">осознанно</span>?
+        <section className="px-6 py-16 md:py-24 border-t border-[var(--border)]">
+          <div className="max-w-3xl mx-auto text-center flex flex-col gap-6">
+            <h2 className="text-3xl md:text-5xl font-bold tracking-tight leading-tight">
+              Готовы торговать <span className="text-[var(--accent)]">осознанно</span>?
             </h2>
-            <p className="text-muted-foreground text-lg">
+            <p className="text-[var(--text-secondary)] text-lg">
               Присоединяйтесь к трейдерам, которые принимают решения на основе данных, а не эмоций.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/register" className="btn-primary px-10 py-4 flex items-center justify-center gap-2 text-base font-semibold">
-                Создать аккаунт <ArrowRight size={18} />
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
+              <Link href="/register" className="btn-primary" style={{ padding: '14px 28px', fontSize: '16px' }}>
+                Создать аккаунт <ArrowRight size={16} />
               </Link>
-              <Link href="/manual" className="btn-secondary px-10 py-4 flex items-center justify-center gap-2 text-base">
-                <BookOpen size={18} /> Руководство по метрикам
-              </Link>
-            </div>
-
-            {/* Footer links */}
-            <div className="pt-8 flex justify-center gap-8 text-sm text-muted-foreground">
-              <Link href="/manual" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                <BookOpen size={14} /> Руководство
-              </Link>
-              <Link href="/blog" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                <FileText size={14} /> Блог
-              </Link>
-              <Link href="/help" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                <HelpCircle size={14} /> Помощь
-              </Link>
-              <Link href="/pricing" className="hover:text-accent transition-colors flex items-center gap-1.5">
-                <Wallet size={14} /> Тарифы
+              <Link href="/pricing" className="btn-secondary" style={{ padding: '14px 28px', fontSize: '16px' }}>
+                <Wallet size={16} /> Тарифы
               </Link>
             </div>
           </div>
         </section>
+
+        {/* ===== FOOTER ===== */}
+        <footer className="px-6 py-10 border-t border-[var(--border)] text-sm text-[var(--text-tertiary)]">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-6">
+            <div>
+              © Eqio · Торговая аналитика на базе ИИ
+            </div>
+            <nav className="flex flex-wrap gap-6">
+              <Link href="/manual" className="hover:text-[var(--foreground)] transition-colors no-underline">Руководство</Link>
+              <Link href="/blog" className="hover:text-[var(--foreground)] transition-colors no-underline">Блог</Link>
+              <Link href="/help" className="hover:text-[var(--foreground)] transition-colors no-underline">Помощь</Link>
+              <Link href="/pricing" className="hover:text-[var(--foreground)] transition-colors no-underline">Тарифы</Link>
+            </nav>
+          </div>
+        </footer>
       </main>
     );
   }
@@ -629,105 +680,120 @@ export default function Home() {
   // ==================== AUTHENTICATED DASHBOARD ====================
   if (loading) return <DashboardSkeleton />;
 
+  // Page-specific controls для AppShell.headerRight.
+  // FilterPanel переехал в body (см. ниже) — popover'ы из header перекрывали search.
+  // В хедере оставляем только контекстные icon-кнопки и переключатели.
+  const headerActions = (
+    <div className="hidden lg:flex items-center gap-1.5">
+      <SyncStatusIndicator
+        onTradesUpdated={fetchData}
+        onOpenBrokerModal={() => setIsBrokerModalOpen(true)}
+      />
+      <button
+        onClick={() => setIsDepositModalOpen(true)}
+        className="btn-icon"
+        title="Управление депозитом"
+      >
+        <Wallet size={14} />
+      </button>
+      <button
+        onClick={() => setIsSetupModalOpen(true)}
+        className="btn-icon"
+        title="Управление сетапами"
+      >
+        <Target size={14} />
+      </button>
+      <button
+        onClick={() => setIsImportModalOpen(true)}
+        className="btn-icon"
+        title="Импорт сделок"
+      >
+        <Upload size={14} />
+      </button>
+    </div>
+  );
+
   return (
-    <main className="min-h-screen p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <header className="mb-12 flex justify-between items-start relative z-10">
-        <div>
-          <h1 className="text-4xl font-black tracking-tighter mb-2 italic">
-            <span className="text-accent">Eqio</span>
-          </h1>
-          <p className="text-xs font-mono text-slate-400 uppercase tracking-[0.2em]">
-            {t.app.subtitle}
-          </p>
-          <div className="mt-3 flex items-center gap-2 text-sm flex-wrap">
-            <Wallet size={14} className="text-accent" />
-            <span className="text-slate-400">{capitalLabel}</span>
-            <span className="font-bold text-accent">
-              {effectiveInitialDeposit ? formatCurrency(effectiveInitialDeposit) : 'недоступно'}
-            </span>
-            {totalPnlPct !== null && totalPnlWithUnrealized !== null && (
-              <span className={`text-xs ${totalPnlWithUnrealized >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ({totalPnlWithUnrealized >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+    <AppShell
+      pageTitle="Дашборд"
+      headerRight={headerActions}
+      onAddTrade={() => setIsModalOpen(true)}
+      onImport={() => setIsImportModalOpen(true)}
+    >
+      <div className="p-6 md:p-8 max-w-7xl mx-auto">
+        {/* Заголовок страницы + сводка по балансу (вместо старого header) */}
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight mb-1">Дашборд</h1>
+            <div className="flex items-center gap-2 text-sm flex-wrap text-[var(--text-secondary)]">
+              <Wallet size={14} className="text-[var(--accent)]" />
+              <span>{capitalLabel}</span>
+              <span className="font-semibold text-[var(--foreground)]">
+                {effectiveInitialDeposit ? formatCurrency(effectiveInitialDeposit) : 'недоступно'}
               </span>
-            )}
-            {stats?.period_start_balance_reliable === false && stats?.period_start_balance_reason && (
-              <span className="text-xs text-amber-400">
-                {stats.period_start_balance_reason}
-              </span>
-            )}
-            {settings.tradesStartDate && (
-              <span className="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded-full border border-accent/30">
-                📅 С {settings.tradesStartTradeSymbol
-                  ? `${settings.tradesStartTradeSymbol} (${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit'})})`
-                  : new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})
-                }
-              </span>
-            )}
+              {totalPnlPct !== null && totalPnlWithUnrealized !== null && (
+                <span
+                  className={`text-xs font-medium ${
+                    totalPnlWithUnrealized >= 0
+                      ? 'text-[var(--success)]'
+                      : 'text-[var(--danger)]'
+                  }`}
+                >
+                  ({totalPnlWithUnrealized >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+                </span>
+              )}
+              {stats?.period_start_balance_reliable === false && stats?.period_start_balance_reason && (
+                <span className="text-xs text-[var(--warning)]">{stats.period_start_balance_reason}</span>
+              )}
+              {settings.tradesStartDate && (
+                <span className="badge badge-accent">
+                  📅 С{' '}
+                  {settings.tradesStartTradeSymbol
+                    ? `${settings.tradesStartTradeSymbol} (${new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })})`
+                    : new Date(settings.tradesStartDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex gap-3 flex-wrap justify-end items-center">
-          <FilterPanel filters={filters} onChange={handleFiltersChange} />
-          <div className="flex gap-2 items-center">
-            <ThemeToggle />
-            <button onClick={() => setIsSettingsOpen(true)} className="btn-secondary p-2.5 aspect-square" title="Настройки">
-              <Settings size={14} />
+
+          {/* Mobile-only action-кнопки (на десктопе они в headerRight) */}
+          <div className="lg:hidden flex items-center gap-2">
+            <button onClick={() => setIsImportModalOpen(true)} className="btn-icon" title="Импорт">
+              <Upload size={14} />
             </button>
-            <LanguageSwitcher />
-            <AuthButton />
           </div>
-          <Link href="/history" className="btn-secondary flex items-center gap-2">
-            <History size={14} />
-            {t.nav.tradeHistory}
-          </Link>
-          <Link href="/manual" className="btn-secondary flex items-center gap-2">
-            <BookOpen size={14} />
-            {t.nav.systemManual}
-          </Link>
-          <Link href="/blog" className="btn-secondary flex items-center gap-2">
-            <FileText size={14} />
-            {t.nav.blog}
-          </Link>
-          <Link href="/help" className="btn-secondary flex items-center gap-2">
-            <HelpCircle size={14} />
-            {t.nav.help}
-          </Link>
-          {user ? (
-            <>
-              <button onClick={() => setIsDepositModalOpen(true)} className="btn-secondary flex items-center gap-2" title="Управление депозитом">
-                <Wallet size={14} />
-              </button>
-              <button onClick={() => setIsSetupModalOpen(true)} className="btn-secondary flex items-center gap-2" title="Управление сетапами">
-                <Target size={14} />
-              </button>
-              <SyncStatusIndicator
-                onTradesUpdated={fetchData}
-                onOpenBrokerModal={() => setIsBrokerModalOpen(true)}
-              />
-              <button onClick={() => setIsImportModalOpen(true)} className="btn-secondary flex items-center gap-2">
-                <Upload size={14} />
-                {t.nav.importData}
-              </button>
-              <button onClick={() => setIsModalOpen(true)} className="btn-primary flex items-center gap-2">
-                <Plus size={14} /> {t.nav.logPosition}
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-secondary flex items-center gap-2" title="Управление депозитом">
-                <Wallet size={14} />
-              </button>
-              <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-secondary flex items-center gap-2">
-                <Upload size={14} />
-                {t.nav.importData}
-              </button>
-              <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-primary flex items-center gap-2">
-                <Plus size={14} /> {t.nav.logPosition}
-              </button>
-            </>
-          )}
         </div>
-      </header>
+
+        {/* FilterPanel — отдельной строкой над контентом.
+            Раньше жил в header, но popover дропдаунов конфликтовал с search.
+            Теперь это полноценный filter-bar страницы. */}
+        <div className="mb-5">
+          <FilterPanel filters={filters} onChange={handleFiltersChange} />
+        </div>
+
+        {/* Tab-switcher — Обзор / Продвинутая / Сравнение.
+            Базовый дашборд (Stats) → "Обзор". Quant-метрики (Ulcer, K-Ratio,
+            heatmap, mistakes) → "Продвинутая". Анонимное сравнение с когортой → "Сравнение". */}
+        <div className="mb-6 flex gap-1 border-b border-[var(--border)]">
+          {([
+            { key: 'overview', label: 'Обзор', icon: <BarChart3 size={14} /> },
+            { key: 'advanced', label: 'Продвинутая', icon: <Activity size={14} /> },
+            { key: 'benchmark', label: 'Сравнение', icon: <Target size={14} /> },
+          ] as Array<{ key: DashTab; label: string; icon: React.ReactNode }>).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === tab.key
+                  ? 'border-[var(--accent)] text-[var(--foreground)]'
+                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
       {/* Modals */}
       <AddTradeModal
@@ -791,73 +857,154 @@ export default function Home() {
 
       {/* Empty State Banner */}
       {!hasData && !loading && (
-        <div className="mb-8 p-6 cyber-card border-accent/30 bg-gradient-to-r from-accent/5 to-transparent">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center">
-                <BarChart3 size={24} className="text-accent" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold">{t.emptyState?.title || 'Start Your Trading Journal'}</h3>
-                <p className="text-sm opacity-60">{t.emptyState?.description || 'Import broker report or add your first trade'}</p>
-              </div>
+        <div className="mb-8 rounded-[var(--radius-xl)] border border-[var(--accent)]/30 bg-gradient-to-r from-[var(--accent-soft)] to-transparent p-6 md:p-7">
+          <div className="flex items-start gap-4 mb-5">
+            <div className="w-12 h-12 flex-shrink-0 rounded-[var(--radius-lg)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
+              <BarChart3 size={22} />
             </div>
-            <div className="flex gap-3">
-              {user ? (
-                <>
-                  <button onClick={() => setIsImportModalOpen(true)} className="btn-secondary flex items-center gap-2">
-                    <Upload size={14} />
-                    {t.emptyState?.importButton || 'Import'}
-                  </button>
-                  <button onClick={() => setIsModalOpen(true)} className="btn-primary flex items-center gap-2">
-                    <Plus size={14} />
-                    {t.emptyState?.addButton || 'Add'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-secondary flex items-center gap-2">
-                    <Upload size={14} />
-                    {t.emptyState?.importButton || 'Import'}
-                  </button>
-                  <button onClick={() => setIsAuthRequiredOpen(true)} className="btn-primary flex items-center gap-2">
-                    <Plus size={14} />
-                    {t.emptyState?.addButton || 'Add'}
-                  </button>
-                </>
-              )}
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[17px] font-semibold leading-tight mb-1">
+                {t.emptyState?.title || 'Начните вести журнал сделок'}
+              </h3>
+              <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed">
+                {t.emptyState?.description || 'Импортируйте отчёт брокера или добавьте первую сделку вручную, чтобы увидеть аналитику.'}
+              </p>
             </div>
+          </div>
+          <div className="flex flex-wrap gap-2 pl-16">
+            <button
+              onClick={() => user ? setIsModalOpen(true) : setIsAuthRequiredOpen(true)}
+              className="btn-primary"
+            >
+              <Plus size={14} />
+              Добавить сделку
+            </button>
+            <button
+              onClick={() => user ? setIsImportModalOpen(true) : setIsAuthRequiredOpen(true)}
+              className="btn-secondary"
+            >
+              <Upload size={14} />
+              Импорт отчёта
+            </button>
           </div>
         </div>
       )}
 
-      {/* Stats Grid */}
-      <StatsGrid stats={stats} hasData={hasData} />
-
-      {/* Advanced Stats */}
-      <AdvancedStatsGrid stats={stats} hasData={hasData} />
-
-      {/* Main Content Grid */}
-      <div className="space-y-4">
-          {/* Portfolio Widget - показывает баланс и метрики */}
-          <PortfolioCard />
-
-          <AIInsightsCard
-            recommendations={stats?.mae_mfe_analysis?.recommendations || []}
-            optimalF={stats?.optimal_f || 0}
+      {/* ===== TAB CONTENT ===== */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Equity Curve — главный график «как развивается мой счёт».
+              До этого данные фетчались но никогда не рисовались. */}
+          <EquityCurveCard
+            data={stats?.equity_curve}
+            initialBalance={effectiveInitialDeposit ?? undefined}
+            formatCurrency={formatCurrency}
           />
-          <MAEMFEAnalysisPanel
-            onRecalculate={() => fetchData()}
-          />
-          <PostExitCard
-            tradesCount={trades.length}
-            onRecalculate={() => fetchData()}
-          />
-          <TagStatsCard tagStats={stats?.tag_stats || []} />
+
+          {/* Stats Grid */}
+          <StatsGrid stats={stats} hasData={hasData} />
+
+          {/* Advanced Stats */}
+          <AdvancedStatsGrid stats={stats} hasData={hasData} />
+
+          {/* Portfolio widget — текущее состояние счёта */}
+          <div className="mt-6">
+            <PortfolioCard />
+          </div>
+        </>
+      )}
+
+      {activeTab === 'advanced' && (
+        <AdvancedMetricsGrid
+          data={advancedData as React.ComponentProps<typeof AdvancedMetricsGrid>['data']}
+          loading={advancedLoading}
+        />
+      )}
+
+      {activeTab === 'benchmark' && (
+        <BenchmarkingView
+          data={benchmarkData as React.ComponentProps<typeof BenchmarkingView>['data']}
+          loading={benchmarkLoading}
+        />
+      )}
+
+      {/* Глубокий анализ — teaser-row.
+          Только в Overview — на других табах дублирование избыточно. */}
+      {activeTab === 'overview' && hasData && (
+        <div className="mt-10">
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Глубокий анализ</h2>
+              <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
+                Открой любой раздел, чтобы погрузиться в детали.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              {
+                href: '/analysis/insights',
+                title: 'AI-инсайты',
+                desc: 'Рекомендации и риск-tier по Optimal f.',
+                Icon: Brain,
+                tone: 'violet' as const,
+              },
+              {
+                href: '/analysis/mae-mfe',
+                title: 'MAE / MFE',
+                desc: 'Edge ratio, quality score, оптимизация стопов.',
+                Icon: Target,
+                tone: 'indigo' as const,
+              },
+              {
+                href: '/analysis/post-exit',
+                title: 'Post-Exit',
+                desc: 'Что было после выхода. Реальные свечи MOEX.',
+                Icon: Clock,
+                tone: 'amber' as const,
+              },
+              {
+                href: '/analysis/tags',
+                title: 'По тегам',
+                desc: 'Какие сетапы реально работают на ваших сделках.',
+                Icon: Tag,
+                tone: 'emerald' as const,
+              },
+            ].map((card) => {
+              const toneClass = {
+                violet: 'bg-[#6d28d922] text-[#a78bfa]',
+                indigo: 'bg-[var(--accent-soft)] text-[var(--accent)]',
+                amber: 'bg-[var(--warning-soft)] text-[var(--warning)]',
+                emerald: 'bg-[var(--success-soft)] text-[var(--success)]',
+              }[card.tone];
+              return (
+                <Link
+                  key={card.href}
+                  href={card.href}
+                  className="group flex flex-col gap-3 p-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-1)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors no-underline"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className={`w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center ${toneClass}`}>
+                      <card.Icon size={18} />
+                    </div>
+                    <ArrowRight
+                      size={14}
+                      className="text-[var(--text-tertiary)] group-hover:text-[var(--accent)] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-[14px] mb-1">{card.title}</div>
+                    <div className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+                      {card.desc}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
       </div>
-
-      {/* Terminal Log */}
-      {hasData && <TerminalLog logs={logs} />}
-    </main>
+    </AppShell>
   );
 }

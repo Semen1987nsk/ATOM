@@ -1,8 +1,7 @@
 'use client';
 
-import { AlertTriangle, CheckCircle, Info, Lightbulb } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, Lightbulb, Brain } from 'lucide-react';
 
-// Support both old string format and new object format
 type Recommendation = string | { type: string; icon: string; text: string };
 
 interface AIInsightsCardProps {
@@ -11,100 +10,114 @@ interface AIInsightsCardProps {
 }
 
 export function AIInsightsCard({ recommendations, optimalF }: AIInsightsCardProps) {
-  // Helper to get recommendation text
-  const getRecText = (rec: Recommendation): string => {
-    if (typeof rec === 'string') return rec;
-    return rec.text || '';
-  };
+  const getRecText = (rec: Recommendation): string =>
+    typeof rec === 'string' ? rec : rec.text || '';
 
-  // Helper to get border color based on type
-  const getBorderColor = (rec: Recommendation): string => {
-    if (typeof rec === 'string') return 'border-accent';
+  // Цвет акцентной полосы слева — по типу рекомендации
+  const getBorderClass = (rec: Recommendation): string => {
+    if (typeof rec === 'string') return 'border-l-[var(--accent)]';
     switch (rec.type) {
-      case 'success': return 'border-green-500';
-      case 'warning': return 'border-yellow-500';
-      case 'danger': return 'border-red-500';
-      case 'insight': return 'border-cyan-500';
-      default: return 'border-accent';
+      case 'success': return 'border-l-[var(--success)]';
+      case 'warning': return 'border-l-[var(--warning)]';
+      case 'danger': return 'border-l-[var(--danger)]';
+      case 'insight': return 'border-l-[var(--accent)]';
+      default: return 'border-l-[var(--accent)]';
     }
   };
 
-  // Helper to get icon
   const getRecIcon = (rec: Recommendation) => {
     if (typeof rec === 'string') return null;
     switch (rec.type) {
-      case 'success': return <CheckCircle size={12} className="text-green-400" />;
-      case 'warning': return <AlertTriangle size={12} className="text-yellow-400" />;
-      case 'danger': return <AlertTriangle size={12} className="text-red-400" />;
-      case 'insight': return <Lightbulb size={12} className="text-cyan-400" />;
-      default: return <Info size={12} className="text-slate-400" />;
+      case 'success': return <CheckCircle size={13} className="text-[var(--success)]" />;
+      case 'warning': return <AlertTriangle size={13} className="text-[var(--warning)]" />;
+      case 'danger':  return <AlertTriangle size={13} className="text-[var(--danger)]" />;
+      case 'insight': return <Lightbulb size={13} className="text-[var(--accent)]" />;
+      default:        return <Info size={13} className="text-[var(--text-tertiary)]" />;
     }
   };
 
+  // Варианты риска по Optimal F
+  const riskTiers = [
+    { key: 'f10', label: 'Ультра-консерв. (f/10)', value: optimalF * 10, color: 'var(--accent)', recommended: true },
+    { key: 'f4',  label: 'Консервативный (f/4)',   value: optimalF * 25, color: 'var(--success)' },
+    { key: 'f2',  label: 'Умеренный (f/2)',        value: optimalF * 50, color: 'var(--accent-secondary)' },
+    { key: 'f',   label: 'Агрессивный (f)',        value: optimalF * 100, color: 'var(--danger)' },
+  ];
+
   return (
-    <div className="cyber-card p-6 border-l-accent/30 relative overflow-hidden group">
-      {/* Glow effect */}
-      <div className="absolute -top-20 -right-20 w-40 h-40 bg-accent/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
-      <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
-        <AlertTriangle size={16} className="text-accent animate-pulse" />
-        AI Инсайты
-        <span className="ml-auto badge-accent text-[8px]">LIVE</span>
-      </h2>
-      <div className="space-y-4 relative z-10">
+    <div className="cyber-card p-6 flex flex-col gap-5">
+      {/* Header */}
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
+          <Brain size={16} />
+        </div>
+        <h3 className="text-base font-semibold flex-1">AI-инсайты</h3>
+        <span className="badge badge-accent">live</span>
+      </div>
+
+      {/* Recommendations */}
+      <div className="flex flex-col gap-2">
         {recommendations.map((rec, i) => (
-          <div 
-            key={i} 
-            className={`p-3 bg-accent/5 border-l-2 ${getBorderColor(rec)} text-sm hover:bg-accent/10 transition-all duration-300 rounded-r-lg cursor-default`}
-            style={{ animationDelay: `${i * 0.1}s` }}
+          <div
+            key={i}
+            className={`flex items-start gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)] bg-[var(--surface-2)] border-l-2 ${getBorderClass(rec)} text-[13px] leading-relaxed`}
           >
-            <span className="opacity-30 text-[10px] mr-2">0{i + 1}</span>
-            {getRecIcon(rec) && <span className="mr-2 inline-flex align-middle">{getRecIcon(rec)}</span>}
-            {getRecText(rec)}
+            {getRecIcon(rec) && <span className="flex-shrink-0 mt-0.5">{getRecIcon(rec)}</span>}
+            <span>{getRecText(rec)}</span>
           </div>
         ))}
-        <div className="p-3 bg-gradient-to-r from-blue-500/10 to-transparent border-l-2 border-blue-500 text-sm rounded-r-lg">
-          <span className="text-blue-400 font-bold">Рекомендуемый риск:</span> 
-          <span className="ml-2 text-blue-300 font-bold">{(optimalF * 10).toFixed(1)}%</span>
-          <span className="text-[10px] opacity-40 ml-2">ультра-консервативный (f/10)</span>
+      </div>
+
+      {/* Recommended risk highlight */}
+      <div className="px-4 py-3 rounded-[var(--radius-md)] bg-[var(--accent-soft)] border border-[var(--accent)]/30">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <span className="text-[13px] font-medium text-[var(--accent-hover)]">
+            Рекомендуемый риск
+          </span>
+          <span className="text-2xl font-bold tabular-nums text-[var(--foreground)]">
+            {(optimalF * 10).toFixed(1)}%
+          </span>
         </div>
-        <div className="mt-3 p-2 text-[10px] border border-white/5 rounded-lg space-y-2">
-          <div className="font-mono uppercase opacity-60 mb-2">Варианты риска:</div>
-          <div className="flex justify-between items-center">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-500/30"></span>
-              <strong>Ультра-консерв. (f/10):</strong>
-            </span>
-            <span className="text-blue-400 font-bold">{(optimalF * 10).toFixed(1)}% ⭐</span>
-          </div>
-          <div className="flex justify-between items-center opacity-70">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              Консервативный (f/4):
-            </span>
-            <span className="text-green-400">{(optimalF * 25).toFixed(1)}%</span>
-          </div>
-          <div className="flex justify-between items-center opacity-60">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-accent-secondary"></span>
-              Умеренный (f/2):
-            </span>
-            <span className="text-accent-secondary">{(optimalF * 50).toFixed(1)}%</span>
-          </div>
-          <div className="flex justify-between items-center opacity-50">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500"></span>
-              Агрессивный (f):
-            </span>
-            <span className="text-red-400">{(optimalF * 100).toFixed(1)}%</span>
-          </div>
-          <div className="mt-2 pt-2 border-t border-white/5 space-y-1 opacity-60">
-            <div className="text-blue-400/80">✓ f/10 — <strong>рекомендуется</strong>, минимальная просадка</div>
-            <div className="text-green-400/80">✓ f/4 — стандартный выбор, умеренный риск</div>
-            <div className="text-accent-secondary/80">✓ f/2 — опытные трейдеры, уверенные сетапы</div>
-            <div className="text-red-400/80">⚠️ f — только конкурсы, разгон, «play money»</div>
-          </div>
+        <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+          Ультра-консервативный (f/10) — по Ральфу Винсу
         </div>
+      </div>
+
+      {/* Risk tiers comparison */}
+      <div className="flex flex-col gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-1">
+          Варианты риска
+        </div>
+        {riskTiers.map((tier) => (
+          <div
+            key={tier.key}
+            className={`flex items-center justify-between gap-3 text-[13px] ${
+              tier.recommended ? 'text-[var(--foreground)]' : 'text-[var(--text-secondary)]'
+            }`}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ background: tier.color }}
+              />
+              <span className="truncate">{tier.label}</span>
+              {tier.recommended && (
+                <span className="text-[10px] text-[var(--accent)]">⭐</span>
+              )}
+            </span>
+            <span className="font-medium tabular-nums" style={{ color: tier.color }}>
+              {tier.value.toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Hints */}
+      <div className="text-[11px] text-[var(--text-tertiary)] leading-relaxed pt-2 border-t border-[var(--border)]">
+        <strong className="text-[var(--text-secondary)]">f/10</strong> — рекомендуется, минимальная просадка ·{' '}
+        <strong className="text-[var(--text-secondary)]">f/4</strong> — стандартный выбор ·{' '}
+        <strong className="text-[var(--text-secondary)]">f/2</strong> — для опытных ·{' '}
+        <strong className="text-[var(--text-secondary)]">f</strong> — только разгон / «play money»
       </div>
     </div>
   );
