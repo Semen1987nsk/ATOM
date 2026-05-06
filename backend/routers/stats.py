@@ -16,6 +16,7 @@ from utils import utc_now_naive
 from logger import get_logger
 from tinkoff_service import TinkoffService
 from crypto_utils import decrypt_token
+from moex_service import get_moex_service
 from services.stats_cache import (
     stats_cache,
     build_request_key as _get_cache_key,
@@ -38,6 +39,38 @@ def _get_cached(key):
 
 def _set_cached(key, value):
     stats_cache.set(key, value)
+
+
+def _build_imoex_overlay(equity_curve: list) -> list:
+    """
+    IMOEX overlay для сравнения equity счёта с индексом MOEX.
+
+    Берёт диапазон дат из equity_curve, тянет дневные значения IMOEX
+    (с TTL-кэшем в MoexService — без него каждый /stats/ ходил бы в ISS).
+    Возвращает [{date: 'YYYY-MM-DD HH:MM', value: float}] — формат подобран
+    под точки equity_curve, чтобы фронт мог матчить по дате.
+
+    Если кривая пуста или MOEX недоступен — пустой список (фронт скрывает overlay).
+    """
+    if not equity_curve:
+        return []
+    try:
+        first_date = datetime.strptime(equity_curve[0]["date"][:10], "%Y-%m-%d")
+        last_date = datetime.strptime(equity_curve[-1]["date"][:10], "%Y-%m-%d")
+    except (ValueError, KeyError, TypeError) as exc:
+        log.warning(f"_build_imoex_overlay: date parse failed: {exc}")
+        return []
+    # Расширяем окно на день в каждую сторону, чтобы поймать ближайшую
+    # торговую сессию в случае выходных на границах.
+    try:
+        return get_moex_service().get_index_history(
+            "IMOEX",
+            start=first_date - timedelta(days=2),
+            end=last_date + timedelta(days=2),
+        )
+    except Exception as exc:
+        log.warning(f"_build_imoex_overlay: fetch failed: {exc}")
+        return []
 
 
 # get_account_id is now centralized in auth_service
@@ -450,6 +483,7 @@ async def get_stats(
         "time_patterns": time_patterns_data,
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
+        "imoex_curve": _build_imoex_overlay(equity_curve),
         "tag_stats": tag_stats,
         "initial_balance": base_initial_balance,
         "current_balance": current_balance if equity_curve else base_initial_balance,

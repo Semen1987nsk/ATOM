@@ -48,21 +48,27 @@ export function EquityCurveCard({
   initialBalance = 0,
   formatCurrency = (n) => `${n.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`,
 }: Props) {
-  // Объединяем equity + benchmark в общий dataset для recharts ComposedChart
+  // Объединяем equity + benchmark в общий dataset для recharts ComposedChart.
+  // equity_curve может быть intraday ("YYYY-MM-DD HH:MM"), IMOEX — daily ("YYYY-MM-DD").
+  // Матчим по date-префиксу: для всех intraday-точек одного дня используем CLOSE этого дня.
   const merged = useMemo(() => {
     if (!data || data.length === 0) return [];
     const benchByDate: Record<string, number> = {};
     if (benchmark) {
-      for (const b of benchmark) benchByDate[b.date] = b.value;
+      for (const b of benchmark) benchByDate[b.date.slice(0, 10)] = b.value;
     }
     // Нормализуем benchmark к стартовому balance, чтобы линии были сравнимы
     const firstBenchmark = benchmark?.[0]?.value;
     const ratio = firstBenchmark && data[0]?.balance ? data[0].balance / firstBenchmark : 1;
-    return data.map((p) => ({
-      date: p.date,
-      balance: p.balance,
-      benchmark: benchByDate[p.date] !== undefined ? benchByDate[p.date] * ratio : null,
-    }));
+    return data.map((p) => {
+      const dayKey = p.date.slice(0, 10);
+      const benchValue = benchByDate[dayKey];
+      return {
+        date: p.date,
+        balance: p.balance,
+        benchmark: benchValue !== undefined ? benchValue * ratio : null,
+      };
+    });
   }, [data, benchmark]);
 
   const stats = useMemo(() => {

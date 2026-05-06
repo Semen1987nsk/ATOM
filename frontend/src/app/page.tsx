@@ -95,6 +95,7 @@ interface DashboardData {
   time_patterns: { best_day: { day: string; total_pnl: number } | null; worst_day: { day: string; total_pnl: number } | null };
   mae_mfe_analysis: { avg_mae_pct: number; avg_mfe_pct: number; avg_efficiency: number; trades_analyzed: number; recommendations: string[] };
   equity_curve: { date: string; balance: number }[];
+  imoex_curve?: { date: string; value: number }[];
   tag_stats: { tag: string; pnl: number; win_rate: number; count: number }[];
 }
 
@@ -897,6 +898,8 @@ export default function Home() {
               До этого данные фетчались но никогда не рисовались. */}
           <EquityCurveCard
             data={stats?.equity_curve}
+            benchmark={stats?.imoex_curve}
+            benchmarkLabel="IMOEX"
             initialBalance={effectiveInitialDeposit ?? undefined}
             formatCurrency={formatCurrency}
           />

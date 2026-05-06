@@ -349,6 +349,7 @@ class DashboardStats(BaseModel):
     time_patterns: Optional[dict] = None
     mae_mfe_analysis: Optional[dict] = None
     equity_curve: List[dict] = [] # Данные для графика: [{"date": "...", "balance": ...}]
+    imoex_curve: List[dict] = [] # IMOEX overlay для сравнения: [{"date": "YYYY-MM-DD", "value": ...}]
     tag_stats: List[dict] = [] # Статистика по тегам: [{"tag": "...", "pnl": ..., "win_rate": ...}]
 
 # ==================== BLOG SCHEMAS ====================

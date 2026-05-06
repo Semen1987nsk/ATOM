@@ -16,7 +16,22 @@ import models
 
 random.seed(42)  # детерминированно для воспроизводимости
 
-SYMBOLS = ["SBER", "GAZP", "LKOH", "YNDX", "ROSN", "MGNT", "VTBR", "TATN"]
+# Тикер → реалистичный price range (₽), чтобы Trade Replay имел смысл —
+# SL/TP должны попадать в реальный канал свечей MOEX для этого инструмента.
+# Старая версия seed-а брала entry_price = uniform(50, 5000) от балды, и
+# когда чарт фетчил реальные свечи, маркеры оказывались вне Y-домена.
+SYMBOL_PRICES: dict[str, tuple[float, float]] = {
+    "SBER": (280.0, 330.0),
+    "GAZP": (125.0, 150.0),
+    "LKOH": (5000.0, 6200.0),
+    "YNDX": (3400.0, 4500.0),
+    "ROSN": (510.0, 620.0),
+    "MGNT": (4900.0, 6400.0),
+    "TATN": (580.0, 760.0),
+    "NVTK": (1050.0, 1300.0),
+    "MOEX": (190.0, 240.0),
+}
+SYMBOLS = list(SYMBOL_PRICES.keys())
 SETUPS = ["Пробой", "Откат к уровню", "Разворот", "Импульс", "Контр-тренд"]
 TAGS_POOL = ["FOMO", "По плану", "Догон", "Без стопа", "Утренний гэп", "Вечерняя распродажа"]
 DIRECTIONS = ["LONG", "SHORT"]
@@ -29,8 +44,15 @@ def make_trade(account_id: int, idx: int, base_date: datetime) -> models.Trade:
     hold_minutes = random.choice([15, 30, 60, 240, 1440, 4320])
     exit_at = entry_at + timedelta(minutes=hold_minutes)
 
-    entry_price = round(random.uniform(50, 5000), 2)
-    qty = random.randint(1, 100)
+    price_lo, price_hi = SYMBOL_PRICES[symbol]
+    entry_price = round(random.uniform(price_lo, price_hi), 2)
+    # Адаптивное qty: для дорогих тикеров (LKOH 5K+) меньше штук, для дешёвых больше.
+    if entry_price >= 1000:
+        qty = random.randint(1, 20)
+    elif entry_price >= 200:
+        qty = random.randint(10, 100)
+    else:
+        qty = random.randint(50, 500)
     risk_amount = round(entry_price * qty * 0.02, 2)  # 2% риск
 
     # 55% побед, 45% убытков (реалистичное распределение)

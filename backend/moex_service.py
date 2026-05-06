@@ -58,6 +58,10 @@ class MoexService:
     
     def __init__(self):
         self._specs_cache: Dict[str, Dict] = {}
+        # _index_cache: { (ticker, start_iso, end_iso): (data, fetched_at) }
+        # Дневные свечи индекса меняются раз в день — TTL 1 час с запасом.
+        self._index_cache: Dict[Tuple[str, str, str], Tuple[List[Dict], datetime]] = {}
+        self._index_cache_ttl = timedelta(hours=1)
     
     def get_futures_spec(self, ticker: str) -> Optional[Dict]:
         """
@@ -287,6 +291,83 @@ class MoexService:
             logger.error(f"Unexpected error fetching candles for {ticker}: {exc}")
 
         return []
+
+    # ────────────────────────────────────────────────
+    #  Index history (для overlay IMOEX на equity curve)
+    # ────────────────────────────────────────────────
+
+    def get_index_history(
+        self,
+        ticker: str = "IMOEX",
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> List[Dict]:
+        """
+        Дневная история индекса MOEX (CLOSE по торговым дням).
+
+        Endpoint: /iss/history/engines/stock/markets/index/securities/{ticker}.json
+        Возвращает [{date: 'YYYY-MM-DD', value: float}].
+
+        Кэширует на 1 час по ключу (ticker, start, end). Без кэша каждый
+        вызов /stats/ ходил бы в MOEX и тормозил dashboard.
+        """
+        if end is None:
+            end = datetime.utcnow()
+        if start is None:
+            start = end - timedelta(days=365)
+
+        start_iso = start.strftime("%Y-%m-%d")
+        end_iso = end.strftime("%Y-%m-%d")
+        cache_key = (ticker.upper(), start_iso, end_iso)
+
+        cached = self._index_cache.get(cache_key)
+        if cached is not None:
+            data, fetched_at = cached
+            if datetime.utcnow() - fetched_at < self._index_cache_ttl:
+                return data
+
+        url = f"{MOEX_ISS_BASE}/history/engines/stock/markets/index/securities/{ticker}.json"
+        # ISS пагинирует по 100 записей. Тянем чанками.
+        all_rows: List[Dict] = []
+        start_offset = 0
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                while True:
+                    params = {
+                        "iss.meta": "off",
+                        "iss.only": "history",
+                        "history.columns": "TRADEDATE,CLOSE",
+                        "from": start_iso,
+                        "till": end_iso,
+                        "start": start_offset,
+                    }
+                    resp = client.get(url, params=params)
+                    if resp.status_code != 200:
+                        logger.warning(f"MOEX index history error for {ticker}: {resp.status_code}")
+                        break
+                    payload = resp.json().get("history", {})
+                    cols = payload.get("columns", [])
+                    rows = payload.get("data", [])
+                    if not rows:
+                        break
+                    di = cols.index("TRADEDATE") if "TRADEDATE" in cols else 0
+                    ci = cols.index("CLOSE") if "CLOSE" in cols else 1
+                    for r in rows:
+                        date_val = r[di]
+                        close_val = r[ci]
+                        if date_val is None or close_val is None:
+                            continue
+                        all_rows.append({"date": str(date_val), "value": float(close_val)})
+                    if len(rows) < 100:
+                        break
+                    start_offset += len(rows)
+                    if start_offset > 5000:  # защита от бесконечного цикла
+                        break
+        except Exception as exc:
+            logger.error(f"Index history fetch failed for {ticker}: {exc}")
+
+        self._index_cache[cache_key] = (all_rows, datetime.utcnow())
+        return all_rows
 
     def is_futures_ticker(self, ticker: str) -> bool:
         """
