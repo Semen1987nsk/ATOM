@@ -58,5 +58,7 @@ htmlcov/
 # Playwright MCP debug artifacts (local only)
 .playwright-mcp/
 
-# Claude per-project state (local only)
-.claude/
+# Claude per-project state (local only) — but skills are tracked
+.claude/*
+!.claude/skills/
+.claude/skills/**/.local/
