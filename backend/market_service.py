@@ -1,3 +1,4 @@
+import random
 import requests
 import threading
 import time as _time
@@ -51,28 +52,39 @@ _price_cache = _TTLCache(default_ttl=30.0)
 _specs_cache = _TTLCache(default_ttl=300.0)
 
 # ═══════════════════════════════════════════════════
-#  HTTP GET with retry + exponential backoff
+#  HTTP GET with retry + exponential backoff + jitter
 # ═══════════════════════════════════════════════════
 
 _MOEX_MAX_RETRIES = 2
 _MOEX_BACKOFF = (1.0, 3.0)
 
 
+def _backoff_with_jitter(base: float) -> float:
+    """
+    Backoff с jitter ±20% — критично при многопоточном клиенте.
+
+    Без jitter все gunicorn workers, получив 429, спят ровно `base` секунд
+    и одновременно ретрят → thundering herd, ещё один 429.
+    Случайность размазывает повторные запросы во времени.
+    """
+    return base * (0.8 + random.random() * 0.4)
+
+
 def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
-    """GET with retry for MOEX ISS. Returns parsed JSON or None."""
+    """GET with retry+jitter for MOEX ISS. Returns parsed JSON or None."""
     for attempt in range(_MOEX_MAX_RETRIES + 1):
         try:
             resp = requests.get(url, timeout=timeout)
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code in (429, 500, 502, 503) and attempt < _MOEX_MAX_RETRIES:
-                _time.sleep(_MOEX_BACKOFF[attempt])
+                _time.sleep(_backoff_with_jitter(_MOEX_BACKOFF[attempt]))
                 continue
             log.warning(f"MOEX API {resp.status_code} for {url}")
             return None
         except (requests.Timeout, requests.ConnectionError) as e:
             if attempt < _MOEX_MAX_RETRIES:
-                _time.sleep(_MOEX_BACKOFF[attempt])
+                _time.sleep(_backoff_with_jitter(_MOEX_BACKOFF[attempt]))
                 continue
             log.warning(f"MOEX API error after retries for {url}: {e}")
             return None
@@ -80,6 +92,37 @@ def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
             log.warning(f"MOEX API unexpected error for {url}: {e}")
             return None
     return None
+
+
+# ═══════════════════════════════════════════════════
+#  ISS column-oriented JSON parser (центральная точка)
+# ═══════════════════════════════════════════════════
+
+def _normalize_iss_block(data: dict, block: str) -> List[Dict]:
+    """
+    ISS возвращает блоки в column-oriented формате:
+        {"securities": {"columns": ["SECID", "LAST"], "data": [["SBER", 250.1], ...]}}
+
+    Эта функция превращает их в row-oriented [{"SECID": "SBER", "LAST": 250.1}, ...].
+
+    Возвращает [] если блок отсутствует, columns/data битые или data пустой —
+    вызывающий не должен делать дополнительных проверок.
+
+    Используется для marketdata, securities, candles. Один источник истины
+    вместо 4 копий парсера в этом файле.
+    """
+    if not data or not isinstance(data, dict):
+        return []
+    section = data.get(block)
+    if not isinstance(section, dict):
+        return []
+
+    columns = section.get("columns")
+    rows = section.get("data")
+    if not columns or not isinstance(columns, list) or not isinstance(rows, list):
+        return []
+
+    return [dict(zip(columns, row)) for row in rows if isinstance(row, list) and len(row) == len(columns)]
 
 
 # Праздники MOEX 2025-2026 (торги не проводятся)
@@ -166,27 +209,14 @@ class MarketService:
         for url in self.sources:
             try:
                 data = _moex_get(url)
-                if not data or 'marketdata' not in data:
-                    continue
-
-                columns = data['marketdata']['columns']
-                rows = data['marketdata']['data']
-                
-                try:
-                    secid_idx = columns.index('SECID')
-                    last_idx = columns.index('LAST')
-                except ValueError:
-                    continue
-
-                for row in rows:
-                    ticker = row[secid_idx]
-                    price = row[last_idx]
-                    
+                for entry in _normalize_iss_block(data, "marketdata"):
+                    ticker = entry.get("SECID")
+                    price = entry.get("LAST")
                     if price is not None and ticker in missing:
                         price_f = float(price)
                         prices[ticker] = price_f
                         _price_cache.set(f"price:{ticker}", price_f)
-            
+
             except Exception as e:
                 log.warning(f"Error fetching MOEX data from {url}: {e}")
                 continue
@@ -220,32 +250,19 @@ class MarketService:
         
         try:
             data = _moex_get(url)
-            if not data or 'securities' not in data:
-                return specs
-            
-            columns = data['securities']['columns']
-            rows = data['securities']['data']
-            
-            try:
-                secid_idx = columns.index('SECID')
-                minstep_idx = columns.index('MINSTEP')
-                stepprice_idx = columns.index('STEPPRICE')
-            except ValueError:
-                log.warning("Missing required columns in MOEX futures response")
-                return specs
-            
-            for row in rows:
-                ticker = row[secid_idx]
-                if ticker in missing:
-                    minstep = row[minstep_idx]
-                    stepprice = row[stepprice_idx]
-                    if minstep is not None and stepprice is not None:
-                        spec = {
-                            'minstep': float(minstep),
-                            'stepprice': float(stepprice)
-                        }
-                        specs[ticker] = spec
-                        _specs_cache.set(f"spec:{ticker}", spec)
+            for entry in _normalize_iss_block(data, "securities"):
+                ticker = entry.get("SECID")
+                if ticker not in missing:
+                    continue
+                minstep = entry.get("MINSTEP")
+                stepprice = entry.get("STEPPRICE")
+                if minstep is not None and stepprice is not None:
+                    spec = {
+                        'minstep': float(minstep),
+                        'stepprice': float(stepprice),
+                    }
+                    specs[ticker] = spec
+                    _specs_cache.set(f"spec:{ticker}", spec)
         
         except Exception as e:
             log.warning(f"Error fetching MOEX futures specs: {e}")
@@ -388,42 +405,23 @@ class MarketService:
                     response = requests.get(url, params=params, timeout=10)
                     if response.status_code != 200:
                         break
-                        
-                    data = response.json()
-                    
-                    if 'candles' not in data or 'data' not in data['candles']:
-                        break
-                    
-                    columns = data['candles']['columns']
-                    rows = data['candles']['data']
-                    
+
+                    rows = _normalize_iss_block(response.json(), "candles")
                     if not rows:
                         break
-                    
-                    # Парсим данные
-                    try:
-                        open_idx = columns.index('open')
-                        high_idx = columns.index('high')
-                        low_idx = columns.index('low')
-                        close_idx = columns.index('close')
-                        volume_idx = columns.index('volume')
-                        begin_idx = columns.index('begin')
-                        end_idx = columns.index('end')
-                    except ValueError:
-                        break
-                    
+
                     for row in rows:
                         candle = {
-                            'open': float(row[open_idx]) if row[open_idx] else None,
-                            'high': float(row[high_idx]) if row[high_idx] else None,
-                            'low': float(row[low_idx]) if row[low_idx] else None,
-                            'close': float(row[close_idx]) if row[close_idx] else None,
-                            'volume': float(row[volume_idx]) if row[volume_idx] else 0,
-                            'begin': row[begin_idx],
-                            'end': row[end_idx]
+                            'open': float(row['open']) if row.get('open') is not None else None,
+                            'high': float(row['high']) if row.get('high') is not None else None,
+                            'low': float(row['low']) if row.get('low') is not None else None,
+                            'close': float(row['close']) if row.get('close') is not None else None,
+                            'volume': float(row['volume']) if row.get('volume') is not None else 0,
+                            'begin': row.get('begin'),
+                            'end': row.get('end'),
                         }
                         candles.append(candle)
-                    
+
                     # Проверяем нужна ли следующая страница
                     if len(rows) < 500:  # MOEX возвращает макс 500 записей
                         break
