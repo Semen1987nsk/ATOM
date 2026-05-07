@@ -33,7 +33,10 @@ from routers import (
     stats_router,
     market_router,
 )
-from routers.stats import tags_router
+from routers.stats_tags import (
+    router as tags_router,
+    stats_prefixed_router as stats_tags_router,
+)
 from routers.deposits import router as deposits_router
 from routers.setups import router as setups_router
 from routers.broker import router as broker_router
@@ -212,6 +215,7 @@ app.include_router(broker_router)
 app.include_router(admin_router)
 app.include_router(blog_router)
 app.include_router(stats_router, prefix="/stats")
+app.include_router(stats_tags_router, prefix="/stats")
 app.include_router(tags_router)
 app.include_router(market_router)
 app.include_router(real_pnl_router, prefix="/real-pnl")

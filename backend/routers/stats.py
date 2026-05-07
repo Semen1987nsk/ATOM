@@ -28,7 +28,6 @@ import asyncio
 log = get_logger("stats")
 
 router = APIRouter(tags=["stats"])
-tags_router = APIRouter(tags=["stats"])
 
 
 # Thin wrappers поверх services.stats_cache — сохраняют существующий
@@ -83,44 +82,6 @@ def _build_imoex_overlay(equity_curve: list) -> list:
 
 
 # get_account_id is now centralized in auth_service
-
-
-@tags_router.get("/tags/")
-@router.get("/tags/")
-async def get_all_tags(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user)
-):
-    """Get all unique tags used in trades with their statistics."""
-    account_id = auth_service.get_account_id(db, current_user)
-    trades = db.query(models.Trade).filter(
-        models.Trade.account_id == account_id,
-        models.Trade.pnl != None
-    ).all()
-
-    tag_stats = {}
-    for t in trades:
-        if not t.tags:
-            continue
-        for tag in t.tags:
-            tag_lower = tag.lower()
-            if tag_lower not in tag_stats:
-                tag_stats[tag_lower] = {"tag": tag_lower, "count": 0, "pnl": 0, "wins": 0}
-            tag_stats[tag_lower]["count"] += 1
-            tag_stats[tag_lower]["pnl"] += float(t.pnl or 0)
-            if t.pnl and t.pnl > 0:
-                tag_stats[tag_lower]["wins"] += 1
-
-    result = []
-    for tag, data in tag_stats.items():
-        result.append({
-            "tag": data["tag"],
-            "count": data["count"],
-            "pnl": round(data["pnl"], 2),
-            "win_rate": round((data["wins"] / data["count"]) * 100, 1) if data["count"] > 0 else 0
-        })
-
-    return sorted(result, key=lambda x: x["count"], reverse=True)
 
 
 @router.get("/", response_model=schemas.DashboardStats)
