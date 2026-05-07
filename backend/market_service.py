@@ -374,15 +374,24 @@ class MarketService:
         """
         candles = []
         
-        # Определяем тип инструмента и соответствующий endpoint
+        # Определяем тип инструмента и соответствующий endpoint.
         # Формат: /iss/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles.json
-        
+        #
+        # Порядок важен: первый endpoint, вернувший непустые свечи — победил
+        # (см. цикл ниже с break). Поэтому акции на TQBR проверяем раньше,
+        # чем ОФЗ — частотный случай должен быть первым.
         endpoints = [
-            # Акции (Main Board)
+            # Акции — Main Board (T+: расчёты)
             f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{ticker}/candles.json",
-            # Фьючерсы
+            # ОФЗ (государственные облигации)
+            f"https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities/{ticker}/candles.json",
+            # Корпоративные облигации
+            f"https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQCB/securities/{ticker}/candles.json",
+            # ETF (биржевые фонды)
+            f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQTF/securities/{ticker}/candles.json",
+            # Фьючерсы FORTS
             f"https://iss.moex.com/iss/engines/futures/markets/forts/boards/RFUD/securities/{ticker}/candles.json",
-            # Валюты
+            # Валюты selt CETS
             f"https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/{ticker}/candles.json",
         ]
         
