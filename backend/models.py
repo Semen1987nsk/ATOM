@@ -33,9 +33,13 @@ class User(Base):
     utm_campaign = Column(String, nullable=True)  # Название кампании
     referrer = Column(String, nullable=True)  # Откуда пришёл пользователь
 
+    # 152-ФЗ: запрос на удаление аккаунта (soft-delete, 30-дневный grace period)
+    deletion_requested_at = Column(DateTime, nullable=True, index=True)
+
     accounts = relationship("Account", back_populates="owner", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
+    pd_consents = relationship("PdConsent", back_populates="user", cascade="all, delete-orphan")
 
 
 class SubscriptionPlan(enum.Enum):
@@ -391,5 +395,30 @@ class Article(Base):
     # SEO
     meta_title = Column(String, nullable=True)
     meta_description = Column(String, nullable=True)
-    
+
     author = relationship("User")
+
+
+class PdConsent(Base):
+    """
+    Журнал согласий на обработку персональных данных (152-ФЗ ст. 9 ч. 4).
+
+    Каждое согласие записывается отдельной строкой с версией текста, IP и UA — это
+    доказательная база при проверке РКН. Отзыв согласия не удаляет запись (revoked_at),
+    а ставит timestamp.
+    """
+    __tablename__ = "pd_consents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    consent_text_version = Column(String, nullable=False)  # "v1", "v2" — версия политики
+    accepted_at = Column(DateTime, default=utc_now_naive, nullable=False)
+    ip_address = Column(String(45), nullable=True)  # IPv4 (15) или IPv6 (45)
+    user_agent = Column(String, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)  # NULL = активно, заполнено = отозвано
+
+    user = relationship("User", back_populates="pd_consents")
+
+    __table_args__ = (
+        Index("ix_pd_consents_user_active", "user_id", "revoked_at"),
+    )

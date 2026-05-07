@@ -156,7 +156,8 @@ class TestAuth:
         response = client.post("/auth/register", json={
             "email": "newuser@example.com",
             "password": "Strong-Password-123",
-            "name": "New User"
+            "name": "New User",
+            "pd_consent": True,  # 152-ФЗ ст. 9: обязательное согласие
         })
         assert response.status_code == 200
         data = response.json()
@@ -169,22 +170,47 @@ class TestAuth:
         response = client.post("/auth/register", json={
             "email": "test@example.com",
             "password": "Strong-Password-123",
-            "name": "Duplicate"
+            "name": "Duplicate",
+            "pd_consent": True,
         })
         assert response.status_code == 400
         assert "зарегистрирован" in response.json()["detail"].lower()
-    
+
     def test_register_weak_password(self, test_app):
         """Should reject weak password"""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "weak@example.com",
             "password": "123",
-            "name": "Weak"
+            "name": "Weak",
+            "pd_consent": True,
         })
         assert response.status_code == 422
         assert response.json()["request_id"]
         assert response.headers.get("X-Request-ID") == response.json()["request_id"]
+
+    def test_register_without_pd_consent_rejected(self, test_app):
+        """152-ФЗ: registration must fail without explicit pd_consent."""
+        client = test_app["client"]
+        # Полное отсутствие поля → 422 (Pydantic)
+        response = client.post("/auth/register", json={
+            "email": "noconsent@example.com",
+            "password": "Strong-Password-123",
+            "name": "NoConsent",
+        })
+        assert response.status_code == 422
+
+    def test_register_with_false_pd_consent_rejected(self, test_app):
+        """152-ФЗ: explicit pd_consent=false must be rejected at endpoint level."""
+        client = test_app["client"]
+        response = client.post("/auth/register", json={
+            "email": "falseconsent@example.com",
+            "password": "Strong-Password-123",
+            "name": "False",
+            "pd_consent": False,
+        })
+        assert response.status_code == 400
+        assert "согласие" in response.json()["detail"].lower()
     
     def test_login_success(self, test_app, test_user):
         """Should login successfully with correct credentials"""

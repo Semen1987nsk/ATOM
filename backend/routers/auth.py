@@ -34,22 +34,46 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
     Регистрация нового пользователя.
     Возвращает пару JWT токенов (access + refresh) для авторизации.
     Rate limit: 3 запроса в минуту.
+
+    152-ФЗ: требуется явное согласие на обработку ПД (поле pd_consent=true).
+    Согласие записывается в `pd_consents` с IP и User-Agent — это
+    доказательная база для проверок РКН.
     """
+    # 152-ФЗ ст. 9: согласие должно быть явным. Pydantic уже проверил тип bool,
+    # но значение может быть False — это нарушение, отклоняем.
+    if not user_data.pd_consent:
+        raise HTTPException(
+            status_code=400,
+            detail="Требуется согласие на обработку персональных данных (152-ФЗ)"
+        )
+
     existing_user = auth_service.get_user_by_email(db, user_data.email)
     if existing_user:
         raise HTTPException(
             status_code=400,
             detail="Email уже зарегистрирован"
         )
-    
+
     user = auth_service.create_user(db, user_data)
-    
+
+    # Записываем согласие в журнал — версионируем по политике конфиденциальности.
+    # При смене текста политики версия инкрементируется, и юзер должен подтвердить заново.
+    consent = models.PdConsent(
+        user_id=user.id,
+        consent_text_version="v1",
+        accepted_at=utc_now_naive(),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.add(consent)
+    db.commit()
+
     # Создаём пару токенов
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     auth_service.set_auth_cookies(response, request, access_token, refresh_token)
-    
-    log.info(f"✅ Зарегистрирован новый пользователь: {user.email}")
-    
+
+    log.info(f"✅ Зарегистрирован новый пользователь: {user.email} (consent v1)")
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -182,6 +206,56 @@ def update_current_user(
     updated_user = auth_service.update_user(db, current_user, user_data)
     log.info(f"✏️ Обновлён профиль пользователя: {updated_user.email}")
     return updated_user
+
+
+@router.delete("/me", status_code=202)
+def delete_account(
+    request: Request,
+    response: Response,
+    payload: schemas.DeleteAccountRequest,
+    current_user: models.User = Depends(auth_service.get_current_user),
+    db: Session = Depends(database.get_db)
+):
+    """
+    Запросить удаление аккаунта (152-ФЗ ст. 14).
+
+    Реализован двухфазный подход:
+    1. Этот endpoint ставит deletion_requested_at = now() (soft delete + 30 дней).
+    2. Финализация — отдельный фоновый процесс через 30 дней (services/pd_deletion.py).
+
+    OAuth-юзеры могут не иметь пароля — для них дополнительная проверка не делается,
+    но лимит запросов ограничит злоупотребление.
+
+    Возвращает 202 Accepted — операция принята, но финализируется через 30 дней.
+    """
+    # OAuth-аккаунты могут не иметь пароля — пропускаем проверку, иначе требуем
+    if current_user.hashed_password:
+        if not auth_service.verify_password(payload.password, current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Неверный пароль")
+
+    if current_user.deletion_requested_at is not None:
+        raise HTTPException(status_code=409, detail="Запрос на удаление уже подан")
+
+    # Импортируем здесь, чтобы избежать циклов на модульном уровне
+    from services import pd_deletion
+
+    pd_deletion.request_account_deletion(
+        db,
+        user=current_user,
+        reason=payload.reason,
+        ip_address=request.client.host if request.client else None,
+    )
+
+    # Сбрасываем cookies — юзер фактически разлогинен
+    auth_service.clear_auth_cookies(response, request)
+
+    log.info(f"🗑 Запрос на удаление аккаунта: user_id={current_user.id}")
+
+    return {
+        "status": "deletion_requested",
+        "grace_period_days": 30,
+        "message": "Аккаунт будет удалён через 30 дней. До этого момента вы можете восстановить его."
+    }
 
 
 @router.post("/change-password")

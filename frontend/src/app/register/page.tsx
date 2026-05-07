@@ -20,6 +20,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [pdConsent, setPdConsent] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -46,10 +47,14 @@ export default function RegisterPage() {
       setError(`Пароль должен быть минимум ${PASSWORD_MIN} символов`);
       return;
     }
+    if (!pdConsent) {
+      setError('Необходимо согласие на обработку персональных данных (152-ФЗ)');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await register(email, password, name || undefined);
+      await register(email, password, name || undefined, pdConsent);
       router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка регистрации');
@@ -179,12 +184,38 @@ export default function RegisterPage() {
               }
             />
 
+            {/* 152-ФЗ ст. 9: явное согласие на обработку ПД при регистрации.
+                Текст ссылается на политику с указанием версии — критично для аудита РКН. */}
+            <label className="flex items-start gap-2.5 text-[13px] cursor-pointer mt-1 text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                name="pd_consent"
+                checked={pdConsent}
+                onChange={(e) => setPdConsent(e.target.checked)}
+                required
+                aria-required="true"
+                className="mt-0.5 w-4 h-4 accent-[var(--accent)] cursor-pointer flex-shrink-0"
+              />
+              <span>
+                Я даю{' '}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent)] hover:text-[var(--accent-hover)] underline"
+                >
+                  согласие на обработку персональных данных
+                </Link>{' '}
+                в соответствии с политикой Eqio (версия v1)
+              </span>
+            </label>
+
             <Button
               type="submit"
               size="lg"
               fullWidth
               loading={isLoading}
-              disabled={!passwordOk || !passwordsMatch}
+              disabled={!passwordOk || !passwordsMatch || !pdConsent}
               leftIcon={!isLoading ? <UserPlus size={16} /> : undefined}
               className="mt-2"
             >

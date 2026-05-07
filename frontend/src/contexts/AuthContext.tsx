@@ -25,7 +25,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
+  register: (email: string, password: string, name: string | undefined, pdConsent: boolean) => Promise<void>;
   logout: () => void;
   updateProfile: (data: { name?: string; settings?: Record<string, unknown> }) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -71,9 +71,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchCurrentUser();
   };
   
-  const register = async (email: string, password: string, name?: string) => {
+  const register = async (
+    email: string,
+    password: string,
+    name: string | undefined,
+    pdConsent: boolean,
+  ) => {
+    // 152-ФЗ: pd_consent обязателен — backend отклонит запрос без него.
     await api.post('/auth/register', {
-      body: { email, password, name },
+      body: { email, password, name, pd_consent: pdConsent },
       noAuth: true,
     });
     await fetchCurrentUser();

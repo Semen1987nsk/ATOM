@@ -6,6 +6,7 @@ import { SettingsProvider } from "@/contexts/SettingsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryProvider } from "@/lib/QueryProvider";
+import { CookieConsent } from "@/components/CookieConsent";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +39,7 @@ export default function RootLayout({
               <LanguageProvider>
                 <SettingsProvider>
                   {children}
+                  <CookieConsent />
                 </SettingsProvider>
               </LanguageProvider>
             </AuthProvider>

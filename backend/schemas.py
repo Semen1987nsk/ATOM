@@ -56,6 +56,16 @@ class UserCreate(BaseModel):
     # OWASP 2024: минимум 12 символов для финансового SaaS.
     # Раньше было 6 — недопустимо при наличии денежных операций.
     password: str = Field(..., min_length=12, max_length=128)
+    # 152-ФЗ ст. 9: явное согласие на обработку ПД обязательно при регистрации.
+    # Без этого поля регистрация юридически невалидна для РФ-граждан.
+    pd_consent: bool = Field(..., description="Согласие на обработку персональных данных (152-ФЗ)")
+
+
+class DeleteAccountRequest(BaseModel):
+    """Запрос на удаление аккаунта (152-ФЗ ст. 14)."""
+    password: str = Field(..., min_length=1, description="Пароль для подтверждения")
+    reason: Optional[str] = Field(None, max_length=500, description="Причина удаления (опционально, для feedback)")
+
 
 class UserLogin(BaseModel):
     """Схема для входа"""
