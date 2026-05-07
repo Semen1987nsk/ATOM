@@ -27,6 +27,11 @@ class SyncScheduler:
         self._last_check = None
         self._sync_in_progress: Dict[int, bool] = {}  # connection_id -> is_syncing
         self._check_interval = 60  # Проверяем каждую минуту
+        # 152-ФЗ ст. 21 ч. 5: финализация удалений раз в сутки.
+        # _last_pd_finalize_at = None при старте → первая проверка сразу
+        # (поймает аккаунты которые могли «зависнуть» с прошлого деплоя).
+        self._last_pd_finalize_at: Optional[datetime] = None
+        self._pd_finalize_interval = timedelta(hours=24)
     
     async def start(self):
         """
@@ -69,13 +74,47 @@ class SyncScheduler:
         while self._running:
             try:
                 await self._check_and_sync()
+                await self._check_pd_finalizations()
                 self._last_check = utc_now_naive()
             except Exception as e:
                 log.error(f"Scheduler error: {e}")
                 log.error(traceback.format_exc())
-            
+
             # Ждём до следующей проверки
             await asyncio.sleep(self._check_interval)
+
+    async def _check_pd_finalizations(self):
+        """
+        Раз в 24 часа запускает финализацию удалений (152-ФЗ ст. 21 ч. 5).
+
+        Анонимизирует пользователей у которых deletion_requested_at старше
+        30 дней. Сама проверка интервала выполняется здесь, чтобы scheduler
+        мог продолжать минутные циклы для broker-sync.
+        """
+        now = utc_now_naive()
+        if self._last_pd_finalize_at is not None:
+            if now - self._last_pd_finalize_at < self._pd_finalize_interval:
+                return  # ещё рано
+
+        # Импортируем здесь, не на модульном уровне — pd_deletion подтягивает
+        # тяжёлые модели и может тормозить cold-start scheduler.
+        from services import pd_deletion
+
+        db = SessionLocal()
+        try:
+            # Тяжёлая операция (UPDATE по нескольким таблицам в транзакции).
+            # Выносим в thread, чтобы не блокировать event loop.
+            count = await asyncio.to_thread(pd_deletion.run_pending_deletions, db)
+            self._last_pd_finalize_at = now
+            if count > 0:
+                log.info(f"🗑 PD finalize: {count} accounts anonymized (152-ФЗ)")
+            else:
+                log.debug("PD finalize: nothing to process")
+        except Exception as e:
+            log.error(f"PD finalize failed: {e}")
+            log.error(traceback.format_exc())
+        finally:
+            db.close()
     
     async def _check_and_sync(self):
         """Проверяет и запускает синхронизацию для нужных подключений"""
@@ -181,7 +220,10 @@ class SyncScheduler:
             "check_interval_seconds": self._check_interval,
             "syncing_connections": list(
                 conn_id for conn_id, syncing in self._sync_in_progress.items() if syncing
-            )
+            ),
+            "last_pd_finalize_at": (
+                self._last_pd_finalize_at.isoformat() if self._last_pd_finalize_at else None
+            ),
         }
     
     async def trigger_sync(self, connection_id: int) -> bool:
