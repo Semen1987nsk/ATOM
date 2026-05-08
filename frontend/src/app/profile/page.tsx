@@ -7,7 +7,8 @@ import Link from 'next/link';
 import {
   User, Mail, Calendar, Settings, LogOut, Save,
   ArrowLeft, Loader2, CheckCircle, AlertCircle,
-  TrendingUp, BarChart3, Target, Shield, Crown, Zap, Building2, ArrowUpRight, HelpCircle
+  TrendingUp, BarChart3, Target, Shield, Crown, Zap, Building2, ArrowUpRight, HelpCircle,
+  Download
 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 
@@ -32,6 +33,7 @@ function ProfileContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   
   // Синхронизация с user
   useEffect(() => {
@@ -67,6 +69,32 @@ function ProfileContent() {
   const handleLogout = () => {
     logout();
     window.location.href = '/';
+  };
+
+  // 152-ФЗ ст. 14: право на доступ. Скачиваем JSON-снапшот всех ПД пользователя.
+  const handleExportData = async () => {
+    setIsExporting(true);
+    setMessage(null);
+    try {
+      const data = await api.get<unknown>('/auth/me/export');
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `eqio-export-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Экспорт скачан' });
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Не удалось скачать экспорт';
+      setMessage({ type: 'error', text });
+    } finally {
+      setIsExporting(false);
+    }
   };
   
   if (authLoading || !user) {
@@ -364,6 +392,34 @@ function ProfileContent() {
           </div>
         </div>
         
+        {/* Персональные данные (152-ФЗ ст. 14 — право доступа) */}
+        <div className="mt-6 cyber-card p-6">
+          <h3 className="text-lg font-bold mb-1">Персональные данные</h3>
+          <p className="text-sm text-[var(--text-secondary)] mb-4">
+            Согласно ст. 14 152-ФЗ вы можете получить копию всех своих данных в JSON.
+          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Скачать мои данные</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Профиль, сделки, согласия, платежи — всё в одном файле.
+              </p>
+            </div>
+            <button
+              onClick={handleExportData}
+              disabled={isExporting}
+              className="px-4 py-2 bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] rounded-lg transition-colors flex items-center gap-2 disabled:opacity-60"
+            >
+              {isExporting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              {isExporting ? 'Готовим…' : 'Скачать JSON'}
+            </button>
+          </div>
+        </div>
+
         {/* Danger Zone */}
         <div className="mt-6 cyber-card p-6 border-red-500/20">
           <h3 className="text-lg font-bold text-red-400 mb-4">Опасная зона</h3>

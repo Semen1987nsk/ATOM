@@ -40,7 +40,7 @@
 
 - **Cookie banner с категориями** — сейчас только base-согласие. По хорошему: «строго необходимые / аналитика / маркетинг».
 - ~~**Запуск scheduler'а для finalize_deletion**~~ ✅ **СДЕЛАНО 2026-05-07** — подключено к `sync_scheduler.SyncScheduler._check_pd_finalizations()` с интервалом 24 часа. Smoke-тест в `backend/scripts/_smoke_pd_finalize_scheduler.py`.
-- **Endpoint экспорта ПД** (`GET /auth/me/export`) — право на доступ ст. 14. Сейчас отсутствует. Можно сделать через email-выгрузку.
+- ~~**Endpoint экспорта ПД** (`GET /auth/me/export`)~~ ✅ **СДЕЛАНО 2026-05-07** — `services/pd_export.build_user_export()` собирает все домены данных, endpoint с rate-limit `5/hour`, кнопка «Скачать JSON» в `/profile`. Smoke в `backend/scripts/_smoke_pd_export.py`. Без `hashed_password` и `BrokerConnection.api_token`.
 
 ## История изменений
 
@@ -48,6 +48,7 @@
 | --- | --- |
 | 2026-05-07 | PR1: pd_consents + checkbox + DELETE /auth/me + /privacy + CookieConsent. Метрика 18 в аудите: 3 → 5. |
 | 2026-05-07 | Scheduler подключён к finalize_deletion (24h цикл). |
+| 2026-05-07 | Endpoint `GET /auth/me/export` (152-ФЗ ст. 14) реализован. Метрика 18: 6 → 7. |
 
 ## Связанные документы
 

@@ -13,7 +13,7 @@ import schemas
 import auth_service
 import oauth_service
 from oauth_state_store import get_state_store
-from rate_limiter import limiter, AUTH_LIMIT, REGISTER_LIMIT
+from rate_limiter import limiter, AUTH_LIMIT, REGISTER_LIMIT, EXPORT_LIMIT
 from utils.datetime_utils import utc_now_naive
 from logger import get_logger
 
@@ -256,6 +256,35 @@ def delete_account(
         "grace_period_days": 30,
         "message": "Аккаунт будет удалён через 30 дней. До этого момента вы можете восстановить его."
     }
+
+
+@router.get("/me/export", response_model=schemas.UserDataExport)
+@limiter.limit(EXPORT_LIMIT)
+def export_my_data(
+    request: Request,
+    current_user: models.User = Depends(auth_service.get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    """
+    Экспорт всех персональных данных пользователя (152-ФЗ ст. 14 — право доступа).
+
+    Возвращает JSON со всеми данными: User, Accounts, Trades, Payments,
+    pd_consents и т.д. БЕЗ хешированного пароля и брокерских токенов.
+
+    Rate-limit 5/hour — операция тяжёлая (читает несколько таблиц), смысла
+    спамить нет.
+    """
+    from services import pd_export
+
+    request_id = request.headers.get("x-request-id")
+    data = pd_export.build_user_export(db, current_user, request_id=request_id)
+
+    log.info(
+        f"📦 PD export user_id={current_user.id} "
+        f"trades={data['counts']['trades']} accounts={data['counts']['accounts']}"
+    )
+
+    return data
 
 
 @router.post("/change-password")

@@ -5,7 +5,7 @@
 ## Auth (`/auth`)
 
 | Метод | Endpoint | Тело / Параметры | Ответ |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | POST | `/auth/register` | `{email, password (12+), name?, pd_consent: bool}` | `200 TokenPair` или `400` (consent), `422` (validation) |
 | POST | `/auth/login` | `{email, password}` | `200 TokenPair`, `401`, `403` (deactivated) |
 | POST | `/auth/refresh` | refresh cookie | `200 TokenPair` |
@@ -13,6 +13,7 @@
 | GET | `/auth/me` | — (cookie auth) | `UserResponse` |
 | PUT | `/auth/me` | `UserUpdate` | `UserResponse` |
 | **DELETE** | **`/auth/me`** | **`{password, reason?}`** | **`202 deletion_requested` (152-ФЗ)** |
+| **GET** | **`/auth/me/export`** | — (cookie auth) | **`UserDataExport` JSON со всеми ПД (152-ФЗ ст. 14, rate-limit 5/hour)** |
 | POST | `/auth/change-password` | `{old_password, new_password}` | `200` или `400` |
 | GET | `/auth/oauth/providers` | — | список включённых OAuth |
 | GET | `/auth/oauth/{provider}/authorize` | `?redirect_uri=...` | URL для редиректа (PKCE) |
@@ -21,7 +22,7 @@
 ## Trades (`/trades`)
 
 | Метод | Endpoint | Назначение |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/trades/` | Список сделок, фильтры по периоду/тегу/символу |
 | POST | `/trades/` | Создать сделку (manual entry) |
 | PATCH | `/trades/{id}` | Обновить сделку |
@@ -34,7 +35,7 @@
 > God-router. Расщепляется. Текущее состояние:
 
 | Метод | Endpoint | Что возвращает |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/stats/` | Главный дашборд: PnL, win rate, equity_curve, imoex_curve, initial_balance, базовые метрики |
 | GET | `/stats/advanced` | Ulcer, K-Ratio, Sterling, Omega, Sharpe, Sortino, Calmar |
 | GET | `/stats/benchmark` | Сравнение с когортой/индексом |
@@ -48,7 +49,7 @@
 ## Market (`/market`, `/replay`, `/real-pnl`)
 
 | Метод | Endpoint | Что |
-|---|---|---|
+| --- | --- | --- |
 | GET | `/market/quotes` | Текущие котировки |
 | GET | `/market/candles` | Исторические свечи (для Trade Replay, MAE/MFE) |
 | GET | `/replay/{trade_id}` | Свечи вокруг сделки |
@@ -69,6 +70,7 @@
 ## Что ломаем при изменении
 
 При **любом** изменении контракта — обновить:
+
 1. `frontend/src/lib/api.generated.ts` (через `npm run gen:api-types:from-file`)
 2. Этот файл
 3. Тесты в `backend/tests/`
@@ -76,6 +78,7 @@
 ## Версионирование
 
 API не версионировано (`/v1/...` нет). При breaking changes:
+
 - предупредить в CHANGELOG
 - добавить deprecated-warning в OpenAPI на 1 релиз
 - удалить в следующем

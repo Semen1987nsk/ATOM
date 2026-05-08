@@ -67,6 +67,44 @@ class DeleteAccountRequest(BaseModel):
     reason: Optional[str] = Field(None, max_length=500, description="Причина удаления (опционально, для feedback)")
 
 
+class UserDataExport(BaseModel):
+    """
+    Экспорт всех персональных данных пользователя (152-ФЗ ст. 14 — право доступа).
+
+    Содержит ВСЁ что мы храним на пользователя, кроме:
+    - hashed_password (это дайджест, не сам пароль; не возвращаем)
+    - BrokerConnection.api_token (зашифрован Fernet, в открытом виде не отдаём)
+    - Внутренние счётчики и кеши
+
+    Формат — JSON. Пользователь сам решает что с ним делать (в т.ч. передать
+    в другой сервис для миграции).
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # Метаинформация экспорта
+    export_version: str = Field("1", description="Версия формата экспорта (для будущих миграций)")
+    exported_at: datetime = Field(..., description="Когда сформирован экспорт (UTC)")
+    request_id: Optional[str] = Field(None, description="X-Request-ID для аудита запроса")
+    policy_version: str = Field(..., description="Версия политики конфиденциальности на момент экспорта")
+
+    # Данные пользователя — каждая категория отдельным dict/list, чтобы JSON был самоописательный
+    user: Dict[str, Any]
+    accounts: List[Dict[str, Any]]
+    subscriptions: List[Dict[str, Any]]
+    payments: List[Dict[str, Any]]
+    pd_consents: List[Dict[str, Any]]
+    trades: List[Dict[str, Any]]
+    daily_reviews: List[Dict[str, Any]]
+    setups: List[Dict[str, Any]]
+    deposit_history: List[Dict[str, Any]]
+    capital_operations: List[Dict[str, Any]]
+    balance_snapshots: List[Dict[str, Any]]
+    broker_connections: List[Dict[str, Any]]  # БЕЗ api_token
+
+    # Сводка
+    counts: Dict[str, int] = Field(..., description="Количество записей по каждой категории")
+
+
 class UserLogin(BaseModel):
     """Схема для входа"""
     email: EmailStr
