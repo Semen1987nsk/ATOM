@@ -416,8 +416,8 @@ export default function Home() {
             </div>
 
             <h1 className="headline-2xl mb-8 max-w-4xl">
-              Дневник трейдера,<br />
-              который думает за&nbsp;вас
+              Системная торговля<br />
+              начинается с&nbsp;дневника
             </h1>
 
             <p className="text-lg md:text-xl text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-12">
