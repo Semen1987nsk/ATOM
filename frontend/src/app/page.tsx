@@ -375,7 +375,7 @@ export default function Home() {
         title: 'Поведенческий анализ',
         color: 'amber',
         icon: <Calendar size={22} />,
-        blurb: 'Когда вы торгуете лучше всего, какие сетапы работают, где паттерны.',
+        blurb: 'В какие часы win-rate выше, после каких просадок вы тильтуете, какой сетап стабильно даёт результат.',
         metrics: [
           { label: 'Time Patterns', anchor: 'time-patterns' },
           { label: 'Win/Loss Streaks', anchor: 'streaks' },
@@ -412,7 +412,7 @@ export default function Home() {
           <div className="max-w-6xl mx-auto relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-pill)] bg-[var(--accent-soft)] text-[var(--accent)] text-[12px] font-medium mb-10">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-              Торговый дневник для MOEX
+              Для трейдеров MOEX от 50 сделок в месяц
             </div>
 
             <h1 className="headline-2xl mb-8 max-w-4xl">
@@ -421,8 +421,9 @@ export default function Home() {
             </h1>
 
             <p className="text-lg md:text-xl text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-12">
-              30+ метрик, AI-разбор каждой сделки и автоматическая синхронизация с Тинькофф.
-              Бесплатно до 50 сделок в месяц.
+              Сделки превращаются в систему: 30+ метрик и AI-разбор каждого закрытия,
+              MAE/MFE из биржевых свечей, импорт из любого терминала MOEX. Бесплатно
+              до 50 сделок в месяц.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3">
@@ -444,7 +445,7 @@ export default function Home() {
               <div className="col-span-12 md:col-span-4 tile-text">
                 <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">30+ метрик</div>
                 <div className="text-sm text-[var(--text-secondary)]">
-                  Optimal f, SQN, Sharpe, Sortino, Calmar, Ulcer, K-Ratio — настоящие формулы, не шаблоны.
+                  Узнайте оптимальный размер позиции, реальное преимущество системы и риск разорения. Формулы Винса и Тарпа, не Excel-шаблоны.
                 </div>
               </div>
 
@@ -455,15 +456,15 @@ export default function Home() {
                 <div>
                   <div className="text-2xl font-bold leading-tight mb-2">AI-разбор сделки</div>
                   <div className="text-sm opacity-85">
-                    Вердикт, ошибки, рекомендации — для каждого закрытия.
+                    Что вы сделали правильно, где ошиблись и какой паттерн повторяется — после каждого закрытия.
                   </div>
                 </div>
               </div>
 
               <div className="col-span-12 md:col-span-4 tile-text">
-                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">MOEX свечи</div>
+                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">Реальные свечи MOEX</div>
                 <div className="text-sm text-[var(--text-secondary)]">
-                  MAE / MFE и Trade Replay автоматически из биржевых свечей. В РФ ни у кого больше нет.
+                  Сколько вы оставили на столе и насколько глубоко был стоп — посчитано по свечам биржи. В РФ автоматически — только у нас.
                 </div>
               </div>
 
@@ -473,15 +474,15 @@ export default function Home() {
                 <div>
                   <div className="text-2xl font-bold leading-tight mb-2">Trade Replay</div>
                   <div className="text-sm opacity-85">
-                    Свечи MOEX вокруг каждой сделки с маркерами входа, выхода, stop и take.
+                    Пересмотрите каждую сделку как фильм: вход, выход, стоп, тейк на свечах MOEX. Найдите, где руки дрогнули.
                   </div>
                 </div>
               </div>
 
               <div className="col-span-12 md:col-span-4 tile-text">
-                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">Тинькофф API</div>
+                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">Импорт сделок</div>
                 <div className="text-sm text-[var(--text-secondary)]">
-                  Авто-синхронизация портфеля, FIFO-учёт сделок, расчёт комиссий каждые 60 секунд.
+                  API-интеграция с брокером или Excel / CSV из любого терминала. FIFO-учёт сделок и комиссий — автоматически.
                 </div>
               </div>
 
@@ -506,7 +507,7 @@ export default function Home() {
               {[
                 { n: '30+', label: 'метрик статистики' },
                 { n: '10 000', label: 'итераций Monte Carlo' },
-                { n: '1м – 1д', label: 'таймфреймы MOEX' },
+                { n: '60 сек', label: 'обновление портфеля по API' },
                 { n: '399₽', label: '/ месяц Pro' },
               ].map((f) => (
                 <div key={f.label} className="flex flex-col gap-2">
@@ -580,7 +581,7 @@ export default function Home() {
         {/* ===== 6. SPLIT MAE/MFE × POST-EXIT — surface-1 фон ===== */}
         <section className="section-surface px-6 py-24 md:py-32">
           <div className="max-w-6xl mx-auto">
-            <p className="eyebrow mb-4">Уникальное в РФ</p>
+            <p className="eyebrow mb-4">Только из биржевых данных</p>
             <h2 className="headline-lg mb-12 max-w-3xl">Не очередной Excel</h2>
 
             <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
@@ -659,10 +660,10 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {[
-                { n: '01', title: 'Регистрация', desc: 'Email или OAuth — Google / Яндекс / Сбер / Тинькофф ID. 30 секунд.' },
-                { n: '02', title: 'Импорт сделок', desc: 'Подключите Тинькофф API или загрузите Excel/CSV из любого брокера.' },
-                { n: '03', title: 'Анализ', desc: '30+ метрик считаются мгновенно. AI разбирает каждое закрытие.' },
-                { n: '04', title: 'Рост', desc: 'Находите паттерны в своих ошибках. Устраняйте слабые места системно.' },
+                { n: '01', title: 'Регистрация', desc: 'Email или вход через Яндекс / Сбер ID. 30 секунд.' },
+                { n: '02', title: 'Импорт сделок', desc: 'Подключите брокера через API или загрузите Excel / CSV — поддерживаем любой терминал MOEX.' },
+                { n: '03', title: 'Анализ', desc: '30+ метрик собираются автоматически. AI разбирает каждое закрытие — без ручной работы.' },
+                { n: '04', title: 'Решения', desc: 'Видите, какой сетап работает на каком тикере, в какие часы и при каких объёмах. Перестаёте торговать наугад.' },
               ].map((s) => (
                 <div
                   key={s.n}
@@ -693,7 +694,7 @@ export default function Home() {
                 <div>
                   <h3 className="text-2xl font-bold mb-3 leading-tight">AI-аналитика</h3>
                   <p className="text-sm opacity-85 leading-relaxed mb-4">
-                    Нейросеть оценивает каждую сделку: вердикт, ошибки, рекомендации, балл от 1 до 10.
+                    Каждое закрытие разбирается отдельно: что было правильно по сетапу, где нарушили правила, какие ошибки повторяются третий раз подряд.
                   </p>
                   <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] opacity-90">
                     <li>• Автоанализ при закрытии</li>
@@ -706,14 +707,14 @@ export default function Home() {
               <div className="col-span-12 md:col-span-4 tile-outline flex flex-col justify-between min-h-[280px]">
                 <GitGraph size={28} />
                 <div>
-                  <h3 className="text-2xl font-bold mb-3 leading-tight">Тинькофф Инвестиции</h3>
+                  <h3 className="text-2xl font-bold mb-3 leading-tight">Подключение брокера</h3>
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-4">
-                    Подключите API — сделки, портфель и баланс синхронизируются автоматически.
+                    Сделки и портфель синхронизируются сами. Раз в 60 секунд — без ручного экспорта.
                   </p>
                   <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] text-[var(--text-secondary)]">
-                    <li>• Tinkoff Invest API</li>
-                    <li>• Портфель в реальном времени</li>
-                    <li>• Расчёт комиссий и FIFO</li>
+                    <li>• API-интеграция (на старте — Tinkoff Invest)</li>
+                    <li>• Excel / CSV из любого брокера MOEX</li>
+                    <li>• FIFO-учёт сделок и комиссий</li>
                   </ul>
                 </div>
               </div>
@@ -744,9 +745,10 @@ export default function Home() {
         <section className="section-accent relative overflow-hidden px-6 py-24 md:py-32">
           <KonturCurve variant="tr" className="text-white hidden md:block" opacity={0.3} />
           <div className="max-w-4xl mx-auto text-center flex flex-col gap-8 relative z-10">
-            <h2 className="headline-xl">Готовы торговать осознанно?</h2>
+            <h2 className="headline-xl">Перестаньте гадать. Начните считать.</h2>
             <p className="text-lg md:text-xl opacity-90 max-w-2xl mx-auto">
-              Присоединяйтесь к трейдерам, которые принимают решения на основе данных, а не эмоций.
+              50 первых сделок — бесплатно. Без карты, без триала, без обязательств.
+              Подключите брокера или загрузите Excel — увидите свою статистику через 2 минуты.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
               <Link href="/register" className="btn-pill-inverted">
@@ -797,7 +799,7 @@ export default function Home() {
             </div>
             <div className="pt-8 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-4 text-[var(--text-tertiary)]">
               <div>© Eqio · Торговая аналитика для российских трейдеров</div>
-              <div>MOEX · Тинькофф Invest API</div>
+              <div>Данные: MOEX ISS · Брокеры через API и CSV</div>
             </div>
           </div>
         </footer>
