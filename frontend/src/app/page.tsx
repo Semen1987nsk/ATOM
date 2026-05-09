@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Lock, Upload, BookOpen, LogIn, BarChart3, Target, Zap, TrendingUp, Brain, Shield, GitGraph, Activity, Clock, ArrowRight, Tag, Calendar, Wallet } from 'lucide-react';
+import { Plus, Lock, Upload, BookOpen, LogIn, BarChart3, Target, Zap, TrendingUp, Brain, Shield, GitGraph, Activity, Clock, ArrowRight, Tag, Calendar, Wallet, ArrowUpRight, Sparkles } from 'lucide-react';
+import { KonturCurve } from '@/components/landing/KonturCurve';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -385,87 +386,157 @@ export default function Home() {
     ];
 
     return (
-      <main className="min-h-screen bg-mesh-soft">
-        {/* ===== HEADER ===== */}
+      <main className="min-h-screen section-dark">
+        {/* ===== 1. HEADER ===== */}
         <header className="sticky top-0 z-30 backdrop-blur-md bg-[var(--background)]/80 border-b border-[var(--border)]">
           <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-16">
-            <Link href="/" className="text-2xl font-bold tracking-tight no-underline">
-              <span className="text-[var(--accent)]">Eq</span>io
+            <Link href="/" className="text-2xl font-bold tracking-tight no-underline text-[var(--foreground)]">
+              Eqio
             </Link>
             <nav className="hidden md:flex items-center gap-6 text-sm text-[var(--text-secondary)]">
-              <Link href="/manual" className="hover:text-[var(--foreground)] transition-colors">Возможности</Link>
-              <Link href="/pricing" className="hover:text-[var(--foreground)] transition-colors">Тарифы</Link>
-              <Link href="/blog" className="hover:text-[var(--foreground)] transition-colors">Блог</Link>
-              <Link href="/help" className="hover:text-[var(--foreground)] transition-colors">Помощь</Link>
+              <Link href="/manual" className="hover:text-[var(--foreground)] transition-colors no-underline">Возможности</Link>
+              <Link href="/pricing" className="hover:text-[var(--foreground)] transition-colors no-underline">Тарифы</Link>
+              <Link href="/blog" className="hover:text-[var(--foreground)] transition-colors no-underline">Блог</Link>
+              <Link href="/help" className="hover:text-[var(--foreground)] transition-colors no-underline">Помощь</Link>
             </nav>
-            <div className="flex items-center gap-2">
-              <Link href="/login" className="btn-ghost">Войти</Link>
-              <Link href="/register" className="btn-primary">Начать</Link>
+            <div className="flex items-center gap-3">
+              <Link href="/login" className="btn-pill-outline">Войти в сервис</Link>
+              <Link href="/register" className="btn-primary hidden sm:inline-flex">Начать</Link>
             </div>
           </div>
         </header>
 
-        {/* ===== HERO ===== */}
-        <section className="relative px-6 pt-20 pb-16 md:pt-28 md:pb-20">
-          <div className="max-w-5xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-pill)] bg-[var(--accent-soft)] text-[var(--accent)] text-[12px] font-medium mb-8">
+        {/* ===== 2. HERO ===== */}
+        <section className="section-dark relative overflow-hidden px-6 pt-20 pb-24 md:pt-32 md:pb-32">
+          <KonturCurve variant="br" className="text-white hidden md:block" opacity={0.45} />
+          <div className="max-w-6xl mx-auto relative z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-pill)] bg-[var(--accent-soft)] text-[var(--accent)] text-[12px] font-medium mb-10">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-              Торговый дневник нового поколения
+              Торговый дневник для MOEX
             </div>
 
-            <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.05] mb-6">
-              Превратите свои сделки<br />
-              в <span className="text-[var(--accent)]">системный бизнес</span>
+            <h1 className="headline-2xl mb-8 max-w-4xl">
+              Дневник трейдера,<br />
+              который думает за&nbsp;вас
             </h1>
 
-            <p className="text-lg md:text-xl text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-10">
-              Дневник трейдера с 30+ метриками, AI-разбором каждой сделки и автоматической
-              синхронизацией с Тинькофф. Бесплатно до 50 сделок в месяц.
+            <p className="text-lg md:text-xl text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-12">
+              30+ метрик, AI-разбор каждой сделки и автоматическая синхронизация с Тинькофф.
+              Бесплатно до 50 сделок в месяц.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href="/register" className="btn-primary" style={{ padding: '14px 28px', fontSize: '16px' }}>
                 Начать бесплатно <ArrowRight size={16} />
               </Link>
-              <Link href="/manual" className="btn-secondary" style={{ padding: '14px 28px', fontSize: '16px' }}>
+              <Link href="/manual" className="btn-pill-outline" style={{ padding: '14px 28px', fontSize: '15px' }}>
                 <BookOpen size={16} /> Что внутри
               </Link>
             </div>
           </div>
         </section>
 
-        {/* ===== METRICS BENTO ===== */}
-        <section id="features" className="px-6 py-16 md:py-24">
+        {/* ===== 3. HERO BENTO — 6 плиток, 3 типа (kontur-style) ===== */}
+        <section className="section-dark px-6 pb-24 md:pb-32">
           <div className="max-w-6xl mx-auto">
-            <div className="mb-12">
-              <p className="text-sm font-medium text-[var(--accent)] mb-3">Ваш аналитический центр</p>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-4">
-                30+ метрик в одном месте
-              </h2>
-              <p className="text-[var(--text-secondary)] text-lg max-w-2xl">
-                Каждая сделка раскладывается на десятки параметров — от базовой статистики до
-                поведенческих паттернов.
-              </p>
-            </div>
+            <div className="grid grid-cols-12 gap-4 md:gap-5">
+              {/* Row 1: text-only / colored-indigo / text-only */}
+              <div className="col-span-12 md:col-span-4 tile-text">
+                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">30+ метрик</div>
+                <div className="text-sm text-[var(--text-secondary)]">
+                  Optimal f, SQN, Sharpe, Sortino, Calmar, Ulcer, K-Ratio — настоящие формулы, не шаблоны.
+                </div>
+              </div>
 
-            {/* Bento: 5 категорий, разные размеры */}
+              <div className="col-span-12 md:col-span-4 tile tile-indigo flex flex-col justify-between min-h-[220px]">
+                <div className="flex items-start justify-between">
+                  <Sparkles size={22} className="opacity-95" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold leading-tight mb-2">AI-разбор сделки</div>
+                  <div className="text-sm opacity-85">
+                    Вердикт, ошибки, рекомендации — для каждого закрытия.
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-4 tile-text">
+                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">MOEX свечи</div>
+                <div className="text-sm text-[var(--text-secondary)]">
+                  MAE / MFE и Trade Replay автоматически из биржевых свечей. В РФ ни у кого больше нет.
+                </div>
+              </div>
+
+              {/* Row 2: colored-emerald / text-only / outlined-link */}
+              <div className="col-span-12 md:col-span-5 tile tile-emerald flex flex-col justify-between min-h-[200px]">
+                <Target size={22} className="opacity-95" />
+                <div>
+                  <div className="text-2xl font-bold leading-tight mb-2">Trade Replay</div>
+                  <div className="text-sm opacity-85">
+                    Свечи MOEX вокруг каждой сделки с маркерами входа, выхода, stop и take.
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-4 tile-text">
+                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">Тинькофф API</div>
+                <div className="text-sm text-[var(--text-secondary)]">
+                  Авто-синхронизация портфеля, FIFO-учёт сделок, расчёт комиссий каждые 60 секунд.
+                </div>
+              </div>
+
+              <Link href="/manual" className="col-span-12 md:col-span-3 tile-outline no-underline group">
+                <div className="flex flex-col h-full justify-between min-h-[180px] w-full">
+                  <div className="text-lg font-semibold">Все возможности</div>
+                  <ArrowUpRight size={28} className="self-end transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+                </div>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* ===== 4. NUMBERS BAND — светлая контрастная секция ===== */}
+        <section className="section-light relative overflow-hidden px-6 py-24 md:py-32">
+          <KonturCurve variant="bl" className="text-black hidden md:block" opacity={0.12} />
+          <div className="max-w-6xl mx-auto relative z-10">
+            <p className="eyebrow mb-4">Что вы получаете</p>
+            <h2 className="headline-lg mb-16 max-w-3xl">Цифры, а не обещания</h2>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-6">
+              {[
+                { n: '30+', label: 'метрик статистики' },
+                { n: '10 000', label: 'итераций Monte Carlo' },
+                { n: '1м – 1д', label: 'таймфреймы MOEX' },
+                { n: '399₽', label: '/ месяц Pro' },
+              ].map((f) => (
+                <div key={f.label} className="flex flex-col gap-2">
+                  <div className="number-fact">{f.n}</div>
+                  <div className="text-sm text-[#6b7280]">{f.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== 5. METRICS DEEP DIVE — bento с 5 категорий + outlined link ===== */}
+        <section id="features" className="section-dark px-6 py-24 md:py-32">
+          <div className="max-w-6xl mx-auto">
+            <p className="eyebrow mb-4">Аналитический центр</p>
+            <h2 className="headline-lg mb-12 max-w-3xl">30+ метрик. По-настоящему 30+</h2>
+
             <div className="grid grid-cols-12 gap-4 md:gap-5">
               {metricCategories.map((cat, idx) => {
-                // Bento layout: 1й — широкий (col-span-7), 2й — узкий (col-span-5),
-                // 3й — узкий, 4й — широкий, 5й — на всю ширину
                 const layoutClass = [
                   'col-span-12 md:col-span-7',
                   'col-span-12 md:col-span-5',
                   'col-span-12 md:col-span-5',
-                  'col-span-12 md:col-span-7',
-                  'col-span-12',
+                  'col-span-12 md:col-span-4',
+                  'col-span-12 md:col-span-3',
                 ][idx];
                 return (
                   <div key={cat.title} className={layoutClass}>
                     <div className={`tile tile-${cat.color} h-full min-h-[220px] flex flex-col gap-4`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="opacity-95">{cat.icon}</div>
-                      </div>
+                      <div className="opacity-95">{cat.icon}</div>
                       <div className="flex-1">
                         <h3 className="text-xl md:text-2xl font-bold leading-tight mb-2">
                           {cat.title}
@@ -487,152 +558,122 @@ export default function Home() {
                   </div>
                 );
               })}
-            </div>
 
-            <div className="text-center mt-10">
               <Link
                 href="/manual"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline"
+                className="col-span-12 md:col-span-12 tile-outline no-underline group"
               >
-                <BookOpen size={14} /> Полное руководство по метрикам <ArrowRight size={14} />
+                <div className="flex flex-row items-center justify-between w-full">
+                  <div>
+                    <div className="text-lg font-semibold mb-1">Полное руководство по метрикам</div>
+                    <div className="text-sm text-[var(--text-secondary)]">
+                      Подробное описание каждого показателя, формулы и примеры расчёта.
+                    </div>
+                  </div>
+                  <ArrowUpRight size={32} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1 flex-shrink-0" />
+                </div>
               </Link>
             </div>
           </div>
         </section>
 
-        {/* ===== MAE/MFE & POST-EXIT — двухколоночный feature-блок ===== */}
-        <section className="px-6 py-16 md:py-20 border-t border-[var(--border)]">
-          <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 lg:gap-16">
-            <div>
-              <Link href="/manual#mae-mfe" className="inline-flex items-center gap-3 mb-5 group no-underline">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
-                  <Target size={20} />
-                </div>
-                <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--accent)] transition-colors">
-                  MAE / MFE анализ
-                </h3>
-              </Link>
-              <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
-                Maximum Adverse / Favorable Excursion — ключевые метрики для оптимизации стопов
-                и тейк-профитов. Считаются автоматически по реальным свечам MOEX.
-              </p>
-              <ul className="flex flex-col gap-3 list-none p-0">
-                {[
-                  ['Edge Ratio', 'отношение MFE/MAE — насколько преимущество перевешивает риск'],
-                  ['Quality Score', 'комплексная оценка сетапа: win-rate × efficiency × edge'],
-                  ['Группировка', 'по тегам, сетапам, инструментам, таймфреймам, направлению'],
-                  ['Персентили', 'P25/P50/P75 распределения для точной настройки стопов'],
-                ].map(([t, d]) => (
-                  <li key={t} className="flex gap-3 items-start">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] mt-2.5 flex-shrink-0" />
-                    <span>
-                      <span className="font-semibold">{t}</span>
-                      <span className="text-[var(--text-secondary)]"> — {d}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+        {/* ===== 6. SPLIT MAE/MFE × POST-EXIT — surface-1 фон ===== */}
+        <section className="section-surface px-6 py-24 md:py-32">
+          <div className="max-w-6xl mx-auto">
+            <p className="eyebrow mb-4">Уникальное в РФ</p>
+            <h2 className="headline-lg mb-12 max-w-3xl">Не очередной Excel</h2>
 
-            <div>
-              <Link href="/manual#post-exit" className="inline-flex items-center gap-3 mb-5 group no-underline">
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--warning-soft)] text-[var(--warning)] flex items-center justify-center">
-                  <Clock size={20} />
-                </div>
-                <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--warning)] transition-colors">
-                  Post-Exit анализ
-                </h3>
-              </Link>
-              <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
-                Что было с ценой после вашего выхода? Система загружает реальные свечи
-                и считает, сколько вы оставили на столе.
-              </p>
-              <ul className="flex flex-col gap-3 list-none p-0">
-                {[
-                  ['Упущенная прибыль', '% движения цены в вашу сторону после закрытия'],
-                  ['Мульти-таймфрейм', '15м / 1ч / 4ч / 1д — от скальпинга до свинга'],
-                  ['Early Exit детекция', 'автоматическое выявление сделок, закрытых рано'],
-                  ['Реальные свечи', 'данные MOEX ISS API — точные цены, а не модели'],
-                ].map(([t, d]) => (
-                  <li key={t} className="flex gap-3 items-start">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)] mt-2.5 flex-shrink-0" />
-                    <span>
-                      <span className="font-semibold">{t}</span>
-                      <span className="text-[var(--text-secondary)]"> — {d}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== AI / BROKER / RISK — 3 features ===== */}
-        <section className="px-6 py-16 md:py-20 border-t border-[var(--border)]">
-          <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-5">
-            {[
-              {
-                icon: <Brain size={24} />,
-                title: 'AI-аналитика',
-                desc: 'Каждая сделка оценивается нейросетью: вердикт, разбор ошибок, рекомендации, балл от 1 до 10.',
-                bullets: ['Автоанализ при закрытии', 'Рекомендации по сетапам', 'Паттерны в ошибках'],
-              },
-              {
-                icon: <GitGraph size={24} />,
-                title: 'Синхронизация с брокером',
-                desc: 'Подключите Тинькофф Инвестиции — сделки, портфель и баланс загрузятся автоматически.',
-                bullets: ['Tinkoff Invest API', 'Портфель в реальном времени', 'Расчёт комиссий'],
-              },
-              {
-                icon: <Shield size={24} />,
-                title: 'Управление рисками',
-                desc: 'Optimal F, Kelly, Risk of Ruin — научный подход к размеру позиции.',
-                bullets: ['Optimal F по PnL и R', 'Drawdown в реальном времени', 'Monte Carlo 10 000 итераций'],
-              },
-            ].map((f) => (
-              <div key={f.title} className="cyber-card p-6 flex flex-col gap-4">
-                <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
-                  {f.icon}
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold mb-2">{f.title}</h3>
-                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{f.desc}</p>
-                </div>
-                <ul className="flex flex-col gap-2 mt-auto list-none p-0">
-                  {f.bullets.map((b) => (
-                    <li key={b} className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)]">
-                      <Zap size={12} className="text-[var(--accent)] flex-shrink-0" />
-                      {b}
+            <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
+              <div className="cyber-card p-8 lg:p-10">
+                <Link href="/manual#mae-mfe" className="inline-flex items-center gap-3 mb-5 group no-underline">
+                  <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
+                    <Target size={22} />
+                  </div>
+                  <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--accent)] transition-colors">
+                    MAE / MFE анализ
+                  </h3>
+                </Link>
+                <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
+                  Maximum Adverse / Favorable Excursion — ключевые метрики для оптимизации стопов
+                  и тейк-профитов. Считаются автоматически по реальным свечам MOEX.
+                </p>
+                <ul className="flex flex-col gap-3 list-none p-0">
+                  {[
+                    ['Edge Ratio', 'отношение MFE/MAE — насколько преимущество перевешивает риск'],
+                    ['Quality Score', 'комплексная оценка сетапа: win-rate × efficiency × edge'],
+                    ['Группировка', 'по тегам, сетапам, инструментам, таймфреймам, направлению'],
+                    ['Персентили', 'P25/P50/P75 распределения для точной настройки стопов'],
+                  ].map(([t, d]) => (
+                    <li key={t} className="flex gap-3 items-start">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] mt-2.5 flex-shrink-0" />
+                      <span>
+                        <span className="font-semibold">{t}</span>
+                        <span className="text-[var(--text-secondary)]"> — {d}</span>
+                      </span>
                     </li>
                   ))}
                 </ul>
               </div>
-            ))}
+
+              <div className="cyber-card p-8 lg:p-10">
+                <Link href="/manual#post-exit" className="inline-flex items-center gap-3 mb-5 group no-underline">
+                  <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--warning-soft)] text-[var(--warning)] flex items-center justify-center">
+                    <Clock size={22} />
+                  </div>
+                  <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--warning)] transition-colors">
+                    Post-Exit анализ
+                  </h3>
+                </Link>
+                <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
+                  Что было с ценой после вашего выхода? Система загружает реальные свечи
+                  и считает, сколько вы оставили на столе.
+                </p>
+                <ul className="flex flex-col gap-3 list-none p-0">
+                  {[
+                    ['Упущенная прибыль', '% движения цены в вашу сторону после закрытия'],
+                    ['Мульти-таймфрейм', '15м / 1ч / 4ч / 1д — от скальпинга до свинга'],
+                    ['Early Exit детекция', 'автоматическое выявление сделок, закрытых рано'],
+                    ['Реальные свечи', 'данные MOEX ISS API — точные цены, а не модели'],
+                  ].map(([t, d]) => (
+                    <li key={t} className="flex gap-3 items-start">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)] mt-2.5 flex-shrink-0" />
+                      <span>
+                        <span className="font-semibold">{t}</span>
+                        <span className="text-[var(--text-secondary)]"> — {d}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* ===== HOW IT WORKS — 4 шага ===== */}
-        <section className="px-6 py-16 md:py-20 border-t border-[var(--border)]">
-          <div className="max-w-5xl mx-auto">
-            <div className="mb-12">
-              <p className="text-sm font-medium text-[var(--accent)] mb-3">Начните за 2 минуты</p>
-              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Как это работает</h2>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+        {/* ===== 7. HOW IT WORKS — светлая, 4 карточки с огромными цифрами ===== */}
+        <section className="section-light px-6 py-24 md:py-32">
+          <div className="max-w-6xl mx-auto">
+            <p className="eyebrow mb-4">Начните за 2 минуты</p>
+            <h2 className="headline-lg mb-12 max-w-3xl text-[#0a0a0b]">
+              От первой сделки до системы — за 4 шага
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {[
-                { step: 1, title: 'Регистрация', desc: 'Email или OAuth — Google / Яндекс / Тинькофф', icon: <LogIn size={18} /> },
-                { step: 2, title: 'Импорт сделок', desc: 'Подключите брокера или загрузите Excel/CSV', icon: <Upload size={18} /> },
-                { step: 3, title: 'Анализ', desc: '30+ метрик считаются мгновенно, AI разбирает', icon: <Brain size={18} /> },
-                { step: 4, title: 'Рост', desc: 'Находите паттерны, устраняйте слабости', icon: <TrendingUp size={18} /> },
+                { n: '01', title: 'Регистрация', desc: 'Email или OAuth — Google / Яндекс / Сбер / Тинькофф ID. 30 секунд.' },
+                { n: '02', title: 'Импорт сделок', desc: 'Подключите Тинькофф API или загрузите Excel/CSV из любого брокера.' },
+                { n: '03', title: 'Анализ', desc: '30+ метрик считаются мгновенно. AI разбирает каждое закрытие.' },
+                { n: '04', title: 'Рост', desc: 'Находите паттерны в своих ошибках. Устраняйте слабые места системно.' },
               ].map((s) => (
-                <div key={s.step} className="flex flex-col gap-3">
-                  <div className="w-12 h-12 rounded-[var(--radius-lg)] bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)]">
-                    {s.icon}
+                <div
+                  key={s.n}
+                  className="bg-white border-2 border-[#0a0a0b] rounded-[var(--radius-lg)] p-6 lg:p-8 flex flex-col gap-3 min-h-[240px]"
+                >
+                  <div className="text-[64px] md:text-[72px] font-extrabold leading-none tracking-tight text-[#0a0a0b]">
+                    {s.n}
                   </div>
-                  <div>
-                    <div className="text-[12px] font-medium text-[var(--text-tertiary)] mb-1">Шаг {s.step}</div>
-                    <h4 className="font-semibold mb-1.5">{s.title}</h4>
-                    <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">{s.desc}</p>
+                  <div className="flex-1">
+                    <h4 className="text-xl font-bold mb-2 text-[#0a0a0b]">{s.title}</h4>
+                    <p className="text-[14px] text-[#6b7280] leading-relaxed">{s.desc}</p>
                   </div>
                 </div>
               ))}
@@ -640,38 +681,124 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ===== FINAL CTA ===== */}
-        <section className="px-6 py-16 md:py-24 border-t border-[var(--border)]">
-          <div className="max-w-3xl mx-auto text-center flex flex-col gap-6">
-            <h2 className="text-3xl md:text-5xl font-bold tracking-tight leading-tight">
-              Готовы торговать <span className="text-[var(--accent)]">осознанно</span>?
-            </h2>
-            <p className="text-[var(--text-secondary)] text-lg">
+        {/* ===== 8. AI / BROKER / RISK — 3 разнотипные плитки ===== */}
+        <section className="section-dark px-6 py-24 md:py-32">
+          <div className="max-w-6xl mx-auto">
+            <p className="eyebrow mb-4">Зачем платить Pro</p>
+            <h2 className="headline-lg mb-12 max-w-3xl">Три причины 399&nbsp;₽ в&nbsp;месяц</h2>
+
+            <div className="grid grid-cols-12 gap-4 md:gap-5">
+              <div className="col-span-12 md:col-span-4 tile tile-violet flex flex-col justify-between min-h-[280px]">
+                <Brain size={28} className="opacity-95" />
+                <div>
+                  <h3 className="text-2xl font-bold mb-3 leading-tight">AI-аналитика</h3>
+                  <p className="text-sm opacity-85 leading-relaxed mb-4">
+                    Нейросеть оценивает каждую сделку: вердикт, ошибки, рекомендации, балл от 1 до 10.
+                  </p>
+                  <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] opacity-90">
+                    <li>• Автоанализ при закрытии</li>
+                    <li>• Рекомендации по сетапам</li>
+                    <li>• Паттерны в ошибках</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-4 tile-outline flex flex-col justify-between min-h-[280px]">
+                <GitGraph size={28} />
+                <div>
+                  <h3 className="text-2xl font-bold mb-3 leading-tight">Тинькофф Инвестиции</h3>
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-4">
+                    Подключите API — сделки, портфель и баланс синхронизируются автоматически.
+                  </p>
+                  <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] text-[var(--text-secondary)]">
+                    <li>• Tinkoff Invest API</li>
+                    <li>• Портфель в реальном времени</li>
+                    <li>• Расчёт комиссий и FIFO</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-4 tile tile-rose flex flex-col justify-between min-h-[280px]">
+                <Shield size={28} className="opacity-95" />
+                <div>
+                  <h3 className="text-2xl font-bold mb-3 leading-tight">Управление рисками</h3>
+                  <p className="text-sm opacity-85 leading-relaxed mb-4">
+                    Optimal F (Винс), Kelly, Risk of Ruin — научный подход к размеру позиции.
+                  </p>
+                  <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] opacity-90">
+                    <li>• Optimal F по PnL и R</li>
+                    <li>• Drawdown в реальном времени</li>
+                    <li>• Monte Carlo 10 000 итераций</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-center text-sm text-[var(--text-tertiary)] mt-10">
+              Бесплатно до 50 сделок в месяц. Pro — 399 ₽/мес. Без карты на старте.
+            </p>
+          </div>
+        </section>
+
+        {/* ===== 9. FINAL CTA — accent indigo ===== */}
+        <section className="section-accent relative overflow-hidden px-6 py-24 md:py-32">
+          <KonturCurve variant="tr" className="text-white hidden md:block" opacity={0.3} />
+          <div className="max-w-4xl mx-auto text-center flex flex-col gap-8 relative z-10">
+            <h2 className="headline-xl">Готовы торговать осознанно?</h2>
+            <p className="text-lg md:text-xl opacity-90 max-w-2xl mx-auto">
               Присоединяйтесь к трейдерам, которые принимают решения на основе данных, а не эмоций.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
-              <Link href="/register" className="btn-primary" style={{ padding: '14px 28px', fontSize: '16px' }}>
-                Создать аккаунт <ArrowRight size={16} />
+              <Link href="/register" className="btn-pill-inverted">
+                Начать бесплатно <ArrowRight size={18} />
               </Link>
-              <Link href="/pricing" className="btn-secondary" style={{ padding: '14px 28px', fontSize: '16px' }}>
-                <Wallet size={16} /> Тарифы
+              <Link href="/pricing" className="btn-pill-outline" style={{ color: '#fff', padding: '14px 28px', fontSize: '15px' }}>
+                Посмотреть тарифы
               </Link>
             </div>
           </div>
         </section>
 
-        {/* ===== FOOTER ===== */}
-        <footer className="px-6 py-10 border-t border-[var(--border)] text-sm text-[var(--text-tertiary)]">
-          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-6">
-            <div>
-              © Eqio · Торговая аналитика на базе ИИ
+        {/* ===== 10. FOOTER — 4-col grid ===== */}
+        <footer className="section-dark border-t border-[var(--border)] px-6 py-16 text-sm">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
+              <div>
+                <Link href="/" className="text-xl font-bold tracking-tight no-underline text-[var(--foreground)] mb-4 block">
+                  Eqio
+                </Link>
+                <p className="text-[var(--text-tertiary)] leading-relaxed">
+                  Торговый дневник для серьёзного трейдера MOEX.
+                </p>
+              </div>
+              <div>
+                <div className="text-[var(--foreground)] font-semibold mb-4">Продукт</div>
+                <nav className="flex flex-col gap-2.5">
+                  <Link href="/manual" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Возможности</Link>
+                  <Link href="/pricing" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Тарифы</Link>
+                  <Link href="/calculator" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Калькулятор</Link>
+                </nav>
+              </div>
+              <div>
+                <div className="text-[var(--foreground)] font-semibold mb-4">Компания</div>
+                <nav className="flex flex-col gap-2.5">
+                  <Link href="/blog" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Блог</Link>
+                  <Link href="/help" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Помощь</Link>
+                  <Link href="/manual" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Руководство</Link>
+                </nav>
+              </div>
+              <div>
+                <div className="text-[var(--foreground)] font-semibold mb-4">Право</div>
+                <nav className="flex flex-col gap-2.5">
+                  <Link href="/privacy" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Политика конфиденциальности</Link>
+                  <span className="text-[var(--text-tertiary)]">152-ФЗ</span>
+                </nav>
+              </div>
             </div>
-            <nav className="flex flex-wrap gap-6">
-              <Link href="/manual" className="hover:text-[var(--foreground)] transition-colors no-underline">Руководство</Link>
-              <Link href="/blog" className="hover:text-[var(--foreground)] transition-colors no-underline">Блог</Link>
-              <Link href="/help" className="hover:text-[var(--foreground)] transition-colors no-underline">Помощь</Link>
-              <Link href="/pricing" className="hover:text-[var(--foreground)] transition-colors no-underline">Тарифы</Link>
-            </nav>
+            <div className="pt-8 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-4 text-[var(--text-tertiary)]">
+              <div>© Eqio · Торговая аналитика для российских трейдеров</div>
+              <div>MOEX · Тинькофф Invest API</div>
+            </div>
           </div>
         </footer>
       </main>

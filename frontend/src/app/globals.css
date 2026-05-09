@@ -567,3 +567,149 @@ h1 { letter-spacing: -0.02em; }
 :root[data-theme="light"] .bg-white\/\[0\.02\] { background: var(--surface-2) !important; }
 :root[data-theme="light"] .text-green-400 { color: var(--success) !important; }
 :root[data-theme="light"] .text-red-400 { color: var(--danger) !important; }
+
+
+/* ════════════════════════════════════════════════════
+ * Landing redesign — kontur-style контрастные секции
+ * ──────────────────────────────────────────────────── */
+
+/* Headline-классы (крупная kontur-типографика) */
+.headline-2xl {
+  font-size: clamp(48px, 9vw, 96px);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+.headline-xl {
+  font-size: clamp(40px, 7vw, 72px);
+  font-weight: 700;
+  line-height: 1.0;
+  letter-spacing: -0.025em;
+}
+.headline-lg {
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.eyebrow {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.number-fact {
+  font-size: clamp(56px, 9vw, 80px);
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+}
+
+/* Section backgrounds — контрастный ритм */
+.section-dark {
+  background: var(--background);
+  color: var(--foreground);
+}
+.section-surface {
+  background: var(--surface-1);
+  color: var(--foreground);
+}
+.section-light {
+  background: #fafafa;
+  color: #0a0a0b;
+}
+.section-light .text-secondary { color: #6b7280; }
+.section-light .text-tertiary { color: #9ca3af; }
+.section-accent {
+  background: var(--accent);
+  color: #ffffff;
+}
+.section-accent .text-secondary { color: rgba(255, 255, 255, 0.85); }
+
+/* Tile варианты для kontur-style bento */
+.tile-outline {
+  background: transparent;
+  border: 1px solid var(--foreground);
+  color: var(--foreground);
+  border-radius: var(--radius-lg, 16px);
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.tile-outline:hover {
+  background: rgba(250, 250, 250, 0.05);
+  transform: translateY(-1px);
+}
+.section-light .tile-outline {
+  border-color: #0a0a0b;
+  color: #0a0a0b;
+}
+.section-light .tile-outline:hover {
+  background: rgba(10, 10, 11, 0.04);
+}
+
+.tile-text {
+  background: transparent;
+  border-top: 1px solid var(--border);
+  padding: 24px 0 0 0;
+  color: var(--foreground);
+}
+.section-light .tile-text {
+  border-top-color: rgba(10, 10, 11, 0.12);
+  color: #0a0a0b;
+}
+
+/* Outline pill-кнопка для header (kontur «Войти в сервис») */
+.btn-pill-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-decoration: none;
+}
+.btn-pill-outline:hover {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+/* Inverted pill-кнопка для accent-секции (белая на indigo) */
+.btn-pill-inverted {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+  text-decoration: none;
+}
+.btn-pill-inverted:hover {
+  background: rgba(255, 255, 255, 0.92);
+  transform: translateY(-1px);
+}
+
+/* Декоративные SVG-curve позиционеры */
+.kontur-curve {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+.kontur-curve-tr { top: 0; right: 0; }
+.kontur-curve-br { bottom: 0; right: 0; }
+.kontur-curve-bl { bottom: 0; left: 0; }
+.kontur-curve-tl { top: 0; left: 0; }
