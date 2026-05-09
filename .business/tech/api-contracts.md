@@ -55,7 +55,30 @@
 | GET | `/replay/{trade_id}` | Свечи вокруг сделки |
 | GET | `/real-pnl/{account_id}` | Реальный PnL из брокера |
 
-## Blog / Admin / Subscription / Payments
+## Admin (`/admin/...`)
+
+| Метод | Endpoint | Что |
+| --- | --- | --- |
+| GET | `/admin/stats` | Сводка по пользователям, доходу, активности |
+| GET | `/admin/users` | Список пользователей |
+| GET | `/admin/registration-sources` | Источники регистраций |
+| GET | `/admin/utm-analytics` | Аналитика UTM |
+| GET | `/admin/growth` | График роста |
+| GET | `/admin/cohorts` | Когорты |
+| GET | `/admin/power-users` | Самые активные |
+| GET | `/admin/inactive-users` | Бездействующие |
+| GET | `/admin/funnel` | Воронка |
+| POST | `/admin/users/{id}/toggle-admin` | Назначить/снять админа |
+| GET | `/admin/revenue` | Выручка |
+| GET | `/admin/revenue-growth` | Рост выручки |
+| GET | `/admin/subscription-analytics` | Аналитика подписок |
+| GET | `/admin/top-paying-users` | Топ платящих |
+| **GET** | **`/admin/pd-deletions/status`** | **152-ФЗ: статус очереди удалений (pending/overdue/finalized + last_scheduler_run_at)** |
+| GET/POST/PUT/DELETE | `/admin/articles[/{id}]` | Управление блогом |
+
+Все требуют `is_admin=1` (через `require_admin` dependency).
+
+## Blog / Subscription / Payments
 
 — см. `routers/blog.py`, `routers/admin.py`, `routers/payments.py` (все имеют `response_model`, описаны в OpenAPI).
 

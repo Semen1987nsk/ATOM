@@ -1130,6 +1130,101 @@ class TestAdmin:
         response = client.get("/admin/stats", headers=admin_headers)
         assert response.status_code == 200
 
+    def test_pd_deletions_status_requires_admin(self, test_app, test_user, auth_headers):
+        """152-ФЗ: обычный юзер не должен видеть статус очереди удалений"""
+        client = test_app["client"]
+        response = client.get("/admin/pd-deletions/status", headers=auth_headers)
+        assert response.status_code == 403
+
+    def test_pd_deletions_status_empty(self, test_app):
+        """С пустой БД (без удалений) — все счётчики = 0"""
+        from datetime import datetime
+        client = test_app["client"]
+        db = test_app["db"]
+
+        admin = User(
+            email="admin-pd@example.com",
+            name="Admin PD",
+            hashed_password=auth_service.get_password_hash("adminpass"),
+            is_active=1,
+            is_admin=1,
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+
+        token = auth_service.create_access_token(
+            data={"sub": str(admin.id), "email": admin.email}
+        )
+        admin_headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.get("/admin/pd-deletions/status", headers=admin_headers)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["pending_count"] == 0
+        assert body["overdue_count"] == 0
+        assert body["finalized_count"] == 0
+        assert body["grace_period_days"] == 30
+        assert body["next_finalization_at"] is None
+
+    def test_pd_deletions_status_counts(self, test_app):
+        """Юзер с pending + юзер с overdue + анонимизированный — корректные счётчики"""
+        from datetime import datetime, timedelta
+        client = test_app["client"]
+        db = test_app["db"]
+
+        now = datetime.utcnow()
+
+        # admin
+        admin = User(
+            email="admin-counts@example.com",
+            hashed_password=auth_service.get_password_hash("x" * 12),
+            is_active=1,
+            is_admin=1,
+        )
+        # pending: 5 дней назад → ещё в grace
+        pending_user = User(
+            email="pending@example.com",
+            hashed_password="h",
+            is_active=0,
+            deletion_requested_at=now - timedelta(days=5),
+        )
+        # overdue: 32 дня назад → должен был быть финализирован
+        overdue_user = User(
+            email="overdue@example.com",
+            hashed_password="h",
+            is_active=0,
+            deletion_requested_at=now - timedelta(days=32),
+        )
+        # уже анонимизирован
+        anonymized = User(
+            email="deleted-99@anon.eqio",
+            hashed_password=None,
+            is_active=0,
+            deletion_requested_at=now - timedelta(days=60),
+        )
+        db.add_all([admin, pending_user, overdue_user, anonymized])
+        db.commit()
+        db.refresh(admin)
+
+        token = auth_service.create_access_token(
+            data={"sub": str(admin.id), "email": admin.email}
+        )
+        admin_headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.get("/admin/pd-deletions/status", headers=admin_headers)
+        assert response.status_code == 200
+        body = response.json()
+        # pending: pending_user + overdue_user (оба не анонимизированы)
+        assert body["pending_count"] == 2
+        # overdue: только overdue_user
+        assert body["overdue_count"] == 1
+        # finalized: anonymized
+        assert body["finalized_count"] == 1
+        assert body["grace_period_days"] == 30
+        # next_finalization_at = min(deletion_requested_at) + 30d = ~25 дней от now
+        assert body["next_finalization_at"] is not None
+
 
 # ==================== MARKET TESTS ====================
 

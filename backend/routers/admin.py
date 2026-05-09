@@ -195,6 +195,67 @@ def admin_get_top_paying_users(
     return admin_service.get_top_paying_users(db, limit)
 
 
+# ==================== 152-ФЗ ADMIN ENDPOINTS ====================
+
+@router.get("/pd-deletions/status", response_model=schemas.PdDeletionsStatusResponse)
+def admin_pd_deletions_status(
+    admin: models.User = Depends(require_admin),
+    db: Session = Depends(database.get_db),
+):
+    """
+    Статус очереди удалений ПД (152-ФЗ ст. 21 ч. 5).
+
+    Симметрично к юзерскому GET /auth/me/export — даёт оператору видеть
+    очередь финализаций. Поле last_scheduler_run_at — когда scheduler
+    последний раз пытался обработать pending-аккаунты (полезно для
+    диагностики «почему до сих пор pending=N >0»).
+    """
+    from datetime import timedelta
+    from sqlalchemy import func, and_, not_
+    from services.pd_deletion import GRACE_PERIOD_DAYS
+    from sync_scheduler import scheduler
+    from utils.datetime_utils import utc_now_naive
+
+    now = utc_now_naive()
+    threshold = now - timedelta(days=GRACE_PERIOD_DAYS)
+
+    # Уже анонимизированные: email вида deleted-{id}@anon.eqio
+    finalized_count = db.query(func.count(models.User.id)).filter(
+        models.User.email.like("deleted-%@anon.eqio")
+    ).scalar() or 0
+
+    # В очереди (deletion_requested_at IS NOT NULL и НЕ анонимизирован)
+    pending_q = db.query(models.User).filter(
+        and_(
+            models.User.deletion_requested_at.isnot(None),
+            not_(models.User.email.like("deleted-%@anon.eqio")),
+        )
+    )
+    pending_count = pending_q.count()
+
+    # Overdue: уже истёк grace period, но scheduler ещё не дотронулся
+    overdue_count = pending_q.filter(
+        models.User.deletion_requested_at <= threshold
+    ).count()
+
+    # Ближайшая финализация: min(deletion_requested_at) + 30 дней
+    earliest = pending_q.with_entities(
+        func.min(models.User.deletion_requested_at)
+    ).scalar()
+    next_finalization_at = (
+        earliest + timedelta(days=GRACE_PERIOD_DAYS) if earliest else None
+    )
+
+    return {
+        "pending_count": pending_count,
+        "overdue_count": overdue_count,
+        "finalized_count": finalized_count,
+        "grace_period_days": GRACE_PERIOD_DAYS,
+        "next_finalization_at": next_finalization_at,
+        "last_scheduler_run_at": scheduler._last_pd_finalize_at,
+    }
+
+
 # ==================== ADMIN BLOG ENDPOINTS ====================
 
 @router.get("/articles", tags=["blog"])
