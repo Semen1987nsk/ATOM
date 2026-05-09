@@ -63,6 +63,7 @@ def _backoff_with_jitter(base: float) -> float:
 | 2026-05-07 (PR2) | Первая версия. Унифицированы marketdata и securities в `market_service.py`. Добавлен jitter. |
 | 2026-05-07 (PR2.5) | Унифицирован candles-парсер (~40 строк → 15). 3 из 4 дублей закрыты. |
 | 2026-05-07 (PR2.6) | Board fallback для get_candles: 3 → 6 endpoints (TQBR/TQOB/TQCB/TQTF/RFUD/CETS). |
+| 2026-05-07 (PR2.7) | 17 unit-тестов с моками: parser, jitter, retry на 429/5xx/timeout. Подтверждено что jitter реально работает. |
 
 ## Поведенческие правила
 
@@ -75,8 +76,8 @@ def _backoff_with_jitter(base: float) -> float:
 ## Что нужно сделать в следующих PR
 
 - ~~Добавить board fallback для stocks~~ ✅ **СДЕЛАНО 2026-05-07** — `get_candles` теперь пробует 6 endpoints: TQBR (акции) → TQOB (ОФЗ) → TQCB (корп. облигации) → TQTF (ETF) → RFUD (FORTS) → CETS (валюты).
+- ~~Тесты с моками 429~~ ✅ **СДЕЛАНО 2026-05-07** — `tests/test_market_service.py`: 17 unit-тестов на `_normalize_iss_block`, `_backoff_with_jitter`, `_moex_get` (429/5xx/timeout/404/all-fail). Доказано что jitter реально размазывает sleep'ы.
 - Async-обёртка через `aiolimiter` (раздел 6 SKILL.md)
-- Тесты с моками 429 → проверить что jitter реально размазывает повторные запросы
 
 ## Связанные
 
