@@ -37,8 +37,8 @@
 | Метод | Endpoint | Что возвращает |
 | --- | --- | --- |
 | GET | `/stats/` | Главный дашборд: PnL, win rate, equity_curve, imoex_curve, initial_balance, базовые метрики |
-| GET | `/stats/advanced` | Ulcer, K-Ratio, Sterling, Omega, Sharpe, Sortino, Calmar |
-| GET | `/stats/benchmark` | Сравнение с когортой/индексом |
+| GET | `/stats/advanced` | Ulcer, K-Ratio, Sterling, Omega, Sharpe, Sortino, Calmar (вынесен в `routers/stats_advanced.py`) |
+| GET | `/stats/benchmark` | Сравнение с когортой/индексом (вынесен в `routers/stats_advanced.py`) |
 | GET | `/stats/setups` | Группировка по сетапам |
 | GET | `/stats/calendar` | Daily PnL heatmap |
 | GET | `/stats/mae-mfe-analysis` | MAE/MFE с группировкой по тегам/сетапам |
