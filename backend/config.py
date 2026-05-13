@@ -192,6 +192,38 @@ class Settings:
     OAUTH_HTTP_TIMEOUT_SECONDS: float = float(os.getenv("OAUTH_HTTP_TIMEOUT_SECONDS", "15"))
     OPEN_POSITION_SYNC_LOOKBACK_DAYS: int = int(os.getenv("OPEN_POSITION_SYNC_LOOKBACK_DAYS", "30"))
 
+    # ==================== BROKER SYNC V2 (greenfield Tinkoff rewrite) ====================
+    # PR 0..16: пока флаг выключен, новый sync не запущен, старый удалён → broker
+    # endpoints возвращают 503, scheduler — no-op. Включаем когда PR 5+ готовы.
+    BROKER_SYNC_V2_ENABLED: bool = os.getenv("BROKER_SYNC_V2_ENABLED", "false").lower() == "true"
+
+    # gRPC endpoints из официальной доки T-Bank Developer
+    # (https://developer.tbank.ru/invest/intro/connection).
+    # Sandbox-инстанс зеркален prod, выдаёт отдельные токены через UI Тинькофф.
+    TINKOFF_API_ENDPOINT: str = os.getenv(
+        "TINKOFF_API_ENDPOINT", "invest-public-api.tinkoff.ru:443"
+    )
+    TINKOFF_SANDBOX_ENDPOINT: str = os.getenv(
+        "TINKOFF_SANDBOX_ENDPOINT", "sandbox-invest-public-api.tinkoff.ru:443"
+    )
+    # "prod" | "sandbox" — выбирает endpoint и режим работы (sandbox-методы
+    # имеют отдельный namespace в SDK).
+    TINKOFF_API_ENV: str = os.getenv("TINKOFF_API_ENV", "prod").lower()
+    # App name отправляется в gRPC metadata; Тинькофф просит указывать в формате
+    # "вендор.приложение" для отслеживания grade и issue-репортов.
+    TINKOFF_APP_NAME: str = os.getenv("TINKOFF_APP_NAME", "eqio.journal")
+    # Per-token rate-limit cap (запас от официальных 200/min для Operations).
+    TINKOFF_RATE_LIMIT_PER_MIN: int = int(os.getenv("TINKOFF_RATE_LIMIT_PER_MIN", "60"))
+
+    # ==================== TOKEN ENCRYPTION (PR 4) ====================
+    # 32 байта в base64 — мастер-ключ AES-256-GCM. В prod ОБЯЗАТЕЛЕН.
+    # В DEBUG-режиме допустима пустая строка (encryption-сервис подменит на
+    # ephemeral dev-ключ с громким warning).
+    MASTER_KEY_B64: str = os.getenv("MASTER_KEY_B64", "")
+    # ID текущего ключа. При ротации — увеличиваем, прежний key_id остаётся
+    # доступным для расшифровки старых записей через MASTER_KEY_<N>_B64.
+    MASTER_KEY_ID: int = int(os.getenv("MASTER_KEY_ID", "1"))
+
     # ==================== PROXY / IP ====================
     # Comma-separated list of trusted proxy IPs/CIDRs.
     # X-Forwarded-For will ONLY be trusted from these sources.

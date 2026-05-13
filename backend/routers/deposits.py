@@ -20,14 +20,20 @@ from capital_service import (
     ensure_initial_balance_history,
     sync_initial_balance,
 )
-from crypto_utils import decrypt_token
-from tinkoff_service import TinkoffService
+# crypto_utils.decrypt_token и tinkoff_service удалены/не нужны после PR 0
+# (greenfield rewrite). До восстановления live-портфеля (PR 11+12) deposits
+# работает только с локальной БД.
 from utils import utc_now_naive
 
 router = APIRouter(prefix="/deposits", tags=["deposits"])
 
 
 def _get_live_broker_balance(db: Session, account_id: int) -> float | None:
+    """
+    PR 0: TinkoffService.get_portfolio удалён. До восстановления (PR 11+12)
+    fallback'ом служит последний снапшот баланса из БД (`source='tinkoff_api'`),
+    либо None — тогда вызывающий код должен сам решить что делать.
+    """
     connection = db.query(models.BrokerConnection).filter(
         models.BrokerConnection.account_id == account_id,
         models.BrokerConnection.is_active == True,
@@ -35,18 +41,13 @@ def _get_live_broker_balance(db: Session, account_id: int) -> float | None:
     if not connection:
         return None
 
-    try:
-        service = TinkoffService(decrypt_token(connection.api_token))
-        portfolio = service.get_portfolio(connection.broker_account_id)
-        return float(portfolio["total_balance"])
-    except Exception:
-        latest_snapshot = db.query(models.BalanceSnapshot).filter(
-            models.BalanceSnapshot.account_id == account_id,
-            models.BalanceSnapshot.source == "tinkoff_api",
-        ).order_by(models.BalanceSnapshot.date.desc()).first()
-        if latest_snapshot:
-            return float(latest_snapshot.balance or 0)
-        return None
+    latest_snapshot = db.query(models.BalanceSnapshot).filter(
+        models.BalanceSnapshot.account_id == account_id,
+        models.BalanceSnapshot.source == "tinkoff_api",
+    ).order_by(models.BalanceSnapshot.date.desc()).first()
+    if latest_snapshot:
+        return float(latest_snapshot.balance or 0)
+    return None
 
 
 def _upsert_balance_snapshot(

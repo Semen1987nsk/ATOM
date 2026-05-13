@@ -234,14 +234,16 @@ class Setup(Base):
 class Trade(Base):
     __tablename__ = "trades"
 
-    # Составные индексы для оптимизации частых запросов + защита от дублей.
-    # UniqueConstraint спасает от двойного импорта при гонках:
-    # одна и та же сделка не может попасть в БД дважды по ключу
-    # (account_id, symbol, entry_at, direction).
+    # Составные индексы + защита от дублей.
+    # PR 7: расширен ключ до (account_id, symbol, entry_at, exit_at,
+    # direction, data_source). Без exit_at FIFO-движок не мог создать
+    # несколько trades для одной buy-операции с partial-SELL'ами (одинаковый
+    # entry_at). Без data_source legacy/tinkoff_v2/manual сидели в одном
+    # namespace, мешая replace-стратегии нового sync.
     __table_args__ = (
         UniqueConstraint(
-            'account_id', 'symbol', 'entry_at', 'direction',
-            name='uq_trades_dedup',
+            'account_id', 'symbol', 'entry_at', 'exit_at', 'direction', 'data_source',
+            name='uq_trades_dedup_v2',
         ),
         Index('ix_trades_account_symbol', 'account_id', 'symbol'),
         Index('ix_trades_symbol_entry_at', 'symbol', 'entry_at'),
@@ -316,7 +318,23 @@ class Trade(Base):
     
     r_multiple = Column(Numeric(precision=10, scale=6)) # PnL / Risk = сколько "R" заработал
     holding_time_minutes = Column(Integer) # Время удержания позиции в минутах
-    
+
+    # PR 0 (greenfield Tinkoff rewrite): источник данных сделки.
+    # 'legacy'     — импортирована старым tinkoff_service (удалён в PR 0).
+    # 'tinkoff_v2' — новый sync (появится в PR 5+).
+    # 'manual'     — ручной ввод / Excel-импорт.
+    # На уровне БД — обычный String (см. миграцию 0003), валидируется в Python.
+    data_source = Column(String(32), nullable=False, default="legacy", server_default="legacy")
+
+    # PR 2: UID/figi инструмента из T-Invest API. instrument_uid — primary
+    # для нового sync (стабилен при делистинге, единственный для опционов).
+    # instrument_type_v2 дублирует asset_type, но точнее (enum из T-API
+    # вместо строки). Все три поля nullable — legacy-сделки их не имеют.
+    instrument_uid = Column(String(64), nullable=True, index=True)
+    instrument_figi = Column(String(32), nullable=True)
+    position_uid = Column(String(64), nullable=True, index=True)
+    instrument_type_v2 = Column(String(32), nullable=True)  # share|bond|etf|futures|option|currency
+
     account = relationship("Account", back_populates="trades")
     setup = relationship("Setup", back_populates="trades")
 
@@ -352,11 +370,223 @@ class BrokerConnection(Base):
     
     # Статистика
     total_synced_trades = Column(Integer, default=0)
-    
+
     created_at = Column(DateTime, default=utc_now_naive)
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
-    
+
+    # ── PR 2: greenfield Tinkoff rewrite ──
+    # Курсор последней успешной синхронизации (OperationsByCursor).
+    # Пустая строка = full sync на следующем запуске (первое подключение
+    # или ручной reset).
+    sync_cursor = Column(String(256), nullable=True)
+    # PR 4: ID мастер-ключа AESGCM, которым зашифрован api_token.
+    # При ротации мастер-ключа увеличиваем номер; старые записи
+    # расшифровываются по своему key_id.
+    key_id = Column(Integer, nullable=False, default=1, server_default="1")
+    # PR 15: счётчик подряд идущих ошибок и время до которого circuit
+    # breaker открыт (orchestrator пропускает аккаунт пока circuit_open_until > now).
+    consecutive_failures = Column(Integer, nullable=False, default=0, server_default="0")
+    circuit_open_until = Column(DateTime, nullable=True)
+    # PR 4: время последней записи в token_audit_log (для оптимизации
+    # фильтров «у каких аккаунтов давно не было запросов к API»).
+    last_audit_at = Column(DateTime, nullable=True)
+
     account = relationship("Account", backref="broker_connections")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# PR 2: новые таблицы для greenfield Tinkoff rewrite
+# ════════════════════════════════════════════════════════════════════════
+
+
+class InstrumentORM(Base):
+    """Кэш справочника инструментов из T-Invest API.
+
+    Заполняется в bootstrap_instruments_cache (PR 6) и обновляется лениво
+    при первом столкновении с неизвестным UID. Domain-уровень — `domain.entities.Instrument`.
+    """
+
+    __tablename__ = "instruments"
+    __table_args__ = (
+        Index("ix_instruments_figi", "figi"),
+        Index("ix_instruments_ticker_class", "ticker", "class_code"),
+        Index("ix_instruments_type", "instrument_type"),
+    )
+
+    uid = Column(String(64), primary_key=True)
+    figi = Column(String(32), nullable=True)
+    ticker = Column(String(32), nullable=True)
+    class_code = Column(String(32), nullable=True)
+    instrument_type = Column(String(32), nullable=False)  # share|bond|etf|futures|option|currency
+    isin = Column(String(32), nullable=True)
+    name = Column(String(256), nullable=True)
+    lot = Column(Integer, nullable=False, default=1, server_default="1")
+    currency = Column(String(8), nullable=False, default="rub", server_default="rub")
+
+    nominal = Column(Numeric(precision=18, scale=8), nullable=True)
+    min_price_increment = Column(Numeric(precision=18, scale=8), nullable=True)
+    min_price_increment_amount = Column(Numeric(precision=18, scale=8), nullable=True)
+
+    # Bond:
+    coupon_quantity_per_year = Column(Integer, nullable=True)
+    amortization_flag = Column(Boolean, nullable=False, default=False, server_default="0")
+    floating_coupon_flag = Column(Boolean, nullable=False, default=False, server_default="0")
+    maturity_date = Column(DateTime, nullable=True)
+    placement_price = Column(Numeric(precision=18, scale=8), nullable=True)
+
+    # Future / Option:
+    expiration_date = Column(DateTime, nullable=True)
+    basic_asset_size = Column(Numeric(precision=18, scale=8), nullable=True)
+    basic_asset_uid = Column(String(64), nullable=True)
+    strike_price = Column(Numeric(precision=18, scale=8), nullable=True)
+    option_direction = Column(String(8), nullable=True)
+    option_style = Column(String(16), nullable=True)
+    option_multiplier = Column(Integer, nullable=True)
+
+    # Любые дополнительные поля по типу инструмента (для расширения без миграций).
+    extra = Column(JSON, nullable=True)
+
+    cached_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    updated_at = Column(DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class PositionORM(Base):
+    """Текущие открытые позиции с mark-to-market PnL (PR 11).
+
+    Один (account_id, instrument_uid) — одна запись. После закрытия
+    позиции запись либо удаляется, либо помечается quantity=0 и не
+    отображается в UI.
+    """
+
+    __tablename__ = "positions"
+    __table_args__ = (
+        UniqueConstraint("account_id", "instrument_uid", name="uq_positions_account_instrument"),
+        Index("ix_positions_account_id", "account_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False)
+    instrument_uid = Column(String(64), nullable=False)
+    instrument_type = Column(String(32), nullable=False)
+
+    quantity = Column(Integer, nullable=False, default=0, server_default="0")
+    avg_entry_price = Column(Numeric(precision=18, scale=8), nullable=False)
+    current_price = Column(Numeric(precision=18, scale=8), nullable=True)
+    unrealized_pnl = Column(Numeric(precision=18, scale=8), nullable=True)
+    last_priced_at = Column(DateTime, nullable=True)
+    currency = Column(String(8), nullable=False, default="rub", server_default="rub")
+
+    # Bond: current_aci, remaining_nominal, coupons_received.
+    # Future: accumulated_varmargin, point_value_snapshot.
+    # Option: multiplier, strike, expiration_date, basic_asset_uid.
+    extra = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive)
+    updated_at = Column(DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class TokenAuditLogORM(Base):
+    """Audit log использования брокерского токена.
+
+    НЕ хранит сам токен — только factual метаданные о вызовах: какой метод
+    дёрнули, какой статус вернулся, latency. Нужен для:
+    * Compliance и расследований (если токен утёк);
+    * Отладки rate-limit'ов и ошибок Tinkoff API в продакшне;
+    * Аналитики «давно не было запросов» → подсветка пользователю.
+    """
+
+    __tablename__ = "token_audit_log"
+    __table_args__ = (
+        Index("ix_token_audit_account_time", "account_id", "created_at"),
+        Index("ix_token_audit_status", "status_code"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    # account_id (наш) — без FK CASCADE, потому что audit log должен переживать
+    # удаление аккаунта (для compliance расследований post-mortem).
+    account_id = Column(Integer, nullable=False)
+    # SHA-256 от user_id (без соли) — анонимизация в логах. PII в audit
+    # храним по минимуму.
+    user_id_hash = Column(String(64), nullable=True)
+    method = Column(String(64), nullable=False)  # 'get_accounts', 'get_operations_by_cursor', ...
+    endpoint = Column(String(128), nullable=False)
+    status_code = Column(Integer, nullable=False)  # gRPC status code
+    latency_ms = Column(Integer, nullable=False)
+    error_detail = Column(String(512), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now_naive, index=True)
+
+
+class OperationORM(Base):
+    """Сырая операция из T-Invest API (PR 5).
+
+    Источник истины для FIFO-движка (PR 7). UPSERT по (account_id, operation_id) —
+    Tinkoff гарантирует уникальность `id` per аккаунт.
+
+    Денежные поля разложены на units/nano/currency, чтобы:
+    * вообще не использовать float (Decimal с потерями преобразуется в БД);
+    * легко поднимать обратно в `MoneyValue` без потерь точности;
+    * быстро фильтровать в SQL по знаку payment'а (Numeric тоже работал бы,
+      но Numeric в SQLite — это TEXT, сравнения медленнее).
+
+    `account_id` (Integer) — FK на `accounts.id` (наш внутренний).
+    `broker_account_id` (String) — id счёта у Тинькофф (например, '2135909232').
+    """
+
+    __tablename__ = "operations"
+    __table_args__ = (
+        # operation_id у Tinkoff уникален per аккаунт. Дедупликация только
+        # по нему — NULL в instrument_uid (PayIn/PayOut/Tax) сломал бы
+        # композитный UNIQUE при участии instrument_uid.
+        UniqueConstraint("account_id", "operation_id", name="uq_operations_account_opid"),
+        Index("ix_operations_account_executed_at", "account_id", "executed_at"),
+        Index("ix_operations_instrument_uid", "instrument_uid"),
+        Index("ix_operations_type", "operation_type"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # ── ownership / linkage ──
+    account_id = Column(
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    # Хранится отдельно от account_id, потому что счетов в одном Account.id
+    # может быть несколько (БС/ИИС/SECURITIES).
+    broker_account_id = Column(String(64), nullable=False, index=True)
+
+    # ── Tinkoff identifiers ──
+    operation_id = Column(String(64), nullable=False)
+    parent_operation_id = Column(String(64), nullable=True)
+    instrument_uid = Column(String(64), nullable=True)
+    instrument_figi = Column(String(32), nullable=True)
+    instrument_type = Column(String(32), nullable=True)  # share|bond|etf|futures|option|currency
+
+    # ── core ──
+    operation_type = Column(String(48), nullable=False)  # 'buy'|'sell'|'coupon'|...
+    state = Column(String(32), nullable=False)  # 'executed'|'canceled'|'progress'
+    quantity = Column(Integer, nullable=False, default=0, server_default="0")
+
+    # ── MoneyValue tuples (units, nano, currency) ──
+    price_units = Column(Integer, nullable=True)
+    price_nano = Column(Integer, nullable=True)
+    price_currency = Column(String(8), nullable=True)
+
+    payment_units = Column(Integer, nullable=True)
+    payment_nano = Column(Integer, nullable=True)
+    payment_currency = Column(String(8), nullable=True)
+
+    commission_units = Column(Integer, nullable=True)
+    commission_nano = Column(Integer, nullable=True)
+    commission_currency = Column(String(8), nullable=True)
+
+    # Накопленный купонный доход (для облигаций).
+    aci_units = Column(Integer, nullable=True)
+    aci_nano = Column(Integer, nullable=True)
+    aci_currency = Column(String(8), nullable=True)
+
+    # ── meta ──
+    executed_at = Column(DateTime, nullable=False)
+    description = Column(String(512), nullable=True)
+    synced_at = Column(DateTime, nullable=False, default=utc_now_naive)
 
 
 class ArticleCategory(enum.Enum):

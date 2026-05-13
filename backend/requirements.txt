@@ -48,7 +48,33 @@ sentry-sdk[fastapi]>=2.0.0,<3.0.0  # Error tracking; opt-in через SENTRY_DS
 python-json-logger>=2.0.7,<3.0.0  # JSON логи для prod-агрегаторов
 
 # ==================== BROKER INTEGRATIONS ====================
-# Tinkoff Invest API - используем REST API через httpx (уже установлен)
+# Tinkoff Invest API — официальный gRPC SDK (greenfield rewrite, см. PR 0..16).
+#
+# ВАЖНО: пакет 'tinkoff-investments' СНЯТ С PyPI (после архивирования репо
+# в октябре 2025). Ставим напрямую с GitHub по тегу. Последний релиз —
+# 0.2.0-beta117. Имя пакета после установки — `tinkoff-investments`,
+# импортируется как `tinkoff.invest` (PEP 420 namespace).
+#
+# Совместимость на 2026-05: pin в pyproject.toml SDK устарел (`protobuf<5`),
+# но runtime работает с protobuf 5/6 и Python 3.14 при принудительном
+# обновлении protobuf — см. строку ниже.
+tinkoff-investments @ git+https://github.com/RussianInvestments/invest-python.git@0.2.0-beta117
+# Зависимости SDK, явно прописаны (т.к. ставим SDK с --no-deps в production
+# не имеет смысла, но фиксируем версии для воспроизводимости):
+cachetools>=5.2.0,<6.0.0
+deprecation>=2.1.0,<3.0.0
+grpcio>=1.59.3,<2.0.0
+# protobuf 4.x НЕ работает с Python 3.14 (TypeError: Metaclasses with custom
+# tp_new). Берём 5.27+ — runtime SDK с этим совместим, несмотря на устаревший
+# pin в его pyproject.
+protobuf>=5.27.0,<7.0.0
+
+# Resilience: retry, circuit breaker, rate limiter (in-process до Redis-PR).
+tenacity>=9.0.0,<10.0.0
+pybreaker>=1.2.0,<2.0.0
+aiolimiter>=1.1.0,<2.0.0
+# Структурное логирование с contextvars для per-sync correlation_id.
+structlog>=24.0.0,<26.0.0
 
 # ==================== AI (OPTIONAL) ====================
 # openai>=1.12.0,<2.0.0  # Uncomment if using AI features

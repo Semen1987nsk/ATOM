@@ -41,7 +41,8 @@ from routers.stats_advanced import router as stats_advanced_router
 from routers.deposits import router as deposits_router
 from routers.setups import router as setups_router
 from routers.broker import router as broker_router
-from routers.real_pnl import router as real_pnl_router
+from routers.real_pnl import router as real_pnl_router  # PR 12: восстановлен
+from routers.positions import router as positions_router  # PR 12: новый
 from routers.accounts import router as accounts_router
 from routers.review import router as review_router
 from routers.replay import router as replay_router
@@ -55,7 +56,7 @@ log = get_logger("api")
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
     log.info("🚀 ATOM API v0.2.0 Starting...")
-    log.info(f"📦 Routers: auth, trades, deposits, setups, broker, admin, blog, stats, market, real_pnl")
+    log.info("📦 Routers: auth, trades, deposits, setups, broker, admin, blog, stats, market, real_pnl, positions")
 
     # Sentry — раньше всего, чтобы стартовые ошибки тоже доезжали.
     init_sentry()
@@ -220,7 +221,8 @@ app.include_router(stats_tags_router, prefix="/stats")
 app.include_router(stats_advanced_router)  # уже имеет prefix="/stats"
 app.include_router(tags_router)
 app.include_router(market_router)
-app.include_router(real_pnl_router, prefix="/real-pnl")
+app.include_router(real_pnl_router)  # PR 12
+app.include_router(positions_router)  # PR 12
 app.include_router(accounts_router)
 app.include_router(review_router)
 app.include_router(replay_router)

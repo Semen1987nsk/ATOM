@@ -28,6 +28,9 @@ logs/
 # Uploads (user data)
 backend/uploads/
 
+# Local smoke/dev outputs (live API reports etc.)
+backend/.local/
+
 # IDE
 .idea/
 *.swp

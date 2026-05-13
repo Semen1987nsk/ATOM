@@ -140,20 +140,39 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
   const syncConnection = async (connectionId: number, forceFullSync = false) => {
     setSyncing(connectionId);
     setSyncResult(null);
-    
+
     try {
-      const data = await api.post<{ success: boolean; message: string }>(
-        `/broker/connections/${connectionId}/sync`,
-        { params: { force_full_sync: forceFullSync } }
-      );
-      setSyncResult({ success: data.success, message: data.message });
-      
+      // PR 12: новый endpoint возвращает rich report.
+      const data = await api.post<{
+        success: boolean;
+        operations_synced: number;
+        trades_built: number;
+        positions_open: number;
+        account_varmargin_total: string;
+        duration_sec: number;
+        error?: string | null;
+      }>(`/broker/connections/${connectionId}/sync`, {
+        params: { full: forceFullSync },
+      });
+
+      const message = data.success
+        ? `✓ Синхронизация завершена за ${data.duration_sec}s: ` +
+          `${data.operations_synced} операций, ` +
+          `${data.trades_built} сделок, ` +
+          `${data.positions_open} открытых позиций` +
+          (parseFloat(data.account_varmargin_total) !== 0
+            ? `. Варм-маржа: ${parseFloat(data.account_varmargin_total).toFixed(2)} ₽`
+            : '')
+        : `✗ Ошибка: ${data.error ?? 'неизвестная'}`;
+      setSyncResult({ success: data.success, message });
+
       if (data.success) {
         await fetchConnections();
         onConnectionChange?.();
       }
-    } catch {
-      setSyncResult({ success: false, message: 'Ошибка синхронизации' });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Ошибка синхронизации';
+      setSyncResult({ success: false, message: msg });
     } finally {
       setSyncing(null);
     }
@@ -418,6 +437,36 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
                   </select>
                   <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
+                {/* Access level badge для выбранного счёта */}
+                {(() => {
+                  const acc = availableAccounts.find(a => a.id === selectedAccountId);
+                  if (!acc) return null;
+                  const isReadOnly = acc.access_level === 'ACCOUNT_ACCESS_LEVEL_READ_ONLY';
+                  const isFull = acc.access_level === 'ACCOUNT_ACCESS_LEVEL_FULL_ACCESS';
+                  if (isReadOnly) {
+                    return (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-[#00d4aa]">
+                        <Shield className="w-3.5 h-3.5" />
+                        Токен read-only — рекомендуемый уровень безопасности
+                      </div>
+                    );
+                  }
+                  if (isFull) {
+                    return (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-amber-400">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        У токена есть права на торговлю — мы используем только чтение,
+                        но рекомендуем создать read-only токен в Тинькофф
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-red-400">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      У токена нет прав на чтение этого счёта ({acc.access_level})
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Auto-sync toggle */}

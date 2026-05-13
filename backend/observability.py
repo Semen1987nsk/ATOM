@@ -4,10 +4,15 @@ Observability bootstrap — Sentry SDK init.
 Инициализируется в main.py lifespan. Если SENTRY_DSN не задан — модуль
 ничего не делает (нулевые внешние сетевые вызовы), что важно для
 изолированных тестов и локальной разработки без интернета.
+
+PR 16: расширен `_before_send` — маскирует Tinkoff-токены (`t.XXXX...`)
+в строках исключений и breadcrumb messages. Это защита на случай если
+SDK или наш код случайно положит токен в exception message.
 """
 from __future__ import annotations
 
-from typing import Optional
+import re
+from typing import Any, Optional
 
 from config import settings
 from logger import get_logger
@@ -62,12 +67,16 @@ def init_sentry() -> bool:
 def _before_send(event, hint):
     """
     Pre-send фильтр: вырезаем потенциально чувствительные поля
-    из тела request/headers перед отправкой в Sentry.
+    из тела request/headers + маскируем Tinkoff-токены в exception
+    messages (PR 16).
     """
     sensitive_keys = {
         "password", "hashed_password", "token", "access_token",
         "refresh_token", "api_token", "secret", "authorization",
         "cookie", "x-csrf-token",
+        # PR 16: добавлены поля наших новых интеграций.
+        "tinkoff_live_token", "tinkoff_sandbox_token_test",
+        "master_key_b64",
     }
 
     request = event.get("request") or {}
@@ -76,7 +85,56 @@ def _before_send(event, hint):
     headers = request.get("headers")
     if isinstance(headers, dict):
         request["headers"] = _redact(headers, sensitive_keys)
+
+    # PR 16: маскируем Tinkoff-токены в строках исключений и breadcrumb'ах.
+    # Tinkoff-токены имеют формат `t.XXXXXXXXXXXXX...` ~88 символов.
+    _mask_tokens_in_strings(event)
     return event
+
+
+# `t.` + base64url-набор минимум 20 символов = «выглядит как Tinkoff-токен».
+# Реальный длиной 80–90; ограничиваем нижнюю границу 20, чтобы не редактить
+# короткие техслова типа "t.is_active".
+_TINKOFF_TOKEN_RE = re.compile(r"\bt\.[A-Za-z0-9_-]{20,}\b")
+
+
+def _mask_tokens_in_strings(event: dict) -> None:
+    """
+    Заменяет любые подстроки, похожие на Tinkoff-токен, на `t.****MASKED****`.
+    Обходит exception values, breadcrumb messages, extra/tags.
+    """
+
+    def _maybe_mask(value: Any) -> Any:
+        if isinstance(value, str):
+            return _TINKOFF_TOKEN_RE.sub("t.****MASKED****", value)
+        if isinstance(value, dict):
+            return {k: _maybe_mask(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_maybe_mask(v) for v in value]
+        return value
+
+    # exception values
+    exc_block = event.get("exception", {})
+    if isinstance(exc_block, dict):
+        for entry in exc_block.get("values", []) or []:
+            if isinstance(entry, dict) and "value" in entry:
+                entry["value"] = _maybe_mask(entry["value"])
+
+    # breadcrumbs
+    breadcrumbs = event.get("breadcrumbs", {})
+    if isinstance(breadcrumbs, dict):
+        for bc in breadcrumbs.get("values", []) or []:
+            if isinstance(bc, dict):
+                if "message" in bc:
+                    bc["message"] = _maybe_mask(bc["message"])
+                if "data" in bc:
+                    bc["data"] = _maybe_mask(bc["data"])
+
+    # message + extra
+    if "message" in event:
+        event["message"] = _maybe_mask(event["message"])
+    if isinstance(event.get("extra"), dict):
+        event["extra"] = _maybe_mask(event["extra"])
 
 
 def _redact(d: dict, sensitive_keys: set) -> dict:

@@ -15,8 +15,8 @@ from capital_service import get_capital_flow_events, get_net_deposit_as_of, has_
 from utils import utc_now_naive
 from logger import get_logger
 from rate_limiter import limiter, API_LIMIT
-from tinkoff_service import TinkoffService
-from crypto_utils import decrypt_token
+# tinkoff_service удалён в PR 0 (greenfield rewrite). Unrealized PnL пока
+# не считается из портфеля — вернётся в PR 11 через positions repository.
 from moex_service import get_moex_service
 from services.stats_cache import (
     stats_cache,
@@ -404,17 +404,9 @@ async def get_stats(
     payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 1
     risk_of_ruin_data = analytics.calculate_risk_of_ruin(win_rate / 100, payoff_ratio)
 
-    # Get unrealized PnL from open positions
+    # Unrealized PnL временно отключён в PR 0 — TinkoffService удалён.
+    # PR 11 вернёт значение через positions-репозиторий с mark-to-market.
     unrealized_pnl = 0.0
-    try:
-        if broker_conn:
-            service = TinkoffService(decrypt_token(broker_conn.api_token))
-            portfolio = await asyncio.to_thread(service.get_portfolio, broker_conn.broker_account_id)
-            if portfolio and portfolio.get('positions'):
-                for pos in portfolio['positions']:
-                    unrealized_pnl += float(pos.get('unrealized_pnl', 0) or 0)
-    except Exception as e:
-        log.warning(f"Failed to get unrealized PnL: {e}")
 
     result = {
         "total_pnl": total_pnl,
