@@ -1,10 +1,13 @@
 'use client';
 
-import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, 
-         GitGraph, BarChart3, Flame, Scale, Shield, Wallet, Gauge } from 'lucide-react';
+import { useState } from 'react';
+import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle,
+         GitGraph, BarChart3, Flame, Scale, Shield, Wallet, Gauge, Receipt } from 'lucide-react';
 import { StatsCard } from '@/components/StatsCard';
+import { PnLHealthBadge } from '@/components/PnLHealthBadge';
 import { useLanguage, interpolate } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import { api } from '@/lib/apiClient';
 
 interface OptimalFMethod {
   optimal_f: number;
@@ -30,7 +33,29 @@ interface OptimalFData {
 interface DashboardData {
   total_pnl: number;
   unrealized_pnl?: number;
+  account_level_adjustments?: number;  // Phase 7: orphan cash flows (varmargin/fees не attributed на trades)
+  varmargin_total?: number;  // TR1.2: account-level varmargin (futures)
   total_pnl_with_unrealized?: number;
+  // Phase 11 (2026-05-17): gross variants — для settings.pnlDisplayMode='gross'
+  total_pnl_gross?: number;
+  total_pnl_with_unrealized_gross?: number;
+  account_level_adjustments_gross?: number;
+  // Phase 12 (2026-05-17): отдельная карточка «Расходы» (best practices).
+  total_costs?: number;
+  total_costs_breakdown?: {
+    broker_commission?: number;
+    attributed_fees?: number;
+    taxes?: number;
+  };
+  // Phase 10 (2026-05-17): P&L Health Check status — двойная проверка корректности
+  pnl_health?: {
+    status: "ok" | "warning" | "mismatch" | "na" | "stale";
+    diff_pct: number | null;
+    diff_rub: number | null;
+    checked_at: string | null;
+    breakdown?: Record<string, unknown> | null;
+    message?: string;
+  } | null;
   win_rate: number;
   total_trades: number;
   profitable_trades: number;
@@ -65,9 +90,49 @@ interface StatsGridProps {
 }
 
 export function StatsGrid({ stats, hasData }: StatsGridProps) {
+  // Phase 10 (2026-05-17): локальное состояние для refresh кнопки бейджа.
+  const [refreshingHealth, setRefreshingHealth] = useState(false);
+  const [localHealth, setLocalHealth] = useState<DashboardData["pnl_health"] | undefined>(undefined);
+  const healthData = localHealth !== undefined ? localHealth : stats?.pnl_health;
+
+  const handleRefreshHealth = async () => {
+    setRefreshingHealth(true);
+    try {
+      const fresh = await api.post<{
+        status: "ok" | "warning" | "mismatch" | "na" | "stale";
+        diff_pct: number | null;
+        diff_rub: number | null;
+        computed_at: string;
+        components: Record<string, number>;
+      }>('/stats/pnl-health/refresh', {});
+      setLocalHealth({
+        status: fresh.status,
+        diff_pct: fresh.diff_pct,
+        diff_rub: fresh.diff_rub,
+        checked_at: fresh.computed_at,
+        breakdown: fresh as unknown as Record<string, unknown>,
+      });
+    } catch (e) {
+      console.error('PnL health refresh failed', e);
+    } finally {
+      setRefreshingHealth(false);
+    }
+  };
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
   const noData = t.emptyState?.noData || '—';
+
+  // Phase 11 (2026-05-17): выбираем gross vs net по настройке.
+  //   net (default) — реальный финансовый результат (matches broker, includes commissions).
+  //   gross         — только body P&L (от движения цены), без costs.
+  const isGross = settings.pnlDisplayMode === 'gross';
+  const displayTotalPnl = isGross ? stats?.total_pnl_gross : stats?.total_pnl;
+  const displayTotalPnlWithUnrealized = isGross
+    ? stats?.total_pnl_with_unrealized_gross
+    : stats?.total_pnl_with_unrealized;
+  const displayAdjustments = isGross
+    ? stats?.account_level_adjustments_gross
+    : stats?.account_level_adjustments;
 
   const formatStat = (value: number | string | null | undefined, suffix: string = ''): string => {
     if (!hasData) return noData;
@@ -89,20 +154,117 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
   };
 
   return (
+    <>
+      {/* Phase 10 (2026-05-17): P&L Health Check badge — двойная сверка корректности.
+          Видна сверху для быстрого визуального сигнала пользователю.
+          Tooltip + кнопка refresh для перерасчёта on-demand. */}
+      {hasData && healthData && (
+        <div className="mb-4 flex items-center gap-2">
+          <PnLHealthBadge
+            data={healthData}
+            size="md"
+            onRefresh={handleRefreshHealth}
+            refreshing={refreshingHealth}
+          />
+          <span className="text-xs text-slate-500">
+            Сравнение журнала с банковским балансом
+          </span>
+        </div>
+      )}
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <StatsCard 
-        title={t.stats.totalPnl.title} 
-        value={formatStatCurrency(stats?.total_pnl_with_unrealized ?? stats?.total_pnl)} 
-        description={hasData ? (
-          stats?.unrealized_pnl && stats.unrealized_pnl !== 0 
-            ? `Реализ.: ${formatCurrency(stats.total_pnl)} | Нереализ.: ${formatCurrency(stats.unrealized_pnl)}`
-            : t.stats.totalPnl.description
-        ) : ''}
-        trend={hasData && (stats?.total_pnl_with_unrealized ?? stats?.total_pnl ?? 0) > 0 ? 'up' : hasData && (stats?.total_pnl_with_unrealized ?? stats?.total_pnl ?? 0) < 0 ? 'down' : undefined}
+      {/* Phase 12 (2026-05-17): headline title динамически меняется в зависимости
+          от режима, явно сообщая пользователю что показывается:
+          - net  → «Общий PnL» (итоговый с учётом всех расходов, как у брокера)
+          - gross → «Общий PnL по сделкам» (только body, без расходов) */}
+      <StatsCard
+        title={isGross ? 'Общий PnL по сделкам' : t.stats.totalPnl.title}
+        value={formatStatCurrency(displayTotalPnlWithUnrealized ?? displayTotalPnl)}
+        description={hasData ? (() => {
+          // Phase 12: subtitle отражает компоненты headline.
+          //   net   = Реализ. body + Нереализ. + Прочие + Расходы
+          //   gross = Реализ. body + Нереализ. + Прочие (без Расходов)
+          const parts: string[] = [];
+          if (displayTotalPnl !== undefined && displayTotalPnl !== 0) {
+            parts.push(`Реализ.: ${formatCurrency(displayTotalPnl)}`);
+          }
+          if (stats?.unrealized_pnl && stats.unrealized_pnl !== 0) {
+            parts.push(`Нереализ.: ${formatCurrency(stats.unrealized_pnl)}`);
+          }
+          if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
+            parts.push(`Прочие: ${formatCurrency(displayAdjustments)}`);
+          }
+          if (!isGross && stats?.total_costs && Math.abs(stats.total_costs) > 1) {
+            parts.push(`Расходы: ${formatCurrency(stats.total_costs)}`);
+          }
+          return parts.length > 0 ? parts.join(' | ') : t.stats.totalPnl.description;
+        })() : ''}
+        trend={hasData && (displayTotalPnlWithUnrealized ?? displayTotalPnl ?? 0) > 0 ? 'up' : hasData && (displayTotalPnlWithUnrealized ?? displayTotalPnl ?? 0) < 0 ? 'down' : undefined}
         icon={<TrendingUp size={18} />}
-        tooltipText={stats?.unrealized_pnl ? `Реализованный PnL: ${formatCurrency(stats.total_pnl)}\nНереализованный: ${formatCurrency(stats.unrealized_pnl)}` : t.stats.totalPnl.tooltip}
+        tooltipText={(() => {
+          const lines: string[] = [];
+          lines.push(
+            isGross
+              ? 'Режим: По сделкам (только движение цены, без расходов)'
+              : 'Режим: Итоговый (с учётом комиссий, сборов, налогов)'
+          );
+          if (displayTotalPnl !== undefined) {
+            lines.push(`Реализованный (закрытые, P&L от цен): ${formatCurrency(displayTotalPnl)}`);
+          }
+          if (stats?.unrealized_pnl) {
+            lines.push(`Нереализованный (открытые позиции): ${formatCurrency(stats.unrealized_pnl)}`);
+          }
+          if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
+            lines.push(`Прочие сборы и корректировки счёта: ${formatCurrency(displayAdjustments)}`);
+          }
+          if (!isGross && stats?.total_costs && Math.abs(stats.total_costs) > 1) {
+            lines.push(`Комиссии, сборы и налоги: ${formatCurrency(stats.total_costs)}`);
+          }
+          return lines.length > 0 ? lines.join('\n') : t.stats.totalPnl.tooltip;
+        })()}
         manualAnchor="total-pnl"
       />
+      {/* Phase 12 (2026-05-17): отдельная карточка «Расходы» (Tradervue/IB/Edgewonk pattern).
+          В журнале P&L = body от цен, расходы сюда — separation of concerns. */}
+      {hasData && stats?.total_costs !== undefined && stats.total_costs !== 0 && (
+        <StatsCard
+          title="Расходы"
+          value={formatStatCurrency(stats.total_costs)}
+          description={(() => {
+            const b = stats.total_costs_breakdown || {};
+            const parts: string[] = [];
+            if (b.broker_commission && Math.abs(b.broker_commission) > 1) {
+              parts.push(`Брокер: ${formatCurrency(b.broker_commission)}`);
+            }
+            if (b.attributed_fees && Math.abs(b.attributed_fees) > 1) {
+              parts.push(`Сборы: ${formatCurrency(b.attributed_fees)}`);
+            }
+            if (b.taxes && Math.abs(b.taxes) > 1) {
+              parts.push(`Налоги: ${formatCurrency(b.taxes)}`);
+            }
+            return parts.join(' | ');
+          })()}
+          trend={(stats.total_costs ?? 0) < 0 ? 'down' : undefined}
+          icon={<Receipt size={18} />}
+          tooltipText={(() => {
+            const b = stats.total_costs_breakdown || {};
+            const lines: string[] = [];
+            lines.push('Все комиссии, сборы и налоги по счёту:');
+            if (b.broker_commission !== undefined) {
+              lines.push(`Комиссии брокера: ${formatCurrency(b.broker_commission)}`);
+            }
+            if (b.attributed_fees !== undefined) {
+              lines.push(`Сборы и маржа: ${formatCurrency(b.attributed_fees)}`);
+            }
+            if (b.taxes !== undefined) {
+              lines.push(`Налоги: ${formatCurrency(b.taxes)}`);
+            }
+            lines.push('');
+            lines.push(`Итого: ${formatCurrency(stats.total_costs ?? 0)}`);
+            return lines.join('\n');
+          })()}
+          manualAnchor="total-costs"
+        />
+      )}
       <StatsCard 
         title={t.stats.winRate.title} 
         value={formatStatPercent(stats?.win_rate)} 
@@ -265,5 +427,6 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         manualAnchor="calmar-ratio"
       />
     </div>
+    </>
   );
 }

@@ -5,6 +5,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 export type Currency = 'USD' | 'EUR' | 'RUB' | 'USDT' | 'BTC';
 export type Theme = 'dark' | 'light';
 export type MAECalculationMethod = 'weighted_average' | 'first_entry';
+// Phase 11 (2026-05-17): отображение P&L — с комиссиями (net) или без (gross).
+//   net    — реальный финансовый результат, как у брокера. Default.
+//   gross  — только body P&L от движения цены, без commissions/fees/taxes.
+export type PnLDisplayMode = 'net' | 'gross';
 
 export interface Settings {
   currency: Currency;
@@ -14,6 +18,7 @@ export interface Settings {
   tradesStartDate: string | null; // ISO date string, null = all trades
   tradesStartTradeId: number | null; // ID конкретной сделки для начала отсчёта
   tradesStartTradeSymbol: string | null; // Символ сделки для отображения
+  pnlDisplayMode: PnLDisplayMode;
 }
 
 interface SettingsContextType {
@@ -31,14 +36,18 @@ const currencySymbols: Record<Currency, string> = {
   BTC: '₿',
 };
 
+// Eqio таргетится на трейдеров MOEX — все сделки приходят из Tinkoff API
+// в рублях. Дефолтная валюта = RUB. USD/EUR/USDT/BTC доступны для тех
+// кто торгует не на MOEX (опциональный override в настройках).
 const defaultSettings: Settings = {
-  currency: 'USD',
-  currencySymbol: '$',
+  currency: 'RUB',
+  currencySymbol: '₽',
   theme: 'dark',
   maeCalculationMethod: 'weighted_average',
   tradesStartDate: null,
   tradesStartTradeId: null,
   tradesStartTradeSymbol: null,
+  pnlDisplayMode: 'net',  // Phase 11: default net (matches broker, industry standard)
 };
 
 function getInitialSettings(): Settings {
@@ -54,11 +63,19 @@ function getInitialSettings(): Settings {
   try {
     const parsed = JSON.parse(saved);
     const { initialDeposit: _legacyInitialDeposit, ...parsedWithoutLegacy } = parsed;
-    const currency = parsed.currency as Currency | undefined;
+    let currency = parsed.currency as Currency | undefined;
+    // Миграция: до этого дефолт был USD. У пользователей MOEX-трейдеров
+    // в localStorage сохранилось 'USD', хотя они никогда явно его не
+    // выбирали. Переключаем USD→RUB однократно. Если юзер реально торгует
+    // в USD, он переключит обратно в настройках.
+    if (currency === 'USD' && !parsed.currencyExplicitlyChosen) {
+      currency = 'RUB';
+    }
     return {
       ...defaultSettings,
       ...parsedWithoutLegacy,
-      currencySymbol: currency ? currencySymbols[currency] || '$' : defaultSettings.currencySymbol,
+      currency: currency || defaultSettings.currency,
+      currencySymbol: currency ? currencySymbols[currency] || '₽' : defaultSettings.currencySymbol,
       theme: parsed.theme || defaultSettings.theme,
     };
   } catch {
@@ -105,12 +122,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    
-    if (settings.currency === 'BTC') {
-      return `${amount < 0 ? '-' : ''}${formatted} ${symbol}`;
+    const sign = amount < 0 ? '-' : '';
+    // Русская типографика: ₽/¥ ставятся после числа, USD/EUR/£ — перед.
+    // BTC/USDT/токены — после с пробелом.
+    if (settings.currency === 'RUB' || settings.currency === 'BTC' || settings.currency === 'USDT') {
+      return `${sign}${formatted} ${symbol}`;
     }
-    
-    return `${amount < 0 ? '-' : ''}${symbol}${formatted}`;
+    return `${sign}${symbol}${formatted}`;
   };
 
   return (

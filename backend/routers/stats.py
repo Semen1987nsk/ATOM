@@ -2,6 +2,7 @@
 Stats Router — статистика торговли, аналитика, теги
 """
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
@@ -11,7 +12,7 @@ import models
 import schemas
 import analytics
 import auth_service
-from capital_service import get_capital_flow_events, get_net_deposit_as_of, has_broker_capital_operations
+from capital_service import compute_balance_at, get_capital_flow_events, get_net_deposit_as_of, has_broker_capital_operations
 from utils import utc_now_naive
 from logger import get_logger
 from rate_limiter import limiter, API_LIMIT
@@ -39,6 +40,18 @@ def _get_cached(key):
 
 def _set_cached(key, value):
     stats_cache.set(key, value)
+
+
+def _count_open_positions(db: Session, account_id: int) -> int:
+    """Сколько открытых позиций в `positions` ORM (после mark-to-market)."""
+    return (
+        db.query(models.PositionORM)
+        .filter(
+            models.PositionORM.account_id == account_id,
+            models.PositionORM.quantity != 0,
+        )
+        .count()
+    )
 
 
 async def _build_imoex_overlay_async(equity_curve: list) -> list:
@@ -82,6 +95,37 @@ def _build_imoex_overlay(equity_curve: list) -> list:
 
 
 # get_account_id is now centralized in auth_service
+
+
+def _build_pnl_health_dict(account) -> dict:
+    """Phase 10: dict для UI badge из cached `Account.last_pnl_health_*`.
+
+    Если cached данные старше 7 дней — переопределяем status='stale' (UI
+    показывает серый бейдж с подсказкой "запустить проверку"). Если NULL —
+    status='stale' до первого backfill.
+    """
+    from services.pnl_health_service import is_stale
+
+    if account.last_pnl_health_at is None:
+        return {
+            "status": "stale",
+            "diff_pct": None,
+            "diff_rub": None,
+            "checked_at": None,
+            "breakdown": None,
+            "message": "Проверка ещё не выполнялась",
+        }
+
+    raw_status = account.last_pnl_health_status or "stale"
+    effective_status = "stale" if is_stale(account) else raw_status
+
+    return {
+        "status": effective_status,
+        "diff_pct": float(account.last_pnl_health_diff_pct) if account.last_pnl_health_diff_pct is not None else None,
+        "diff_rub": float(account.last_pnl_health_diff_rub) if account.last_pnl_health_diff_rub is not None else None,
+        "checked_at": account.last_pnl_health_at.isoformat() if account.last_pnl_health_at else None,
+        "breakdown": account.last_pnl_health_breakdown,
+    }
 
 
 @router.get("/", response_model=schemas.DashboardStats)
@@ -184,19 +228,31 @@ async def get_stats(
 
     total_trades = len(trades)
     if total_trades == 0:
+        # PR 22: для broker-юзера baseline = portfolio snapshot back-calculated;
+        # для остальных fallback на account.initial_balance.
+        empty_baseline = None
+        if account is not None and account.last_portfolio_value is not None:
+            empty_baseline = compute_balance_at(db, account_id, date_filter) if date_filter else float(account.last_portfolio_value)
+        if empty_baseline is None:
+            empty_baseline = account_initial_balance
         return {
             "total_pnl": 0,
             "unrealized_pnl": 0,
+            "varmargin_total": 0,
             "total_pnl_with_unrealized": 0,
-            "initial_balance": account_initial_balance,
-            "current_balance": account_initial_balance,
-            "period_start_balance": account_initial_balance,
-            "period_end_balance": account_initial_balance,
+            "initial_balance": empty_baseline,
+            "current_balance": empty_baseline,
+            "period_start_balance": empty_baseline,
+            "period_end_balance": empty_baseline,
             "period_start_date": date_filter.isoformat() if date_filter else None,
             "period_start_net_deposit": get_net_deposit_as_of(db, account_id, date_filter) if date_filter else account_initial_balance,
             "period_start_realized_pnl": 0,
             "period_start_balance_reliable": True,
-            "period_start_balance_source": "account_initial_balance",
+            "period_start_balance_source": (
+                "portfolio_snapshot_backtrack"
+                if account is not None and account.last_portfolio_value is not None
+                else "account_initial_balance"
+            ),
             "period_start_balance_reason": None,
             "win_rate": 0,
             "total_trades": 0,
@@ -208,7 +264,13 @@ async def get_stats(
     def get_pnl(t):
         return float(t.net_pnl if t.net_pnl is not None else t.pnl)
 
+    # Phase 11 (2026-05-17): gross variant — только body P&L без commissions/fees.
+    # Используется когда settings.pnl_display_mode == 'gross' на фронте.
+    def get_pnl_gross(t):
+        return float(t.pnl if t.pnl is not None else 0)
+
     total_pnl = sum(get_pnl(t) for t in trades)
+    total_pnl_gross = sum(get_pnl_gross(t) for t in trades)
     profitable_trades = len([t for t in trades if get_pnl(t) > 0])
     win_rate = (profitable_trades / total_trades) * 100
 
@@ -250,17 +312,35 @@ async def get_stats(
         ).all()
         pnl_before = sum(float(t.net_pnl if t.net_pnl is not None else t.pnl) for t in trades_before_filter)
 
+    # PR 23: для broker-юзера НЕ пытаемся реконструировать «стартовый капитал»
+    # — у Tinkoff API нет надёжного источника для margin/futures-трейдинга
+    # (operation payments не отражают margin-кредиты, а historical snapshots
+    # отсутствуют без GetBrokerReport). Показываем честно:
+    #   - текущий баланс счёта = last_portfolio_value (cash)
+    #   - equity curve = кумулятивный realized PnL (стартует от 0)
+    #   - ROI/RoR не считаем (нет baseline)
+    is_broker_user = account is not None and account.last_portfolio_value is not None
+    current_cash_balance = float(account.last_portfolio_value) if is_broker_user else None
+
+    # Всегда вычисляем для совместимости с response-полем period_start_net_deposit.
     starting_net_deposit = get_net_deposit_as_of(db, account_id, period_start_date) if period_start_date else get_net_deposit_as_of(db, account_id)
-    starting_balance = starting_net_deposit + pnl_before
-    if not period_start_date:
-        starting_balance = base_initial_balance if base_initial_balance > 0 else starting_balance
 
-    period_start_balance_reliable = True
-    period_start_balance_source = "derived"
+    if is_broker_user:
+        # Equity curve начинается от 0; ROI скрыт.
+        starting_balance = 0.0
+        period_start_balance_source = "broker_cumulative_pnl"
+        period_start_balance_reliable = False  # signal к UI: ROI не показывать
+    else:
+        starting_balance = starting_net_deposit + pnl_before
+        if not period_start_date:
+            starting_balance = base_initial_balance if base_initial_balance > 0 else starting_balance
+        period_start_balance_source = "derived"
+        period_start_balance_reliable = True
+
     period_start_balance_reason = None
-    public_period_start_balance = starting_balance
+    public_period_start_balance = starting_balance if not is_broker_user else None
 
-    if broker_backed and period_start_date:
+    if not is_broker_user and broker_backed and period_start_date:
         first_snapshot = db.query(models.BalanceSnapshot).filter(
             models.BalanceSnapshot.account_id == account_id,
         ).order_by(models.BalanceSnapshot.date.asc()).first()
@@ -312,26 +392,36 @@ async def get_stats(
             equity_events.append({
                 "date": flow["date"],
                 "amount": float(flow["amount"]),
+                "amount_gross": float(flow["amount"]),  # capital flows одинаковы в обоих режимах
                 "kind": "capital",
             })
     for trade in sorted_trades:
         equity_events.append({
             "date": trade.exit_at if trade.exit_at else trade.entry_at,
             "amount": get_pnl(trade),
+            "amount_gross": get_pnl_gross(trade),
             "kind": "trade",
         })
 
     equity_events.sort(key=lambda event: (event["date"], 0 if event["kind"] == "capital" else 1))
     equity_curve = []
+    equity_curve_gross = []
     current_balance = starting_balance
+    current_balance_gross = starting_balance
     for event in equity_events:
         current_balance += event["amount"]
+        current_balance_gross += event["amount_gross"]
         event_date = event["date"]
         if event_date is None:
             continue
+        date_str = event_date.strftime("%Y-%m-%d %H:%M")
         equity_curve.append({
-            "date": event_date.strftime("%Y-%m-%d %H:%M"),
+            "date": date_str,
             "balance": round(current_balance, 2)
+        })
+        equity_curve_gross.append({
+            "date": date_str,
+            "balance": round(current_balance_gross, 2)
         })
 
     if period_start_date:
@@ -404,14 +494,207 @@ async def get_stats(
     payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 1
     risk_of_ruin_data = analytics.calculate_risk_of_ruin(win_rate / 100, payoff_ratio)
 
-    # Unrealized PnL временно отключён в PR 0 — TinkoffService удалён.
-    # PR 11 вернёт значение через positions-репозиторий с mark-to-market.
-    unrealized_pnl = 0.0
+    # PR 21: возвращаем unrealized PnL из PositionORM (заполняется pipeline'ом
+    # в _stage_mark_to_market из live Tinkoff get_portfolio). Это сумма всех
+    # открытых позиций — то что у юзера «нереализованно болтается» прямо сейчас.
+    from models import PositionORM, OperationORM
+    unrealized_sum = (
+        db.query(func.sum(PositionORM.unrealized_pnl))
+        .filter(PositionORM.account_id == account_id)
+        .scalar()
+    )
+    unrealized_pnl_position_based = float(unrealized_sum) if unrealized_sum is not None else 0.0
+
+    # TR1.3: varmargin теперь attributed к Trade.net_pnl через
+    # pipeline._stage_attribute_fees (proportional split). Поэтому
+    # total_pnl (= Σ Trade.net_pnl закрытых) уже включает varmargin.
+    # Здесь surface отдельной info-метрикой для admin debug/диагностики.
+    varmargin_units = func.coalesce(func.sum(OperationORM.payment_units), 0)
+    varmargin_nano = func.coalesce(func.sum(OperationORM.payment_nano), 0)
+    vm_row = (
+        db.query(varmargin_units, varmargin_nano)
+        .filter(
+            OperationORM.account_id == account_id,
+            OperationORM.operation_type.in_(
+                ["accruing_varmargin", "writing_off_varmargin"]
+            ),
+            OperationORM.state == "executed",
+        )
+        .one()
+    )
+    varmargin_total = float(vm_row[0] or 0) + float(vm_row[1] or 0) / 1e9
+
+    # Phase 7 (2026-05-17, senior rework — БЕЗ podgonки):
+    # total_pnl_with_unrealized складывается НАТУРАЛЬНО из трёх компонент:
+    #   1. total_pnl (Σ закрытых Trade.net_pnl)
+    #   2. Σ Position.unrealized_pnl (теперь = Tinkoff.expected_yield для
+    #      futures — authoritative; static-pv формула для shares/etc)
+    #   3. account_level_adjustments — orphan cash flows которые мы НЕ
+    #      смогли attribute ни на один Trade (varmargin без active futures,
+    #      service_fee между сделок, options expiration, broker_fee remnants)
+    #
+    # Эта формула:
+    #   - даёт ОДНУ цифру для дашборда и Positions страницы (consistency)
+    #   - совпадает с broker'ом КАК СЛЕДСТВИЕ корректности (validated на acc#4:
+    #     -250,027 vs cash_truth -248,553 = diff 0.59%, < 1% — natural match)
+    #   - Phase 6.2b shortcut (cash_truth substitution) удалён
+    if is_broker_user and account is not None:
+        from domain.pnl.cash_flow_classification import (
+            CashFlowCategory,
+            operation_types_in,
+        )
+
+        def _sum_category(cat: CashFlowCategory) -> float:
+            types = tuple(operation_types_in(cat))
+            if not types:
+                return 0.0
+            row = db.query(
+                func.coalesce(func.sum(OperationORM.payment_units), 0),
+                func.coalesce(func.sum(OperationORM.payment_nano), 0),
+            ).filter(
+                OperationORM.account_id == account_id,
+                OperationORM.operation_type.in_(types),
+                OperationORM.state == "executed",
+            ).one()
+            return float(row[0] or 0) + float(row[1] or 0) / 1e9
+
+        # Attributed sums via SQL (быстро).
+        raw_varmargin = _sum_category(CashFlowCategory.VARMARGIN)
+        raw_attr_fee = _sum_category(CashFlowCategory.ATTRIBUTABLE_FEE)
+        raw_tax = _sum_category(CashFlowCategory.TAX)
+        raw_income = _sum_category(CashFlowCategory.INCOME)
+        raw_broker = _sum_category(CashFlowCategory.BROKER_COMMISSION)
+
+        attr_varmargin = float(db.query(func.coalesce(func.sum(models.Trade.varmargin_attributed), 0))
+            .filter(models.Trade.account_id == account_id).scalar() or 0)
+        attr_margin_fee = float(db.query(func.coalesce(func.sum(models.Trade.margin_fee_attributed), 0))
+            .filter(models.Trade.account_id == account_id).scalar() or 0)
+        attr_service_fee = float(db.query(func.coalesce(func.sum(models.Trade.service_fee_attributed), 0))
+            .filter(models.Trade.account_id == account_id).scalar() or 0)
+        attr_other = float(db.query(func.coalesce(func.sum(models.Trade.other_fees_attributed), 0))
+            .filter(models.Trade.account_id == account_id).scalar() or 0)
+        # Trade.commission_total stored as positive abs; raw broker_fee is negative.
+        sum_commission_closed = float(db.query(func.coalesce(func.sum(models.Trade.commission), 0))
+            .filter(models.Trade.account_id == account_id, models.Trade.exit_at.isnot(None))
+            .scalar() or 0)
+
+        # Phase 9 (2026-05-17): для closed futures с Phase 8 body-формулой
+        # `Trade.pnl = (exit-entry)*qty*point_value` уже МАТЕМАТИЧЕСКИ ВКЛЮЧАЕТ
+        # сумму varmargin от entry до exit (MOEX telescoping identity).
+        # Поэтому при расчёте orphan_varmargin нужно ВЫЧЕСТЬ body, иначе
+        # double-count: closed Trade.net_pnl уже содержит body, плюс orphan
+        # снова добавит ту же варм-маржу.
+        closed_futures_body = float(db.query(func.coalesce(func.sum(models.Trade.pnl), 0))
+            .filter(
+                models.Trade.account_id == account_id,
+                models.Trade.exit_at.isnot(None),
+                models.Trade.instrument_type_v2 == "futures",
+                models.Trade.point_value.isnot(None),
+            ).scalar() or 0)
+
+        # orphan_varmargin = raw varmargin минус (attributed + absorbed_in_body)
+        orphan_varmargin = raw_varmargin - attr_varmargin - closed_futures_body
+
+        account_level_adjustments = (
+            orphan_varmargin
+            + (raw_attr_fee - (attr_margin_fee + attr_service_fee))
+            + (raw_tax - attr_other)
+            + raw_income  # currently not attributed; counts as orphan
+            + (raw_broker + sum_commission_closed)  # broker_fee not in Trade.commission
+        )
+
+        # Phase 11 (2026-05-17): gross variant — без cost-related orphans.
+        # В gross-режиме user видит только P&L движение цены (без комиссий/налогов).
+        # orphan_varmargin — это P&L по варм-марже (НЕ cost), оставляем.
+        # raw_income — dividends/coupons (НЕ cost), оставляем.
+        # Excluded as costs: orphan_attr_fee (margin/service), orphan_tax, orphan_broker.
+        account_level_adjustments_gross = orphan_varmargin + raw_income
+
+        # ВАЖНО (Phase 7 v2, 2026-05-17): `unrealized_pnl` для UI Dashboard
+        # **должен совпадать** с тем что показывает Positions page (Σ Position.unrealized_pnl).
+        # Иначе пользователь видит две разные цифры одной метрики в разных
+        # вкладках — confusing.
+        # Поэтому: unrealized_pnl = Σ Position.unrealized_pnl (= Tinkoff authoritative).
+        # account_level_adjustments — отдельная строка в dashboard breakdown
+        # ("Прочие сборы / orphan cash flows"), не сваливаем в unrealized.
+        unrealized_pnl = unrealized_pnl_position_based
+        total_pnl_with_unrealized = total_pnl + unrealized_pnl + account_level_adjustments
+
+        # Phase 12 (2026-05-17): total_costs = разница net vs gross dashboard headline.
+        # По best practices (Tradervue, IB, Edgewonk): отдельная карточка «Расходы»
+        # с breakdown — broker_commission / attributed_fees / taxes.
+        # Math invariant: total_pnl_with_unrealized_gross + total_costs ≈ total_pnl_with_unrealized
+        total_pnl_with_unrealized_gross = (
+            total_pnl_gross + unrealized_pnl + account_level_adjustments_gross
+        )
+        total_costs = total_pnl_with_unrealized - total_pnl_with_unrealized_gross
+        total_costs_breakdown = {
+            "broker_commission": float(raw_broker),  # все broker_fee ops (signed negative)
+            "attributed_fees": float(raw_attr_fee),  # margin/service/track/etc fee ops
+            "taxes": float(raw_tax),                  # все tax ops
+        }
+    else:
+        unrealized_pnl = unrealized_pnl_position_based
+        account_level_adjustments_gross = 0.0
+        total_pnl_with_unrealized = total_pnl + unrealized_pnl
+        account_level_adjustments = 0.0
+        total_pnl_with_unrealized_gross = total_pnl_gross + unrealized_pnl
+        total_costs = 0.0
+        total_costs_breakdown = {
+            "broker_commission": 0.0,
+            "attributed_fees": 0.0,
+            "taxes": 0.0,
+        }
+
+    # PR 21 + Phase 9 (2026-05-17): к LAST POINT добавляем unrealized + adjustments,
+    # чтобы Equity curve label == «Общий PnL» headline (consistency между графиком
+    # и заголовком). Иначе пользователь видит две разные цифры одной метрики.
+    # account_level_adjustments — orphan cash flows которые не привязаны к Trade,
+    # но реально влияют на cash баланс счёта.
+    _curve_tail_adjustment = unrealized_pnl + account_level_adjustments
+    if equity_curve and _curve_tail_adjustment != 0:
+        last = equity_curve[-1]
+        equity_curve = equity_curve[:-1] + [
+            {
+                "date": last["date"],
+                "balance": round(last["balance"] + _curve_tail_adjustment, 2),
+            }
+        ]
+
+    # Phase 11 (2026-05-17): аналогичный tail-adjustment для gross варианта.
+    _curve_tail_adjustment_gross = unrealized_pnl + account_level_adjustments_gross
+    if equity_curve_gross and _curve_tail_adjustment_gross != 0:
+        last = equity_curve_gross[-1]
+        equity_curve_gross = equity_curve_gross[:-1] + [
+            {
+                "date": last["date"],
+                "balance": round(last["balance"] + _curve_tail_adjustment_gross, 2),
+            }
+        ]
 
     result = {
         "total_pnl": total_pnl,
         "unrealized_pnl": unrealized_pnl,
-        "total_pnl_with_unrealized": total_pnl + unrealized_pnl,
+        "unrealized_pnl_position_based": unrealized_pnl_position_based,  # info: Σ Position.unrealized (predictive)
+        "account_level_adjustments": account_level_adjustments,  # orphan cash flows (varmargin/fees not attributed)
+        "varmargin_total": varmargin_total,  # info-only, не суммируем
+        "total_pnl_with_unrealized": total_pnl_with_unrealized,
+        # Phase 11 (2026-05-17): gross variants — для пользовательской настройки
+        # `settings.pnl_display_mode = 'gross'`. Frontend сам выбирает что показывать.
+        # gross = только body P&L (от движения цены) без commissions/fees/taxes.
+        # net = реальный финансовый результат (default, matches broker).
+        "total_pnl_gross": total_pnl_gross,
+        "total_pnl_with_unrealized_gross": total_pnl_with_unrealized_gross,
+        "account_level_adjustments_gross": account_level_adjustments_gross,
+        # Phase 12 (2026-05-17): separate «Расходы» card (best practices).
+        # total_costs = разница net vs gross headline = broker + fees + taxes
+        # (sum может слегка отличаться от breakdown из-за orphan/attributed split).
+        "total_costs": total_costs,
+        "total_costs_breakdown": total_costs_breakdown,
+        # Phase 10 (2026-05-17): P&L Health Check status (cached на Account).
+        # status: ok|warning|mismatch|na — UI показывает badge соответствующего цвета.
+        # Если last_pnl_health_at старше 7 дней → status переопределяется на 'stale'.
+        "pnl_health": _build_pnl_health_dict(account) if account else None,
         "win_rate": win_rate,
         "total_trades": total_trades,
         "profitable_trades": profitable_trades,
@@ -445,9 +728,17 @@ async def get_stats(
         "time_patterns": time_patterns_data,
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
+        "equity_curve_gross": equity_curve_gross,  # Phase 11: gross variant
         "imoex_curve": await _build_imoex_overlay_async(equity_curve),
         "tag_stats": tag_stats,
         "initial_balance": base_initial_balance,
+        "initial_balance_source": getattr(account, "initial_balance_source", None),
+        # PR 23: для broker-юзера current_cash_balance — это
+        # `portfolio.total_amount_portfolio` от Тинькова (cash на счёте,
+        # без учёта фьючерсов в пунктах). Это единственная честная цифра,
+        # которой можно доверять при margin/futures-трейдинге.
+        "current_cash_balance": current_cash_balance,
+        "open_positions_count": _count_open_positions(db, account_id) if is_broker_user else None,
         "current_balance": current_balance if equity_curve else base_initial_balance,
         "period_start_balance": period_start_balance,
         "period_end_balance": current_balance if equity_curve else period_start_balance,
@@ -1465,6 +1756,27 @@ def _generate_symbol_recommendations(sym_data: dict) -> list:
         })
 
     return recommendations
+
+
+@router.post("/pnl-health/refresh")
+async def refresh_pnl_health(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """Phase 10 (2026-05-17): принудительный пересчёт P&L Health Check.
+
+    Кнопка "Проверить сейчас" на дашборде. ~50-150ms на средние счета,
+    до 500ms на очень большие (10k+ trades).
+
+    Возвращает свежий PnLHealthResult в JSON формате.
+    """
+    from services import pnl_health_service
+
+    account_id = auth_service.get_account_id(db, current_user)
+    if not account_id:
+        raise HTTPException(status_code=404, detail="Account not found")
+    result = pnl_health_service.compute_and_persist(db, account_id)
+    return result.to_breakdown_json()
 
 
 @router.get("/audit")

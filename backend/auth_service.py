@@ -173,20 +173,25 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
     Создание Access JWT токена.
-    
+
     Access токен используется для аутентификации API запросов.
     Имеет короткий срок жизни для безопасности.
+
+    PR 26: добавлен `jti` (JWT ID) — позволяет отзывать токены через
+    `revoked_tokens` таблицу (на logout, при инциденте). Раньше только
+    refresh tokens имели jti, access tokens были неотзываемыми.
     """
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = utc_now_naive() + expires_delta
     else:
         expire = utc_now_naive() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({
         "exp": expire,
-        "type": "access",  # Тип токена для валидации
+        "type": "access",
+        "jti": secrets.token_urlsafe(16),  # PR 26: revocation support
     })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -232,25 +237,33 @@ def create_token_pair(user_id: int, email: str) -> Tuple[str, str]:
 
 
 def decode_access_token(token: str) -> Optional[schemas.TokenData]:
-    """Декодирование Access JWT токена"""
+    """Декодирование Access JWT токена.
+
+    PR 26: возвращает также `jti` и `exp_ts` — нужны для revocation check.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        
+
         # Проверяем тип токена (если указан)
         token_type = payload.get("type")
         if token_type and token_type != "access":
             return None
-        
+
         sub = payload.get("sub")
         email: str = payload.get("email")
-        
+
         if sub is None:
             return None
-        
+
         # sub может быть строкой или int
         user_id = int(sub) if isinstance(sub, str) else sub
-            
-        return schemas.TokenData(user_id=user_id, email=email)
+
+        return schemas.TokenData(
+            user_id=user_id,
+            email=email,
+            jti=payload.get("jti"),
+            exp_ts=payload.get("exp"),
+        )
     except JWTError:
         return None
 
@@ -258,27 +271,34 @@ def decode_access_token(token: str) -> Optional[schemas.TokenData]:
 def decode_refresh_token(token: str) -> Optional[schemas.TokenData]:
     """
     Декодирование Refresh JWT токена.
-    
+
+    PR 26: возвращает также `jti` и `exp_ts` — для revocation.
+
     Returns:
         TokenData если токен валиден, None иначе.
     """
     try:
         payload = jwt.decode(token, REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
-        
+
         # Проверяем тип токена
         token_type = payload.get("type")
         if token_type != "refresh":
             return None
-        
+
         sub = payload.get("sub")
         email: str = payload.get("email")
-        
+
         if sub is None:
             return None
-        
+
         user_id = int(sub) if isinstance(sub, str) else sub
-            
-        return schemas.TokenData(user_id=user_id, email=email)
+
+        return schemas.TokenData(
+            user_id=user_id,
+            email=email,
+            jti=payload.get("jti"),
+            exp_ts=payload.get("exp"),
+        )
     except JWTError:
         return None
 
@@ -339,17 +359,23 @@ def create_user(db: Session, user_data: schemas.UserCreate, utm_data: dict = Non
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
-    # Создаём дефолтный аккаунт для пользователя
-    default_account = models.Account(
-        user_id=db_user.id,
-        name="Основной счёт",
-        balance=0,
-        currency="RUB"
-    )
-    db.add(default_account)
-    db.commit()
-    
+
+    # Создаём дефолтный аккаунт для пользователя — только если ещё нет.
+    # Idempotent: повторный вызов register не создаст дубликат
+    # (страховка на случай race condition при медленном frontend retry).
+    existing = db.query(models.Account).filter(
+        models.Account.user_id == db_user.id
+    ).first()
+    if existing is None:
+        default_account = models.Account(
+            user_id=db_user.id,
+            name="Основной счёт",
+            balance=0,
+            currency="RUB"
+        )
+        db.add(default_account)
+        db.commit()
+
     return db_user
 
 
@@ -383,13 +409,77 @@ def update_user(db: Session, user: models.User, user_data: schemas.UserUpdate) -
     """Обновить данные пользователя"""
     if user_data.name is not None:
         user.name = user_data.name
-    
+
     if user_data.settings is not None:
-        user.settings = user_data.settings
-    
+        # Phase 11 (2026-05-17): валидация settings keys/values через whitelist
+        # — защита от storage abuse и поломки фронта invalid значениями.
+        from services.user_settings import validate_settings
+        # Merge into existing settings (partial update pattern)
+        existing = user.settings if isinstance(user.settings, dict) else {}
+        sanitized_new = validate_settings(user_data.settings)
+        user.settings = {**existing, **sanitized_new}
+
     db.commit()
     db.refresh(user)
     return user
+
+
+# ==================== JWT REVOCATION (PR 26) ====================
+
+def is_token_revoked(db: Session, jti: Optional[str]) -> bool:
+    """PR 26: проверка что JWT jti не в revoked_tokens.
+
+    Раньше JWT никогда не отзывались — украденный токен оставался валидным
+    до естественного expiry. Теперь logout записывает jti в revoked_tokens
+    и каждый get_current_user проверяет, что jti отсутствует.
+    """
+    if not jti:
+        return False
+    return db.query(models.RevokedTokenORM).filter(
+        models.RevokedTokenORM.jti == jti
+    ).first() is not None
+
+
+def revoke_token(
+    db: Session,
+    *,
+    jti: Optional[str],
+    user_id: int,
+    exp_ts: Optional[int],
+    reason: str = "logout",
+) -> None:
+    """PR 26: записать jti в revoked_tokens (best-effort, не падает).
+
+    Используется в /auth/logout, /admin/users/{id}/revoke-sessions.
+    """
+    if not jti:
+        return
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+
+        expires_at = (
+            _dt.fromtimestamp(exp_ts, tz=_tz.utc).replace(tzinfo=None)
+            if exp_ts
+            else utc_now_naive() + timedelta(days=7)
+        )
+        existing = db.query(models.RevokedTokenORM).filter(
+            models.RevokedTokenORM.jti == jti
+        ).first()
+        if existing:
+            return  # idempotent
+        db.add(models.RevokedTokenORM(
+            jti=jti,
+            user_id=user_id,
+            revoked_at=utc_now_naive(),
+            expires_at=expires_at,
+            reason=reason,
+        ))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 # ==================== DEPENDENCY ДЛЯ ЗАЩИЩЁННЫХ ЭНДПОИНТОВ ====================
@@ -408,28 +498,32 @@ async def get_current_user(
         detail="Не удалось проверить учётные данные",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     token = get_access_token_from_request(request, credentials)
 
     if token is None:
         raise credentials_exception
 
     token_data = decode_access_token(token)
-    
+
     if token_data is None:
         raise credentials_exception
-    
+
+    # PR 26: проверка revocation. Украденный/отозванный токен → 401.
+    if is_token_revoked(db, token_data.jti):
+        raise credentials_exception
+
     user = get_user_by_id(db, token_data.user_id)
-    
+
     if user is None:
         raise credentials_exception
-    
+
     if user.is_active != 1:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Аккаунт деактивирован"
         )
-    
+
     return user
 
 
