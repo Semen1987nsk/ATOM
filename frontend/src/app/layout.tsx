@@ -32,8 +32,14 @@ const geistMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Eqio",
-  description: "Система торговой аналитики на базе ИИ",
+  title: "МААТТ — журнал торговых сделок | Точно. Чисто. Честно.",
+  description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка измерена. Каждое решение взвешено.",
+  icons: {
+    icon: [
+      { url: "/landing/favicon-feather.svg", type: "image/svg+xml" },
+      { url: "/landing/favicon-feather-32.png", sizes: "32x32", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({
