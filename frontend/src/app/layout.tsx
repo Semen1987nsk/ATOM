@@ -40,6 +40,21 @@ export const metadata: Metadata = {
       { url: "/landing/favicon-feather-32.png", sizes: "32x32", type: "image/png" },
     ],
   },
+  openGraph: {
+    title: "МААТТ — журнал торговых сделок",
+    description: "Каждая сделка измерена. Каждое решение взвешено.",
+    url: "https://maatt.ru",
+    siteName: "МААТТ",
+    images: [{ url: "/landing/og-image-maatt.png", width: 1200, height: 630 }],
+    locale: "ru_RU",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "МААТТ — журнал сделок",
+    description: "Точно. Чисто. Честно.",
+    images: ["/landing/og-image-maatt.png"],
+  },
 };
 
 export default function RootLayout({
