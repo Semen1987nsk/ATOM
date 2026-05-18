@@ -9,7 +9,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : 2,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
-    baseURL: process.env.BASE_URL ?? "http://localhost:3000",
+    baseURL: process.env.BASE_URL ?? "http://localhost:3001",
     trace: "retain-on-failure",
   },
   projects: [
@@ -17,8 +17,8 @@ export default defineConfig({
     { name: "chromium-mobile", use: { ...devices["iPhone 13"] } },
   ],
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
+    command: "npm run dev -- -p 3001",
+    url: "http://localhost:3001",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

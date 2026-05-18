@@ -9,10 +9,10 @@ import { QueryProvider } from "@/lib/QueryProvider";
 import { CookieConsent } from "@/components/CookieConsent";
 
 const fraunces = Fraunces({
-  subsets: ["latin", "latin-ext", "cyrillic"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-serif",
   axes: ["opsz", "SOFT", "WONK"],
-  weight: ["300", "400", "500"],
+  weight: "variable",
   style: ["normal", "italic"],
   display: "swap",
 });
