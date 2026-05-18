@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
+import { Cormorant, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
@@ -8,10 +8,22 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryProvider } from "@/lib/QueryProvider";
 import { CookieConsent } from "@/components/CookieConsent";
 
+// Fraunces: Latin/Latin-ext editorial display — axes opsz/SOFT/WONK
+// No Cyrillic subset exists for Fraunces on Google Fonts
 const fraunces = Fraunces({
   subsets: ["latin", "latin-ext"],
   variable: "--font-serif",
   axes: ["opsz", "SOFT", "WONK"],
+  weight: "variable",
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+// Cormorant: Cyrillic companion serif — old-style humanist, harmonizes with Fraunces
+// Used as Cyrillic fallback via --font-serif-cyr CSS variable in the font-family stack
+const cormorant = Cormorant({
+  subsets: ["cyrillic", "cyrillic-ext", "latin"],
+  variable: "--font-serif-cyr",
   weight: "variable",
   style: ["normal", "italic"],
   display: "swap",
@@ -63,7 +75,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${fraunces.variable} ${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html lang="ru" className={`${fraunces.variable} ${cormorant.variable} ${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <body className="antialiased">
         <ErrorBoundary>
           <QueryProvider>
