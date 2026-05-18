@@ -4,9 +4,10 @@ import { sberCandles, type Candle } from "../data/sber-candles-2026-04-21";
 
 // Pre-computed MAE/MFE для каждой свечи относительно одной симуляции trade entry.
 // Это data для tooltip, не реальный AI расчёт — фиксированный example.
+// Values are illustrative based on actual candle data (SBER 2026-04-21, open of first 07:00 candle = 325.33).
 type Annotated = Candle & { mae_r: number; mfe_r: number };
-const TRADE_ENTRY = 168.0;
-const RISK_PER_R = 0.6;
+const TRADE_ENTRY = 325.33;
+const RISK_PER_R = 1.5;
 
 function annotate(candles: ReadonlyArray<Candle>): Annotated[] {
   return candles.map((c) => ({
@@ -74,7 +75,7 @@ export function InteractiveCandleChart() {
                 y={bodyTop}
                 width={bodyW}
                 height={Math.max(1, bodyBottom - bodyTop)}
-                fill={up ? color : color}
+                fill={color}
                 opacity={hover === i ? 1 : 0.85}
               />
               <title>{`${new Date(c.t).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} · O ${c.o} H ${c.h} L ${c.l} C ${c.c} · MFE ${c.h.toFixed(1)} MAE ${c.l.toFixed(1)}`}</title>

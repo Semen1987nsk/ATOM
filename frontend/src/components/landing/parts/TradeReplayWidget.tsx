@@ -12,14 +12,14 @@ export function TradeReplayWidget() {
   const W = 640, H = 260, padL = 40, padR = 12, padT = 12, padB = 40;
   const innerW = W - padL - padR, innerH = H - padT - padB;
 
-  const { min, max, range, xStep } = useMemo(() => {
+  const { max, range, xStep } = useMemo(() => {
     const prices = replayCandles.flatMap((c) => [c.h, c.l]);
     const allPointPrices = replayPoints.map((p) => p.price);
     const min = Math.min(...prices, ...allPointPrices);
     const max = Math.max(...prices, ...allPointPrices);
     const range = max - min || 1;
     const xStep = innerW / replayCandles.length;
-    return { min, max, range, xStep };
+    return { max, range, xStep };
   }, [innerW]);
 
   const xFor = (i: number) => padL + i * xStep + xStep / 2;
