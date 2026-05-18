@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "gen:api-types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.generated.ts",
-    "gen:api-types:from-file": "openapi-typescript ../backend/openapi.json -o src/types/api.generated.ts"
+    "gen:api-types:from-file": "openapi-typescript ../backend/openapi.json -o src/types/api.generated.ts",
+    "test:e2e": "playwright test",
+    "test:visual": "playwright test --grep @visual",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
@@ -24,6 +27,7 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-query-devtools": "^5.59.0",
     "@types/node": "^20",
