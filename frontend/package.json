@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "test:visual": "playwright test --grep @visual",
     "test:e2e:update": "playwright test --update-snapshots",
-    "assets:candles": "tsx scripts/landing-assets/snapshot-moex-candles.ts"
+    "assets:candles": "tsx scripts/landing-assets/snapshot-moex-candles.ts",
+    "assets:screenshots": "tsx scripts/landing-assets/capture-screenshots.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
