@@ -713,3 +713,112 @@ h1 { letter-spacing: -0.02em; }
 .kontur-curve-br { bottom: 0; right: 0; }
 .kontur-curve-bl { bottom: 0; left: 0; }
 .kontur-curve-tl { top: 0; left: 0; }
+
+/* ═════════ МААТТ Editorial Cream — landing palette ═════════
+   Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
+   См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
+[data-theme="maatt-cream"] {
+  --paper:           #FAF8F2;
+  --ink:             #14110B;
+  --ink-2:           rgba(20, 17, 11, 0.62);
+  --ink-3:           rgba(20, 17, 11, 0.40);
+  --rule:            rgba(20, 17, 11, 0.08);
+  --rule-strong:     rgba(20, 17, 11, 0.20);
+  --accent:          #B58A2F;
+  --accent-hover:    #9B7424;
+  --accent-soft:     rgba(181, 138, 47, 0.10);
+  --profit:          #1F6A47;
+  --loss:            #A03A2A;
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+[data-theme="maatt-cream"] .editorial-eyebrow {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+[data-theme="maatt-cream"] .editorial-display {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 350;
+  font-size: clamp(44px, 6vw, 88px);
+  line-height: 0.94;
+  letter-spacing: -0.025em;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+}
+
+[data-theme="maatt-cream"] .editorial-h2 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.018em;
+  font-variation-settings: "opsz" 96, "SOFT" 20;
+}
+
+[data-theme="maatt-cream"] .editorial-lede {
+  font-family: var(--font-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+[data-theme="maatt-cream"] .editorial-pullquote {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(28px, 3.5vw, 48px);
+  line-height: 1.12;
+  font-variation-settings: "opsz" 144, "SOFT" 40, "WONK" 1;
+}
+
+[data-theme="maatt-cream"] .num {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="maatt-cream"] .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 12px 22px;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: transform 120ms ease, background 120ms ease;
+}
+[data-theme="maatt-cream"] .btn-primary:hover {
+  background: #000;
+  transform: translateY(-1px);
+}
+
+[data-theme="maatt-cream"] .editorial-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+[data-theme="maatt-cream"] .editorial-table th {
+  text-align: left;
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 400;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+[data-theme="maatt-cream"] .editorial-table td {
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
