@@ -5,6 +5,7 @@
  *
  * Изоляция темы: data-theme="maatt-cream" — не течёт в auth-zone.
  */
+import { Fragment } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { LiveTicker } from "./parts/LiveTicker";
@@ -23,23 +24,27 @@ const NAV_LINKS = [
 
 const NUMBERS_BAND = [
   { value: "30+", label: "метрик статистики", note: "Optimal f, SQN, Sortino, Calmar и др." },
-  { value: "10 000", label: "итераций Monte Carlo", note: "оценка risk-of-ruin на ваших сделках" },
+  { value: "6", label: "MOEX-бордов", note: "акции, ОФЗ, корп. облигации, ETF, фьючерсы, валюты" },
   { value: "60 сек", label: "обновление портфеля", note: "через Tinkoff Invest API" },
   { value: "399 ₽", label: "/ месяц Pro", note: "без карты на старте, 21 день в подарок" },
 ];
 
-const METRICS_TABLE = [
-  { metric: "Optimal f", source: "Винс", what: "Оптимальная доля капитала на сделку", where: "Риск" },
-  { metric: "SQN", source: "Тарп", what: "Качество торговой системы", where: "Риск" },
+const METRICS_TABLE: Array<{ metric: string; source: string; what: string; where: string; explainer?: string }> = [
+  { metric: "Optimal f", source: "Винс", what: "Оптимальная доля капитала на сделку", where: "Риск",
+    explainer: "Доля капитала на сделку, при которой геометрический рост портфеля максимален. Optimal f = 0.18 означает 18 % риска от равновесия на каждую сделку — больше дороже геометрически, меньше — упускаешь рост." },
+  { metric: "SQN", source: "Тарп", what: "Качество торговой системы", where: "Риск",
+    explainer: "System Quality Number = √N × (среднее R / σ R). SQN ниже 1.6 — система плохая, 2.0–2.5 — средняя, выше 3.0 — отличная. Считается на твоих закрытых сделках, не на бэктесте." },
   { metric: "R-Expectancy", source: "—", what: "Среднее R-multiple на сделку", where: "Базовая" },
   { metric: "Profit Factor", source: "—", what: "Сумма прибылей / сумма убытков", where: "Базовая" },
   { metric: "Z-Score", source: "—", what: "Значимость серий — есть ли паттерн", where: "Продвинутая" },
   { metric: "Sortino Ratio", source: "—", what: "Доходность с поправкой на downside", where: "Продвинутая" },
   { metric: "Calmar Ratio", source: "—", what: "CAGR / Max Drawdown", where: "Продвинутая" },
   { metric: "Recovery Factor", source: "—", what: "Чистая прибыль / Max Drawdown", where: "Продвинутая" },
-  { metric: "Risk of Ruin", source: "—", what: "Вероятность потерять 20% / 50% депо", where: "Риск" },
+  { metric: "Risk of Ruin", source: "—", what: "Вероятность потерять 20% / 50% депо", where: "Риск",
+    explainer: "Вероятность потерять 20 % или 50 % депозита при твоей текущей win rate и среднем R. Считается аналитически по Ральфу Винсу и подтверждается 10 000 Monte Carlo-симуляций." },
   { metric: "Monte Carlo 10 000", source: "—", what: "Worst-case 5 % симуляции", where: "Риск" },
-  { metric: "MAE / MFE", source: "MOEX", what: "Edge Ratio из реальных свечей", where: "Анализ" },
+  { metric: "MAE / MFE", source: "MOEX", what: "Edge Ratio из реальных свечей", where: "Анализ",
+    explainer: "Maximum Adverse Excursion — насколько глубоко цена уходила против тебя внутри сделки. Maximum Favorable Excursion — насколько далеко в твою сторону. Из минутных свечей биржи. Средний MAE убыточных сделок в 1.5 раза дальше стопа — стоп ставится слишком далеко." },
   { metric: "Post-Exit", source: "MOEX", what: "Что было с ценой после выхода", where: "Анализ" },
   { metric: "Tail Ratio", source: "—", what: "P95 win / |P05 loss|", where: "Эффективность" },
   { metric: "GHPR", source: "—", what: "Geometric Holding Period Return", where: "Эффективность" },
@@ -88,8 +93,8 @@ export function Landing() {
               <em>начинается с дневника.</em>
             </h1>
             <p className="editorial-lede max-w-[36ch] mb-10">
-              Тридцать с лишним метрик, MAE/MFE из биржевых свечей и AI-разбор каждого
-              закрытия — на ваших сделках MOEX. Без переноса в Excel.
+              Тридцать с лишним метрик и MAE/MFE из биржевых свечей — на ваших
+              сделках MOEX. Автосинхронизация с Тинькофф, никакого Excel.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-5">
               <Link href="/register" className="btn-primary">
@@ -102,6 +107,9 @@ export function Landing() {
                 Подключить Тинькофф ID <ArrowRight size={13} />
               </Link>
             </div>
+            <p className="mt-6 text-[12px] text-[var(--ink-3)] num">
+              Бесплатно до 50 сделок. Без карты. 21 день Pro в подарок.
+            </p>
           </div>
           <div className="col-span-12 lg:col-span-5 lg:pl-6">
             <HeroEquityCurve />
@@ -127,35 +135,33 @@ export function Landing() {
       {/* 5. MANIFEST CUT-IN */}
       <ManifestCutIn />
 
-      {/* 6. SECTION 01 · AI-разбор */}
-      <section className="px-6 lg:px-12 py-24 lg:py-32">
+      {/* 6. SECTION 01 · TRADE REPLAY */}
+      <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
-            <p className="editorial-eyebrow mb-6">Раздел 01 · AI-аналитика</p>
-            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">AI разбирает каждое&nbsp;закрытие.</h2>
+            <p className="editorial-eyebrow mb-6">Раздел 01 · Trade Replay</p>
+            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Что было до — и&nbsp;после.</h2>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
-              После каждой закрытой сделки модель сравнивает её с вашим сетапом, ищет
-              нарушения правил и помечает паттерн, если он повторяется третий раз подряд.
+              Минутные свечи Мосбиржи вокруг входа и выхода — автоматически, без
+              ручной разметки. Маркеры stop/take на той же шкале, точка реального
+              выхода. Видно: вышли рано из страха или поздно по упрямству.
             </p>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
-              Это не «AI-инсайты ради AI». Это второй взгляд на ваш журнал — холодный,
-              без эмоций и без надежды на разворот.
+              В России такой автоматический замер не делает ни один журнал. У западных
+              (TradeZella, Edgewonk) — другие биржи, российских свечей нет.
             </p>
             <Link
-              href="/manual#ai-insights"
+              href="/manual#replay"
               className="text-[13px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline inline-flex items-center gap-1.5"
             >
-              Как устроен разбор <ArrowRight size={13} />
+              Подробнее о Trade Replay <ArrowRight size={13} />
             </Link>
           </div>
           <div className="col-span-12 lg:col-span-7 lg:pl-8">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/landing/ai-card-sber-screenshot.png"
-              alt="AI-разбор сделки SBER из реального дашборда"
-              className="w-full h-auto border border-[var(--rule-strong)]"
-              loading="lazy"
-            />
+            <div className="border border-[var(--rule-strong)] p-6 lg:p-8">
+              <div className="editorial-eyebrow mb-5 text-[var(--ink-3)]">Сделка SBER · 14 мая · long → exit</div>
+              <TradeReplayWidget />
+            </div>
           </div>
         </div>
       </section>
@@ -190,32 +196,63 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 8. SECTION 03 · TRADE REPLAY */}
+      {/* 8. SECTION 03 · METRICS TABLE */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
-        <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
-          <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
-            <p className="editorial-eyebrow mb-6">Раздел 03 · Trade Replay</p>
-            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Что было до — и&nbsp;после.</h2>
-            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
-              Свечи Мосбиржи вокруг вашего входа и выхода, маркеры stop/take, точка
-              реального выхода. Видно: вышли рано из страха или поздно по упрямству.
-            </p>
-            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
-              Журнал, в котором вы сами себе судья — потому что цифры на той же
-              шкале, что и сделка.
+        <div className="max-w-[1200px] mx-auto">
+          <div className="grid grid-cols-12 gap-6 mb-12">
+            <div className="col-span-12 lg:col-span-7">
+              <p className="editorial-eyebrow mb-6">Раздел 03 · Аналитический центр</p>
+              <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Тридцать с лишним метрик. По-настоящему.</h2>
+              <p className="text-[16px] leading-[1.65] text-[var(--ink-2)]">
+                Не «P&L и Win Rate с пометкой 30+». Реальные формулы из работ Винса,
+                Тарпа и Сортино — посчитанные на ваших сделках, не в Excel-шаблоне.
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="editorial-table">
+              <thead>
+                <tr>
+                  <th className="w-[24%]">Метрика</th>
+                  <th className="w-[14%]">Источник</th>
+                  <th>Что показывает</th>
+                  <th className="w-[16%]">Категория</th>
+                </tr>
+              </thead>
+              <tbody>
+                {METRICS_TABLE.map((m) => (
+                  <Fragment key={m.metric}>
+                    <tr>
+                      <td className="text-[var(--ink)] font-medium">{m.metric}</td>
+                      <td className="text-[var(--ink-3)] text-[13px]">{m.source}</td>
+                      <td className="text-[var(--ink-2)]">{m.what}</td>
+                      <td className="text-[var(--ink-3)] text-[13px]">{m.where}</td>
+                    </tr>
+                    {m.explainer && (
+                      <tr className="bg-[var(--accent-soft)]/40">
+                        <td colSpan={4} className="text-[13px] leading-[1.55] text-[var(--ink-2)] italic px-3 py-3"
+                            style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}>
+                          {m.explainer}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-10 flex items-center justify-between gap-6 border-t border-[var(--rule)] pt-6">
+            <p className="text-[14px] text-[var(--ink-3)]">
+              Полное руководство с формулами и примерами расчёта — в документации.
             </p>
             <Link
-              href="/manual#replay"
+              href="/manual"
               className="text-[13px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline inline-flex items-center gap-1.5"
             >
-              Подробнее о Trade Replay <ArrowRight size={13} />
+              Открыть руководство <ArrowRight size={13} />
             </Link>
-          </div>
-          <div className="col-span-12 lg:col-span-7 lg:pl-8">
-            <div className="border border-[var(--rule-strong)] p-6 lg:p-8">
-              <div className="editorial-eyebrow mb-5 text-[var(--ink-3)]">Сделка SBER · 14 мая · long → exit</div>
-              <TradeReplayWidget />
-            </div>
           </div>
         </div>
       </section>
@@ -238,53 +275,36 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 10. SECTION 04 · METRICS TABLE */}
+      {/* 10. SECTION 04 · HEURISTIC REVIEW */}
       <section className="px-6 lg:px-12 py-24 lg:py-32">
-        <div className="max-w-[1200px] mx-auto">
-          <div className="grid grid-cols-12 gap-6 mb-12">
-            <div className="col-span-12 lg:col-span-7">
-              <p className="editorial-eyebrow mb-6">Раздел 04 · Аналитический центр</p>
-              <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Тридцать с лишним метрик. По-настоящему.</h2>
-              <p className="text-[16px] leading-[1.65] text-[var(--ink-2)]">
-                Не «P&L и Win Rate с пометкой 30+». Реальные формулы из работ Винса,
-                Тарпа и Сортино — посчитанные на ваших сделках, не в Excel-шаблоне.
-              </p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="editorial-table">
-              <thead>
-                <tr>
-                  <th className="w-[24%]">Метрика</th>
-                  <th className="w-[14%]">Источник</th>
-                  <th>Что показывает</th>
-                  <th className="w-[16%]">Категория</th>
-                </tr>
-              </thead>
-              <tbody>
-                {METRICS_TABLE.map((m) => (
-                  <tr key={m.metric}>
-                    <td className="text-[var(--ink)] font-medium">{m.metric}</td>
-                    <td className="text-[var(--ink-3)] text-[13px]">{m.source}</td>
-                    <td className="text-[var(--ink-2)]">{m.what}</td>
-                    <td className="text-[var(--ink-3)] text-[13px]">{m.where}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-10 flex items-center justify-between gap-6 border-t border-[var(--rule)] pt-6">
-            <p className="text-[14px] text-[var(--ink-3)]">
-              Полное руководство с формулами и примерами расчёта — в документации.
+        <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
+          <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
+            <p className="editorial-eyebrow mb-6">Раздел 04 · Эвристический разбор</p>
+            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Второй взгляд на&nbsp;каждую сделку.</h2>
+            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
+              После каждого закрытия 12 правил проверяют сделку на типичные ошибки —
+              FOMO-вход, ранний выход без достижения тейка, нарушение размера позиции,
+              торговля против сетапа.
+            </p>
+            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
+              Никакой магии глубокого обучения. Только описанные правила, которые ты
+              можешь прочитать в документации и оспорить, если не согласен.
             </p>
             <Link
-              href="/manual"
+              href="/manual#heuristics"
               className="text-[13px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline inline-flex items-center gap-1.5"
             >
-              Открыть руководство <ArrowRight size={13} />
+              Как устроен разбор <ArrowRight size={13} />
             </Link>
+          </div>
+          <div className="col-span-12 lg:col-span-7 lg:pl-8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/landing/ai-card-sber-screenshot.png"
+              alt="Эвристический разбор сделки SBER — пример вердикта"
+              className="w-full h-auto border border-[var(--rule-strong)]"
+              loading="lazy"
+            />
           </div>
         </div>
       </section>

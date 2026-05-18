@@ -18,7 +18,7 @@ test.describe("Landing — visual regression @visual", () => {
   });
 
   test("Trade Replay section — desktop 1440", async ({ page }) => {
-    const section = page.locator("section", { has: page.getByText("Раздел 03 · Trade Replay") });
+    const section = page.locator("section", { has: page.getByText("Раздел 01 · Trade Replay") });
     await expect(section).toHaveScreenshot("replay-1440.png", { maxDiffPixels: 100 });
   });
 

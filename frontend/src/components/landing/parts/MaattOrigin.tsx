@@ -28,7 +28,8 @@ export function MaattOrigin() {
                 "Делаешь от 30 сделок в месяц на MOEX",
                 "Хочешь видеть свою альфу в числах, а не «вроде в плюсе»",
                 "Устал от Excel и ручного ввода",
-                "Понимаешь, что 70% результата — это дисциплина, а не сигналы",
+                "Понимаешь, что 70 % результата — это дисциплина, а не сигналы",
+                "Доверяешь Винсу и Тарпу больше, чем «трейдер-блогерам»",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-[15px] leading-[1.55] text-[var(--ink)]">
                   <span className="text-[var(--accent)] mt-[2px] flex-shrink-0 num">✓</span>
@@ -43,7 +44,7 @@ export function MaattOrigin() {
             <ul className="space-y-4 list-none p-0 m-0">
               {[
                 "Ищешь сигналы «куда покупать»",
-                "Торгуешь крипту или форекс (мы про MOEX-фондовый)",
+                "Торгуешь вне MOEX — крипта, forex, западные биржи",
                 "Хочешь быстро разбогатеть",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-[15px] leading-[1.55] text-[var(--ink-3)]">
