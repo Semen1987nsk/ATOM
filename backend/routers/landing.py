@@ -13,6 +13,9 @@ from typing import Any
 import httpx
 from cachetools import TTLCache
 from fastapi import APIRouter, HTTPException
+from logger import get_logger
+
+log = get_logger("landing")
 
 router = APIRouter(prefix="/api/landing", tags=["landing"])
 
@@ -56,10 +59,13 @@ def _fetch_moex_marketdata() -> dict[str, dict[str, float]]:
         )
         r2 = cli.get(url_idx)
         r2.raise_for_status()
-        idx_rows = r2.json()["marketdata"]["data"]
+        idx_payload = r2.json()["marketdata"]
+        idx_rows = idx_payload["data"]
         if idx_rows:
+            idx_cols = idx_payload["columns"]
+            i_lv, i_chg = idx_cols.index("LASTVALUE"), idx_cols.index("LASTCHANGETOOPENPRC")
             row = idx_rows[0]
-            result["IMOEX"] = {"last": float(row[1]), "change_pct": float(row[2] or 0)}
+            result["IMOEX"] = {"last": float(row[i_lv]), "change_pct": float(row[i_chg] or 0)}
 
     return result
 
@@ -79,7 +85,8 @@ def get_ticker() -> dict[str, Any]:
         _CACHE["ticker"] = tickers_list
         _LAST_GOOD["snapshot"] = tickers_list
         return {"stale": False, "tickers": tickers_list, "as_of": None}
-    except Exception:
+    except Exception as exc:
+        log.warning("ticker fetch failed: %s", exc, exc_info=True)
         if "snapshot" in _LAST_GOOD:
             return {"stale": True, "tickers": _LAST_GOOD["snapshot"], "as_of": None}
         raise HTTPException(status_code=503, detail="ticker temporarily unavailable")
