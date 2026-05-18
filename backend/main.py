@@ -47,6 +47,7 @@ from routers.accounts import router as accounts_router
 from routers.review import router as review_router
 from routers.replay import router as replay_router
 from routers.payments import router as payments_router
+from routers.landing import router as landing_router
 from sync_scheduler import scheduler
 
 log = get_logger("api")
@@ -227,6 +228,7 @@ app.include_router(accounts_router)
 app.include_router(review_router)
 app.include_router(replay_router)
 app.include_router(payments_router)
+app.include_router(landing_router)
 
 # ==================== СТАТИЧЕСКИЕ ФАЙЛЫ ====================
 # Создаём папку uploads если её нет

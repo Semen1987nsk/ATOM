@@ -61,6 +61,11 @@ def get_net_deposit_as_of(db: Session, account_id: int, as_of: Optional[datetime
     return balance
 
 
+def compute_balance_at(db: Session, account_id: int, as_of: Optional[datetime] = None) -> float:
+    """Return net deposited capital for account as of a given date (alias for get_net_deposit_as_of)."""
+    return get_net_deposit_as_of(db, account_id, as_of)
+
+
 def get_capital_flow_events(
     db: Session,
     account_id: int,
