@@ -12,7 +12,7 @@ test.describe("Landing — smoke", () => {
     await expect(page.getByRole("heading", { name: /AI разбирает каждое/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Edge ratio из реальных/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Что было до — и после/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Маа́т — богиня меры/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Для серьёзного/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Перестаньте гадать/i })).toBeVisible();
   });
 

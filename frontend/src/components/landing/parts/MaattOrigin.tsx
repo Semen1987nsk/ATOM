@@ -1,48 +1,58 @@
-import { ManuscriptFeather } from "./ManuscriptFeather";
-
 /**
- * Секция бренд-story. Перо + 3 короткие колонки + marginalia.
- * SSR, никакой интерактивности.
+ * Qualifying section — «Для серьёзного трейдера».
+ * 5/7 editorial split: левый блок — title + lede; правый — 2 чек-листа (Для тебя ✓ / Не для тебя ×).
+ * SSR, без интерактивности.
  */
 export function MaattOrigin() {
   return (
     <section className="px-6 lg:px-12 py-28 lg:py-40 border-t border-[var(--rule)]">
-      <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12 items-start">
-        <div className="col-span-12 lg:col-span-3 flex justify-start lg:justify-end">
-          <ManuscriptFeather width={140} />
+      <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
+        <div className="col-span-12 lg:col-span-5">
+          <p className="editorial-eyebrow mb-6">Раздел 05 · Аудитория</p>
+          <h2 className="editorial-h2 mb-6 text-[var(--ink)]">
+            Для серьёзного <em>трейдера.</em>
+          </h2>
+          <p
+            className="editorial-lede text-[var(--ink-2)]"
+            style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+          >
+            Если узнаёшь себя — это тебе.
+          </p>
         </div>
 
-        <div className="col-span-12 lg:col-span-9 grid grid-cols-12 gap-6 lg:gap-10">
-          <div className="col-span-12 lg:col-span-8">
-            <p className="editorial-eyebrow mb-6">Раздел 05 · Имя</p>
-            <h2 className="editorial-h2 mb-8 text-[var(--ink)]">
-              Маа́т — богиня меры.<br />
-              <em>Перо против сердца на загробных весах.</em>
-            </h2>
-            <p className="editorial-lede mb-5 text-[var(--ink-2)]" style={{ fontStyle: "normal", fontSize: 16 }}>
-              В древнеегипетской мифологии Маа́т держит перо страуса. В Дуате его кладут на чашу
-              весов против сердца умершего. Сердце легче пера — душа проходит. Тяжелее — нет.
-            </p>
-            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)]">
-              Каждая ваша сделка ложится на ту же чашу — против пера дисциплины. МААТТ — журнал,
-              в котором эти весы видны.
-            </p>
+        <div className="col-span-12 lg:col-span-7 lg:pl-8 grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10">
+          <div>
+            <div className="editorial-eyebrow mb-5 text-[var(--ink-2)]">Для тебя</div>
+            <ul className="space-y-4 list-none p-0 m-0">
+              {[
+                "Делаешь от 30 сделок в месяц на MOEX",
+                "Хочешь видеть свою альфу в числах, а не «вроде в плюсе»",
+                "Устал от Excel и ручного ввода",
+                "Понимаешь, что 70% результата — это дисциплина, а не сигналы",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3 text-[15px] leading-[1.55] text-[var(--ink)]">
+                  <span className="text-[var(--accent)] mt-[2px] flex-shrink-0 num">✓</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          <aside
-            className="col-span-12 lg:col-span-4 border-l border-[var(--accent)] pl-4 text-[13px] leading-[1.5] text-[var(--ink-3)] italic"
-            style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-          >
-            <div className="editorial-eyebrow mb-3 text-[var(--ink-3)]" style={{ fontStyle: "normal" }}>На полях</div>
-            <p className="mb-3">
-              Имя на латинице — <em>Maatt</em>, с двумя «t». Произносится так же. Двойная согласная
-              — инженерное решение под занятые домены, не отсылка к чему-то.
-            </p>
-            <p>
-              Tagline: <em>«Точно. Чисто. Честно.»</em> Триада задаёт три раздела продукта:
-              математика — анти-шум — прозрачность.
-            </p>
-          </aside>
+          <div>
+            <div className="editorial-eyebrow mb-5 text-[var(--ink-3)]">Не для тебя</div>
+            <ul className="space-y-4 list-none p-0 m-0">
+              {[
+                "Ищешь сигналы «куда покупать»",
+                "Торгуешь крипту или форекс (мы про MOEX-фондовый)",
+                "Хочешь быстро разбогатеть",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-3 text-[15px] leading-[1.55] text-[var(--ink-3)]">
+                  <span className="mt-[2px] flex-shrink-0 num">×</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
     </section>

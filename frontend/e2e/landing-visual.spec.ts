@@ -23,7 +23,7 @@ test.describe("Landing — visual regression @visual", () => {
   });
 
   test("МААТТ origin section — desktop 1440", async ({ page }) => {
-    const section = page.locator("section", { has: page.getByText("Раздел 05 · Имя") });
+    const section = page.locator("section", { has: page.getByText("Раздел 05 · Аудитория") });
     await expect(section).toHaveScreenshot("origin-1440.png", { maxDiffPixels: 100 });
   });
 
