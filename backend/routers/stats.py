@@ -524,25 +524,22 @@ async def get_stats(
     )
     varmargin_total = float(vm_row[0] or 0) + float(vm_row[1] or 0) / 1e9
 
-    # Phase 7 (2026-05-17, senior rework — БЕЗ podgonки):
-    # total_pnl_with_unrealized складывается НАТУРАЛЬНО из трёх компонент:
-    #   1. total_pnl (Σ закрытых Trade.net_pnl)
-    #   2. Σ Position.unrealized_pnl (теперь = Tinkoff.expected_yield для
-    #      futures — authoritative; static-pv формула для shares/etc)
-    #   3. account_level_adjustments — orphan cash flows которые мы НЕ
-    #      смогли attribute ни на один Trade (varmargin без active futures,
-    #      service_fee между сделок, options expiration, broker_fee remnants)
-    #
-    # Эта формула:
-    #   - даёт ОДНУ цифру для дашборда и Positions страницы (consistency)
-    #   - совпадает с broker'ом КАК СЛЕДСТВИЕ корректности (validated на acc#4:
-    #     -250,027 vs cash_truth -248,553 = diff 0.59%, < 1% — natural match)
-    #   - Phase 6.2b shortcut (cash_truth substitution) удалён
+    # Phase 6.4 (2026-05-18): journal-style headline matches Дневник сделок
+    # (realized + unrealized). cash_truth_pnl surface'ится отдельным полем для
+    # PnLHealthBadge / broker reconciliation. account_level_adjustments теперь
+    # = natural_residual (cash_truth − headline, info-only).
+    # См. domain/pnl/dashboard_pnl.py + tests/unit/test_dashboard_pnl_headline.py.
     if is_broker_user and account is not None:
         from domain.pnl.cash_flow_classification import (
             CashFlowCategory,
             operation_types_in,
         )
+        from domain.pnl.dashboard_pnl import compute_pnl_headline
+        from domain.pnl.fee_attribution import (
+            MARGIN_LIKE_FEE_TYPES,
+            SERVICE_LIKE_FEE_TYPES,
+        )
+        from decimal import Decimal
 
         def _sum_category(cat: CashFlowCategory) -> float:
             types = tuple(operation_types_in(cat))
@@ -558,100 +555,82 @@ async def get_stats(
             ).one()
             return float(row[0] or 0) + float(row[1] or 0) / 1e9
 
-        # Attributed sums via SQL (быстро).
-        raw_varmargin = _sum_category(CashFlowCategory.VARMARGIN)
-        raw_attr_fee = _sum_category(CashFlowCategory.ATTRIBUTABLE_FEE)
-        raw_tax = _sum_category(CashFlowCategory.TAX)
-        raw_income = _sum_category(CashFlowCategory.INCOME)
-        raw_broker = _sum_category(CashFlowCategory.BROKER_COMMISSION)
+        def _sum_op_types(op_types: frozenset[str]) -> float:
+            """Сумма payment по конкретным OperationType.value (для подкатегорий
+            внутри ATTRIBUTABLE_FEE — margin vs service)."""
+            if not op_types:
+                return 0.0
+            row = db.query(
+                func.coalesce(func.sum(OperationORM.payment_units), 0),
+                func.coalesce(func.sum(OperationORM.payment_nano), 0),
+            ).filter(
+                OperationORM.account_id == account_id,
+                OperationORM.operation_type.in_(tuple(op_types)),
+                OperationORM.state == "executed",
+            ).one()
+            return float(row[0] or 0) + float(row[1] or 0) / 1e9
 
-        attr_varmargin = float(db.query(func.coalesce(func.sum(models.Trade.varmargin_attributed), 0))
-            .filter(models.Trade.account_id == account_id).scalar() or 0)
-        attr_margin_fee = float(db.query(func.coalesce(func.sum(models.Trade.margin_fee_attributed), 0))
-            .filter(models.Trade.account_id == account_id).scalar() or 0)
-        attr_service_fee = float(db.query(func.coalesce(func.sum(models.Trade.service_fee_attributed), 0))
-            .filter(models.Trade.account_id == account_id).scalar() or 0)
-        attr_other = float(db.query(func.coalesce(func.sum(models.Trade.other_fees_attributed), 0))
-            .filter(models.Trade.account_id == account_id).scalar() or 0)
-        # Trade.commission_total stored as positive abs; raw broker_fee is negative.
-        sum_commission_closed = float(db.query(func.coalesce(func.sum(models.Trade.commission), 0))
-            .filter(models.Trade.account_id == account_id, models.Trade.exit_at.isnot(None))
-            .scalar() or 0)
+        raw_attr_fee   = _sum_category(CashFlowCategory.ATTRIBUTABLE_FEE)
+        raw_margin     = _sum_op_types(MARGIN_LIKE_FEE_TYPES)
+        raw_service    = _sum_op_types(SERVICE_LIKE_FEE_TYPES)
+        raw_tax        = _sum_category(CashFlowCategory.TAX)
+        raw_income_tax = _sum_category(CashFlowCategory.INCOME_TAX)
+        raw_broker     = _sum_category(CashFlowCategory.BROKER_COMMISSION)
+        raw_deposits   = _sum_category(CashFlowCategory.NET_DEPOSIT)
 
-        # Phase 9 (2026-05-17): для closed futures с Phase 8 body-формулой
-        # `Trade.pnl = (exit-entry)*qty*point_value` уже МАТЕМАТИЧЕСКИ ВКЛЮЧАЕТ
-        # сумму varmargin от entry до exit (MOEX telescoping identity).
-        # Поэтому при расчёте orphan_varmargin нужно ВЫЧЕСТЬ body, иначе
-        # double-count: closed Trade.net_pnl уже содержит body, плюс orphan
-        # снова добавит ту же варм-маржу.
-        closed_futures_body = float(db.query(func.coalesce(func.sum(models.Trade.pnl), 0))
-            .filter(
-                models.Trade.account_id == account_id,
-                models.Trade.exit_at.isnot(None),
-                models.Trade.instrument_type_v2 == "futures",
-                models.Trade.point_value.isnot(None),
-            ).scalar() or 0)
+        last_portfolio_value = float(account.last_portfolio_value or 0)
 
-        # orphan_varmargin = raw varmargin минус (attributed + absorbed_in_body)
-        orphan_varmargin = raw_varmargin - attr_varmargin - closed_futures_body
-
-        account_level_adjustments = (
-            orphan_varmargin
-            + (raw_attr_fee - (attr_margin_fee + attr_service_fee))
-            + (raw_tax - attr_other)
-            + raw_income  # currently not attributed; counts as orphan
-            + (raw_broker + sum_commission_closed)  # broker_fee not in Trade.commission
+        headline = compute_pnl_headline(
+            realized_closed=Decimal(str(total_pnl)),
+            realized_closed_gross=Decimal(str(total_pnl_gross)),
+            unrealized_position_based=Decimal(str(unrealized_pnl_position_based)),
+            last_portfolio_value=Decimal(str(last_portfolio_value)),
+            net_deposits=Decimal(str(raw_deposits)),
+            broker_commission_raw=Decimal(str(raw_broker)),
+            attributable_fee_raw=Decimal(str(raw_attr_fee)),
+            tax_raw=Decimal(str(raw_tax)),
+            income_tax_raw=Decimal(str(raw_income_tax)),
         )
 
-        # Phase 11 (2026-05-17): gross variant — без cost-related orphans.
-        # В gross-режиме user видит только P&L движение цены (без комиссий/налогов).
-        # orphan_varmargin — это P&L по варм-марже (НЕ cost), оставляем.
-        # raw_income — dividends/coupons (НЕ cost), оставляем.
-        # Excluded as costs: orphan_attr_fee (margin/service), orphan_tax, orphan_broker.
-        account_level_adjustments_gross = orphan_varmargin + raw_income
+        unrealized_pnl                  = unrealized_pnl_position_based
+        total_pnl_with_unrealized       = float(headline["total_pnl_with_unrealized"])
+        total_pnl_with_unrealized_gross = float(headline["total_pnl_with_unrealized_gross"])
+        cash_truth_pnl                  = float(headline["cash_truth_pnl"])
+        total_costs                     = float(headline["total_costs"])
 
-        # ВАЖНО (Phase 7 v2, 2026-05-17): `unrealized_pnl` для UI Dashboard
-        # **должен совпадать** с тем что показывает Positions page (Σ Position.unrealized_pnl).
-        # Иначе пользователь видит две разные цифры одной метрики в разных
-        # вкладках — confusing.
-        # Поэтому: unrealized_pnl = Σ Position.unrealized_pnl (= Tinkoff authoritative).
-        # account_level_adjustments — отдельная строка в dashboard breakdown
-        # ("Прочие сборы / orphan cash flows"), не сваливаем в unrealized.
-        unrealized_pnl = unrealized_pnl_position_based
-        total_pnl_with_unrealized = total_pnl + unrealized_pnl + account_level_adjustments
+        # natural_residual = cash_truth − headline (orphan delta: post-clearing
+        # varmargin, dividends на закрытых позициях). Info-only — surface через
+        # account_level_adjustments для UI breakdown card. НЕ влияет на headline.
+        account_level_adjustments       = float(headline["natural_residual"])
+        # gross headline не имеет cash-truth-эквивалента (gross != broker view).
+        account_level_adjustments_gross = 0.0
 
-        # Phase 12 (2026-05-17): total_costs = разница net vs gross dashboard headline.
-        # По best practices (Tradervue, IB, Edgewonk): отдельная карточка «Расходы»
-        # с breakdown — broker_commission / attributed_fees / taxes.
-        # Math invariant: total_pnl_with_unrealized_gross + total_costs ≈ total_pnl_with_unrealized
-        total_pnl_with_unrealized_gross = (
-            total_pnl_gross + unrealized_pnl + account_level_adjustments_gross
-        )
-        total_costs = total_pnl_with_unrealized - total_pnl_with_unrealized_gross
         total_costs_breakdown = {
-            "broker_commission": float(raw_broker),  # все broker_fee ops (signed negative)
-            "attributed_fees": float(raw_attr_fee),  # margin/service/track/etc fee ops
-            "taxes": float(raw_tax),                  # все tax ops
+            "broker_commission": float(raw_broker),
+            "margin_fees":       float(raw_margin),
+            "service_fees":      float(raw_service),
+            "taxes":             float(raw_tax + raw_income_tax),
         }
     else:
-        unrealized_pnl = unrealized_pnl_position_based
-        account_level_adjustments_gross = 0.0
-        total_pnl_with_unrealized = total_pnl + unrealized_pnl
-        account_level_adjustments = 0.0
+        unrealized_pnl                  = unrealized_pnl_position_based
+        total_pnl_with_unrealized       = total_pnl + unrealized_pnl
         total_pnl_with_unrealized_gross = total_pnl_gross + unrealized_pnl
-        total_costs = 0.0
+        cash_truth_pnl                  = 0.0
+        account_level_adjustments       = 0.0
+        account_level_adjustments_gross = 0.0
+        total_costs                     = 0.0
         total_costs_breakdown = {
             "broker_commission": 0.0,
-            "attributed_fees": 0.0,
-            "taxes": 0.0,
+            "margin_fees":       0.0,
+            "service_fees":      0.0,
+            "taxes":             0.0,
         }
 
-    # PR 21 + Phase 9 (2026-05-17): к LAST POINT добавляем unrealized + adjustments,
-    # чтобы Equity curve label == «Общий PnL» headline (consistency между графиком
-    # и заголовком). Иначе пользователь видит две разные цифры одной метрики.
-    # account_level_adjustments — orphan cash flows которые не привязаны к Trade,
-    # но реально влияют на cash баланс счёта.
-    _curve_tail_adjustment = unrealized_pnl + account_level_adjustments
+    # Phase 6.4 (2026-05-18): equity_curve tail = realized cumulative + unrealized
+    # (matches journal-style headline). account_level_adjustments не добавляем —
+    # они info-only residual, не часть headline. Frontend опционально override'ит
+    # tail с live unrealized из /trades/unrealized-pnl.
+    _curve_tail_adjustment = unrealized_pnl
     if equity_curve and _curve_tail_adjustment != 0:
         last = equity_curve[-1]
         equity_curve = equity_curve[:-1] + [
@@ -661,8 +640,7 @@ async def get_stats(
             }
         ]
 
-    # Phase 11 (2026-05-17): аналогичный tail-adjustment для gross варианта.
-    _curve_tail_adjustment_gross = unrealized_pnl + account_level_adjustments_gross
+    _curve_tail_adjustment_gross = unrealized_pnl
     if equity_curve_gross and _curve_tail_adjustment_gross != 0:
         last = equity_curve_gross[-1]
         equity_curve_gross = equity_curve_gross[:-1] + [
@@ -679,6 +657,8 @@ async def get_stats(
         "account_level_adjustments": account_level_adjustments,  # orphan cash flows (varmargin/fees not attributed)
         "varmargin_total": varmargin_total,  # info-only, не суммируем
         "total_pnl_with_unrealized": total_pnl_with_unrealized,
+        # Phase 6.4: broker cash truth для PnLHealthBadge.
+        "cash_truth_pnl": cash_truth_pnl,
         # Phase 11 (2026-05-17): gross variants — для пользовательской настройки
         # `settings.pnl_display_mode = 'gross'`. Frontend сам выбирает что показывать.
         # gross = только body P&L (от движения цены) без commissions/fees/taxes.
