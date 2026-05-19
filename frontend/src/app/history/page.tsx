@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Trash2, Upload, Plus, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, BarChart2, Loader2, Calendar, Check } from 'lucide-react';
+import { Trash2, Upload, Plus, Edit2, ChevronDown, ChevronRight, Lock, ChevronLeft, Settings, X, Eye, EyeOff, BarChart2, Loader2, Calendar, Check, Briefcase, TrendingUp, Coins, Sparkles, Banknote, StickyNote, ImageIcon, Layers } from 'lucide-react';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import { EditTradeModal } from '@/components/EditTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
@@ -11,8 +11,13 @@ import { ImportPreviewModal } from '@/components/ImportPreviewModal';
 import { AppShell } from '@/components/AppShell';
 import { TradeCard } from '@/components/TradeCard';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
+import { PositionJournalView } from '@/components/PositionJournalView';
 import { useSettings } from '@/contexts/SettingsContext';
 import { api, getApiUrl } from '@/lib/apiClient';
+
+// TR1: view-mode toggle persistence key
+const VIEW_MODE_STORAGE_KEY = 'eqio_history_view_mode';
+type JournalViewMode = 'grouped' | 'flat';
 
 type SortMode = 'latest_activity' | 'opened_at' | 'closed_at';
 
@@ -24,17 +29,25 @@ interface ColumnConfig {
   width?: string;
 }
 
+// PR 19: расширили список колонок по best practices трейдинг-дневников.
+// Default-visible — 12 ключевых для активного MOEX-трейдера. Остальные
+// доступны через column-picker. Порядок имеет значение — это порядок
+// рендера и приоритет для пользователя.
 const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'date', label: 'Дата', defaultVisible: true },
   { id: 'ticker', label: 'Тикер', defaultVisible: true },
+  { id: 'name', label: 'Название', defaultVisible: true },
   { id: 'direction', label: 'Сторона', defaultVisible: true },
+  { id: 'quantity', label: 'Кол-во', defaultVisible: true },
   { id: 'entry', label: 'Вход', defaultVisible: true },
   { id: 'exit', label: 'Выход', defaultVisible: true },
-  { id: 'quantity', label: 'Кол-во', defaultVisible: true },
-  { id: 'setup', label: 'Сетап', defaultVisible: true },
-  { id: 'timeframe', label: 'ТФ', defaultVisible: true },
   { id: 'pnl', label: 'PnL', defaultVisible: true },
-  { id: 'status', label: 'Статус', defaultVisible: true },
+  { id: 'holding', label: 'Holding', defaultVisible: true },
+  { id: 'setup', label: 'Сетап', defaultVisible: true },
+  { id: 'note', label: 'Заметка', defaultVisible: true },
+  // Hidden by default — доступны через column-picker:
+  { id: 'timeframe', label: 'ТФ', defaultVisible: false },
+  { id: 'status', label: 'Статус', defaultVisible: false }, // дублирует holding/exit_at
   { id: 'tags', label: 'Теги', defaultVisible: false },
   { id: 'commission', label: 'Комиссия', defaultVisible: false },
   { id: 'swap', label: 'Своп', defaultVisible: false },
@@ -46,6 +59,37 @@ const ALL_COLUMNS: ColumnConfig[] = [
 
 const DIARY_PROMOTED_COLUMNS = ['setup', 'timeframe'];
 
+// Иконка для колонки «Тикер» — визуально различает типы инструментов.
+// Маппинг по `instrument_type_v2` из бэка (приходит из Tinkoff API).
+const AssetTypeIcon: React.FC<{ type?: string; className?: string }> = ({ type, className }) => {
+  const cls = className || 'w-3 h-3 text-slate-400 shrink-0';
+  switch ((type || '').toLowerCase()) {
+    case 'futures':
+      return <Briefcase className={cls} />;
+    case 'option':
+    case 'options':
+      return <Sparkles className={cls} />;
+    case 'bond':
+      return <Coins className={cls} />;
+    case 'etf':
+      return <Layers className={cls} />;
+    case 'currency':
+      return <Banknote className={cls} />;
+    case 'share':
+    default:
+      return <TrendingUp className={cls} />;
+  }
+};
+
+const ASSET_TYPE_LABELS: Record<string, string> = {
+  share: 'Акции',
+  futures: 'Фьючерсы',
+  option: 'Опционы',
+  bond: 'Облигации',
+  etf: 'ETF',
+  currency: 'Валюта',
+};
+
 const STORAGE_KEY = 'eqio_history_columns';
 const SORT_STORAGE_KEY = 'eqio_history_sort';
 
@@ -54,9 +98,14 @@ interface Trade {
   symbol: string;
   asset_name?: string;
   asset_type?: string;
+  // PR 19: greenfield Tinkoff fields для иконок и фильтрации.
+  instrument_type_v2?: string; // share|bond|etf|futures|option|currency
+  instrument_uid?: string;
+  data_source?: string; // tinkoff_v2|legacy|manual
   direction: string;
   pnl: number | null;
   net_pnl?: number | null;
+  pnl_pct?: number | null;
   commission?: number;
   entry_commission?: number;
   exit_commission?: number;
@@ -131,6 +180,8 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'LONG' | 'SHORT'>('ALL');
+  // PR 19: фильтр по типу актива (share/futures/option/bond/etf/currency).
+  const [filterAssetType, setFilterAssetType] = useState<string>('ALL');
   const [tempStartDate, setTempStartDate] = useState<string>(settings.tradesStartDate || '');
   const [tempStartTradeId, setTempStartTradeId] = useState<number | null>(settings.tradesStartTradeId || null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -148,6 +199,19 @@ export default function HistoryPage() {
   const [isCalculatingMAE, setIsCalculatingMAE] = useState(false);
   const [maeCalculationResult, setMaeCalculationResult] = useState<{updated: number, failed: number} | null>(null);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
+  // TR1: round-trip grouped view (default) vs legacy flat per-execution view.
+  const [viewMode, setViewMode] = useState<JournalViewMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+      if (saved === 'grouped' || saved === 'flat') return saved;
+    }
+    return 'grouped';
+  });
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    }
+  }, [viewMode]);
   const [sortMode, setSortMode] = useState<SortMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(SORT_STORAGE_KEY);
@@ -237,24 +301,13 @@ export default function HistoryPage() {
     }
   };
 
-  const fetchUnrealizedPnL = async () => {
-    try {
-        const data = await api.get<Array<{trade_id: number; unrealized_pnl: number; current_price: number}>>('/trades/unrealized-pnl');
-      const map: Record<number, { pnl: number; price: number }> = {};
-      data.forEach((item) => {
-            map[item.trade_id] = { pnl: item.unrealized_pnl, price: item.current_price };
-        });
-        setUnrealizedData(map);
-    } catch (e) {
-        console.error(e);
-    }
-  };
+  // /trades/unrealized-pnl endpoint удалён вместе с Phase 6.5 (Position table
+  // теперь единственная правда для unrealized). Колонка "unrealized" для open
+  // trades в журнале остаётся пустой до full переработки на чтение из Position
+  // table напрямую. См. spec 2026-05-19-position-source-of-truth-design.md.
 
   useEffect(() => {
     fetchTrades();
-    fetchUnrealizedPnL();
-    const interval = setInterval(fetchUnrealizedPnL, 10000); // 10 sec
-    return () => clearInterval(interval);
   }, []);
 
   const openCloseModal = (trade: Trade) => {
@@ -334,6 +387,9 @@ export default function HistoryPage() {
   const filteredTrades = enrichedTrades.filter(t => {
     const matchesTag = selectedTag ? t.tags?.includes(selectedTag) : true;
     const matchesDirection = filterDirection === 'ALL' ? true : t.direction.toUpperCase() === filterDirection;
+    // PR 19: фильтр по типу актива. instrument_type_v2 — приоритет, asset_type — fallback для legacy.
+    const tType = (t.instrument_type_v2 || t.asset_type || '').toLowerCase();
+    const matchesAssetType = filterAssetType === 'ALL' ? true : tType === filterAssetType;
 
     // Фильтр по дате/сделке начала из настроек
     let matchesStart = true;
@@ -348,7 +404,7 @@ export default function HistoryPage() {
       matchesStart = new Date(t.entry_at) >= new Date(settings.tradesStartDate);
     }
 
-    return matchesTag && matchesDirection && matchesStart;
+    return matchesTag && matchesDirection && matchesAssetType && matchesStart;
   });
 
   const sortedTrades = [...filteredTrades].sort(
@@ -423,14 +479,41 @@ export default function HistoryPage() {
       onImport={() => setIsImportModalOpen(true)}
     >
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
-      <div className="mb-6 flex justify-between items-center">
+      <div className="mb-6 flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Дневник сделок</h1>
           <p className="text-sm text-[var(--text-secondary)] mt-1">
-            Все ваши закрытые и открытые позиции
+            {viewMode === 'grouped'
+              ? 'Сделки сгруппированы по round-trip: scaled-in добавления собраны вместе.'
+              : 'Каждая операция отдельной строкой (классический режим).'}
           </p>
         </div>
         <div className="flex gap-2 items-center">
+          {/* TR1: view-mode toggle — grouped (default) vs flat (legacy) */}
+          <div className="flex items-center gap-1 bg-slate-800/40 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('grouped')}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                viewMode === 'grouped'
+                  ? 'bg-slate-700 text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Round-trip — сделки группируются по lifecycle"
+            >
+              По сделкам
+            </button>
+            <button
+              onClick={() => setViewMode('flat')}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                viewMode === 'flat'
+                  ? 'bg-slate-700 text-slate-100'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Классический режим — каждая операция отдельной строкой"
+            >
+              По операциям
+            </button>
+          </div>
           <div className="relative">
             <button
               onClick={() => setShowColumnSettings(!showColumnSettings)}
@@ -620,6 +703,15 @@ export default function HistoryPage() {
         </div>
       )}
 
+      {/* TR1: grouped view (default) — round-trip aggregation */}
+      {viewMode === 'grouped' && (
+        <div className="cyber-card p-6">
+          <PositionJournalView />
+        </div>
+      )}
+
+      {/* Classic flat view (legacy) — каждая операция отдельной строкой */}
+      {viewMode === 'flat' && (
       <div className="cyber-card p-6">
         <div className="flex flex-wrap gap-4 mb-6 items-center">
           {/* Direction Filter */}
@@ -644,6 +736,24 @@ export default function HistoryPage() {
             >
               Шорт
             </button>
+          </div>
+
+          {/* PR 19: Asset type filter — Все / Акции / Фьючерсы / Опционы / Облигации / ETF / Валюта */}
+          <div className="hidden md:flex items-center">
+            <select
+              value={filterAssetType}
+              onChange={(e) => setFilterAssetType(e.target.value)}
+              className="bg-surface border border-border rounded-lg px-3 py-1.5 text-xs font-mono uppercase text-slate-300 hover:bg-white/5 transition-colors"
+              title="Фильтр по типу актива"
+            >
+              <option value="ALL">Все типы</option>
+              <option value="share">Акции</option>
+              <option value="futures">Фьючерсы</option>
+              <option value="option">Опционы</option>
+              <option value="bond">Облигации</option>
+              <option value="etf">ETF</option>
+              <option value="currency">Валюта</option>
+            </select>
           </div>
 
           <div className="w-px h-6 bg-border mx-2 hidden sm:block"></div>
@@ -946,19 +1056,22 @@ export default function HistoryPage() {
               <tr className="text-xs font-mono uppercase text-slate-400 border-b border-border">
                   <th className="py-2 pl-2 w-8"></th>
                   {isColumnVisible('date') && <th className="py-2 w-40">Даты</th>}
-                  {isColumnVisible('ticker') && <th className="py-2 w-20">Тикер</th>}
+                  {isColumnVisible('ticker') && <th className="py-2 w-24">Тикер</th>}
+                  {isColumnVisible('name') && <th className="py-2 w-44">Название</th>}
                   {isColumnVisible('direction') && <th className="py-2 w-14">Стор.</th>}
+                  {isColumnVisible('quantity') && <th className="py-2 w-16">Кол-во</th>}
                   {isColumnVisible('entry') && <th className="py-2 w-20">Вход</th>}
                   {isColumnVisible('exit') && <th className="py-2 w-20">Выход</th>}
-                  {isColumnVisible('quantity') && <th className="py-2 w-16">Кол-во</th>}
+                  {isColumnVisible('pnl') && <th className="py-2 w-24">PnL</th>}
+                  {isColumnVisible('holding') && <th className="py-2 w-20">Holding</th>}
                   {isColumnVisible('setup') && <th className="py-2 w-24">Сетап</th>}
+                  {isColumnVisible('note') && <th className="py-2 w-12 text-center">📝</th>}
                   {isColumnVisible('timeframe') && <th className="py-2 w-14">ТФ</th>}
                   {isColumnVisible('commission') && <th className="py-2 w-20">Комис.</th>}
                   {isColumnVisible('swap') && <th className="py-2 w-16">Своп</th>}
                   {isColumnVisible('confidence') && <th className="py-2 w-12">Увер.</th>}
                   {isColumnVisible('risk') && <th className="py-2 w-20">Риск</th>}
                   {isColumnVisible('rMultiple') && <th className="py-2 w-16">R</th>}
-                  {isColumnVisible('pnl') && <th className="py-2 w-24">PnL</th>}
                   {isColumnVisible('status') && <th className="py-2 w-16">Статус</th>}
                   {isColumnVisible('tags') && <th className="py-2 w-24">Теги</th>}
                   {isColumnVisible('leverage') && <th className="py-2 w-12">Плечо</th>}
@@ -970,11 +1083,26 @@ export default function HistoryPage() {
                 const isExpanded = expandedTrades.has(trade.id);
                 const hasDetails = trade.setup_name || trade.news_event || trade.notes || trade.entry_reason || trade.tags?.length || trade.operations?.length || trade.mood || trade.discipline || trade.screenshot_url || trade.setup;
 
-                const formatHoldingTime = (minutes: number | undefined) => {
-                  if (!minutes) return '-';
+                const formatHoldingTime = (minutes: number | null | undefined) => {
+                  if (minutes == null || minutes < 0) return '—';
+                  if (minutes < 1) return '<1м';
                   if (minutes < 60) return `${minutes}м`;
-                  if (minutes < 1440) return `${Math.floor(minutes / 60)}ч`;
-                  return `${Math.floor(minutes / 1440)}д`;
+                  // < 24 ч: "3ч 20м" (минуты только если >=5)
+                  if (minutes < 1440) {
+                    const h = Math.floor(minutes / 60);
+                    const m = minutes % 60;
+                    return m >= 5 ? `${h}ч ${m}м` : `${h}ч`;
+                  }
+                  // < 7 дней: "2д 4ч"
+                  if (minutes < 10080) {
+                    const d = Math.floor(minutes / 1440);
+                    const h = Math.floor((minutes % 1440) / 60);
+                    return h > 0 ? `${d}д ${h}ч` : `${d}д`;
+                  }
+                  // >= 7 дней: "1н 3д"
+                  const w = Math.floor(minutes / 10080);
+                  const d = Math.floor((minutes % 10080) / 1440);
+                  return d > 0 ? `${w}н ${d}д` : `${w}н`;
                 };
 
                 const pnlValue = trade.net_pnl ?? trade.pnl;
@@ -1024,12 +1152,25 @@ export default function HistoryPage() {
                         </td>
                       )}
 
-                      {/* Тикер */}
+                      {/* Тикер (с иконкой типа актива) */}
                       {isColumnVisible('ticker') && (
                         <td className="py-2">
-                          <span className="font-bold">{trade.symbol}</span>
-                          {trade.asset_name && (
-                            <span className="text-slate-500 text-[10px] ml-1 hidden sm:inline">{trade.asset_name.slice(0, 8)}</span>
+                          <div className="flex items-center gap-1.5">
+                            <AssetTypeIcon type={trade.instrument_type_v2 || trade.asset_type} />
+                            <span className="font-bold font-mono">{trade.symbol}</span>
+                          </div>
+                        </td>
+                      )}
+
+                      {/* Название */}
+                      {isColumnVisible('name') && (
+                        <td className="py-2 text-xs text-slate-300 max-w-44">
+                          {trade.asset_name ? (
+                            <span className="truncate block" title={trade.asset_name}>
+                              {trade.asset_name}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">—</span>
                           )}
                         </td>
                       )}
@@ -1042,6 +1183,13 @@ export default function HistoryPage() {
                           }`}>
                             {trade.isAddition ? '+ ДОБ.' : (trade.direction === 'long' ? 'ЛОНГ' : 'ШОРТ')}
                           </span>
+                        </td>
+                      )}
+
+                      {/* Кол-во */}
+                      {isColumnVisible('quantity') && (
+                        <td className="py-2 font-mono text-xs">
+                          {trade.quantity.toLocaleString('ru-RU')}
                         </td>
                       )}
 
@@ -1062,27 +1210,9 @@ export default function HistoryPage() {
                         </td>
                       )}
 
-                      {/* Кол-во */}
-                      {isColumnVisible('quantity') && (
-                        <td className="py-2 font-mono text-xs">
-                          {trade.quantity.toLocaleString('ru-RU')}
-                        </td>
-                      )}
-
                       {/* Сетап */}
-                      {isColumnVisible('setup') && (
-                        <td className="py-2 text-xs max-w-24">
-                          {trade.setup ? (
-                            <div className="flex items-center gap-1 truncate">
-                              <span style={{ color: trade.setup.color }}>{trade.setup.icon}</span>
-                              <span className="truncate" style={{ color: trade.setup.color }}>{trade.setup.name}</span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 truncate block">{trade.setup_name || '—'}</span>
-                          )}
-                        </td>
-                      )}
-
+                      {/* Сетап (перенесён сюда из старой позиции; рендерится
+                          между Note и Timeframe в фактическом порядке колонок) */}
                       {/* Таймфрейм */}
                       {isColumnVisible('timeframe') && (
                         <td className="py-2 text-center">
@@ -1139,22 +1269,30 @@ export default function HistoryPage() {
 
                       {/* PnL */}
                       {isColumnVisible('pnl') && (() => {
-                        // Расчёт процента между ценами входа и выхода
+                        // Источник процента в порядке приоритета:
+                        // 1. trade.pnl_pct с бэка (учитывает direction + комиссии,
+                        //    знак всегда совпадает с trade.pnl — single source of truth).
+                        // 2. Для открытой позиции (unrealized) считаем локально
+                        //    от текущей цены с учётом direction.
+                        // 3. Fallback для legacy-сделок без pnl_pct: формула
+                        //    через цены входа/выхода.
                         let pnlPercent = 0;
-                        if (trade.entry_price > 0) {
-                          if (unrealized?.price) {
-                            // Открытая позиция - считаем от текущей цены
-                            const isLong = trade.direction.toLowerCase() === 'long';
-                            pnlPercent = isLong
-                              ? ((unrealized.price - trade.entry_price) / trade.entry_price * 100)
-                              : ((trade.entry_price - unrealized.price) / trade.entry_price * 100);
-                          } else if (trade.exit_price) {
-                            // Закрытая позиция - считаем от цены выхода
-                            const isLong = trade.direction.toLowerCase() === 'long';
-                            pnlPercent = isLong
-                              ? ((trade.exit_price - trade.entry_price) / trade.entry_price * 100)
-                              : ((trade.entry_price - trade.exit_price) / trade.entry_price * 100);
-                          }
+                        if (unrealized?.price && trade.entry_price > 0) {
+                          // Открытая позиция — считаем от текущей цены, бэк
+                          // unrealized_pnl_pct здесь не передаёт (это unrealized).
+                          const isLong = trade.direction.toLowerCase() === 'long';
+                          pnlPercent = isLong
+                            ? ((unrealized.price - trade.entry_price) / trade.entry_price * 100)
+                            : ((trade.entry_price - unrealized.price) / trade.entry_price * 100);
+                        } else if (trade.pnl_pct !== null && trade.pnl_pct !== undefined) {
+                          // Закрытая сделка — берём готовый pnl_pct с бэка.
+                          pnlPercent = trade.pnl_pct;
+                        } else if (trade.exit_price && trade.entry_price > 0) {
+                          // Legacy fallback (для сделок без pnl_pct).
+                          const isLong = trade.direction.toLowerCase() === 'long';
+                          pnlPercent = isLong
+                            ? ((trade.exit_price - trade.entry_price) / trade.entry_price * 100)
+                            : ((trade.entry_price - trade.exit_price) / trade.entry_price * 100);
                         }
 
                         return (
@@ -1184,7 +1322,59 @@ export default function HistoryPage() {
                         );
                       })()}
 
-                      {/* Статус */}
+                      {/* Holding (продолжительность сделки) */}
+                      {isColumnVisible('holding') && (
+                        <td className="py-2 font-mono text-xs text-slate-300">
+                          {trade.exit_at ? (
+                            formatHoldingTime(trade.holding_time_minutes)
+                          ) : (
+                            <span className="text-[10px] font-bold bg-accent/20 text-accent px-1.5 py-0.5 rounded">
+                              OPEN
+                            </span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Сетап */}
+                      {isColumnVisible('setup') && (
+                        <td className="py-2 text-xs max-w-24">
+                          {trade.setup ? (
+                            <div className="flex items-center gap-1 truncate">
+                              <span style={{ color: trade.setup.color }}>{trade.setup.icon}</span>
+                              <span className="truncate" style={{ color: trade.setup.color }}>{trade.setup.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 truncate block">{trade.setup_name || '—'}</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Note indicator (есть заметка / скриншот) */}
+                      {isColumnVisible('note') && (
+                        <td className="py-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {trade.notes && (
+                              <StickyNote
+                                size={12}
+                                className="text-amber-400/70"
+                                aria-label="Есть заметка"
+                              />
+                            )}
+                            {trade.screenshot_url && (
+                              <ImageIcon
+                                size={12}
+                                className="text-blue-400/70"
+                                aria-label="Есть скриншот"
+                              />
+                            )}
+                            {!trade.notes && !trade.screenshot_url && (
+                              <span className="text-slate-700">—</span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+
+                      {/* Статус (legacy, hidden by default — дублирует holding) */}
                       {isColumnVisible('status') && (
                         <td className="py-2">
                           {trade.exit_at ? (
@@ -1615,6 +1805,7 @@ export default function HistoryPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
     </AppShell>
   );
