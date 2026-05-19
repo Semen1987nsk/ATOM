@@ -95,11 +95,9 @@ interface DashboardData {
 interface StatsGridProps {
   stats: DashboardData | null;
   hasData: boolean;
-  /** Phase 6.5: live unrealized (Σ /trades/unrealized-pnl), null если endpoint fail'нул */
-  liveUnrealizedSum?: number | null;
 }
 
-export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps) {
+export function StatsGrid({ stats, hasData }: StatsGridProps) {
   // Phase 10 (2026-05-17): локальное состояние для refresh кнопки бейджа.
   const [refreshingHealth, setRefreshingHealth] = useState(false);
   const [localHealth, setLocalHealth] = useState<DashboardData["pnl_health"] | undefined>(undefined);
@@ -148,13 +146,7 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
   //   gross         — только body P&L (от движения цены), без costs.
   const isGross = settings.pnlDisplayMode === 'gross';
   const displayTotalPnl = isGross ? stats?.total_pnl_gross : stats?.total_pnl;
-  // Phase 6.5 (2026-05-18 PM): /trades/unrealized-pnl теперь использует
-  // FX-adjusted effective_pv из Position snapshot — числа корректные и для
-  // USD-фьючерсов. Берём liveUnrealizedSum для headline'а если доступен.
-  const headlineUnrealized = (liveUnrealizedSum !== null && liveUnrealizedSum !== undefined)
-    ? liveUnrealizedSum
-    : (stats?.unrealized_pnl ?? 0);
-  const displayTotalPnlWithUnrealized = (displayTotalPnl ?? 0) + headlineUnrealized;
+  const displayTotalPnlWithUnrealized = (displayTotalPnl ?? 0) + (stats?.unrealized_pnl ?? 0);
   const displayAdjustments = isGross
     ? stats?.account_level_adjustments_gross
     : stats?.account_level_adjustments;
@@ -223,8 +215,8 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
           if (displayTotalPnl !== undefined && displayTotalPnl !== 0) {
             parts.push(`Реализ. ${compact(displayTotalPnl)}`);
           }
-          if (headlineUnrealized !== 0) {
-            parts.push(`Нереализ. ${compact(headlineUnrealized)}`);
+          if ((stats?.unrealized_pnl ?? 0) !== 0) {
+            parts.push(`Нереализ. ${compact(stats?.unrealized_pnl ?? 0)}`);
           }
           if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
             parts.push(`Прочие ${compact(displayAdjustments)}`);
@@ -243,8 +235,8 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
           if (displayTotalPnl !== undefined) {
             lines.push(`Реализованный (закрытые, P&L от цен): ${formatCurrency(displayTotalPnl)}`);
           }
-          if (headlineUnrealized) {
-            lines.push(`Нереализованный (открытые позиции): ${formatCurrency(headlineUnrealized)}`);
+          if (stats?.unrealized_pnl ?? 0) {
+            lines.push(`Нереализованный (открытые позиции): ${formatCurrency(stats?.unrealized_pnl ?? 0)}`);
           }
           if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
             lines.push(`Прочие сборы и корректировки счёта: ${formatCurrency(displayAdjustments)}`);

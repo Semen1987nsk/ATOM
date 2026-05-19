@@ -127,7 +127,6 @@ export default function Home() {
   const { user, isLoading: authLoading } = useAuth();
 
   const [stats, setStats] = useState<DashboardData | null>(null);
-  const [liveUnrealizedSum, setLiveUnrealizedSum] = useState<number | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState(false);
@@ -232,23 +231,11 @@ export default function Home() {
       }
       if (params.toString()) statsUrl += '?' + params.toString();
 
-      const [statsData, tradesData, liveUnrealizedData] = await Promise.all([
+      const [statsData, tradesData] = await Promise.all([
         api.get<DashboardData>(statsUrl),
         api.get<Trade[]>('/trades/'),
-        // Phase 6.5: live MOEX-prices + FX-adjusted pv (от Position snapshot).
-        api.get<Array<{ trade_id: number; unrealized_pnl: number }>>('/trades/unrealized-pnl')
-          .catch((e) => {
-            console.warn('live unrealized fetch failed, using stats snapshot', e);
-            return [] as Array<{ trade_id: number; unrealized_pnl: number }>;
-          }),
       ]);
       setStats(statsData);
-      const sumLive = Array.isArray(liveUnrealizedData)
-        ? liveUnrealizedData.reduce((s, t) => s + (t.unrealized_pnl || 0), 0)
-        : 0;
-      setLiveUnrealizedSum(
-        Array.isArray(liveUnrealizedData) && liveUnrealizedData.length > 0 ? sumLive : null
-      );
       // Фильтруем сделки по дате/сделке начала из настроек
       let filteredTrades = Array.isArray(tradesData) ? tradesData : [];
       if (settings.tradesStartTradeId) {
@@ -648,8 +635,6 @@ export default function Home() {
             initialBalance={effectiveInitialDeposit ?? undefined}
             formatCurrency={formatCurrency}
             isBrokerCumulative={isBrokerUser}
-            liveUnrealizedSum={liveUnrealizedSum}
-            snapshotUnrealized={stats?.unrealized_pnl ?? 0}
             pctBaseline={(stats as { drawdown_baseline?: number })?.drawdown_baseline ?? 0}
             peakDate={stats?.max_drawdown_peak_date ?? null}
             troughDate={stats?.max_drawdown_trough_date ?? null}
@@ -657,7 +642,7 @@ export default function Home() {
 
           {/* Core KPI — сразу после Equity, для daily-scan */}
           <div className="mt-6">
-            <StatsGrid stats={stats} hasData={hasData} liveUnrealizedSum={liveUnrealizedSum} />
+            <StatsGrid stats={stats} hasData={hasData} />
           </div>
 
           {/* Advanced — collapsible, свёрнут по умолчанию */}

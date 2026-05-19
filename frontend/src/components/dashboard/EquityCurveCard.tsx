@@ -53,13 +53,6 @@ interface Props {
   // а не «капитал по времени». Точный исторический баланс при margin/futures
   // Tinkoff API не даёт реконструировать.
   isBrokerCumulative?: boolean;
-  // Phase 6.6 (2026-05-18): single-source-of-truth для P&L.
-  // liveUnrealizedSum = Σ /trades/unrealized-pnl (FX-adjusted live).
-  // snapshotUnrealized = Σ Position.unrealized_pnl (то что backend уже
-  // прибавил в data[-1].balance). Здесь переписываем последнюю точку
-  // с live unrealized, чтобы curve top label == headline card.
-  liveUnrealizedSum?: number | null;
-  snapshotUnrealized?: number;
   // pctBaseline — для broker_user (isBrokerCumulative=true) используется как
   // знаменатель в % изменения капитала. Σ NET_DEPOSIT = вся capital deployed
   // на счёт за историю. Без baseline % в шапке не отрисуется.
@@ -75,38 +68,23 @@ export function EquityCurveCard({
   initialBalance = 0,
   isBrokerCumulative = false,
   formatCurrency = (n) => `${n.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`,
-  liveUnrealizedSum,
-  snapshotUnrealized,
   pctBaseline,
   peakDate,
   troughDate,
 }: Props) {
-  // Phase 6.6: override last point с live unrealized для single-source-of-truth.
-  const dataAdjusted = useMemo(() => {
-    if (!data || data.length === 0) return data;
-    if (liveUnrealizedSum === null || liveUnrealizedSum === undefined) return data;
-    const snapshot = snapshotUnrealized ?? 0;
-    const delta = liveUnrealizedSum - snapshot;
-    if (Math.abs(delta) < 0.005) return data;
-    const last = data[data.length - 1];
-    return [
-      ...data.slice(0, -1),
-      { date: last.date, balance: last.balance + delta },
-    ];
-  }, [data, liveUnrealizedSum, snapshotUnrealized]);
   // Объединяем equity + benchmark в общий dataset для recharts ComposedChart.
   // equity_curve может быть intraday ("YYYY-MM-DD HH:MM"), IMOEX — daily ("YYYY-MM-DD").
   // Матчим по date-префиксу: для всех intraday-точек одного дня используем CLOSE этого дня.
   const merged = useMemo(() => {
-    if (!dataAdjusted || dataAdjusted.length === 0) return [];
+    if (!data || data.length === 0) return [];
     const benchByDate: Record<string, number> = {};
     if (benchmark) {
       for (const b of benchmark) benchByDate[b.date.slice(0, 10)] = b.value;
     }
     // Нормализуем benchmark к стартовому balance, чтобы линии были сравнимы
     const firstBenchmark = benchmark?.[0]?.value;
-    const ratio = firstBenchmark && dataAdjusted[0]?.balance ? dataAdjusted[0].balance / firstBenchmark : 1;
-    return dataAdjusted.map((p) => {
+    const ratio = firstBenchmark && data[0]?.balance ? data[0].balance / firstBenchmark : 1;
+    return data.map((p) => {
       const dayKey = p.date.slice(0, 10);
       const benchValue = benchByDate[dayKey];
       return {
@@ -115,7 +93,7 @@ export function EquityCurveCard({
         benchmark: benchValue !== undefined ? benchValue * ratio : null,
       };
     });
-  }, [dataAdjusted, benchmark]);
+  }, [data, benchmark]);
 
   const stats = useMemo<{
     start: number;
@@ -123,8 +101,8 @@ export function EquityCurveCard({
     change: number;
     changePct: number | null;
   } | null>(() => {
-    if (!dataAdjusted || dataAdjusted.length === 0) return null;
-    const end = dataAdjusted[dataAdjusted.length - 1].balance;
+    if (!data || data.length === 0) return null;
+    const end = data[data.length - 1].balance;
 
     if (isBrokerCumulative) {
       // Кривая начинается от 0 → cumulative PnL. % считаем относительно
@@ -141,11 +119,11 @@ export function EquityCurveCard({
       };
     }
 
-    const start = initialBalance || dataAdjusted[0].balance;
+    const start = initialBalance || data[0].balance;
     const change = end - start;
     const changePct = start !== 0 ? (change / Math.abs(start)) * 100 : 0;
     return { start, end, change, changePct };
-  }, [dataAdjusted, initialBalance, isBrokerCumulative, pctBaseline]);
+  }, [data, initialBalance, isBrokerCumulative, pctBaseline]);
 
   if (!data || data.length === 0) {
     return (
@@ -213,12 +191,12 @@ export function EquityCurveCard({
               </linearGradient>
             </defs>
             {peakDate && troughDate && (() => {
-              // Найти точку в dataAdjusted по date prefix (YYYY-MM-DD) чтобы Recharts
+              // Найти точку в data по date prefix (YYYY-MM-DD) чтобы Recharts
               // matched по точному значению XAxis dataKey.
               const findClosest = (target: string) => {
-                if (!target || !dataAdjusted) return null;
+                if (!target || !data) return null;
                 const prefix = target.slice(0, 10);
-                return dataAdjusted.find((p) => p.date.startsWith(prefix)) ?? null;
+                return data.find((p) => p.date.startsWith(prefix)) ?? null;
               };
               const peakPt = findClosest(peakDate);
               const troughPt = findClosest(troughDate);

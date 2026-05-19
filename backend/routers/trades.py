@@ -517,8 +517,8 @@ async def import_trades(
 
 @router.get("/", response_model=list[schemas.Trade])
 async def read_trades(
-    skip: int = 0, 
-    limit: int = 500, 
+    skip: int = 0,
+    limit: int = 500,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
@@ -529,12 +529,341 @@ async def read_trades(
     return trades
 
 
+# ─────────────── TR1: Trade Journal aggregation ───────────────
+
+
+@router.get("/positions", response_model=list[schemas.PositionTrade])
+async def read_position_trades(
+    status: str = Query("all", regex="^(all|open|closed)$"),
+    skip: int = 0,
+    limit: int = 500,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """TR1: Trade journal aggregated по `position_id` (round-trip lifecycle).
+
+    Возвращает one-row-per-position view: scaled-in добавления и partial
+    closes одного position lifecycle схлопываются в одну строку с
+    weighted-average метриками и embedded list of executions.
+
+    Filter `status`:
+    - `all` — все позиции (default)
+    - `open` — только активные (есть Trade с exit_at=None)
+    - `closed` — только полностью закрытые (все Trade имеют exit_at)
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    all_trades = (
+        db.query(models.Trade)
+        .filter(models.Trade.account_id == account_id)
+        .order_by(models.Trade.entry_at.asc())
+        .all()
+    )
+
+    # Группировка по position_id. Legacy/manual trades без position_id
+    # получают synthetic key = ('legacy', id) — каждый сам себе позиция,
+    # чтобы UI не схлопывал их некорректно.
+    from collections import defaultdict
+    groups: dict[tuple, list[models.Trade]] = defaultdict(list)
+    for t in all_trades:
+        if t.position_id is not None and t.instrument_uid:
+            key = (t.instrument_uid, t.position_id)
+        else:
+            key = ("legacy", t.id)
+        groups[key].append(t)
+
+    positions: list[schemas.PositionTrade] = []
+    for key, group in groups.items():
+        first = group[0]  # earliest entry (sorted asc)
+        # Detect status: any row with exit_at=None → position still open
+        any_open = any(t.exit_at is None for t in group)
+        position_status = "open" if any_open else "closed"
+
+        if status != "all" and status != position_status:
+            continue
+
+        # Aggregations
+        total_qty = sum(float(t.quantity or 0) for t in group)
+
+        # Weighted entry price: Σ(price × qty) / Σ qty
+        sum_qty = sum(float(t.quantity or 0) for t in group)
+        sum_entry_value = sum(
+            float(t.entry_price or 0) * float(t.quantity or 0) for t in group
+        )
+        weighted_entry = sum_entry_value / sum_qty if sum_qty > 0 else 0.0
+
+        # Weighted exit price (только closed rows)
+        closed_rows = [t for t in group if t.exit_at is not None and t.exit_price is not None]
+        weighted_exit: Optional[float] = None
+        if closed_rows:
+            sum_exit_qty = sum(float(t.quantity or 0) for t in closed_rows)
+            sum_exit_value = sum(
+                float(t.exit_price or 0) * float(t.quantity or 0) for t in closed_rows
+            )
+            if sum_exit_qty > 0:
+                weighted_exit = sum_exit_value / sum_exit_qty
+
+        # Realized P&L = Σ net_pnl закрытых rows
+        realized_pnl: Optional[float] = None
+        closed_with_pnl = [t for t in closed_rows if t.net_pnl is not None]
+        if closed_with_pnl:
+            realized_pnl = sum(float(t.net_pnl) for t in closed_with_pnl)
+
+        # Unrealized P&L: для open позиций берём из PositionORM (live mark-to-market).
+        # Один PositionORM на (account, instrument_uid), не на (account, position_id) —
+        # MTM считается на текущей живой позиции независимо от round-trip group.
+        unrealized_pnl: Optional[float] = None
+        if any_open and first.instrument_uid:
+            pos_row = (
+                db.query(models.PositionORM)
+                .filter(
+                    models.PositionORM.account_id == account_id,
+                    models.PositionORM.instrument_uid == first.instrument_uid,
+                )
+                .first()
+            )
+            if pos_row and pos_row.unrealized_pnl is not None:
+                unrealized_pnl = float(pos_row.unrealized_pnl)
+
+        # Lifecycle timing
+        first_entry_at = min(t.entry_at for t in group)
+        last_exit_at: Optional[datetime] = None
+        if not any_open:
+            last_exit_at = max(t.exit_at for t in group if t.exit_at)
+
+        holding_minutes: Optional[int] = None
+        if last_exit_at is not None:
+            delta_sec = (last_exit_at - first_entry_at).total_seconds()
+            holding_minutes = int(delta_sec / 60) if delta_sec >= 0 else None
+
+        # Executions list (sorted chronologically) — TR1.1: с MAE/MFE/screenshot,
+        # TR1.3: + per-execution attributed fees
+        executions = [
+            schemas.TradeExecution(
+                id=t.id,
+                entry_at=t.entry_at,
+                exit_at=t.exit_at,
+                entry_price=float(t.entry_price or 0),
+                exit_price=float(t.exit_price) if t.exit_price is not None else None,
+                quantity=float(t.quantity or 0),
+                direction=t.direction.value if hasattr(t.direction, "value") else str(t.direction),
+                pnl=float(t.pnl) if t.pnl is not None else None,
+                net_pnl=float(t.net_pnl) if t.net_pnl is not None else None,
+                commission=float(t.commission) if t.commission is not None else None,
+                entry_value=float(t.entry_value) if t.entry_value is not None else None,
+                exit_value=float(t.exit_value) if t.exit_value is not None else None,
+                mae_price=float(t.mae_price) if t.mae_price is not None else None,
+                mfe_price=float(t.mfe_price) if t.mfe_price is not None else None,
+                screenshot_url=t.screenshot_url,
+                setup_name=t.setup_name,
+                risk_amount=float(t.risk_amount) if t.risk_amount is not None else None,
+                varmargin_attributed=float(t.varmargin_attributed) if t.varmargin_attributed is not None else None,
+                margin_fee_attributed=float(t.margin_fee_attributed) if t.margin_fee_attributed is not None else None,
+                service_fee_attributed=float(t.service_fee_attributed) if t.service_fee_attributed is not None else None,
+                other_fees_attributed=float(t.other_fees_attributed) if t.other_fees_attributed is not None else None,
+                # Phase 9: point_value snapshot для futures (computed body_from_prices)
+                point_value=float(t.point_value) if t.point_value is not None else None,
+                point_value_source=t.point_value_source,
+                instrument_type_v2=t.instrument_type_v2,
+            )
+            for t in sorted(group, key=lambda x: x.entry_at)
+        ]
+
+        # Setup / tags / notes — от первого execution (per AskUserQuestion 2026-05-16:
+        # один setup на всю сделку, наследуется от entry).
+        setup_id = first.setup_id
+        setup_name = first.setup_name
+        tags = list(first.tags or []) if first.tags else []
+        notes = first.notes
+
+        position_id_val = first.position_id if first.position_id is not None else first.id
+
+        # TR1.1 aggregations.
+
+        total_entry_value = sum(float(t.entry_value or 0) for t in group) or None
+        total_exit_value = sum(float(t.exit_value or 0) for t in group) or None
+
+        # % result. Используем ту же логику что Trade.pnl_pct (schemas.py:400-430):
+        # primary — entry_value, fallback — weighted_entry_price × |total_qty|.
+        # Для open берём unrealized_pnl, для closed — realized_pnl.
+        pnl_for_pct = realized_pnl if not any_open else unrealized_pnl
+        pnl_pct: Optional[float] = None
+        if pnl_for_pct is not None:
+            if total_entry_value and total_entry_value > 0:
+                pnl_pct = round((pnl_for_pct / total_entry_value) * 100, 4)
+            elif weighted_entry and total_qty > 0:
+                # Fallback: для legacy/manual trades без entry_value
+                fallback_base = weighted_entry * abs(total_qty)
+                if fallback_base > 0:
+                    pnl_pct = round((pnl_for_pct / fallback_base) * 100, 4)
+
+        # R-multiple = realized_pnl / Σ risk_amount (только closed rows
+        # с явно заданным risk_amount). Dash в UI если нет.
+        closed_with_risk = [
+            t for t in group
+            if t.exit_at is not None and t.risk_amount and float(t.risk_amount) > 0
+        ]
+        r_multiple: Optional[float] = None
+        total_risk_amount: Optional[float] = None
+        if closed_with_risk and realized_pnl is not None:
+            total_risk_amount = sum(float(t.risk_amount) for t in closed_with_risk)
+            if total_risk_amount > 0:
+                r_multiple = round(realized_pnl / total_risk_amount, 2)
+
+        # MAE/MFE: MIN/MAX across executions (worst adverse / best favorable).
+        # MAE — наименее благоприятная цена; MFE — наиболее благоприятная.
+        # Для LONG: MAE=min, MFE=max; для SHORT: MAE=max, MFE=min.
+        # Trade ORM хранит уже-направленные значения, поэтому min/max по полю
+        # верны независимо от direction.
+        mae_vals = [float(t.mae_price) for t in group if t.mae_price is not None]
+        mfe_vals = [float(t.mfe_price) for t in group if t.mfe_price is not None]
+        mae_price = min(mae_vals) if mae_vals else None
+        mfe_price = max(mfe_vals) if mfe_vals else None
+
+        # Indicators.
+        has_screenshot = any(t.screenshot_url for t in group)
+        has_notes = bool(notes and str(notes).strip())
+
+        # TR1.3: aggregated attributed fees + body P&L breakdown.
+        total_varmargin = sum(float(t.varmargin_attributed or 0) for t in group) or None
+        total_margin_fee = sum(float(t.margin_fee_attributed or 0) for t in group) or None
+        total_service_fee = sum(float(t.service_fee_attributed or 0) for t in group) or None
+        total_other_fees = sum(float(t.other_fees_attributed or 0) for t in group) or None
+        # Body P&L = Σ trade.pnl (gross body — без commissions/fees). Используется
+        # в UI breakdown card «Из чего сложился P&L».
+        body_pnl_sum = sum(float(t.pnl or 0) for t in group if t.exit_at is not None) or None
+
+        # Journaling fields — от первого execution (inheritance pattern).
+        confidence = first.confidence
+        mood = first.mood
+        discipline = first.discipline
+        timeframe = first.timeframe
+        news_event = first.news_event
+        stop_loss = float(first.stop_loss) if first.stop_loss is not None else None
+        take_profit = float(first.take_profit) if first.take_profit is not None else None
+        entry_reason = first.entry_reason
+        exit_reason = first.exit_reason
+        screenshot_url = first.screenshot_url
+
+        positions.append(
+            schemas.PositionTrade(
+                position_id=position_id_val,
+                account_id=account_id,
+                instrument_uid=first.instrument_uid,
+                symbol=first.symbol,
+                asset_name=first.asset_name,
+                asset_type=first.asset_type,
+                direction=first.direction.value if hasattr(first.direction, "value") else str(first.direction),
+                total_quantity=total_qty,
+                weighted_entry_price=weighted_entry,
+                weighted_exit_price=weighted_exit,
+                realized_pnl=realized_pnl,
+                unrealized_pnl=unrealized_pnl,
+                total_commission=sum(float(t.commission or 0) for t in group),
+                total_entry_value=total_entry_value,
+                total_exit_value=total_exit_value,
+                first_entry_at=first_entry_at,
+                last_exit_at=last_exit_at,
+                holding_time_minutes=holding_minutes,
+                status=position_status,
+                execution_count=len(group),
+                is_scale_in=len(group) >= 2,
+                setup_id=setup_id,
+                setup_name=setup_name,
+                tags=tags,
+                notes=notes,
+                # TR1.1 power-user metrics
+                pnl_pct=pnl_pct,
+                r_multiple=r_multiple,
+                total_risk_amount=total_risk_amount,
+                mae_price=mae_price,
+                mfe_price=mfe_price,
+                # TR1.1 indicators
+                has_screenshot=has_screenshot,
+                has_notes=has_notes,
+                # TR1.1 journaling fields
+                confidence=confidence,
+                mood=mood,
+                discipline=discipline,
+                timeframe=timeframe,
+                news_event=news_event,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                entry_reason=entry_reason,
+                exit_reason=exit_reason,
+                screenshot_url=screenshot_url,
+                # TR1.3: aggregated attributed fees + body breakdown
+                total_varmargin=total_varmargin,
+                total_margin_fee=total_margin_fee,
+                total_service_fee=total_service_fee,
+                total_other_fees=total_other_fees,
+                body_pnl=body_pnl_sum,
+                executions=executions,
+            )
+        )
+
+    # Sort: newest first by first_entry_at
+    positions.sort(key=lambda p: p.first_entry_at, reverse=True)
+    return positions[skip : skip + limit]
+
+
 import os
 import uuid
 from pathlib import Path
 
 UPLOAD_DIR = Path("uploads/screenshots")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.get("/{trade_id}/screenshot")
+async def get_screenshot(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """PR 26: authenticated endpoint для отдачи скриншота сделки.
+
+    Раньше скриншоты были доступны через static `/uploads/screenshots/...`
+    с UUID-именами — security through obscurity. Любой, кто угадал URL,
+    мог посмотреть скриншот другого юзера. Теперь проверяем ownership.
+
+    Возвращаем файл как `Content-Disposition: inline` (image preview в
+    браузере) + строгий Content-Type из magic bytes (не from filename).
+    """
+    from fastapi.responses import FileResponse
+
+    account_id = auth_service.get_account_id(db, current_user)
+    trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id,
+    ).first()
+    if not trade or not trade.screenshot_url:
+        raise HTTPException(status_code=404, detail="Скриншот не найден")
+
+    # screenshot_url хранится как `/uploads/screenshots/<filename>` — выдёргиваем
+    # filename, чтобы не разрешить path traversal через user-controlled значение.
+    import os as _os
+    filename = _os.path.basename(trade.screenshot_url)
+    filepath = UPLOAD_DIR / filename
+    # Дополнительная защита: проверяем что resolved path действительно внутри
+    # UPLOAD_DIR (защита от relative path tricks даже если basename странный).
+    if not filepath.resolve().is_relative_to(UPLOAD_DIR.resolve()):
+        raise HTTPException(status_code=404, detail="Скриншот не найден")
+    if not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Скриншот не найден")
+
+    ext = filepath.suffix.lstrip(".").lower()
+    media_type = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(
+        path=str(filepath),
+        media_type=media_type,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.post("/{trade_id}/screenshot")
@@ -818,54 +1147,6 @@ async def reanalyze_trade(
     db.commit()
     db.refresh(db_trade)
     return db_trade.ai_analysis
-
-
-@router.get("/unrealized-pnl")
-async def get_unrealized_pnl(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user)
-):
-    account_id = auth_service.get_account_id(db, current_user)
-    open_trades = db.query(models.Trade).filter(
-        models.Trade.account_id == account_id,
-        models.Trade.exit_at == None
-    ).all()
-    if not open_trades:
-        return []
-    
-    tickers = list(set(t.symbol for t in open_trades))
-    current_prices = await asyncio.to_thread(market_data_service.get_current_prices, tickers)
-    futures_specs = await asyncio.to_thread(market_data_service.get_futures_specs, tickers)
-    
-    results = []
-    for trade in open_trades:
-        current_price = current_prices.get(trade.symbol)
-        if current_price:
-            entry_price = float(trade.entry_price)
-            quantity = float(trade.quantity)
-            
-            spec = futures_specs.get(trade.symbol)
-            if spec and spec.get('stepprice') and spec.get('minstep'):
-                stepprice = spec['stepprice']
-                minstep = spec['minstep']
-                price_diff = current_price - entry_price
-                if trade.direction == models.TradeDirection.SHORT:
-                    price_diff = -price_diff
-                pnl = price_diff * (stepprice / minstep) * quantity
-            else:
-                if trade.direction == models.TradeDirection.LONG:
-                    pnl = (current_price - entry_price) * quantity
-                else:
-                    pnl = (entry_price - current_price) * quantity
-            
-            results.append({
-                "trade_id": trade.id,
-                "symbol": trade.symbol,
-                "current_price": current_price,
-                "unrealized_pnl": pnl
-            })
-            
-    return results
 
 
 @router.get("/mae-mfe-stats")
