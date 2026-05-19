@@ -9,9 +9,9 @@ test.describe("Landing — smoke", () => {
     await expect(page.getByRole("link", { name: "МААТТ" }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Запись делает трейдера/i })).toBeVisible();
     await expect(page.getByText(/Журнал — не отчётность/i).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Второй взгляд на/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Edge ratio из реальных/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Что было до — и после/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Двенадцать правил против/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /MAE и MFE — из минутных свечей/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Свечи MOEX вокруг каждой/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Для серьёзного/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Перестаньте гадать/i })).toBeVisible();
   });

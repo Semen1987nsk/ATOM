@@ -149,15 +149,16 @@ export function Landing() {
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
             <p className="editorial-eyebrow mb-6">Раздел 01 — Trade Replay</p>
-            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Что было до — и&nbsp;после.</h2>
+            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Свечи MOEX вокруг каждой&nbsp;сделки.</h2>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
-              Минутные свечи Мосбиржи вокруг входа и выхода — автоматически, без
-              ручной разметки. Маркеры stop/take на той же шкале, точка реального
-              выхода. Видно: вышли рано из страха или поздно по упрямству.
+              Минутные свечи MOEX ISS вокруг входа и выхода. На одной шкале —
+              маркеры stop и take, точка реального выхода. Видно, где сделка
+              пошла против вас и как далеко зашла в вашу сторону. Без ручной
+              разметки. Без скриншотов из терминала.
             </p>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
-              В России такой автоматический замер не делает ни один журнал. У западных
-              (TradeZella, Edgewonk) — другие биржи, российских свечей нет.
+              Trade Replay со свечами MOEX в РФ — только у нас; у TradeZella
+              и Edgewonk биржи другие, российских свечей нет.
             </p>
             <Link
               href="/manual#replay"
@@ -186,14 +187,55 @@ export function Landing() {
           </div>
           <div className="col-span-12 lg:col-span-5 lg:order-2 order-1 flex flex-col justify-center lg:pl-8">
             <p className="editorial-eyebrow mb-6">Раздел 02 — MAE / MFE</p>
-            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Edge ratio из реальных&nbsp;свечей.</h2>
+            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">MAE и MFE — из минутных свечей&nbsp;биржи.</h2>
+            <dl className="border border-[var(--rule)] p-4 mb-6 bg-[var(--paper-tint)]/40">
+              <div className="flex gap-3 mb-2 last:mb-0">
+                <dt className="num text-[12px] font-medium text-[var(--ink)] uppercase tracking-[0.06em] w-[80px] shrink-0">
+                  MAE
+                </dt>
+                <dd
+                  className="text-[14px] leading-[1.55] text-[var(--ink-2)] m-0"
+                  style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+                >
+                  Maximum Adverse Excursion: насколько глубоко цена уходила
+                  против сделки внутри её жизни.
+                </dd>
+              </div>
+              <div className="flex gap-3 mb-2 last:mb-0">
+                <dt className="num text-[12px] font-medium text-[var(--ink)] uppercase tracking-[0.06em] w-[80px] shrink-0">
+                  MFE
+                </dt>
+                <dd
+                  className="text-[14px] leading-[1.55] text-[var(--ink-2)] m-0"
+                  style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+                >
+                  Maximum Favorable Excursion: насколько далеко цена уходила
+                  в вашу сторону.
+                </dd>
+              </div>
+              <div className="flex gap-3 mb-2 last:mb-0">
+                <dt className="num text-[12px] font-medium text-[var(--ink)] uppercase tracking-[0.06em] w-[80px] shrink-0">
+                  Edge Ratio
+                </dt>
+                <dd
+                  className="text-[14px] leading-[1.55] text-[var(--ink-2)] m-0"
+                  style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+                >
+                  средний MFE / средний MAE. {">"} 1 — у системы есть edge;
+                  {" "}{"<"} 1 — система берёт убыток на хвостах.
+                </dd>
+              </div>
+            </dl>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
-              MAE и MFE — главные количественные метрики для оптимизации стопов и
-              тейков. Считаются автоматически по свечам MOEX ISS API.
+              Считаются по минутным свечам MOEX ISS — биржевым, не из реквоутов
+              брокера. Брокерские реквоуты сглаживают экстремумы, биржевые
+              свечи — нет. Средний MAE убыточных в 1,5× дальше стопа — стоп
+              ставится слишком далеко. Средний MFE прибыльных в 2× дальше
+              тейка — тейк закрывается рано. Цифра не спорит.
             </p>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
-              В России такая автоматизация — только у нас. У западных конкурентов
-              (TradeZella, Edgewonk) — другие биржи, российских свечей нет.
+              В России такой автомат — только у нас; у TradeZella и Edgewonk
+              биржи другие, российских свечей нет.
             </p>
             <Link
               href="/manual#mae-mfe"
@@ -211,10 +253,12 @@ export function Landing() {
           <div className="grid grid-cols-12 gap-6 mb-12">
             <div className="col-span-12 lg:col-span-7">
               <p className="editorial-eyebrow mb-6">Раздел 03 — Аналитический центр</p>
-              <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Тридцать с лишним метрик. По-настоящему.</h2>
+              <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Тридцать с лишним метрик. Каждая — из своего&nbsp;источника.</h2>
               <p className="text-[16px] leading-[1.65] text-[var(--ink-2)]">
-                Не «P&L и Win Rate с пометкой 30+». Реальные формулы из работ Винса,
-                Тарпа и Сортино — посчитанные на ваших сделках, не в Excel-шаблоне.
+                Формулы из работ Винса, Тарпа, Сортино, Калмар — посчитанные
+                на ваших сделках, не в Excel-шаблоне. Каждая со своим
+                назначением, ограничением и интерпретацией. Не «P&L и Win Rate
+                с пометкой 30+».
               </p>
             </div>
           </div>
@@ -290,16 +334,20 @@ export function Landing() {
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
             <p className="editorial-eyebrow mb-6">Раздел 04 — Эвристический разбор</p>
-            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Второй взгляд на&nbsp;каждую сделку.</h2>
+            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Двенадцать правил против типовых&nbsp;ошибок.</h2>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
-              После каждого закрытия 12 правил проверяют сделку на типичные ошибки —
-              FOMO-вход, ранний выход без достижения тейка, нарушение размера позиции,
-              торговля против сетапа.
+              После каждого закрытия 12 правил проверяют сделку: FOMO-вход,
+              ранний выход без достижения тейка, нарушение размера позиции,
+              торговля против сетапа. Правила детерминированные — описаны
+              в документации, можно прочитать и оспорить. Без чёрного ящика.
+              Без обучения на ваших сделках.
             </p>
-            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
-              Никакой магии глубокого обучения. Только описанные правила, которые ты
-              можешь прочитать в документации и оспорить, если не согласен.
-            </p>
+            <div
+              className="inline-flex items-center mt-6 mb-6 px-2.5 py-1 border border-[var(--rule)] text-[11px] text-[var(--ink-3)] uppercase tracking-[0.08em]"
+              style={{ fontFamily: "var(--font-mono), monospace" }}
+            >
+              AI-разбор · скоро
+            </div>
             <Link
               href="/manual#heuristics"
               className="text-[13px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline inline-flex items-center gap-1.5"
