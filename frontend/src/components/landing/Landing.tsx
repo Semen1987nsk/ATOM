@@ -117,7 +117,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 4. SIMPLE FACT — NEW STUB */}
+      {/* 4. SIMPLE FACT */}
       <section
         id="simple-fact"
         className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)] bg-[var(--paper-tint,#f4ecdc)]"
@@ -131,7 +131,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 5. CHAMPIONS — NEW STUB */}
+      {/* 5. CHAMPIONS */}
       <section
         id="champions"
         className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)]"
@@ -160,10 +160,10 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 5. MANIFEST CUT-IN */}
+      {/* 7. MANIFEST CUT-IN */}
       <ManifestCutIn />
 
-      {/* 6. SECTION 01 · TRADE REPLAY */}
+      {/* 8. SECTION 01 · TRADE REPLAY */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
@@ -194,7 +194,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 7. SECTION 02 · MAE/MFE — mirrored */}
+      {/* 9. SECTION 02 · MAE/MFE — mirrored */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-7 lg:order-1 order-2">
@@ -224,7 +224,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 8. SECTION 03 · METRICS TABLE */}
+      {/* 10. SECTION 03 · METRICS TABLE */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto">
           <div className="grid grid-cols-12 gap-6 mb-12">
@@ -285,7 +285,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 9. PULL-QUOTE */}
+      {/* 11. PULL-QUOTE */}
       <section className="px-6 lg:px-12 py-20 border-y border-[var(--rule)]">
         <div className="max-w-[920px] mx-auto">
           <div className="w-12 h-px bg-[var(--accent)] mb-10" aria-hidden />
@@ -303,7 +303,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 10. SECTION 04 · HEURISTIC REVIEW */}
+      {/* 12. SECTION 04 · HEURISTIC REVIEW */}
       <section className="px-6 lg:px-12 py-24 lg:py-32">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
@@ -337,10 +337,10 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 11. МААТТ origin */}
+      {/* 13. AUDIENCE QUALIFIER (МААТТ origin) */}
       <MaattOrigin />
 
-      {/* 12. PRICING TEASER */}
+      {/* 14. PRICING TEASER */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule-strong)]">
         <div className="max-w-[1200px] mx-auto">
           <p className="editorial-eyebrow mb-6">Раздел 06 — Тарифы</p>
@@ -389,7 +389,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 13. FINAL CTA */}
+      {/* 15. FINAL CTA */}
       <section className="px-6 lg:px-12 py-32 lg:py-40 border-t border-[var(--rule)] border-b border-[var(--rule)]">
         <div className="max-w-[860px] mx-auto text-center">
           <h2 className="editorial-display mb-10 text-[var(--ink)]">
@@ -406,7 +406,7 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 14. FOOTER */}
+      {/* 16. FOOTER */}
       <footer className="px-6 lg:px-12 py-16 text-[14px]">
         <div className="max-w-[1200px] mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">

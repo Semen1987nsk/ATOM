@@ -13,17 +13,17 @@ test.describe("Landing — visual regression @visual", () => {
   });
 
   test("MAE/MFE section — desktop 1440", async ({ page }) => {
-    const section = page.locator("section", { has: page.getByText("Раздел 02 · MAE / MFE") });
+    const section = page.locator("section", { has: page.getByText("Раздел 02 — MAE / MFE") });
     await expect(section).toHaveScreenshot("mae-mfe-1440.png", { maxDiffPixels: 100 });
   });
 
   test("Trade Replay section — desktop 1440", async ({ page }) => {
-    const section = page.locator("section", { has: page.getByText("Раздел 01 · Trade Replay") });
+    const section = page.locator("section", { has: page.getByText("Раздел 01 — Trade Replay") });
     await expect(section).toHaveScreenshot("replay-1440.png", { maxDiffPixels: 100 });
   });
 
   test("МААТТ origin section — desktop 1440", async ({ page }) => {
-    const section = page.locator("section", { has: page.getByText("Раздел 05 · Аудитория") });
+    const section = page.locator("section", { has: page.getByText("Раздел 05 — Для серьёзного трейдера") });
     await expect(section).toHaveScreenshot("origin-1440.png", { maxDiffPixels: 100 });
   });
 
@@ -31,6 +31,8 @@ test.describe("Landing — visual regression @visual", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.reload();
     await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot("full-mobile.png", { fullPage: true, maxDiffPixels: 500 });
   });
 });

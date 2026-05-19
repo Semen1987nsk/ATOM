@@ -719,6 +719,7 @@ h1 { letter-spacing: -0.02em; }
    См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
 [data-theme="maatt-cream"] {
   --paper:           #FAF8F2;
+  --paper-tint:      #f4ecdc;
   --ink:             #14110B;
   --ink-2:           rgba(20, 17, 11, 0.62);
   --ink-3:           rgba(20, 17, 11, 0.40);

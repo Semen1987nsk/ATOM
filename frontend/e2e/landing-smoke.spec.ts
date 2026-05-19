@@ -5,7 +5,7 @@ test.describe("Landing — smoke", () => {
     await page.goto("/");
   });
 
-  test("renders all 14 sections without errors", async ({ page }) => {
+  test("renders all 16 sections without errors", async ({ page }) => {
     await expect(page.getByRole("link", { name: "МААТТ" }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Системная торговля/i })).toBeVisible();
     await expect(page.getByText(/Каждая сделка/i).first()).toBeVisible();
