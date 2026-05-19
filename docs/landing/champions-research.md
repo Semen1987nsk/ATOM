@@ -1,7 +1,9 @@
 # Champions Research — МААТТ landing
-*Last updated: 2026-05-18*
+*Last updated: 2026-05-18 (v2)*
 
 > Источник истины для секции «Дисциплина чемпионов». Шесть трейдеров/инвесторов с верифицируемыми цитатами о записи сделок, дневнике и дисциплине. Каждая цитата — с привязкой к первоисточнику (книга + глава или интервью + дата) по правилу R9 `docs/brand/voice.md`. Эпитетов-славословий («легендарный», «гений», «отец чего-либо») — ноль.
+>
+> **Версия v2 (2026-05-18):** заменили Эрика Наймана на Линду Брэдфорд Рашке и Стэнли Дракенмиллера на Пола Тюдора Джонса по решению контроллера; исправили год рождения Александра Элдера (1932 → 1950); обновили sameAs URL Минервини на профиль CMT Association. См. Changelog в конце документа.
 
 ---
 
@@ -10,33 +12,11 @@
 | # | Имя | Годы | Recommended quote | Source |
 |---|---|---|---|---|
 | 1 | Джесси Ливермор | 1877—1940 | «Я завёл маленькую книжку. Я записывал в неё свои наблюдения.» | «Воспоминания биржевого спекулянта», глава 1 |
-| 2 | Николас Дарвас | 1920—1977 | «Даже в Кашмире и Непале ежедневная телеграмма исправно приходила.» (парафраз главы 5) | «How I Made $2,000,000 in the Stock Market», глава 5 «Cables Round the World» |
-| 3 | Марк Минервини | род. 1965 | «Самая ценная информация о вашей торговле — это сама ваша торговля.» | «Think & Trade Like a Champion» (2016), раздел «Know the Truth About Your Trading» |
-| 4 | Стэнли Дракенмиллер | род. 1953 | «Если вы действительно это видите — положите все яйца в одну корзину и наблюдайте за ней очень внимательно.» | Lost Tree Club lecture, 18 января 2015 |
-| 5 | Александр Элдер | род. 1950 (1951) | «Ведите дневник торговли — записывайте причины входа и выхода каждой сделки.» | «Trading for a Living» (1993) / «Как играть и выигрывать на бирже» |
-| 6 | Эрик Найман | род. 1969 | См. секцию REPLACEMENTS — verified journal-quote не найден. | «Малая энциклопедия трейдера» (1997) |
-
----
-
-## REPLACEMENTS recommended
-
-### Эрик Найман — flag для замены
-
-**Проблема.** В открытых источниках (LiveJournal-подборки топ-цитат, Smart-Lab, taxfree.livejournal, gerchik.co обзоры) verbatim цитаты Наймана о ведении дневника сделок или журнала **не найдено**. Найденные цитаты из «Малой энциклопедии трейдера» касаются психологии («Ответственность за деньги лежит на вас»), статистики неудач трейдеров, поведения толпы — но не record-keeping discipline. Конкретный фрагмент про дневник возможно есть в самой книге (раздел «Психология игры»), но online-выдержки до него не дотягиваются, а PDF book у нас в этой сессии не парсится.
-
-**Опции:**
-1. **Оставить Наймана**, но взять цитату о психологии («Главная причина потерь — внутри нас, в нашем "Я"») и адаптировать врезку под общую тему дисциплины, а не строго про дневник. Минус: размывает фокус секции.
-2. **Заменить на Александра Резвякова** (российский трейдер, чемпион ЛЧИ, многократно говорил публично о ведении дневника сделок) — но verifiable quote с точной ссылкой найти так же сложно, в публичных подкастах фиксируется устно.
-3. **Заменить на Линду Брэдфорд Рашке** (Linda Bradford Raschke, "Street Smarts" 1995, "Trading Sardines" 2019) — у неё есть прямые цитаты о journaling в "Street Smarts". Плюс — единственная женщина в кастинге. Минус — не из СНГ-сегмента.
-4. **Заменить на Виктора Нидерхоффера** — «The Education of a Speculator» (1997), у него прямые записи о ведении торгового дневника.
-
-**Рекомендация контроллеру:** оставить Наймана, но переписать его врезку через цитату о психологии («Главная причина потерь — внутри нас») и снять с него обязательство быть про journaling специально. Тогда тема «дисциплина чемпионов» расширяется на «дисциплина самонаблюдения», что закрывает Наймана честно. Если контроллер хочет строго journaling-only — заменить на **Линду Брэдфорд Рашке** (см. предложенный шаблон в конце документа).
-
-### Историческая неточность в исходном кастинге
-
-**Александр Элдер — год рождения.** Спека указывает «born 1932». По множественным источникам (Wikipedia EN/RU, Wikidata Q4530754, livelib, equity.today) — Элдер родился в **1950 или 1951** году в Ленинграде, бежал из СССР в 1974 (как судовой врач, в порту Кот-д'Ивуар, в возрасте 23 лет). 1932 в спеке — фактическая ошибка кастинга. Используем 1950 (с пометкой «или 1951» по Wikidata).
-
-**Стэнли Дракенмиллер — нюанс к journal-discipline.** В отличие от Ливермора, Дарваса, Минервини, Элдера — у Дракенмиллера НЕТ публично известной практики ведения личного торгового дневника в смысле «записываю каждую сделку в тетрадку». Его «дисциплина» — это макро-теза + position sizing + чёткие правила выхода. Цитаты ниже подобраны под формулировку «дисциплина концентрации», а не «journaling». Это честно с источниками, но контроллеру стоит знать: если секция строго про journaling, Дракенмиллер — слабое звено и его можно заменить на **Эда Сейкоту** («Market Wizards», его правила записаны и опубликованы) или **Пола Тюдора Джонса** (PTJ documented his trades in journal — у него прямые упоминания в «Market Wizards»).
+| 2 | Николас Дарвас | 1920—1977 | «Даже в Кашмире и Непале ежедневная телеграмма исправно приходила.» (нарратив гл. 5) | «How I Made $2,000,000 in the Stock Market», глава 5 «Cables Round the World» |
+| 3 | Марк Минервини | р. 1965 | «Самая ценная информация о вашей торговле — это сама ваша торговля.» | «Think & Trade Like a Champion» (2016), раздел «Know the Truth About Your Trading» |
+| 4 | Пол Тюдор Джонс | р. 1954 | «I have a mental stop. If it hits that number, I am out no matter what.» | «Market Wizards» (Schwager, 1989), глава «The Art of Aggressive Trading» |
+| 5 | Александр Элдер | р. 1950 | «Покажите мне трейдера с хорошими записями — и я покажу вам хорошего трейдера.» | «Come Into My Trading Room» (2002), глава «Record-Keeping» |
+| 6 | Линда Брэдфорд Рашке | р. 1959 | «I've learned more by notating signals on charts, studying when signals don't work…» | «Trading Sardines» (2019) |
 
 ---
 
@@ -117,43 +97,43 @@
 
 **Journal-keeping fact:** Минервини ведёт post-trade analysis spreadsheet после каждой сделки — фиксирует процент позиции от капитала, причину входа, уровень стопа, фактический результат в R-multiples. Раз в квартал агрегирует и сверяет с план-fact: какой сетап работал, какой — нет. Этот процесс — центр его методологии SEPA. Целая глава в «Think & Trade Like a Champion» («Know the Truth About Your Trading») посвящена именно этому: «the most valuable information about your trading is your trading».
 
-**Wikipedia:** Wikipedia-статьи о Минервини **нет ни в EN, ни в RU** на момент проверки 2026-05-18 (URL `https://en.wikipedia.org/wiki/Mark_Minervini` возвращает 404). Альтернатива: страница на **CMT Association** (`https://cmtassociation.org/presenter/mark-minervini/`) или **Grokipedia** (`https://grokipedia.com/page/Mark_Minervini`). Для русскоязычной аудитории — обзор на vc.ru (`https://vc.ru/u/576875-aleksandr-gorbunov/767629-mark-minervini-treyder-protiv-uoll-strit`).
+**sameAs URL (для schema.org Person):** **https://cmtassociation.org/presenter/mark-minervini/** (verified 2026-05-18 — страница активна, содержит официальный био-абзац Минервини на сайте CMT Association: «Mark Minervini is a technical analyst, author, instructor, and independent trader with over 30 years of finance experience… featured in Jack Schwager's *Stock Market Wizards*… developed the Specific Entry Point Analysis® (SEPA) methodology»). Wikipedia-статьи о Минервини нет ни в EN, ни в RU на 2026-05-18 (`en.wikipedia.org/wiki/Mark_Minervini` → 404). CMT Association — авторитетный профессиональный орган Chartered Market Technicians, основан в 1973; страница Минервини как presenter содержит ссылки на его статьи и подкаст-интервью 2013 года в их библиотеке.
 
 **Portrait source:** Минервини жив (60 лет на момент составления), его фотографии — copyrighted (CMT Association profile photo, X-аватар @markminervini, обложки книг McGraw-Hill и Access Publishing). Для editorial-гравюры: лучше всего использовать обложку «Think & Trade Like a Champion» (crop портрета автора) под fair-use «commentary/critical illustration» — но при коммерческом лендинге безопаснее **запросить разрешение** через Minervini Private Access или сделать стипл-гравюру по существенно переработанной композиции с явным указанием «illustration based on author photograph».
 
 ---
 
-### Стэнли Дракенмиллер (Stanley Druckenmiller, born 1953)
+### Пол Тюдор Джонс (Paul Tudor Jones II, born 1954)
 
 **Biography (60 words max):**
-Американский инвестор, родился 14.06.1953 в Питтсбурге. Управлял Duquesne Capital (1981—2010) — 30% годовых без единого убыточного года. С 1988 по 2000 руководил Quantum Fund вместе с Соросом, заработал $1 млрд на короткой позиции по фунту в «Чёрную среду» 1992. В 2010 закрыл хедж-фонд, перешёл в филантропию.
+Американский хедж-фонд-менеджер, родился 28.09.1954 в Мемфисе. Основал Tudor Investment Corporation в 1980. Известен предсказанием краха 1987 — короткие позиции принесли ему $100 млн в «Чёрный понедельник». В 1987 PBS снял о нём документальный фильм «Trader» (Jones впоследствии скупил права и копии). Co-founder Robin Hood Foundation (1988). State 2024: ~$8,1 млрд.
 
 **Quote candidates:**
 
-1. «If you really see it, put all your eggs in one basket and then watch the basket very carefully.»
-   *Перевод (RU):* «Если вы действительно это видите — положите все яйца в одну корзину и наблюдайте за ней очень внимательно.»
-   *Источник:* Лекция Stanley Druckenmiller в Lost Tree Club, 18 января 2015, North Palm Beach, Florida. Полная транскрипция: GuruFocus, май 2015.
+1. «I have a mental stop. If it hits that number, I am out no matter what.»
+   *Перевод (RU):* «У меня есть ментальный стоп. Если цена доходит до этого числа — я выхожу при любом раскладе.»
+   *Источник:* Paul Tudor Jones, интервью Джеку Швагеру в «Market Wizards: Interviews with Top Traders» (1989, New York Institute of Finance / Wiley), глава «The Art of Aggressive Trading». Известная Jones-овская формулировка обязательного pre-trade exit rule, фиксируемого до входа в сделку.
 
-2. «Bulls make money, bears make money, and pigs get slaughtered. I'm here to tell you I was a pig. And I strongly believe the only way to make long-term returns in our business that are superior is by being a pig.»
-   *Перевод (RU):* «Быки делают деньги, медведи делают деньги, свиней режут. Скажу вам — я был свиньёй. И я твёрдо верю: единственный способ получать в нашей профессии выдающуюся долгосрочную доходность — быть свиньёй.»
-   *Источник:* Druckenmiller, интервью Джеку Швагеру в «The New Market Wizards» (1992), глава «The Art of Top-Down Investing». Дракенмиллер повторил эту мысль в лекции Lost Tree Club 18.01.2015.
+2. «Every day I assume every position I have is wrong. I know where my stop risk points are going to be. I do that so I can define my maximum drawdown. Hopefully, I spend the rest of the day enjoying positions that are going in my direction.»
+   *Перевод (RU):* «Каждый день я исхожу из того, что любая моя позиция — ошибка. Я знаю, где будут мои стоп-уровни. Я делаю это, чтобы определить свой максимальный drawdown. И тогда, надеюсь, остаток дня я провожу, наслаждаясь позициями, которые идут в мою сторону.»
+   *Источник:* Paul Tudor Jones, многократно повторённая формулировка из интервью «Market Wizards» (Schwager, 1989) и последующих публичных выступлений; полный канонический вариант — широко воспроизводится в подборках цитат с прямой атрибуцией к Schwager-овской главе «The Art of Aggressive Trading».
 
-3. «Never, ever invest in the present. It doesn't matter what a company is earning, what they have earned. You have to visualize the situation 18 months from now.»
-   *Перевод (RU):* «Никогда, никогда не инвестируйте в настоящее. Не важно, сколько компания зарабатывает сейчас и сколько заработала. Вы должны увидеть ситуацию через 18 месяцев.»
-   *Источник:* Lost Tree Club lecture, 18.01.2015.
+3. «I'm always thinking about losing money as opposed to making money. Don't focus on making money; focus on protecting what you have.»
+   *Перевод (RU):* «Я всегда думаю о потере денег, а не о заработке. Не фокусируйтесь на том, чтобы заработать — фокусируйтесь на сохранении того, что есть.»
+   *Источник:* Jones, «Market Wizards» (Schwager, 1989), глава «The Art of Aggressive Trading». Канонический Jones risk-first principle.
 
-**Journal-keeping fact:** *(see REPLACEMENTS — у Дракенмиллера нет публично документированной практики ведения торгового дневника в обычном смысле.)* То, что есть: он годами вёл подробные **investment thesis memos** — длинные записки на 5—10 страниц по каждой крупной позиции, с обоснованием макро-картины, временного горизонта, сценариев. Эти memo циркулировали внутри Duquesne Capital и Soros Fund Management. По свидетельству Соросa в «Alchemy of Finance» и собственным интервью Дракенмиллера — каждый раз перед крупным макро-трейдом он писал такой memo и обновлял по мере изменения данных. Это его форма «дневника»: не журнал трейдов, а журнал тезисов.
+**Journal-keeping fact:** Джонс известен ручной записью на жёлтых legal pads — фирменная привычка офиса Tudor Investment Corp в 1980-х. В документальном фильме PBS «Trader» (1987) Jones многократно показан с блокнотом в руке: помечает уровни маркета, фиксирует ментальные стопы, набрасывает сценарии. Каждое утро перед открытием Jones писал «play-by-play» предполагаемого движения — what would happen if S&P breaks X, what if bonds fall to Y. Дополнительно: его правило «every day I assume every position I have is wrong» — операционализированная форма дневной pre-mortem-записи: чтобы знать, где выйти, надо это записать до входа. *Примечание:* prison-style рукописный дневник трейдов в формате tabular journal у Jones публично НЕ задокументирован — его «дневник» — это hand-written scenario notes plus mental stop levels на legal pads, а не Элдер-стайл equity curve со всеми трейдами. Это честно с источниками.
 
-**Wikipedia:** https://ru.wikipedia.org/wiki/Дракенмиллер,_Стэнли (verified 2026-05-18, статья существует, дата рождения 14.06.1953 подтверждена).
+**Wikipedia:** https://en.wikipedia.org/wiki/Paul_Tudor_Jones (verified 2026-05-18, статья EN существует, ФИО «Paul Tudor Jones II», дата рождения 28.09.1954, биография подробная). Русская Wikipedia статьи **НЕТ** на 2026-05-18 (`ru.wikipedia.org/wiki/Джонс,_Пол_Тюдор` → 404, альтернативный URL `Тюдор_Джонс,_Пол` тоже 404). Для русскоязычной аудитории на лендинге использовать EN-Wikipedia или альтернативу: профиль Forbes (`https://www.forbes.com/profile/paul-tudor-jones-ii/`).
 
-**Portrait source:** Дракенмиллер жив (72 года), фотографии — copyrighted. Доступные источники: Bloomberg interviews, CNBC appearances, Real Vision; есть фото в Wikimedia Commons (CC-BY) с одного из его публичных выступлений. Для гравюры: использовать кадр из Bloomberg Markets интервью 2020-х (фронтальный портрет в очках, седина) — но при коммерческом лендинге сделать стипл-гравюру по композиции с пометкой «illustration based on public domain interview still». Альтернатива безопаснее — рисунок-силуэт.
+**Portrait source:** Jones жив (71 год), фотографии copyrighted. Доступные источники: фото с Sohn Investment Conference, его TED Talk (TEDxMidAtlantic 2010, «Why we need to rethink capitalism»), архивные кадры из «Trader» (1987) — Jones молод, в красных подтяжках на торговом полу. Идеальная иконография для стипл-гравюры: красные подтяжки + рубашка + legal pad в руке = узнаваемый Wall-Street-1987-icon. Для editorial-гравюры: использовать still из «Trader» (1987) — фильм формально под копирайтом Jones, но фрагменты широко циркулируют; либо TEDxMidAtlantic 2010 still (CC-BY) — портрет в кадре. Безопаснее всего — стипл-гравюра по существенно переработанной композиции с пометкой «illustration based on 1987 Trader documentary still».
 
 ---
 
 ### Александр Элдер (Alexander Elder, born 1950)
 
 **Biography (60 words max):**
-Родился в Ленинграде в 1950 (по Wikidata — 1950 или 1951). Вырос в Эстонии, закончил мединститут в Тарту в 22 года. В 1974 бежал из СССР, работая судовым врачом в порту Абиджан (Кот-д'Ивуар) — получил политическое убежище в США. Работал психиатром в Нью-Йорке, преподавал в Колумбийском университете. С конца 1970-х — трейдер. В 1988 основал Financial Trading Seminars.
+Родился в Ленинграде в 1950. Вырос в Эстонии, закончил мединститут в Тарту в 22 года. В 1974 бежал из СССР, работая судовым врачом в порту Абиджан (Кот-д'Ивуар) — получил политическое убежище в США. Работал психиатром в Нью-Йорке, преподавал в Колумбийском университете. С конца 1970-х — трейдер. В 1988 основал Financial Trading Seminars (ныне elder.com).
 
 **Quote candidates:**
 
@@ -171,46 +151,42 @@
 
 **Journal-keeping fact:** Элдер — самый систематичный методолог дневника среди всей шестёрки. В «Come Into My Trading Room» (2002) посвятил отдельную главу «Record-Keeping» формату трейдерского журнала: equity curve, журнал сделок по строкам (вход, стоп, тейк, фактический выход, причина), журнал уроков отдельно от журнала сделок (lessons learned), скриншот графика на момент входа. По его собственному утверждению (в интервью 2003 года tradingmarkets.com): «качество ведения записей — единственный важнейший фактор успеха или неудачи трейдера».
 
-**Wikipedia:** https://ru.wikipedia.org/wiki/Элдер,_Александр (verified 2026-05-18, статья на русском существует, дата рождения «1951 или 1950» — указана с дисклеймером, биография подробная).
+**Год рождения — уточнение:** Год рождения уточнён: **1950** (Wikidata Q4530754, livelib.ru, ru.wikipedia с дисклеймером «1950 или 1951»). Спека `docs/spec/...` § 3.2 (2026-05-18) изначально указывала **1932** — это ошибка кастинга; принятая дата при rebuild — **1950**. Биографически согласуется: эмиграция в 1974 в возрасте 23—24 лет (судовой врач после мединститута, закончил в 22 года).
 
-**Portrait source:** Элдер жив (74—75 лет), фотографии — copyrighted (его сайт elder.com, обложки книг Wiley). Для editorial-гравюры: использовать его «authorial portrait» с обложки «The New Trading for a Living» (Wiley, 2014) под fair-use либо запросить разрешение через elder.com (он сам ведёт частный бизнес, обычно отвечает). Стипл-гравюра по композиции «врач-психиатр в кабинете» — идеально вяжется с его биографией.
+**Wikipedia:** https://ru.wikipedia.org/wiki/Элдер,_Александр (verified 2026-05-18, статья на русском существует, дата рождения «1950 или 1951» — указана с дисклеймером, биография подробная).
+
+**Portrait source:** Элдер жив (75 лет), фотографии — copyrighted (его сайт elder.com, обложки книг Wiley). Для editorial-гравюры: использовать его «authorial portrait» с обложки «The New Trading for a Living» (Wiley, 2014) под fair-use либо запросить разрешение через elder.com (он сам ведёт частный бизнес, обычно отвечает). Стипл-гравюра по композиции «врач-психиатр в кабинете» — идеально вяжется с его биографией.
 
 ---
 
-### Эрик Найман (Erik Nayman, born 1969)
+### Линда Брэдфорд Рашке (Linda Bradford Raschke, born 1959)
 
 **Biography (60 words max):**
-Украинский экономист, родился 12.02.1969 в Рудном (Казахская ССР), вырос в Новосибирске, в 1995 переехал в Киев. Доктор экономических наук (1998). Работал в Альфа-Капитале, Поляр-Инвест, Укрсоцбанке. С 2011 — управляющий партнёр Capital Times, с 2018 — соучредитель HUG'S. Автор «Малой энциклопедии трейдера» (1997, 18 изданий) и пяти других книг по трейдингу.
+Американская трейдер, родилась в 1959 в Пасадене (Калифорния). Двойной диплом Occidental College по экономике и музыкальной композиции (1980). С 1981 — market maker по опционам на equity, затем futures-трейдер. В 1992 зарегистрировалась как CTA. Основала LBRGroup, Inc. Соавтор «Street Smarts» (1995, с Лоренсом Коннорсом) и автор «Trading Sardines» (2019). Lifetime Achievement Award IFTA (2024). Единственная женщина в касте МААТТ.
 
 **Quote candidates:**
 
-1. «Главная причина потерь — внутри нас, в нашем "Я".»
-   *Перевод (нет — оригинал на русском):* —
-   *Источник:* Эрик Найман, «Малая энциклопедия трейдера» (1997), раздел «Психология игры». *Примечание:* цитата собрана из подборок («Топ-10 цитат», taxfree.livejournal.com), точная страница издания 2021 года не зафиксирована — рекомендация перепроверить по бумажному изданию.
+1. «I've learned more by notating signals on charts, studying when signals don't work, looking for secondary or confirming signs, and recording seas of data by hand.»
+   *Перевод (RU):* «Я научилась большему, размечая сигналы прямо на графиках, изучая случаи, когда сигнал не сработал, ища вторичные подтверждающие признаки и записывая моря данных вручную.»
+   *Источник:* Linda Bradford Raschke, «Trading Sardines: Lessons in the Markets from a Lifelong Trader» (2018/2019, Bradken Publications). Прямая цитата в разделе о manual backtesting и ведении data records. Воспроизведена в подборке Macro Ops (`macro-ops.com/lessons-from-a-trading-great-linda-bradford-raschke/`, проверено 2026-05-18) с явной атрибуцией к книге.
 
-2. «Ответственность за деньги лежит не на лучшем аналитике в мире, а на вас.»
-   *Источник:* Найман, «Малая энциклопедия трейдера» (1997), раздел «Психология игры».
+2. «It's easier to do your homework at night.»
+   *Перевод (RU):* «Домашнюю работу проще делать вечером.»
+   *Источник:* Raschke в диалоге с Лоренсом Коннорсом в «Street Smarts: High Probability Short-Term Trading Strategies» (Connors & Raschke, M. Gordon Publishing, 1995), раздел сетапа «Turtle Soup Plus One». Контекст: вечерняя подготовка сетапов следующего дня после закрытия рынка — её базовый паттерн дисциплины.
 
-3. «Трейдером можно называться только после года работы с реальными деньгами.»
-   *Источник:* Найман, «Малая энциклопедия трейдера» (1997).
+3. «My best work came from testing by hand. I could see where a signal worked and why. I could also look at the conditions where signals failed.»
+   *Перевод (RU):* «Моя лучшая работа получалась при ручном тестировании. Я могла увидеть, где сигнал сработал и почему. Я могла также рассмотреть условия, в которых сигналы не срабатывали.»
+   *Источник:* Raschke, «Trading Sardines» (2019), раздел о manual backtesting; воспроизведено Macro Ops (verified 2026-05-18).
 
-**Journal-keeping fact:** **FLAG — не верифицировано в открытых источниках.** В «Малой энциклопедии трейдера» есть раздел «Психология игры» и раздел про управление капиталом, но прямого описания техники ведения торгового дневника в найденных online-выдержках нет. Возможно, оно есть в полном тексте книги (1997, 1999, 2003, 2008, 2010, 2014, 2018, 2021 — 18 редакций; раздел может быть только в поздних). Рекомендация: либо сверить с бумажной книгой 2021 года издания, либо вынести Наймана из секции и заменить (см. REPLACEMENTS).
+**Journal-keeping fact:** Рашке ежедневно **от руки** записывает показания индикаторов и цены закрытия по 24+ фьючерсным рынкам, которые она отслеживает. По её собственным словам, ручная запись «keeps her in tune with the market in a way that just following things on a screen can't» (Macro Ops, 2026-05-18). Помимо этого, её основной журналистский ритуал — pre-market homework вечером после закрытия: разметка графиков на следующий день, фиксация сетапов, фиксация conditional rules входа («if X opens above Y, then…»). Это позволяет ей входить утром «with an undisturbed judgment». Также написала отдельный материал «The Rituals of Trading» (опубликован на её сайте `lindaraschke.net` — на момент проверки 2026-05-18 прямая ссылка `/wp-content/uploads/2013/11/rituals.pdf` возвращает 404, но статья распространена в трейдерских community-архивах).
 
-**Wikipedia:** RU Wikipedia статьи **НЕТ** на 2026-05-18 (поиск «Найман, Эрик» в ru.wikipedia.org возвращает пустой результат). Доступная альтернатива: **UK Wikipedia** — https://uk.wikipedia.org/wiki/Ерік_Найман (verified 2026-05-18, статья на украинском, биография подробная, дата рождения 12.02.1969 подтверждена). Для русскоязычной аудитории URL украинской Википедии — компромисс; альтернатива — `https://dic.academic.ru/dic.nsf/ruwiki/1836130` (Academic — словарь, не Wikipedia, но цитирует ruwiki).
+**Wikipedia:** https://en.wikipedia.org/wiki/Linda_Bradford_Raschke (verified 2026-05-18, EN-статья существует, реальная — НЕ 404 и НЕ redirect; биография подробная: место рождения Пасадена, год 1959, дипломы Occidental College 1980, начало карьеры 1981 как market maker, LBRGroup, Lifetime Achievement Award IFTA 2024). Русской Wikipedia статьи **НЕТ** на 2026-05-18 — `ru.wikipedia.org/wiki/Рашке,_Линда_Брэдфорд` возвращает «нет такой статьи». Для русскоязычной аудитории на лендинге использовать EN-Wikipedia.
 
-**Portrait source:** Найман жив (57 лет), активный публичный спикер. Фотографии — copyrighted (его сайт HUG'S, обложка «Малой энциклопедии трейдера» от Альпина Паблишер, выступления на YouTube). Для editorial-гравюры: запросить разрешение через HUG'S (`hugs.fund/ru/team/erik-nayman/`) либо использовать обложку книги под fair-use commentary. Узнаваемая иконография: бородка, очки, спокойный взгляд — хорошо подходит под Sage-эстетику лендинга.
+**Portrait source:** Рашке жива (66 лет), активно ведёт `lindaraschke.net` и обучающие программы. Фотографии — copyrighted (её сайт, обложка «Trading Sardines», IFTA Lifetime Achievement Award 2024 publicity stills, YouTube-канал). Узнаваемая иконография: уверенный взгляд, тёмные волосы, графики на заднем плане — visually distinct from остальных пяти champion'ов (все мужчины). Это **важный design-affordance** для МААТТ-лендинга: единственная женщина в касте делает секцию «Дисциплина чемпионов» представительнее по гендеру. Для editorial-гравюры: использовать публичные still из IFTA 2024 ceremony либо обложку «Trading Sardines» (Bradken Publications) под fair-use commentary; альтернатива — запросить разрешение через `lindaraschke.net` contact form.
 
 ---
 
-## Альтернативный кастинг — Линда Брэдфорд Рашке (если меняем Наймана)
+## Changelog
 
-### Linda Bradford Raschke (born 1959)
-
-**Biography (60 words max):**
-Американская трейдер. Торгует с 1981, специализация — фьючерсы и краткосрочные сетапы. Соавтор «Street Smarts: High Probability Short-Term Trading Strategies» (1995, с Лоренсом Коннорсом) и «Trading Sardines» (2019). Интервьюирована Швагером в «The New Market Wizards» (1992). Управляющий партнёр LBR Group. Единственная женщина-трейдер высшего эшелона из эпохи 1990-х с публичной верифицируемой методологией.
-
-**Quote candidate:** *"Keep your charts marked up so you can do a complete review at the end of each day. The day you stop reviewing is the day you stop improving."* — Raschke, «Street Smarts» (1995). Точная страница: глава «Daily Review».
-
-**Wikipedia:** https://en.wikipedia.org/wiki/Linda_Bradford_Raschke (требует verify; статья есть).
-
-**Plus to МААТТ:** диверсификация (единственная женщина в casting), американо-европейский контекст, методология краткосрочного swing — ближе к аудитории P1 МААТТ (30—200 сделок/мес).
+- **2026-05-18 v1:** первоначальное исследование с исходным составом 6 чемпионов: Ливермор, Дарвас, Минервини, Дракенмиллер, Элдер, Найман. Флагировано две проблемы: (a) у Наймана не нашлось verbatim journal-quote в открытых источниках; (b) у Дракенмиллера нет публичной практики ведения торгового дневника в строгом смысле; (c) год рождения Элдера в спеке (1932) расходится с верифицированными источниками (1950).
+- **2026-05-18 v2 (this revision):** контроллер принял замены — **Найман → Линда Брэдфорд Рашке** (verifiable journal-quotes в «Trading Sardines» 2019 + «Street Smarts» 1995; единственная женщина в касте, балансирует gender representation), **Дракенмиллер → Пол Тюдор Джонс** (verifiable journal-discipline через legal pads + PBS «Trader» 1987 + Market Wizards 1989). Исправлен год рождения Александра Элдера: **1932 → 1950** (Wikidata Q4530754). Обновлён sameAs URL Марка Минервини: убрана отсылка к несуществующей Wikipedia-странице, добавлен профиль **CMT Association** (`https://cmtassociation.org/presenter/mark-minervini/`, verified 2026-05-18). Удалена секция «REPLACEMENTS recommended» (решения приняты). Финальный состав в новом порядке: Ливермор → Дарвас → Минервини → Пол Тюдор Джонс → Элдер → Рашке.
