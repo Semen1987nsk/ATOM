@@ -453,9 +453,21 @@ async def get_stats(
         })
     tag_stats = sorted(tag_stats, key=lambda x: x["pnl"], reverse=True)
 
+    # Baseline для %-метрик (просадка, Calmar): историческая capital base, не 0.
+    # Для broker_user `starting_balance = 0` by design (equity_curve = cumulative PnL),
+    # но передавать 0 в drawdown_pct формулу => peak инициализируется нулём, любая
+    # первая прибыль становится peak'ом, и dd_pct улетает в сотни %% (нерееалистично).
+    # Подставляем Σ NET_DEPOSIT — сумму всех денег, заведённых на счёт за историю.
+    if is_broker_user and starting_net_deposit > 0:
+        drawdown_baseline = starting_net_deposit
+    elif starting_balance > 0:
+        drawdown_baseline = starting_balance
+    else:
+        drawdown_baseline = base_initial_balance if base_initial_balance > 0 else 0
+
     # Расчет дополнительных метрик
     sortino_data = analytics.calculate_sharpe_sortino(pnls)
-    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted, initial_balance=starting_balance)
+    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted, initial_balance=drawdown_baseline)
     win_loss_data = analytics.calculate_win_loss_stats(pnls)
     streaks_data = analytics.calculate_streaks(pnls_sorted)
     tail_ratio_data = analytics.calculate_tail_ratio(pnls)
@@ -481,7 +493,11 @@ async def get_stats(
         period_start_balance_source = "manual_override"
         period_start_balance_reason = None
 
-    calmar_initial_balance = starting_balance if starting_balance > 0 else base_initial_balance
+    # Calmar baseline = drawdown_baseline (consistency: одна метрика «пик капитала»
+    # для просадки И для CAGR). Раньше drawdown использовал starting_balance=0,
+    # а Calmar fallback на account.initial_balance — давали разный max_drawdown_pct
+    # в двух карточках. Теперь оба читают drawdown_baseline.
+    calmar_initial_balance = drawdown_baseline if drawdown_baseline > 0 else base_initial_balance
     calmar_data = analytics.calculate_calmar_ratio(
         pnls_sorted,
         initial_balance=calmar_initial_balance,
