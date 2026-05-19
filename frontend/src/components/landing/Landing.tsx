@@ -23,10 +23,10 @@ const NAV_LINKS = [
 ];
 
 const NUMBERS_BAND = [
-  { value: "30+", label: "метрик статистики", note: "Optimal f, SQN, Sortino, Calmar и др." },
-  { value: "6", label: "MOEX-бордов", note: "акции, ОФЗ, корп. облигации, ETF, фьючерсы, валюты" },
-  { value: "60 сек", label: "обновление портфеля", note: "через Tinkoff Invest API" },
-  { value: "399 ₽", label: "/ месяц Pro", note: "без карты на старте, 21 день в подарок" },
+  { value: "30+", label: "метрик из книг", note: "Винс, Тарп · Optimal f, SQN, Sortino, Calmar" },
+  { value: "6", label: "торговых режимов MOEX", note: "акции, ОФЗ, корп. облигации, ETF, фьючерсы, валюты" },
+  { value: "60 сек", label: "синхронизация сделок", note: "через Tinkoff Invest API · read-only" },
+  { value: "399 ₽", label: "в месяц · Pro", note: "без карты на старте · 21 день в подарок" },
 ];
 
 const METRICS_TABLE: Array<{ metric: string; source: string; what: string; where: string; explainer?: string }> = [
@@ -88,23 +88,24 @@ export function Landing() {
           <div className="col-span-12 lg:col-span-7">
             <p className="editorial-eyebrow mb-7">── Журнал сделок · MOEX</p>
             <h1 className="editorial-display mb-9 text-[var(--ink)]">
-              Системная торговля
+              Запись делает трейдера.
               <br />
-              <em>начинается с дневника.</em>
+              <em>Что записано — то измерено.</em>
             </h1>
             <p className="editorial-lede max-w-[36ch] mb-10">
-              Тридцать с лишним метрик и MAE/MFE из биржевых свечей — на ваших
-              сделках MOEX. Автосинхронизация с Тинькофф, никакого Excel.
+              MAE и MFE из биржевых свечей. Тридцать с лишним метрик из работ
+              Винса и Тарпа. На ваших сделках MOEX. Автосинхронизация
+              с Тинькофф — 60 сек.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-5">
               <Link href="/register" className="btn-primary">
                 Начать бесплатно <ArrowRight size={16} />
               </Link>
               <Link
-                href="/manual"
+                href="/register?provider=tinkoff_id"
                 className="text-[14px] text-[var(--ink-2)] hover:text-[var(--ink)] transition-colors no-underline inline-flex items-center gap-1 py-3"
               >
-                Подключить Тинькофф ID <ArrowRight size={13} />
+                Войти через Тинькофф ID <ArrowRight size={13} />
               </Link>
             </div>
             <p className="mt-6 text-[12px] text-[var(--ink-3)] num">
@@ -286,13 +287,14 @@ export function Landing() {
       </section>
 
       {/* 11. PULL-QUOTE */}
+      {/* placeholder — заменить после реальных интервью (Q3 2026 paid launch onwards) */}
       <section className="px-6 lg:px-12 py-20 border-y border-[var(--rule)]">
         <div className="max-w-[920px] mx-auto">
           <div className="w-12 h-px bg-[var(--accent)] mb-10" aria-hidden />
           <blockquote className="editorial-pullquote text-[var(--ink)] m-0 p-0">
-            «Перестал гадать.
+            «Перестал спорить с памятью.
             <br />
-            <em>Начал считать.»</em>
+            <em>Открыл журнал.»</em>
           </blockquote>
           <cite
             className="block mt-6 text-[13px] not-italic text-[var(--ink-3)]"

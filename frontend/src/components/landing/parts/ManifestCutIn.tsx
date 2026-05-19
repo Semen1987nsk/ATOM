@@ -8,9 +8,9 @@ export function ManifestCutIn() {
       <div className="max-w-[920px] mx-auto">
         <div className="w-12 h-px bg-[var(--accent)] mb-10" aria-hidden />
         <blockquote className="editorial-pullquote text-[var(--ink)] m-0 p-0">
-          Каждая сделка <em>измерена.</em>
+          Журнал — не отчётность.
           <br />
-          Каждое решение <em>взвешено.</em>
+          Журнал — <em>инструмент.</em>
         </blockquote>
       </div>
     </section>
