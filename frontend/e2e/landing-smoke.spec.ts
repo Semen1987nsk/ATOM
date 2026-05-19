@@ -7,13 +7,14 @@ test.describe("Landing — smoke", () => {
 
   test("renders all 16 sections without errors", async ({ page }) => {
     await expect(page.getByRole("link", { name: "МААТТ" }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Запись делает трейдера/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Запись делает трейдера/i }).first()).toBeVisible();
     await expect(page.getByText(/Журнал — не отчётность/i).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Двенадцать правил против/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /MAE и MFE — из минутных свечей/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Свечи MOEX вокруг каждой/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Для серьёзного/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Перестаньте гадать/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Если торгуете MOEX — вам/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Free — чтобы понять. Pro — чтобы изменить/i })).toBeVisible();
+    await expect(page.getByText(/Начните вести/i)).toBeVisible();
   });
 
   test("ticker shows 5 symbols (live or fallback)", async ({ page }) => {

@@ -13,7 +13,7 @@ import { HeroEquityCurve } from "./parts/HeroEquityCurve";
 import { InteractiveCandleChart } from "./parts/InteractiveCandleChart";
 import { TradeReplayWidget } from "./parts/TradeReplayWidget";
 import { ManifestCutIn } from "./parts/ManifestCutIn";
-import { MaattOrigin } from "./parts/MaattOrigin";
+import { AudienceQualifier } from "./parts/AudienceQualifier";
 import { SimpleFactSection } from "./parts/SimpleFactSection";
 import { ChampionsSection } from "./parts/ChampionsSection";
 
@@ -377,26 +377,33 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 13. AUDIENCE QUALIFIER (МААТТ origin) */}
-      <MaattOrigin />
+      {/* 13. AUDIENCE QUALIFIER */}
+      <AudienceQualifier />
 
       {/* 14. PRICING TEASER */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule-strong)]">
         <div className="max-w-[1200px] mx-auto">
           <p className="editorial-eyebrow mb-6">Раздел 06 — Тарифы</p>
-          <h2 className="editorial-h2 mb-16 text-[var(--ink)]">Бесплатно до пятидесяти сделок в&nbsp;месяц.</h2>
+          <h2 className="editorial-h2 mb-16 text-[var(--ink)]">Free — чтобы понять. Pro — чтобы&nbsp;изменить.</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
             <div className="border-t border-[var(--rule)] pt-8">
-              <div className="flex items-baseline justify-between mb-6">
+              <div className="flex items-baseline justify-between mb-4">
                 <h3 className="text-[26px] font-medium" style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>Free</h3>
                 <div className="num text-[28px] text-[var(--ink-2)]">0 ₽</div>
               </div>
+              <p
+                className="text-[14px] italic text-[var(--ink-3)] mb-6 leading-snug"
+                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+              >
+                Чтобы понять, что происходит на счёте.
+              </p>
               <ul className="space-y-3 mb-8 list-none p-0 text-[15px] text-[var(--ink-2)] leading-relaxed">
-                <li>До 50 сделок в месяц с FIFO-учётом</li>
-                <li>Базовые метрики: P&amp;L, Win Rate, Profit Factor</li>
-                <li>Импорт CSV / Excel из любого терминала MOEX</li>
-                <li>Ручной ввод сделок</li>
+                <li>До 50 сделок в месяц с FIFO-учётом. Выше — старые вытесняются.</li>
+                <li>P&amp;L, Win Rate, Profit Factor — базовые метрики на закрытых сделках.</li>
+                <li>Импорт CSV / Excel из любого терминала MOEX. Ручной ввод сделок.</li>
+                <li>Календарный P&amp;L по дням недели — какие дни в плюсе, какие в минусе.</li>
+                <li>Журнал на одном счёте. MAE/MFE из свечей — в Pro.</li>
               </ul>
               <Link href="/register" className="text-[14px] text-[var(--ink)] hover:text-[var(--accent)] transition-colors no-underline inline-flex items-center gap-1.5">
                 Открыть бесплатно <ArrowRight size={13} />
@@ -404,18 +411,31 @@ export function Landing() {
             </div>
 
             <div className="border-t-2 border-[var(--accent)] pt-8">
-              <div className="flex items-baseline justify-between mb-6">
+              <div className="flex items-baseline justify-between mb-4">
                 <h3 className="text-[26px] font-medium" style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>Pro</h3>
                 <div className="num text-[28px] text-[var(--ink)]">
                   399 ₽<span className="text-[14px] text-[var(--ink-3)] font-normal"> / мес</span>
                 </div>
               </div>
+              <div
+                className="inline-flex items-center mb-4 px-2.5 py-1 border border-[var(--accent)] text-[11px] text-[var(--accent)] uppercase tracking-[0.08em]"
+                style={{ fontFamily: "var(--font-mono), monospace" }}
+              >
+                21 день в подарок · без карты
+              </div>
+              <p
+                className="text-[14px] italic text-[var(--ink-3)] mb-6 leading-snug"
+                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+              >
+                Чтобы изменить то, что вы там увидели.
+              </p>
               <ul className="space-y-3 mb-8 list-none p-0 text-[15px] text-[var(--ink-2)] leading-relaxed">
-                <li>Все метрики (30+): Optimal f, SQN, Sortino, Calmar, Monte Carlo</li>
-                <li>Автоматический MAE / MFE из свечей MOEX</li>
-                <li>AI-разбор каждой закрытой сделки</li>
-                <li>Trade Replay со свечами биржи</li>
-                <li>API-синхронизация с Тинькофф (read-only)</li>
+                <li>MAE и MFE автоматически из минутных свечей MOEX ISS. Видно, где стоп стоит слишком далеко.</li>
+                <li>Optimal f (Винс) и SQN (Тарп) на ваших закрытых сделках — не из бэктеста, не из Excel.</li>
+                <li>Trade Replay со свечами биржи вокруг входа и выхода. Маркеры stop / take / entry / exit.</li>
+                <li>Эвристический разбор по 12 детерминированным правилам. AI-разбор — в roadmap.</li>
+                <li>Тинькофф Invest API read-only, обновление 60 сек. CSV / Excel из БКС, Финама, Сбера, Альфы, ВТБ.</li>
+                <li>До 5 счетов. Безлимит сделок. Экспорт CSV / PDF.</li>
               </ul>
               <Link href="/register" className="btn-primary">
                 Открыть Pro <ArrowRight size={14} />
@@ -424,7 +444,7 @@ export function Landing() {
           </div>
 
           <p className="mt-12 text-center text-[13px] text-[var(--ink-3)]">
-            Без карты на старте. 21 день полного Pro в подарок при регистрации.
+            Без карты на старте. 21 день полного Pro в подарок при регистрации. Отмена в один клик. Все данные экспортируются в CSV.
           </p>
         </div>
       </section>
@@ -433,16 +453,19 @@ export function Landing() {
       <section className="px-6 lg:px-12 py-32 lg:py-40 border-t border-[var(--rule)] border-b border-[var(--rule)]">
         <div className="max-w-[860px] mx-auto text-center">
           <h2 className="editorial-display mb-10 text-[var(--ink)]">
-            Перестаньте гадать.
+            Запись делает трейдера.
             <br />
-            <em>Начните считать.</em>
+            <em>Начните вести.</em>
           </h2>
           <p className="editorial-lede max-w-2xl mx-auto mb-12">
-            Подключите Тинькофф через API или загрузите CSV. Первая статистика — через две минуты.
+            Тинькофф через API. CSV из БКС, Финама, Сбера, Альфы, ВТБ. Ручной ввод. Первая статистика — через две минуты.
           </p>
           <Link href="/register" className="btn-primary inline-flex">
             Начать бесплатно <ArrowRight size={16} />
           </Link>
+          <p className="mt-6 text-[13px] text-[var(--ink-3)]">
+            Без карты. 21 день Pro в подарок. До 50 сделок в месяц — бесплатно бесконечно.
+          </p>
         </div>
       </section>
 
@@ -459,7 +482,7 @@ export function Landing() {
                 МААТТ
               </Link>
               <p className="text-[var(--ink-3)] leading-relaxed text-[13px]">
-                Журнал торговых сделок для активных трейдеров Московской биржи.
+                Журнал сделок для активных трейдеров MOEX. На минутных свечах биржи. На вашем брокере через API или CSV.
               </p>
             </div>
             <div>
@@ -486,9 +509,15 @@ export function Landing() {
               </nav>
             </div>
           </div>
-          <div className="pt-8 border-t border-[var(--rule)] flex flex-wrap items-center justify-between gap-4 text-[13px] text-[var(--ink-3)]">
-            <div>© МААТТ · Точно. Чисто. Честно.</div>
-            <div>Данные: MOEX ISS · Брокеры через API и CSV</div>
+          <div
+            className="pt-8 border-t border-[var(--rule)] mb-6 text-[11px] text-[var(--ink-3)] uppercase tracking-[0.08em]"
+            style={{ fontFamily: "var(--font-mono), monospace" }}
+          >
+            152-ФЗ · Хостинг Yandex Cloud · Тинькофф Invest API read-only · 30 дней передумать
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4 text-[13px] text-[var(--ink-3)]">
+            <div>© МААТТ · Запись. Учёт. Свидетельство.</div>
+            <div>Данные: MOEX ISS · Брокеры через API и CSV · Бета-период · Платный запуск Q3 2026</div>
           </div>
         </div>
       </footer>
