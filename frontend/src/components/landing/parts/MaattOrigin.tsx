@@ -8,7 +8,7 @@ export function MaattOrigin() {
     <section className="px-6 lg:px-12 py-28 lg:py-40 border-t border-[var(--rule)]">
       <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
         <div className="col-span-12 lg:col-span-5">
-          <p className="editorial-eyebrow mb-6">Раздел 05 · Аудитория</p>
+          <p className="editorial-eyebrow mb-6">Раздел 05 — Для серьёзного трейдера</p>
           <h2 className="editorial-h2 mb-6 text-[var(--ink)]">
             Для серьёзного <em>трейдера.</em>
           </h2>

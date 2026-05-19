@@ -117,7 +117,35 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 4. NUMBERS BAND */}
+      {/* 4. SIMPLE FACT — NEW STUB */}
+      <section
+        id="simple-fact"
+        className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)] bg-[var(--paper-tint,#f4ecdc)]"
+      >
+        <div className="max-w-[1200px] mx-auto">
+          <p className="editorial-eyebrow mb-6">Раздел 00 — Сам факт записи</p>
+          <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Сам факт записи.</h2>
+          <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] max-w-[60ch]">
+            [Stub — copy в Task 8]
+          </p>
+        </div>
+      </section>
+
+      {/* 5. CHAMPIONS — NEW STUB */}
+      <section
+        id="champions"
+        className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)]"
+      >
+        <div className="max-w-[1200px] mx-auto">
+          <p className="editorial-eyebrow mb-6">Раздел 00 — Дисциплина чемпионов</p>
+          <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Дисциплина чемпионов.</h2>
+          <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] max-w-[60ch]">
+            [Stub — компонент в Task 9]
+          </p>
+        </div>
+      </section>
+
+      {/* 6. NUMBERS BAND */}
       <section className="px-6 lg:px-12 py-14 border-b border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-10">
           {NUMBERS_BAND.map((n) => (
@@ -139,7 +167,7 @@ export function Landing() {
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
-            <p className="editorial-eyebrow mb-6">Раздел 01 · Trade Replay</p>
+            <p className="editorial-eyebrow mb-6">Раздел 01 — Trade Replay</p>
             <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Что было до — и&nbsp;после.</h2>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
               Минутные свечи Мосбиржи вокруг входа и выхода — автоматически, без
@@ -176,7 +204,7 @@ export function Landing() {
             </div>
           </div>
           <div className="col-span-12 lg:col-span-5 lg:order-2 order-1 flex flex-col justify-center lg:pl-8">
-            <p className="editorial-eyebrow mb-6">Раздел 02 · MAE / MFE</p>
+            <p className="editorial-eyebrow mb-6">Раздел 02 — MAE / MFE</p>
             <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Edge ratio из реальных&nbsp;свечей.</h2>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
               MAE и MFE — главные количественные метрики для оптимизации стопов и
@@ -201,7 +229,7 @@ export function Landing() {
         <div className="max-w-[1200px] mx-auto">
           <div className="grid grid-cols-12 gap-6 mb-12">
             <div className="col-span-12 lg:col-span-7">
-              <p className="editorial-eyebrow mb-6">Раздел 03 · Аналитический центр</p>
+              <p className="editorial-eyebrow mb-6">Раздел 03 — Аналитический центр</p>
               <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Тридцать с лишним метрик. По-настоящему.</h2>
               <p className="text-[16px] leading-[1.65] text-[var(--ink-2)]">
                 Не «P&L и Win Rate с пометкой 30+». Реальные формулы из работ Винса,
@@ -279,7 +307,7 @@ export function Landing() {
       <section className="px-6 lg:px-12 py-24 lg:py-32">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
-            <p className="editorial-eyebrow mb-6">Раздел 04 · Эвристический разбор</p>
+            <p className="editorial-eyebrow mb-6">Раздел 04 — Эвристический разбор</p>
             <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Второй взгляд на&nbsp;каждую сделку.</h2>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
               После каждого закрытия 12 правил проверяют сделку на типичные ошибки —
@@ -315,7 +343,7 @@ export function Landing() {
       {/* 12. PRICING TEASER */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule-strong)]">
         <div className="max-w-[1200px] mx-auto">
-          <p className="editorial-eyebrow mb-6">Раздел 06 · Тарифы</p>
+          <p className="editorial-eyebrow mb-6">Раздел 06 — Тарифы</p>
           <h2 className="editorial-h2 mb-16 text-[var(--ink)]">Бесплатно до пятидесяти сделок в&nbsp;месяц.</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
