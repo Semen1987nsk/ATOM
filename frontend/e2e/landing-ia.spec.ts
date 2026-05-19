@@ -28,3 +28,13 @@ test("landing has 16 sections in correct order", async ({ page }) => {
     expect(ys[i]).toBeGreaterThan(ys[i - 1]);
   }
 });
+
+test("SimpleFact section has 3 columns with statements", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator("#simple-fact");
+  await expect(section).toBeVisible();
+  await expect(section.locator('[data-testid="simple-fact-column"]')).toHaveCount(3);
+  await expect(section.getByText("01").first()).toBeVisible();
+  await expect(section.getByText("02").first()).toBeVisible();
+  await expect(section.getByText("03").first()).toBeVisible();
+});

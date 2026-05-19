@@ -14,6 +14,7 @@ import { InteractiveCandleChart } from "./parts/InteractiveCandleChart";
 import { TradeReplayWidget } from "./parts/TradeReplayWidget";
 import { ManifestCutIn } from "./parts/ManifestCutIn";
 import { MaattOrigin } from "./parts/MaattOrigin";
+import { SimpleFactSection } from "./parts/SimpleFactSection";
 
 const NAV_LINKS = [
   { href: "/manual", label: "Возможности" },
@@ -119,18 +120,7 @@ export function Landing() {
       </section>
 
       {/* 4. SIMPLE FACT */}
-      <section
-        id="simple-fact"
-        className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)] bg-[var(--paper-tint,#f4ecdc)]"
-      >
-        <div className="max-w-[1200px] mx-auto">
-          <p className="editorial-eyebrow mb-6">Раздел 00 — Сам факт записи</p>
-          <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Сам факт записи.</h2>
-          <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] max-w-[60ch]">
-            [Stub — copy в Task 8]
-          </p>
-        </div>
-      </section>
+      <SimpleFactSection />
 
       {/* 5. CHAMPIONS */}
       <section
