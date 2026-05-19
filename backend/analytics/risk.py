@@ -3,8 +3,9 @@
 Risk of Ruin, Kelly. Вынесено из монолитного analytics.py.
 """
 import math
+from datetime import datetime
 import numpy as np
-from typing import List, Dict
+from typing import List, Dict, Optional
 from decimal import Decimal
 
 from ._common import UNDEFINED, _sanitize
@@ -214,22 +215,37 @@ def calculate_calmar_ratio(trades_pnl: List[float], initial_balance: float = 100
         "rating": rating
     }
 
-def calculate_drawdown_stats(trades_pnl: List[float], initial_balance: float = 0) -> Dict:
+def calculate_drawdown_stats(
+    trades_pnl: List[float],
+    initial_balance: float = 0,
+    dates: Optional[List[datetime]] = None,
+) -> Dict:
     """
     Расчет статистики просадок.
+
+    dates: опционально — даты соответствующие trades_pnl (тот же порядок и длина).
+    Если переданы, в результате будут поля peak_date / trough_date / dd_duration_days.
     """
     if not trades_pnl:
-        return {"max_drawdown_pct": 0, "max_drawdown_abs": 0, "current_drawdown_pct": 0}
+        return {
+            "max_drawdown_pct": 0, "max_drawdown_abs": 0, "current_drawdown_pct": 0,
+            "peak_balance": initial_balance,
+            "peak_date": None, "trough_date": None, "dd_duration_days": None,
+        }
 
     balance = initial_balance
     peak = initial_balance
+    cur_peak_idx = None  # индекс trade'а где достигнут текущий peak
+    peak_idx = None      # peak соответствующий max просадке
+    trough_idx = None    # дно max просадки
     max_dd_abs = 0
     max_dd_pct = 0
 
-    for pnl in trades_pnl:
+    for i, pnl in enumerate(trades_pnl):
         balance += pnl
         if balance > peak:
             peak = balance
+            cur_peak_idx = i
 
         dd_abs = peak - balance
         dd_pct = (dd_abs / peak * 100) if peak > 0 else 0
@@ -237,16 +253,32 @@ def calculate_drawdown_stats(trades_pnl: List[float], initial_balance: float = 0
         if dd_abs > max_dd_abs:
             max_dd_abs = dd_abs
             max_dd_pct = dd_pct
+            peak_idx = cur_peak_idx
+            trough_idx = i
 
     # Текущая просадка
     current_dd_abs = peak - balance
     current_dd_pct = (current_dd_abs / peak * 100) if peak > 0 else 0
 
+    peak_date_iso = None
+    trough_date_iso = None
+    dd_duration_days = None
+    if dates is not None and len(dates) == len(trades_pnl):
+        if peak_idx is not None and peak_idx < len(dates):
+            peak_date_iso = dates[peak_idx].isoformat()
+        if trough_idx is not None and trough_idx < len(dates):
+            trough_date_iso = dates[trough_idx].isoformat()
+        if peak_idx is not None and trough_idx is not None:
+            dd_duration_days = (dates[trough_idx] - dates[peak_idx]).days
+
     return {
         "max_drawdown_pct": round(max_dd_pct, 2),
         "max_drawdown_abs": round(max_dd_abs, 2),
         "current_drawdown_pct": round(current_dd_pct, 2),
-        "peak_balance": round(peak, 2)
+        "peak_balance": round(peak, 2),
+        "peak_date": peak_date_iso,
+        "trough_date": trough_date_iso,
+        "dd_duration_days": dd_duration_days,
     }
 
 def calculate_risk_of_ruin(win_rate: float, payoff_ratio: float, risk_per_trade: float = 0.02) -> Dict:
