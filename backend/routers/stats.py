@@ -453,17 +453,35 @@ async def get_stats(
         })
     tag_stats = sorted(tag_stats, key=lambda x: x["pnl"], reverse=True)
 
-    # Baseline для %-метрик (просадка, Calmar): историческая capital base, не 0.
-    # Для broker_user `starting_balance = 0` by design (equity_curve = cumulative PnL),
-    # но передавать 0 в drawdown_pct формулу => peak инициализируется нулём, любая
-    # первая прибыль становится peak'ом, и dd_pct улетает в сотни %% (нерееалистично).
-    # Подставляем Σ NET_DEPOSIT — сумму всех денег, заведённых на счёт за историю.
-    if is_broker_user and starting_net_deposit > 0:
-        drawdown_baseline = starting_net_deposit
+    # Baseline для %-метрик (просадка, Calmar, % изменения капитала).
+    # Для broker_user используем Σ NET_DEPOSIT через OperationORM (то что реально
+    # завёл через Tinkoff API) — это deployed capital. cash_truth_pnl формула:
+    # last_portfolio_value - Σ NET_DEPOSIT — даёт реальную потерю, и % к Σ deposits
+    # = "сколько % от вложенного потерял". Если из CapitalOperation посчитать
+    # 1.05M (включая выведенные деньги), %-метрики занижаются в ~3 раза.
+    drawdown_baseline = 0.0
+    if is_broker_user:
+        from domain.pnl.cash_flow_classification import (
+            CashFlowCategory as _CFC,
+            operation_types_in as _op_types_in,
+        )
+        _dep_types = tuple(_op_types_in(_CFC.NET_DEPOSIT))
+        if _dep_types:
+            _row = db.query(
+                func.coalesce(func.sum(models.OperationORM.payment_units), 0),
+                func.coalesce(func.sum(models.OperationORM.payment_nano), 0),
+            ).filter(
+                models.OperationORM.account_id == account_id,
+                models.OperationORM.operation_type.in_(_dep_types),
+                models.OperationORM.state == "executed",
+            ).one()
+            drawdown_baseline = abs(float(_row[0] or 0) + float(_row[1] or 0) / 1e9)
+        if drawdown_baseline <= 0 and starting_net_deposit > 0:
+            drawdown_baseline = starting_net_deposit
     elif starting_balance > 0:
         drawdown_baseline = starting_balance
-    else:
-        drawdown_baseline = base_initial_balance if base_initial_balance > 0 else 0
+    if drawdown_baseline <= 0:
+        drawdown_baseline = float(base_initial_balance) if base_initial_balance > 0 else 0
 
     # Расчет дополнительных метрик
     sortino_data = analytics.calculate_sharpe_sortino(pnls)
@@ -722,6 +740,7 @@ async def get_stats(
         "max_drawdown_duration_days": drawdown_data.get("dd_duration_days"),
         "max_drawdown_peak_value":   drawdown_data.get("peak_value_on_curve"),
         "max_drawdown_trough_value": drawdown_data.get("trough_value_on_curve"),
+        "drawdown_baseline":         float(drawdown_baseline),
         "avg_win": win_loss_data.get("avg_win", 0),
         "avg_loss": win_loss_data.get("avg_loss", 0),
         "largest_win": win_loss_data.get("largest_win", 0),

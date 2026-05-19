@@ -685,6 +685,12 @@ class DashboardStats(BaseModel):
     sortino_ratio: float = 0
     max_drawdown_pct: float = 0
     max_drawdown_abs: float = 0
+    max_drawdown_peak_date: Optional[str] = None
+    max_drawdown_trough_date: Optional[str] = None
+    max_drawdown_duration_days: Optional[int] = None
+    max_drawdown_peak_value: Optional[float] = None
+    max_drawdown_trough_value: Optional[float] = None
+    drawdown_baseline: float = 0  # реальный capital baseline для % метрик (для UI шапки кривой)
     current_drawdown_pct: float = 0
     avg_win: float = 0
     avg_loss: float = 0

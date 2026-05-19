@@ -650,7 +650,7 @@ export default function Home() {
             isBrokerCumulative={isBrokerUser}
             liveUnrealizedSum={liveUnrealizedSum}
             snapshotUnrealized={stats?.unrealized_pnl ?? 0}
-            pctBaseline={stats?.period_start_net_deposit ?? 0}
+            pctBaseline={(stats as { drawdown_baseline?: number })?.drawdown_baseline ?? 0}
             peakDate={stats?.max_drawdown_peak_date ?? null}
             troughDate={stats?.max_drawdown_trough_date ?? null}
           />
