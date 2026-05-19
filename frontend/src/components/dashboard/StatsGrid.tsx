@@ -193,17 +193,27 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
           // в net-режиме они уже зашиты в displayTotalPnl через Trade.net_pnl,
           // и параллельная строка «Расходы» читается как visual double-count.
           // Отдельная карточка <CostsBreakdownCard /> ниже даёт разбивку расходов.
+          // Компактный формат (-174K) — StatsCard description обрезает длинные
+          // строки через `truncate`, и полные значения в трёх частях не помещаются.
+          // Точные числа доступны в tooltip.
+          const compact = (n: number) => {
+            const abs = Math.abs(n);
+            const sign = n < 0 ? '-' : '';
+            if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M ${settings.currencySymbol}`;
+            if (abs >= 1_000)     return `${sign}${(abs / 1_000).toFixed(1)}K ${settings.currencySymbol}`;
+            return `${sign}${abs.toFixed(0)} ${settings.currencySymbol}`;
+          };
           const parts: string[] = [];
           if (displayTotalPnl !== undefined && displayTotalPnl !== 0) {
-            parts.push(`Реализ.: ${formatCurrency(displayTotalPnl)}`);
+            parts.push(`Реализ. ${compact(displayTotalPnl)}`);
           }
           if (headlineUnrealized !== 0) {
-            parts.push(`Нереализ.: ${formatCurrency(headlineUnrealized)}`);
+            parts.push(`Нереализ. ${compact(headlineUnrealized)}`);
           }
           if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
-            parts.push(`Прочие: ${formatCurrency(displayAdjustments)}`);
+            parts.push(`Прочие ${compact(displayAdjustments)}`);
           }
-          return parts.length > 0 ? parts.join(' | ') : t.stats.totalPnl.description;
+          return parts.length > 0 ? parts.join(' · ') : t.stats.totalPnl.description;
         })() : ''}
         trend={hasData && (displayTotalPnlWithUnrealized ?? displayTotalPnl ?? 0) > 0 ? 'up' : hasData && (displayTotalPnlWithUnrealized ?? displayTotalPnl ?? 0) < 0 ? 'down' : undefined}
         icon={<TrendingUp size={18} />}
