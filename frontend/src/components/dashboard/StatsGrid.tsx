@@ -74,6 +74,9 @@ interface DashboardData {
   sortino_ratio: number;
   max_drawdown_pct: number;
   max_drawdown_abs: number;
+  max_drawdown_peak_date?: string | null;
+  max_drawdown_trough_date?: string | null;
+  max_drawdown_duration_days?: number | null;
   current_drawdown_pct: number;
   tail_ratio: number;
   max_win_streak: number;
@@ -126,6 +129,17 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
   const noData = t.emptyState?.noData || '—';
+
+  const formatShortDate = (iso: string | null | undefined): string => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch { return ''; }
+  };
 
   // Phase 11 (2026-05-17): выбираем gross vs net по настройке.
   //   net (default) — реальный финансовый результат (matches broker, includes commissions).
@@ -347,10 +361,19 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
         tooltipText={t.stats.sortinoRatio.tooltip}
         manualAnchor="sortino"
       />
-      <StatsCard 
-        title={t.stats.maxDrawdown.title} 
-        value={formatStatPercent(stats?.max_drawdown_pct)} 
-        description={hasData ? formatCurrency(stats?.max_drawdown_abs || 0) : ''}
+      <StatsCard
+        title={t.stats.maxDrawdown.title}
+        value={formatStatPercent(stats?.max_drawdown_pct)}
+        description={hasData ? (() => {
+          const parts: string[] = [formatCurrency(stats?.max_drawdown_abs || 0)];
+          if (stats?.max_drawdown_peak_date && stats?.max_drawdown_trough_date) {
+            const peakStr   = formatShortDate(stats.max_drawdown_peak_date);
+            const troughStr = formatShortDate(stats.max_drawdown_trough_date);
+            const days = stats.max_drawdown_duration_days ?? 0;
+            parts.push(`${peakStr} → ${troughStr} (${days} дн.)`);
+          }
+          return parts.join(' · ');
+        })() : ''}
         trend={hasData ? 'down' : undefined}
         icon={<TrendingDown size={18} />}
         tooltipText={t.stats.maxDrawdown.tooltip}

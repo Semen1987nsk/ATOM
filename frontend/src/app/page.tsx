@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Lock, Upload, BookOpen, LogIn, BarChart3, Target, Zap, TrendingUp, Brain, Shield, GitGraph, Activity, Clock, ArrowRight, Tag, Calendar, Wallet, ArrowUpRight, Sparkles } from 'lucide-react';
-import { KonturCurve } from '@/components/landing/KonturCurve';
+import { Plus, Lock, Upload, LogIn, BarChart3, Target, Brain, Activity, Clock, ArrowRight, Tag, Wallet, Plug } from 'lucide-react';
+import { Landing } from '@/components/landing/Landing';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -11,6 +11,7 @@ import { ImportPreviewModal } from '@/components/ImportPreviewModal';
 import { DepositManagerModal } from '@/components/DepositManagerModal';
 import { SetupManagerModal } from '@/components/SetupManagerModal';
 import BrokerConnectModal from '@/components/BrokerConnectModal';
+import { ReconnectBanner } from '@/components/ReconnectBanner';
 import SyncStatusIndicator from '@/components/SyncStatusIndicator';
 import { FilterPanel, Filters } from '@/components/FilterPanel';
 import { DashboardSkeleton } from '@/components/Skeleton';
@@ -26,6 +27,11 @@ import {
   EquityCurveCard,
 } from '@/components/dashboard';
 import PortfolioCard from '@/components/dashboard/PortfolioCard';
+import { ActivityCalendar } from '@/components/dashboard/ActivityCalendar';
+import { StreakIndicator } from '@/components/dashboard/StreakIndicator';
+import { RecentTrades } from '@/components/dashboard/RecentTrades';
+import { SetupPerformance } from '@/components/dashboard/SetupPerformance';
+import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection';
 import { api } from '@/lib/apiClient';
 
 interface Trade {
@@ -53,7 +59,9 @@ interface Trade {
 interface DashboardData {
   total_pnl: number;
   unrealized_pnl?: number;
+  varmargin_total?: number;  // TR1.2: account-level varmargin (futures)
   total_pnl_with_unrealized?: number;
+  cash_truth_pnl?: number;  // Phase 6.4: broker reconciliation
   initial_balance?: number | null;
   current_balance?: number | null;
   period_start_balance?: number | null;
@@ -64,6 +72,11 @@ interface DashboardData {
   period_start_balance_reliable?: boolean;
   period_start_balance_source?: string;
   period_start_balance_reason?: string | null;
+  // PR 21: источник initial_balance — 'tinkoff_derived' | 'manual' | null.
+  initial_balance_source?: string | null;
+  // PR 23: для broker-юзера — реальный баланс счёта из Тинькова + кол-во позиций.
+  current_cash_balance?: number | null;
+  open_positions_count?: number | null;
   win_rate: number;
   total_trades: number;
   profitable_trades: number;
@@ -78,6 +91,9 @@ interface DashboardData {
   sortino_ratio: number;
   max_drawdown_pct: number;
   max_drawdown_abs: number;
+  max_drawdown_peak_date?: string | null;
+  max_drawdown_trough_date?: string | null;
+  max_drawdown_duration_days?: number | null;
   current_drawdown_pct: number;
   avg_win: number;
   avg_loss: number;
@@ -96,8 +112,13 @@ interface DashboardData {
   time_patterns: { best_day: { day: string; total_pnl: number } | null; worst_day: { day: string; total_pnl: number } | null };
   mae_mfe_analysis: { avg_mae_pct: number; avg_mfe_pct: number; avg_efficiency: number; trades_analyzed: number; recommendations: string[] };
   equity_curve: { date: string; balance: number }[];
+  equity_curve_gross?: { date: string; balance: number }[];  // Phase 11: gross variant
   imoex_curve?: { date: string; value: number }[];
   tag_stats: { tag: string; pnl: number; win_rate: number; count: number }[];
+  // Phase 11 (2026-05-17): gross fields for pnlDisplayMode toggle
+  total_pnl_gross?: number;
+  total_pnl_with_unrealized_gross?: number;
+  account_level_adjustments_gross?: number;
 }
 
 export default function Home() {
@@ -106,6 +127,7 @@ export default function Home() {
   const { user, isLoading: authLoading } = useAuth();
 
   const [stats, setStats] = useState<DashboardData | null>(null);
+  const [liveUnrealizedSum, setLiveUnrealizedSum] = useState<number | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState(false);
@@ -146,6 +168,12 @@ export default function Home() {
   const effectiveInitialDeposit = stats?.period_start_balance_reliable !== false && stats?.period_start_balance && stats.period_start_balance > 0
     ? stats.period_start_balance
     : null;
+
+  // PR 23: для broker-юзера показываем cash-баланс + кол-во позиций вместо
+  // «стартового капитала». Это единственная честная цифра для margin/futures.
+  const isBrokerUser = stats?.current_cash_balance !== null && stats?.current_cash_balance !== undefined;
+  const currentCashBalance = stats?.current_cash_balance ?? null;
+  const openPositionsCount = stats?.open_positions_count ?? 0;
 
   const hasScopedPeriodFilter = Boolean(
     settings.tradesStartTradeId ||
@@ -204,11 +232,23 @@ export default function Home() {
       }
       if (params.toString()) statsUrl += '?' + params.toString();
 
-      const [statsData, tradesData] = await Promise.all([
+      const [statsData, tradesData, liveUnrealizedData] = await Promise.all([
         api.get<DashboardData>(statsUrl),
-        api.get<Trade[]>('/trades/')
+        api.get<Trade[]>('/trades/'),
+        // Phase 6.5: live MOEX-prices + FX-adjusted pv (от Position snapshot).
+        api.get<Array<{ trade_id: number; unrealized_pnl: number }>>('/trades/unrealized-pnl')
+          .catch((e) => {
+            console.warn('live unrealized fetch failed, using stats snapshot', e);
+            return [] as Array<{ trade_id: number; unrealized_pnl: number }>;
+          }),
       ]);
       setStats(statsData);
+      const sumLive = Array.isArray(liveUnrealizedData)
+        ? liveUnrealizedData.reduce((s, t) => s + (t.unrealized_pnl || 0), 0)
+        : 0;
+      setLiveUnrealizedSum(
+        Array.isArray(liveUnrealizedData) && liveUnrealizedData.length > 0 ? sumLive : null
+      );
       // Фильтруем сделки по дате/сделке начала из настроек
       let filteredTrades = Array.isArray(tradesData) ? tradesData : [];
       if (settings.tradesStartTradeId) {
@@ -312,500 +352,14 @@ export default function Home() {
   if (authLoading) return <DashboardSkeleton />;
 
   // ==================== GUEST LANDING PAGE ====================
+  // Editorial Financial composition — см. ADR-0006 + design-system.md v3.
+  // Вся вёрстка вынесена в <Landing /> для чистого разделения marketing ↔ product.
   if (!user) {
-    // Категории метрик: bento-плитки с цветным акцентом + список метрик внутри.
-    // Принципы (после редизайна Phase 4): один цвет = одна категория, без mono/uppercase
-    // в подписях, без cyberpunk-glow — спокойный продуктовый стиль.
-    const metricCategories: Array<{
-      title: string;
-      color: 'indigo' | 'rose' | 'violet' | 'emerald' | 'amber';
-      icon: React.ReactNode;
-      blurb: string;
-      metrics: Array<{ label: string; anchor: string }>;
-    }> = [
-      {
-        title: 'Базовые показатели',
-        color: 'indigo',
-        icon: <BarChart3 size={22} />,
-        blurb: 'P&L, Win Rate, Profit Factor, SQN — то, что должно быть в каждом дневнике.',
-        metrics: [
-          { label: 'P&L и баланс', anchor: 'total-pnl' },
-          { label: 'Win Rate', anchor: 'win-rate' },
-          { label: 'Profit Factor', anchor: 'profit-factor' },
-          { label: 'SQN (Тарп)', anchor: 'sqn' },
-        ],
-      },
-      {
-        title: 'Риск-менеджмент',
-        color: 'rose',
-        icon: <Shield size={22} />,
-        blurb: 'Optimal F, Drawdown, Risk of Ruin, Monte Carlo — научный подход к риску.',
-        metrics: [
-          { label: 'Optimal F (Винс)', anchor: 'optimal-f' },
-          { label: 'Drawdown', anchor: 'drawdown' },
-          { label: 'Risk of Ruin', anchor: 'risk-of-ruin' },
-          { label: 'Monte Carlo', anchor: 'monte-carlo' },
-        ],
-      },
-      {
-        title: 'Продвинутая статистика',
-        color: 'violet',
-        icon: <GitGraph size={22} />,
-        blurb: 'Z-Score, R-Expectancy, Sortino, Recovery Factor — для системных трейдеров.',
-        metrics: [
-          { label: 'Z-Score', anchor: 'z-score' },
-          { label: 'R-Expectancy', anchor: 'r-expectancy' },
-          { label: 'Sortino Ratio', anchor: 'sortino' },
-          { label: 'Recovery Factor', anchor: 'recovery-factor' },
-        ],
-      },
-      {
-        title: 'Эффективность капитала',
-        color: 'emerald',
-        icon: <TrendingUp size={22} />,
-        blurb: 'ROI, GHPR, Tail Ratio, Calmar — насколько эффективно работает капитал.',
-        metrics: [
-          { label: 'ROI', anchor: 'roi' },
-          { label: 'GHPR', anchor: 'ghpr' },
-          { label: 'Tail Ratio', anchor: 'tail-ratio' },
-          { label: 'Calmar Ratio', anchor: 'calmar-ratio' },
-        ],
-      },
-      {
-        title: 'Поведенческий анализ',
-        color: 'amber',
-        icon: <Calendar size={22} />,
-        blurb: 'В какие часы win-rate выше, после каких просадок вы тильтуете, какой сетап стабильно даёт результат.',
-        metrics: [
-          { label: 'Time Patterns', anchor: 'time-patterns' },
-          { label: 'Win/Loss Streaks', anchor: 'streaks' },
-          { label: 'Avg Win / Loss', anchor: 'avg-win-loss' },
-          { label: 'Теги и сетапы', anchor: 'tags' },
-        ],
-      },
-    ];
-
-    return (
-      <main className="min-h-screen section-dark">
-        {/* ===== 1. HEADER ===== */}
-        <header className="sticky top-0 z-30 backdrop-blur-md bg-[var(--background)]/80 border-b border-[var(--border)]">
-          <div className="max-w-6xl mx-auto flex items-center justify-between px-6 h-16">
-            <Link href="/" className="text-2xl font-bold tracking-tight no-underline text-[var(--foreground)]">
-              Eqio
-            </Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm text-[var(--text-secondary)]">
-              <Link href="/manual" className="hover:text-[var(--foreground)] transition-colors no-underline">Возможности</Link>
-              <Link href="/pricing" className="hover:text-[var(--foreground)] transition-colors no-underline">Тарифы</Link>
-              <Link href="/blog" className="hover:text-[var(--foreground)] transition-colors no-underline">Блог</Link>
-              <Link href="/help" className="hover:text-[var(--foreground)] transition-colors no-underline">Помощь</Link>
-            </nav>
-            <div className="flex items-center gap-3">
-              <Link href="/login" className="btn-pill-outline">Войти в сервис</Link>
-              <Link href="/register" className="btn-primary hidden sm:inline-flex">Начать</Link>
-            </div>
-          </div>
-        </header>
-
-        {/* ===== 2. HERO ===== */}
-        <section className="section-dark relative overflow-hidden px-6 pt-20 pb-24 md:pt-32 md:pb-32">
-          <KonturCurve variant="br" className="text-white hidden md:block" opacity={0.45} />
-          <div className="max-w-6xl mx-auto relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-pill)] bg-[var(--accent-soft)] text-[var(--accent)] text-[12px] font-medium mb-10">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
-              Для трейдеров MOEX от 50 сделок в месяц
-            </div>
-
-            <h1 className="headline-2xl mb-8 max-w-4xl">
-              Системная торговля<br />
-              начинается с&nbsp;дневника
-            </h1>
-
-            <p className="text-lg md:text-xl text-[var(--text-secondary)] leading-relaxed max-w-2xl mb-12">
-              Сделки превращаются в систему: 30+ метрик и AI-разбор каждого закрытия,
-              MAE/MFE из биржевых свечей, импорт из любого терминала MOEX. Бесплатно
-              до 50 сделок в месяц.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link href="/register" className="btn-primary" style={{ padding: '14px 28px', fontSize: '16px' }}>
-                Начать бесплатно <ArrowRight size={16} />
-              </Link>
-              <Link href="/manual" className="btn-pill-outline" style={{ padding: '14px 28px', fontSize: '15px' }}>
-                <BookOpen size={16} /> Что внутри
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 3. HERO BENTO — 6 плиток, 3 типа (kontur-style) ===== */}
-        <section className="section-dark px-6 pb-24 md:pb-32">
-          <div className="max-w-6xl mx-auto">
-            <div className="grid grid-cols-12 gap-4 md:gap-5">
-              {/* Row 1: text-only / colored-indigo / text-only */}
-              <div className="col-span-12 md:col-span-4 tile-text">
-                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">30+ метрик</div>
-                <div className="text-sm text-[var(--text-secondary)]">
-                  Узнайте оптимальный размер позиции, реальное преимущество системы и риск разорения. Формулы Винса и Тарпа, не Excel-шаблоны.
-                </div>
-              </div>
-
-              <div className="col-span-12 md:col-span-4 tile tile-indigo flex flex-col justify-between min-h-[220px]">
-                <div className="flex items-start justify-between">
-                  <Sparkles size={22} className="opacity-95" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold leading-tight mb-2">AI-разбор сделки</div>
-                  <div className="text-sm opacity-85">
-                    Что вы сделали правильно, где ошиблись и какой паттерн повторяется — после каждого закрытия.
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-span-12 md:col-span-4 tile-text">
-                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">Реальные свечи MOEX</div>
-                <div className="text-sm text-[var(--text-secondary)]">
-                  Сколько вы оставили на столе и насколько глубоко был стоп — посчитано по свечам биржи. В РФ автоматически — только у нас.
-                </div>
-              </div>
-
-              {/* Row 2: colored-emerald / text-only / outlined-link */}
-              <div className="col-span-12 md:col-span-5 tile tile-emerald flex flex-col justify-between min-h-[200px]">
-                <Target size={22} className="opacity-95" />
-                <div>
-                  <div className="text-2xl font-bold leading-tight mb-2">Trade Replay</div>
-                  <div className="text-sm opacity-85">
-                    Пересмотрите каждую сделку как фильм: вход, выход, стоп, тейк на свечах MOEX. Найдите, где руки дрогнули.
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-span-12 md:col-span-4 tile-text">
-                <div className="text-[28px] font-bold leading-tight mb-2 text-[var(--foreground)]">Импорт сделок</div>
-                <div className="text-sm text-[var(--text-secondary)]">
-                  API-интеграция с брокером или Excel / CSV из любого терминала. FIFO-учёт сделок и комиссий — автоматически.
-                </div>
-              </div>
-
-              <Link href="/manual" className="col-span-12 md:col-span-3 tile-outline no-underline group">
-                <div className="flex flex-col h-full justify-between min-h-[180px] w-full">
-                  <div className="text-lg font-semibold">Все возможности</div>
-                  <ArrowUpRight size={28} className="self-end transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
-                </div>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 4. NUMBERS BAND — светлая контрастная секция ===== */}
-        <section className="section-light relative overflow-hidden px-6 py-24 md:py-32">
-          <KonturCurve variant="bl" className="text-black hidden md:block" opacity={0.12} />
-          <div className="max-w-6xl mx-auto relative z-10">
-            <p className="eyebrow mb-4">Что вы получаете</p>
-            <h2 className="headline-lg mb-16 max-w-3xl">Цифры, а не обещания</h2>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-6">
-              {[
-                { n: '30+', label: 'метрик статистики' },
-                { n: '10 000', label: 'итераций Monte Carlo' },
-                { n: '60 сек', label: 'обновление портфеля по API' },
-                { n: '399₽', label: '/ месяц Pro' },
-              ].map((f) => (
-                <div key={f.label} className="flex flex-col gap-2">
-                  <div className="number-fact">{f.n}</div>
-                  <div className="text-sm text-[#6b7280]">{f.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 5. METRICS DEEP DIVE — bento с 5 категорий + outlined link ===== */}
-        <section id="features" className="section-dark px-6 py-24 md:py-32">
-          <div className="max-w-6xl mx-auto">
-            <p className="eyebrow mb-4">Аналитический центр</p>
-            <h2 className="headline-lg mb-12 max-w-3xl">30+ метрик. По-настоящему 30+</h2>
-
-            <div className="grid grid-cols-12 gap-4 md:gap-5">
-              {metricCategories.map((cat, idx) => {
-                const layoutClass = [
-                  'col-span-12 md:col-span-7',
-                  'col-span-12 md:col-span-5',
-                  'col-span-12 md:col-span-5',
-                  'col-span-12 md:col-span-4',
-                  'col-span-12 md:col-span-3',
-                ][idx];
-                return (
-                  <div key={cat.title} className={layoutClass}>
-                    <div className={`tile tile-${cat.color} h-full min-h-[220px] flex flex-col gap-4`}>
-                      <div className="opacity-95">{cat.icon}</div>
-                      <div className="flex-1">
-                        <h3 className="text-xl md:text-2xl font-bold leading-tight mb-2">
-                          {cat.title}
-                        </h3>
-                        <p className="text-sm leading-snug opacity-85">{cat.blurb}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {cat.metrics.map((m) => (
-                          <Link
-                            key={m.anchor}
-                            href={`/manual#${m.anchor}`}
-                            className="inline-flex items-center gap-1 px-3 py-1 rounded-[var(--radius-pill)] bg-white/15 text-white text-[12px] font-medium hover:bg-white/25 transition-colors no-underline"
-                          >
-                            {m.label}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              <Link
-                href="/manual"
-                className="col-span-12 md:col-span-12 tile-outline no-underline group"
-              >
-                <div className="flex flex-row items-center justify-between w-full">
-                  <div>
-                    <div className="text-lg font-semibold mb-1">Полное руководство по метрикам</div>
-                    <div className="text-sm text-[var(--text-secondary)]">
-                      Подробное описание каждого показателя, формулы и примеры расчёта.
-                    </div>
-                  </div>
-                  <ArrowUpRight size={32} className="transition-transform group-hover:translate-x-1 group-hover:-translate-y-1 flex-shrink-0" />
-                </div>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 6. SPLIT MAE/MFE × POST-EXIT — surface-1 фон ===== */}
-        <section className="section-surface px-6 py-24 md:py-32">
-          <div className="max-w-6xl mx-auto">
-            <p className="eyebrow mb-4">Только из биржевых данных</p>
-            <h2 className="headline-lg mb-12 max-w-3xl">Не очередной Excel</h2>
-
-            <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
-              <div className="cyber-card p-8 lg:p-10">
-                <Link href="/manual#mae-mfe" className="inline-flex items-center gap-3 mb-5 group no-underline">
-                  <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
-                    <Target size={22} />
-                  </div>
-                  <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--accent)] transition-colors">
-                    MAE / MFE анализ
-                  </h3>
-                </Link>
-                <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
-                  Maximum Adverse / Favorable Excursion — ключевые метрики для оптимизации стопов
-                  и тейк-профитов. Считаются автоматически по реальным свечам MOEX.
-                </p>
-                <ul className="flex flex-col gap-3 list-none p-0">
-                  {[
-                    ['Edge Ratio', 'отношение MFE/MAE — насколько преимущество перевешивает риск'],
-                    ['Quality Score', 'комплексная оценка сетапа: win-rate × efficiency × edge'],
-                    ['Группировка', 'по тегам, сетапам, инструментам, таймфреймам, направлению'],
-                    ['Персентили', 'P25/P50/P75 распределения для точной настройки стопов'],
-                  ].map(([t, d]) => (
-                    <li key={t} className="flex gap-3 items-start">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] mt-2.5 flex-shrink-0" />
-                      <span>
-                        <span className="font-semibold">{t}</span>
-                        <span className="text-[var(--text-secondary)]"> — {d}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="cyber-card p-8 lg:p-10">
-                <Link href="/manual#post-exit" className="inline-flex items-center gap-3 mb-5 group no-underline">
-                  <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--warning-soft)] text-[var(--warning)] flex items-center justify-center">
-                    <Clock size={22} />
-                  </div>
-                  <h3 className="text-2xl font-bold tracking-tight group-hover:text-[var(--warning)] transition-colors">
-                    Post-Exit анализ
-                  </h3>
-                </Link>
-                <p className="text-[var(--text-secondary)] mb-6 leading-relaxed">
-                  Что было с ценой после вашего выхода? Система загружает реальные свечи
-                  и считает, сколько вы оставили на столе.
-                </p>
-                <ul className="flex flex-col gap-3 list-none p-0">
-                  {[
-                    ['Упущенная прибыль', '% движения цены в вашу сторону после закрытия'],
-                    ['Мульти-таймфрейм', '15м / 1ч / 4ч / 1д — от скальпинга до свинга'],
-                    ['Early Exit детекция', 'автоматическое выявление сделок, закрытых рано'],
-                    ['Реальные свечи', 'данные MOEX ISS API — точные цены, а не модели'],
-                  ].map(([t, d]) => (
-                    <li key={t} className="flex gap-3 items-start">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)] mt-2.5 flex-shrink-0" />
-                      <span>
-                        <span className="font-semibold">{t}</span>
-                        <span className="text-[var(--text-secondary)]"> — {d}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 7. HOW IT WORKS — светлая, 4 карточки с огромными цифрами ===== */}
-        <section className="section-light px-6 py-24 md:py-32">
-          <div className="max-w-6xl mx-auto">
-            <p className="eyebrow mb-4">Начните за 2 минуты</p>
-            <h2 className="headline-lg mb-12 max-w-3xl text-[#0a0a0b]">
-              От первой сделки до системы — за 4 шага
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {[
-                { n: '01', title: 'Регистрация', desc: 'Email или вход через Яндекс / Сбер ID. 30 секунд.' },
-                { n: '02', title: 'Импорт сделок', desc: 'Подключите брокера через API или загрузите Excel / CSV — поддерживаем любой терминал MOEX.' },
-                { n: '03', title: 'Анализ', desc: '30+ метрик собираются автоматически. AI разбирает каждое закрытие — без ручной работы.' },
-                { n: '04', title: 'Решения', desc: 'Видите, какой сетап работает на каком тикере, в какие часы и при каких объёмах. Перестаёте торговать наугад.' },
-              ].map((s) => (
-                <div
-                  key={s.n}
-                  className="bg-white border-2 border-[#0a0a0b] rounded-[var(--radius-lg)] p-6 lg:p-8 flex flex-col gap-3 min-h-[240px]"
-                >
-                  <div className="text-[64px] md:text-[72px] font-extrabold leading-none tracking-tight text-[#0a0a0b]">
-                    {s.n}
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-xl font-bold mb-2 text-[#0a0a0b]">{s.title}</h4>
-                    <p className="text-[14px] text-[#6b7280] leading-relaxed">{s.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 8. AI / BROKER / RISK — 3 разнотипные плитки ===== */}
-        <section className="section-dark px-6 py-24 md:py-32">
-          <div className="max-w-6xl mx-auto">
-            <p className="eyebrow mb-4">Зачем платить Pro</p>
-            <h2 className="headline-lg mb-12 max-w-3xl">Три причины 399&nbsp;₽ в&nbsp;месяц</h2>
-
-            <div className="grid grid-cols-12 gap-4 md:gap-5">
-              <div className="col-span-12 md:col-span-4 tile tile-violet flex flex-col justify-between min-h-[280px]">
-                <Brain size={28} className="opacity-95" />
-                <div>
-                  <h3 className="text-2xl font-bold mb-3 leading-tight">AI-аналитика</h3>
-                  <p className="text-sm opacity-85 leading-relaxed mb-4">
-                    Каждое закрытие разбирается отдельно: что было правильно по сетапу, где нарушили правила, какие ошибки повторяются третий раз подряд.
-                  </p>
-                  <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] opacity-90">
-                    <li>• Автоанализ при закрытии</li>
-                    <li>• Рекомендации по сетапам</li>
-                    <li>• Паттерны в ошибках</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="col-span-12 md:col-span-4 tile-outline flex flex-col justify-between min-h-[280px]">
-                <GitGraph size={28} />
-                <div>
-                  <h3 className="text-2xl font-bold mb-3 leading-tight">Подключение брокера</h3>
-                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-4">
-                    Сделки и портфель синхронизируются сами. Раз в 60 секунд — без ручного экспорта.
-                  </p>
-                  <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] text-[var(--text-secondary)]">
-                    <li>• API-интеграция (на старте — Tinkoff Invest)</li>
-                    <li>• Excel / CSV из любого брокера MOEX</li>
-                    <li>• FIFO-учёт сделок и комиссий</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="col-span-12 md:col-span-4 tile tile-rose flex flex-col justify-between min-h-[280px]">
-                <Shield size={28} className="opacity-95" />
-                <div>
-                  <h3 className="text-2xl font-bold mb-3 leading-tight">Управление рисками</h3>
-                  <p className="text-sm opacity-85 leading-relaxed mb-4">
-                    Optimal F (Винс), Kelly, Risk of Ruin — научный подход к размеру позиции.
-                  </p>
-                  <ul className="flex flex-col gap-1.5 list-none p-0 text-[13px] opacity-90">
-                    <li>• Optimal F по PnL и R</li>
-                    <li>• Drawdown в реальном времени</li>
-                    <li>• Monte Carlo 10 000 итераций</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-center text-sm text-[var(--text-tertiary)] mt-10">
-              Бесплатно до 50 сделок в месяц. Pro — 399 ₽/мес. Без карты на старте.
-            </p>
-          </div>
-        </section>
-
-        {/* ===== 9. FINAL CTA — accent indigo ===== */}
-        <section className="section-accent relative overflow-hidden px-6 py-24 md:py-32">
-          <KonturCurve variant="tr" className="text-white hidden md:block" opacity={0.3} />
-          <div className="max-w-4xl mx-auto text-center flex flex-col gap-8 relative z-10">
-            <h2 className="headline-xl">Перестаньте гадать. Начните считать.</h2>
-            <p className="text-lg md:text-xl opacity-90 max-w-2xl mx-auto">
-              50 первых сделок — бесплатно. Без карты, без триала, без обязательств.
-              Подключите брокера или загрузите Excel — увидите свою статистику через 2 минуты.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-2">
-              <Link href="/register" className="btn-pill-inverted">
-                Начать бесплатно <ArrowRight size={18} />
-              </Link>
-              <Link href="/pricing" className="btn-pill-outline" style={{ color: '#fff', padding: '14px 28px', fontSize: '15px' }}>
-                Посмотреть тарифы
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== 10. FOOTER — 4-col grid ===== */}
-        <footer className="section-dark border-t border-[var(--border)] px-6 py-16 text-sm">
-          <div className="max-w-6xl mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
-              <div>
-                <Link href="/" className="text-xl font-bold tracking-tight no-underline text-[var(--foreground)] mb-4 block">
-                  Eqio
-                </Link>
-                <p className="text-[var(--text-tertiary)] leading-relaxed">
-                  Торговый дневник для серьёзного трейдера MOEX.
-                </p>
-              </div>
-              <div>
-                <div className="text-[var(--foreground)] font-semibold mb-4">Продукт</div>
-                <nav className="flex flex-col gap-2.5">
-                  <Link href="/manual" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Возможности</Link>
-                  <Link href="/pricing" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Тарифы</Link>
-                  <Link href="/calculator" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Калькулятор</Link>
-                </nav>
-              </div>
-              <div>
-                <div className="text-[var(--foreground)] font-semibold mb-4">Компания</div>
-                <nav className="flex flex-col gap-2.5">
-                  <Link href="/blog" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Блог</Link>
-                  <Link href="/help" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Помощь</Link>
-                  <Link href="/manual" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Руководство</Link>
-                </nav>
-              </div>
-              <div>
-                <div className="text-[var(--foreground)] font-semibold mb-4">Право</div>
-                <nav className="flex flex-col gap-2.5">
-                  <Link href="/privacy" className="text-[var(--text-tertiary)] hover:text-[var(--foreground)] transition-colors no-underline">Политика конфиденциальности</Link>
-                  <span className="text-[var(--text-tertiary)]">152-ФЗ</span>
-                </nav>
-              </div>
-            </div>
-            <div className="pt-8 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-4 text-[var(--text-tertiary)]">
-              <div>© Eqio · Торговая аналитика для российских трейдеров</div>
-              <div>Данные: MOEX ISS · Брокеры через API и CSV</div>
-            </div>
-          </div>
-        </footer>
-      </main>
-    );
+    return <Landing />;
   }
+
+  // ↓ OLD inline guest-landing (kontur-style) удалён 2026-05-17.
+  // ↓ Авторизованная часть начинается ниже.
 
   // ==================== AUTHENTICATED DASHBOARD ====================
   if (loading) return <DashboardSkeleton />;
@@ -856,24 +410,47 @@ export default function Home() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight mb-1">Дашборд</h1>
             <div className="flex items-center gap-2 text-sm flex-wrap text-[var(--text-secondary)]">
-              <Wallet size={14} className="text-[var(--accent)]" />
-              <span>{capitalLabel}</span>
-              <span className="font-semibold text-[var(--foreground)]">
-                {effectiveInitialDeposit ? formatCurrency(effectiveInitialDeposit) : 'недоступно'}
-              </span>
-              {totalPnlPct !== null && totalPnlWithUnrealized !== null && (
-                <span
-                  className={`text-xs font-medium ${
-                    totalPnlWithUnrealized >= 0
-                      ? 'text-[var(--success)]'
-                      : 'text-[var(--danger)]'
-                  }`}
-                >
-                  ({totalPnlWithUnrealized >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
-                </span>
+              {/* PR 23: для broker-юзера показываем реальный cash-баланс +
+                  кол-во открытых позиций. Это честные цифры от Тинькова.
+                  Никакого выдуманного «стартового капитала» — Tinkoff API
+                  не даёт точной исторической реконструкции при margin/futures. */}
+              {isBrokerUser && currentCashBalance !== null && (
+                <>
+                  <Wallet size={14} className="text-[var(--accent)]" />
+                  <span>Баланс счёта:</span>
+                  <span
+                    className="font-semibold text-[var(--foreground)] cursor-help"
+                    title="Текущий cash на счёте — total_amount_portfolio из Тинькова. Стоимость открытых фьючерсов считается отдельно (в пунктах) и не входит в эту цифру."
+                  >
+                    {formatCurrency(currentCashBalance)}
+                  </span>
+                  {openPositionsCount > 0 && (
+                    <span className="text-xs text-[var(--text-tertiary)]">
+                      • открыто {openPositionsCount} {openPositionsCount === 1 ? 'позиция' : 'позиций'}
+                    </span>
+                  )}
+                </>
               )}
-              {stats?.period_start_balance_reliable === false && stats?.period_start_balance_reason && (
-                <span className="text-xs text-[var(--warning)]">{stats.period_start_balance_reason}</span>
+              {/* Для manual-юзера (без брокера) — показываем initial_balance если задан. */}
+              {!isBrokerUser && effectiveInitialDeposit && (
+                <>
+                  <Wallet size={14} className="text-[var(--accent)]" />
+                  <span>{capitalLabel}</span>
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {formatCurrency(effectiveInitialDeposit)}
+                  </span>
+                  {totalPnlPct !== null && totalPnlWithUnrealized !== null && (
+                    <span
+                      className={`text-xs font-medium ${
+                        totalPnlWithUnrealized >= 0
+                          ? 'text-[var(--success)]'
+                          : 'text-[var(--danger)]'
+                      }`}
+                    >
+                      ({totalPnlWithUnrealized >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
+                    </span>
+                  )}
+                </>
               )}
               {settings.tradesStartDate && (
                 <span className="badge badge-accent">
@@ -985,59 +562,133 @@ export default function Home() {
         </div>
       )}
 
-      {/* Empty State Banner */}
+      {/* Empty State Banner — onboarding с приоритетом: брокер → CSV → ручная.
+          API-подключение даёт автосинхронизацию, поэтому это primary CTA;
+          CSV — fallback для не-Тинькофф брокеров; ручная — для разовых сделок. */}
       {!hasData && !loading && (
         <div className="mb-8 rounded-[var(--radius-xl)] border border-[var(--accent)]/30 bg-gradient-to-r from-[var(--accent-soft)] to-transparent p-6 md:p-7">
           <div className="flex items-start gap-4 mb-5">
             <div className="w-12 h-12 flex-shrink-0 rounded-[var(--radius-lg)] bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center">
-              <BarChart3 size={22} />
+              <Plug size={22} />
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-[17px] font-semibold leading-tight mb-1">
-                {t.emptyState?.title || 'Начните вести журнал сделок'}
+                {t.emptyState?.title || 'Подключите брокера за 1 минуту'}
               </h3>
               <p className="text-[14px] text-[var(--text-secondary)] leading-relaxed">
-                {t.emptyState?.description || 'Импортируйте отчёт брокера или добавьте первую сделку вручную, чтобы увидеть аналитику.'}
+                {t.emptyState?.description || 'Самый быстрый путь — подключить Тинькофф через API: сделки и позиции подтянутся автоматически. Если ваш брокер другой — загрузите отчёт CSV/Excel.'}
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 pl-16">
-            <button
-              onClick={() => user ? setIsModalOpen(true) : setIsAuthRequiredOpen(true)}
-              className="btn-primary"
-            >
-              <Plus size={14} />
-              Добавить сделку
-            </button>
-            <button
-              onClick={() => user ? setIsImportModalOpen(true) : setIsAuthRequiredOpen(true)}
-              className="btn-secondary"
-            >
-              <Upload size={14} />
-              Импорт отчёта
-            </button>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:pl-16">
+            {/* Primary — API broker connect */}
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => user ? setIsBrokerModalOpen(true) : setIsAuthRequiredOpen(true)}
+                className="btn-primary"
+              >
+                <Plug size={14} />
+                {t.emptyState?.connectBrokerButton || 'Подключить Тинькофф'}
+              </button>
+              <span className="text-[11px] text-[var(--text-tertiary)] pl-1">
+                {t.emptyState?.connectBrokerHint || 'Read-only API · автосинхронизация'}
+              </span>
+            </div>
+            {/* Secondary — CSV/Excel fallback */}
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => user ? setIsImportModalOpen(true) : setIsAuthRequiredOpen(true)}
+                className="btn-secondary"
+              >
+                <Upload size={14} />
+                {t.emptyState?.importButton || 'Импорт CSV / Excel'}
+              </button>
+              <span className="text-[11px] text-[var(--text-tertiary)] pl-1">
+                {t.emptyState?.importHint || 'Для других брокеров'}
+              </span>
+            </div>
+            {/* Tertiary — manual entry */}
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => user ? setIsModalOpen(true) : setIsAuthRequiredOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--foreground)] transition-colors"
+              >
+                <Plus size={14} />
+                {t.emptyState?.addButton || 'Добавить вручную'}
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* PR 26 Scenario #31/#64: баннер «Требуется переподключение брокера»
+          — показывается если есть broken BrokerConnection. Закрывает картину
+          «дашборд пустой» при отозванном/невалидном токене. */}
+      {user && (
+        <ReconnectBanner
+          onOpenBrokerModal={() => setIsBrokerModalOpen(true)}
+        />
       )}
 
       {/* ===== TAB CONTENT ===== */}
       {activeTab === 'overview' && (
         <>
-          {/* Equity Curve — главный график «как развивается мой счёт».
-              До этого данные фетчались но никогда не рисовались. */}
+          {/* PR 25: новый порядок дашборда — сверху вниз daily-flow:
+              1. Equity Curve (hero) — кривая, на которой держится взгляд
+              2. Core KPI (StatsGrid) — daily scan, цифры за графиком
+              3. Advanced (collapsible, свёрнут) — академические метрики рядом,
+                 но не в поле зрения новичка
+              4. Streak + Activity — behavioral hooks
+              5. Recent Trades + Setup — drill-down контекст
+              6. Portfolio — снимок счёта */}
           <EquityCurveCard
-            data={stats?.equity_curve}
+            data={settings.pnlDisplayMode === 'gross' ? stats?.equity_curve_gross : stats?.equity_curve}
             benchmark={stats?.imoex_curve}
             benchmarkLabel="IMOEX"
             initialBalance={effectiveInitialDeposit ?? undefined}
             formatCurrency={formatCurrency}
+            isBrokerCumulative={isBrokerUser}
+            liveUnrealizedSum={liveUnrealizedSum}
+            snapshotUnrealized={stats?.unrealized_pnl ?? 0}
+            pctBaseline={stats?.period_start_net_deposit ?? 0}
+            peakDate={stats?.max_drawdown_peak_date ?? null}
+            troughDate={stats?.max_drawdown_trough_date ?? null}
           />
 
-          {/* Stats Grid */}
-          <StatsGrid stats={stats} hasData={hasData} />
+          {/* Core KPI — сразу после Equity, для daily-scan */}
+          <div className="mt-6">
+            <StatsGrid stats={stats} hasData={hasData} liveUnrealizedSum={liveUnrealizedSum} />
+          </div>
 
-          {/* Advanced Stats */}
-          <AdvancedStatsGrid stats={stats} hasData={hasData} />
+          {/* Advanced — collapsible, свёрнут по умолчанию */}
+          <div className="mt-6">
+            <CollapsibleSection
+              title="Расширенные метрики"
+              subtitle="Optimal F, SQN, GHPR, Z-Score, Tail Ratio, Calmar и др."
+              storageKey="dashboard-advanced"
+              defaultOpen={false}
+            >
+              <AdvancedStatsGrid stats={stats} hasData={hasData} embedded />
+            </CollapsibleSection>
+          </div>
+
+          {/* Behavioral hooks — Streak + Activity */}
+          {hasData && (
+            <>
+              <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <StreakIndicator trades={trades} />
+                <div className="lg:col-span-2">
+                  <ActivityCalendar trades={trades} />
+                </div>
+              </div>
+
+              {/* Drill-down контекст — Recent + Setup */}
+              <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <RecentTrades trades={trades} />
+                <SetupPerformance tagStats={stats?.tag_stats} />
+              </div>
+            </>
+          )}
 
           {/* Portfolio widget — текущее состояние счёта */}
           <div className="mt-6">
