@@ -54,6 +54,11 @@ from adapters.tinkoff.instruments_client import TinkoffInstrumentsClient
 from adapters.tinkoff.marketdata_client import TinkoffMarketDataClient
 from adapters.tinkoff.operations_client import TinkoffOperationsClient
 from application.fifo_matching import DEFAULT_CALCULATORS, FIFOMatchingService
+from application.sync.health_audit import (
+    SEVERITY_ERROR,
+    SyncHealthAuditor,
+)
+from application.sync.phantom_sweep import close_phantom_trades
 from database import SessionLocal
 from domain.entities import Instrument, Operation, Trade
 from domain.exceptions import BrokerError, InstrumentNotFound
@@ -133,6 +138,13 @@ class SyncPipeline:
         self._session_factory = session_factory or SessionLocal
         self._page_size = page_size
         self._max_instruments_per_run = max_instruments_per_run
+        # PR 20 (health audit): snapshot live position uids после mark_to_market,
+        # для сверки с локальной БД в audit-стадии.
+        self._last_live_position_uids: Optional[set[str]] = None
+        self._auditor = SyncHealthAuditor()
+        # PR 21: total_amount_portfolio (рубли) после последнего get_portfolio,
+        # для автоподстановки initial_balance.
+        self._last_portfolio_total_rub: Optional[Decimal] = None
 
     # ── public API ────────────────────────────────────────────────────
 
@@ -155,14 +167,22 @@ class SyncPipeline:
             started_at=utc_now_naive(),
         )
         started_mono = monotonic()
+        sync_id = uuid.uuid4().hex[:12]
+        self._current_sync_id = sync_id  # PR 20: для health-audit log entry
         ctx_tokens = bind_sync_context(
-            sync_id=uuid.uuid4().hex[:12],
+            sync_id=sync_id,
             account_id=self._account_id,
             broker_account_id=self._broker_account_id,
         )
 
+        # PR 26 Phase 1: SyncEventORM — фиксируем cursor_before до запуска
+        # pipeline, чтобы при interrupt'е была запись о попытке.
+        initial_cursor = "" if full_sync else (await self._get_initial_cursor() or "")
+        sync_event_id = await asyncio.to_thread(
+            self._record_sync_event_start, sync_id, initial_cursor
+        )
+
         try:
-            initial_cursor = "" if full_sync else (await self._get_initial_cursor() or "")
             fetched_operations, last_cursor, pages = await self._stage_fetch(initial_cursor)
             report.pages_fetched = pages
             report.operations_total = len(fetched_operations)
@@ -188,8 +208,34 @@ class SyncPipeline:
                 self._compute_account_varmargin
             )
 
-            # PR 11: mark-to-market открытых позиций.
+            # TR1.3: распределение account-level fees (margin_fee, service_fee,
+            # generic tax, varmargin без instrument_uid) по trades через
+            # proportional time-window attribution. После этого
+            # Trade.net_pnl содержит ВСЕ fees, и Σ Trade.net_pnl ≈ cash truth.
+            await asyncio.to_thread(self._stage_attribute_fees)
+
+            # PR 11+18: подменить локальные positions реальным портфелем с
+            # Tinkoff (источник истины) + проставить current_price/unrealized.
             await self._stage_mark_to_market()
+            # Счётчик positions_open для UI: число реальных позиций после
+            # live-replace (FIFO-метрика была неточной — корпоративные действия).
+            report.positions_open = await asyncio.to_thread(
+                self._count_open_positions
+            )
+
+            # Phase (2026-05-19): закрыть phantom open Trades — позиций нет в
+            # Position table. Защита от случая когда Tinkoff закрыл позицию,
+            # но SELL operation в Operations API задержалась.
+            await asyncio.to_thread(self._stage_phantom_sweep)
+
+            # PR 20: deep-audit здоровья импорта. Не падает если sync ОК —
+            # просто наблюдение, результат пишется в sync_health_checks.
+            await asyncio.to_thread(self._stage_health_audit)
+
+            # Phase 10 (2026-05-17): P&L Health Check — сверка journal_pnl
+            # с cash truth через две независимые методологии. Не блокирует
+            # sync (non-fatal), результат кешируется на Account для UI badge.
+            await asyncio.to_thread(self._stage_pnl_health_check)
 
             # PR 8 — emit OperationsSyncedEvent. Сейчас no-op.
             await self._stage_emit_events(report)
@@ -212,6 +258,13 @@ class SyncPipeline:
             report.finished_at = utc_now_naive()
             report.duration_sec = round(monotonic() - started_mono, 3)
             clear_sync_context(ctx_tokens)
+            # PR 17: после успешного sync — записываем счётчики в БД для UI.
+            # При exception этот блок не вызывается (success остаётся False),
+            # ошибочное состояние уже зафиксировал _save_error_state.
+            if report.success:
+                await asyncio.to_thread(self._save_sync_details, report)
+            # PR 26 Phase 1: финализируем SyncEvent (успех/ошибка/прерывание)
+            await asyncio.to_thread(self._record_sync_event_finish, sync_event_id, report)
 
         log.info(
             "sync.pipeline.done",
@@ -223,6 +276,67 @@ class SyncPipeline:
             },
         )
         return report
+
+    # ── SyncEventORM helpers (PR 26 Phase 1) ──────────────────────────
+
+    def _record_sync_event_start(self, sync_id: str, cursor_before: str) -> Optional[int]:
+        """Создать SyncEventORM запись о начале sync (best-effort)."""
+        try:
+            from models import SyncEventORM as _SyncEventORM
+
+            session = self._session_factory()
+            try:
+                row = _SyncEventORM(
+                    account_id=self._account_id,
+                    broker_account_id=self._broker_account_id,
+                    sync_id=sync_id,
+                    started_at=utc_now_naive(),
+                    status="running",
+                    cursor_before=(cursor_before or "")[:256] or None,
+                )
+                session.add(row)
+                session.commit()
+                return row.id
+            finally:
+                session.close()
+        except Exception:
+            log.exception("record_sync_event_start failed (non-blocking)")
+            return None
+
+    def _record_sync_event_finish(self, event_id: Optional[int], report) -> None:
+        """Финализировать SyncEvent при завершении pipeline (best-effort)."""
+        if event_id is None:
+            return
+        try:
+            from models import SyncEventORM as _SyncEventORM
+
+            session = self._session_factory()
+            try:
+                row = session.query(_SyncEventORM).filter(_SyncEventORM.id == event_id).first()
+                if row is None:
+                    return
+                row.finished_at = report.finished_at or utc_now_naive()
+                if report.duration_sec is not None:
+                    row.duration_ms = int(report.duration_sec * 1000)
+                if report.success:
+                    row.status = "success"
+                elif report.error_type:
+                    row.status = "failed"
+                    row.error_type = (report.error_type or "")[:64] or None
+                    row.error_message = (report.error_message or "")[:512] or None
+                else:
+                    row.status = "interrupted"
+                row.cursor_after = (report.last_cursor or "")[:256] or None
+                row.pages_fetched = report.pages_fetched or 0
+                row.operations_total = report.operations_total or 0
+                row.operations_new_or_updated = report.operations_new_or_updated or 0
+                row.trades_built = report.trades_built or 0
+                row.positions_open = report.positions_open or 0
+                session.commit()
+            finally:
+                session.close()
+        except Exception:
+            log.exception("record_sync_event_finish failed (non-blocking)")
 
     # ── stages ────────────────────────────────────────────────────────
 
@@ -240,13 +354,90 @@ class SyncPipeline:
 
         return await asyncio.to_thread(_get)
 
+    async def _get_sync_from_date(self):
+        """PR 24: возвращает BrokerConnection.sync_from_date (если задан).
+
+        Tinkoff API учитывает `from_dt` только при cursor="" (первый запрос
+        пагинации). После этого — отдаёт всю историю до текущего момента.
+        Раньше поле было «мёртвым»: сохранялось, но в фильтр не попадало.
+        """
+        from models import BrokerConnection
+
+        def _get():
+            session = self._session_factory()
+            try:
+                conn = (
+                    session.query(BrokerConnection)
+                    .filter(BrokerConnection.account_id == self._account_id)
+                    .filter(BrokerConnection.is_active.is_(True))
+                    .first()
+                )
+                if conn is None:
+                    return None
+                # Tinkoff требует timezone-aware datetime в from_/to полях.
+                dt = conn.sync_from_date
+                if dt is None:
+                    return None
+                from datetime import timezone
+
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            finally:
+                session.close()
+
+        return await asyncio.to_thread(_get)
+
+    async def _get_max_executed_at(self):
+        """AU3: возвращает max(executed_at) операций аккаунта для cursor fallback.
+
+        Используется как опорная точка, когда сохранённый cursor застрял
+        (возвращает пустой ответ). На следующем sync переходим с cursor на
+        from_dt = (max_executed_at - 1 day) — потеряем ~24h уже-увиденных
+        операций, но не потеряем новые. UPSERT идемпотентен, дубликатов нет.
+        """
+        from datetime import timezone
+
+        def _get():
+            session = self._session_factory()
+            try:
+                dt = self._operation_repo.get_max_executed_at(
+                    session,
+                    account_id=self._account_id,
+                    broker_account_id=self._broker_account_id,
+                )
+                if dt is None:
+                    return None
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            finally:
+                session.close()
+
+        return await asyncio.to_thread(_get)
+
     async def _stage_fetch(
         self, cursor: str
     ) -> tuple[list[Operation], str, int]:
-        """Шаг 1: тянем все страницы операций от `cursor` до конца."""
+        """Шаг 1: тянем все страницы операций от `cursor` до конца.
+
+        PR 24: при cursor="" (full sync) передаём `sync_from_date` как `from_dt`.
+        SDK документация говорит: from_dt учитывается только при первом запросе
+        (cursor=""). Если у юзера задана дата отсечения — Tinkoff отдаст
+        операции только с этой даты, экономя трафик и память.
+
+        AU3: если cursor был не пустой, но первая страница ответа пустая И
+        next_cursor совпал с current (зависший cursor) — выполняем fallback:
+        cursor="" + from_dt = max(executed_at) − 24h. Это защищает от ситуации,
+        когда T-API трактует cursor как пагинационный, а мы используем как
+        durable checkpoint между sync-сессиями.
+        """
+        from datetime import timedelta
+
         all_ops: list[Operation] = []
         pages = 0
         current = cursor
+        from_dt = await self._get_sync_from_date() if not cursor else None
         async with client_factory.async_client(self._token) as services:
             ops_client = TinkoffOperationsClient(services)
             while True:
@@ -254,11 +445,30 @@ class SyncPipeline:
                     self._broker_account_id,
                     cursor=current,
                     limit=self._page_size,
+                    from_dt=from_dt if current == "" else None,
                 )
                 pages += 1
                 all_ops.extend(page)
                 # Финал — пустой next_cursor.
                 if not next_cursor or next_cursor == current:
+                    # AU3: cursor застрял на non-empty значении и не дал
+                    # операций → переключаемся на from_dt-based fetch.
+                    if cursor and not all_ops and current == cursor:
+                        fallback_anchor = await self._get_max_executed_at()
+                        if fallback_anchor is not None:
+                            fallback_from = fallback_anchor - timedelta(days=1)
+                            log.warning(
+                                "cursor_stale_fallback",
+                                extra={
+                                    "account_id": self._account_id,
+                                    "stuck_cursor": (cursor or "")[:32],
+                                    "fallback_from": fallback_from.isoformat(),
+                                },
+                            )
+                            # Сбрасываем cursor и идём по from_dt.
+                            current = ""
+                            from_dt = fallback_from
+                            continue  # обратно в while-loop, теперь с cursor=""
                     return all_ops, next_cursor or current, pages
                 current = next_cursor
                 # Безопасность — лимит страниц чтобы не зациклиться.
@@ -364,24 +574,32 @@ class SyncPipeline:
                     existing_open_lots=(),
                 )
 
-                # Replace trades.
+                # Replace trades. Передаём instrument чтобы Trade.symbol получил
+                # человекочитаемый ticker (SBER/GAZP) вместо FIFO/UID.
+                # T7 fix: добавляем open trades из несматченных лотов, чтобы
+                # UI "Open positions" показывал actual entry'ы (раньше open lots
+                # жили только в-памяти MatchResult и Trade.exit_at IS NULL
+                # таблица была пустой для futures).
+                from application.fifo_matching import FIFOMatchingService
+                open_trades = FIFOMatchingService.open_trades_from_lots(
+                    lots=result.open_lots,
+                    instrument=instrument,
+                    account_id=self._account_id,
+                )
                 self._trade_repo.replace_for_instrument(
                     session,
                     account_id=self._account_id,
                     instrument_uid=uid,
-                    trades=result.closed_trades,
+                    trades=list(result.closed_trades) + open_trades,
+                    instrument=instrument,
                 )
-                # Save position (или удалить если пусто).
-                self._position_repo.save(
-                    session,
-                    account_id=self._account_id,
-                    instrument_uid=uid,
-                    instrument_type=instrument.instrument_type,
-                    open_lots=result.open_lots,
-                    currency=(result.open_lots[0].currency if result.open_lots else "rub"),
-                )
+                # PR 18: PositionORM здесь больше не сохраняем — открытые позиции
+                # будут переписаны live-данными из Tinkoff get_portfolio в
+                # _stage_mark_to_market. FIFO-derived open_lots использовался
+                # как proxy реального портфеля, но расходился при корпоративных
+                # действиях (SECURITY_OUT, переводы между счетами).
                 session.commit()
-                positions_open = 1 if result.open_lots else 0
+                positions_open = len(open_trades)
                 return len(result.closed_trades), positions_open
             except Exception:
                 session.rollback()
@@ -441,35 +659,448 @@ class SyncPipeline:
         """Шаг 5 — заглушка для PR 5. PR 8 поднимет in-process event bus."""
         return
 
+    def _stage_health_audit(self) -> None:
+        """
+        PR 20: deep-audit состояния аккаунта после sync.
+
+        - Запускает SyncHealthAuditor.audit_account
+        - Сохраняет HealthReport в sync_health_checks
+        - Если severity == 'error' — отправляет Sentry событие с тегами
+          account_hash + issue_type
+        - Никогда не падает: ошибки только логируются (audit — наблюдение).
+        """
+        from models import SyncHealthCheckORM
+
+        session = self._session_factory()
+        try:
+            report = self._auditor.audit_account(
+                session,
+                account_id=self._account_id,
+                broker_account_id=self._broker_account_id,
+                sync_id=getattr(self, "_current_sync_id", None),
+                live_position_uids=self._last_live_position_uids,
+            )
+            session.add(SyncHealthCheckORM(**report.to_db_fields()))
+            session.commit()
+            log.info(
+                "health_audit done: account_id=%s status=%s trades_checked=%s issues=%s",
+                self._account_id,
+                report.status,
+                report.total_trades_checked,
+                len(report.issues),
+            )
+            if report.status == SEVERITY_ERROR:
+                self._emit_sentry_health_alert(report)
+        except Exception:
+            log.exception("health_audit failed (non-blocking) account_id=%s", self._account_id)
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    def _stage_phantom_sweep(self) -> None:
+        """Phase (2026-05-19): закрыть Trade rows с exit_at=None для которых
+        нет matching Position. Tinkoff закрыл позицию, но SELL operation
+        ещё не пришла — FIFO matcher остался ни с чем.
+
+        Идемпотентно. Best-effort: ошибки логируются, sync не падает.
+        """
+        session = self._session_factory()
+        try:
+            def _pv_for(uid: Optional[str]) -> Decimal:
+                if not uid:
+                    return Decimal(1)
+                return self._get_point_value(session, uid)
+
+            swept_count = close_phantom_trades(
+                session=session,
+                account_id=int(self._account_id),
+                point_value_for=_pv_for,
+                now=datetime.utcnow(),
+            )
+            if swept_count > 0:
+                session.commit()
+                log.info(
+                    "phantom_sweep closed %d trades for acc#%s",
+                    swept_count,
+                    self._account_id,
+                )
+        except Exception:
+            log.exception(
+                "phantom_sweep failed (non-blocking) account_id=%s",
+                self._account_id,
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    def _stage_pnl_health_check(self) -> None:
+        """Phase 10 (2026-05-17): сверка journal_pnl vs cash_truth.
+
+        Запускается после `_stage_attribute_fees` + `_stage_mark_to_market`,
+        когда все Trade.net_pnl и Position.unrealized_pnl актуальные.
+        Записывает результат в Account.last_pnl_health_* для UI badge.
+
+        Non-fatal: ошибки только логируются, sync продолжается.
+        """
+        from services import pnl_health_service
+
+        session = self._session_factory()
+        try:
+            result = pnl_health_service.compute_and_persist(session, self._account_id)
+            log.info(
+                "pnl_health_check done: account_id=%s status=%s diff_pct=%.4f diff_rub=%.2f duration_ms=%d",
+                self._account_id,
+                result.status,
+                float(result.diff_pct),
+                float(result.diff_rub),
+                result.duration_ms,
+            )
+        except Exception:
+            log.exception(
+                "pnl_health_check failed (non-blocking) account_id=%s",
+                self._account_id,
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    @staticmethod
+    def _emit_sentry_health_alert(report) -> None:
+        """Отправить Sentry событие при error severity. Не валит pipeline."""
+        try:
+            import sentry_sdk  # type: ignore
+
+            if sentry_sdk.Hub.current.client is None:
+                return
+            with sentry_sdk.push_scope() as scope:
+                scope.set_tag("issue_type", report.main_issue or "unknown")
+                scope.set_tag("broker_account_id", report.broker_account_id)
+                scope.set_extra("issues", [i.to_dict() for i in report.issues])
+                scope.set_extra("trades_with_issues", report.trades_with_issues)
+                sentry_sdk.capture_message(
+                    f"Sync health audit failed: {report.main_issue}",
+                    level="error",
+                )
+        except Exception:
+            log.exception("sentry health alert failed")
+
     async def _stage_mark_to_market(self) -> None:
         """
-        PR 11: для каждой открытой позиции получить current price и обновить
-        `Position.current_price`, `unrealized_pnl`, `last_priced_at`.
+        PR 18 (live positions): источник истины для открытых позиций — это
+        Tinkoff `get_portfolio()`. Раньше мы выводили позиции FIFO-движком,
+        но это путало картину при корпоративных действиях (SECURITY_OUT /
+        транзит между счетами / выкуп) — позиция оставалась "open" хотя на
+        счёте её уже нет. Tinkoff API всегда отдаёт точное состояние.
 
-        Один батч-вызов `get_last_prices(uids)` — щадящий по rate-limit
-        (600/min для Quotes) и кэшированный 60 сек.
+        Алгоритм:
+        1. fetch live portfolio (positions с qty, avg_price, current_price).
+        2. REPLACE all PositionORM для аккаунта строго тем что вернул Tinkoff.
+        3. unrealized_pnl = (current - avg) × qty (signed), валюта из позиции.
+
+        FIFO-derived позиции, оставшиеся в БД от старого алгоритма, будут
+        удалены этим replace'ом. Trade-журнал (закрытые сделки) остаётся
+        нетронутым — он считается отдельно FIFO-движком.
         """
-        positions = await asyncio.to_thread(self._list_open_positions)
-        if not positions:
+        try:
+            async with client_factory.async_client(self._token) as services:
+                ops = TinkoffOperationsClient(services)
+                raw = await ops.get_portfolio_raw(self._broker_account_id)
+        except BrokerError as exc:
+            log.warning(
+                "live_positions: get_portfolio failed (%s) — keeping previous snapshot",
+                type(exc).__name__,
+            )
             return
 
-        uids = [p["instrument_uid"] for p in positions]
-        async with client_factory.async_client(self._token) as services:
-            md = TinkoffMarketDataClient(services)
-            try:
-                prices = await md.get_last_prices(uids)
-            except BrokerError as exc:
-                log.warning(
-                    "mark_to_market: get_last_prices failed (%s) — skipping",
-                    type(exc).__name__,
+        positions = list(getattr(raw, "positions", []))
+        # PR 20: запоминаем live UIDs для health-audit (сравнение DB vs Tinkoff).
+        # Игнорируем currency-позиции (это cash-balance, не настоящая позиция).
+        self._last_live_position_uids = {
+            getattr(p, "instrument_uid", None)
+            for p in positions
+            if (
+                getattr(p, "instrument_uid", None)
+                and (getattr(p, "instrument_type", "") or "") != "currency"
+                and getattr(p, "quantity", None) is not None
+                and (
+                    (getattr(p.quantity, "units", 0) or 0) != 0
+                    or (getattr(p.quantity, "nano", 0) or 0) != 0
                 )
-                return
+            )
+        }
+        # PR 21: запоминаем total_amount_portfolio (рубли) — для autoset
+        # initial_balance после первого sync.
+        total_amount = getattr(raw, "total_amount_portfolio", None)
+        if total_amount is not None:
+            try:
+                self._last_portfolio_total_rub = (
+                    Decimal(total_amount.units or 0)
+                    + Decimal(total_amount.nano or 0) / Decimal(1_000_000_000)
+                )
+            except Exception:
+                self._last_portfolio_total_rub = None
+        await asyncio.to_thread(self._replace_positions_from_live, positions)
+        # PR 22: snapshot portfolio.total_amount в Account.last_portfolio_value —
+        # это источник правды для compute_balance_at(date) (см. capital_service).
+        # Заменяет broken-логику autoset initial_balance, которая не учитывала
+        # INPUT/OUTPUT-операции и систематически завышала старт.
+        await asyncio.to_thread(self._save_portfolio_snapshot)
 
-        if not prices:
-            log.debug("mark_to_market: no prices returned")
+    def _count_open_positions(self) -> int:
+        """Сколько строк PositionORM у аккаунта (после live-replace)."""
+        from models import PositionORM
+
+        session = self._session_factory()
+        try:
+            return (
+                session.query(PositionORM)
+                .filter(PositionORM.account_id == self._account_id)
+                .count()
+            )
+        finally:
+            session.close()
+
+    def _save_portfolio_snapshot(self) -> None:
+        """
+        PR 22: сохранить актуальное `portfolio.total_amount_portfolio` (рубли) в
+        `Account.last_portfolio_value` + timestamp. Это снимок «сколько денег
+        у юзера сейчас по версии брокера» — обновляется при каждом sync.
+
+        Используется `capital_service.compute_balance_at(date)`:
+            balance_at(D) = last_portfolio_value − Σ payments(date > D)
+
+        Заменяет PR 21 `_autoset_initial_balance_if_needed`, который имел
+        системный баг: формула `portfolio - cumulative_realized` не учитывала
+        INPUT/OUTPUT (депозиты/выводы) и из-за этого «стартовый капитал»
+        получался завышенным на сумму всех пополнений за период sync.
+
+        В новой модели `Account.initial_balance` для broker-юзера не
+        используется как baseline; всё считается из `last_portfolio_value`
+        и истории операций runtime.
+        """
+        from datetime import datetime as _dt
+
+        if self._last_portfolio_total_rub is None:
             return
 
-        await asyncio.to_thread(self._apply_mtm, positions, prices)
+        from models import Account
+
+        session = self._session_factory()
+        try:
+            account = (
+                session.query(Account).filter(Account.id == self._account_id).first()
+            )
+            if account is None:
+                return
+            account.last_portfolio_value = self._last_portfolio_total_rub
+            account.last_portfolio_at = _dt.utcnow()
+            session.commit()
+            log.info(
+                "saved portfolio snapshot: account_id=%s value=%s",
+                self._account_id,
+                self._last_portfolio_total_rub,
+            )
+        except Exception:
+            log.exception("save portfolio snapshot failed (non-blocking)")
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    def _get_point_value(self, session, instrument_uid: str) -> Decimal:
+        """PR 24: point_value = min_price_increment_amount / min_price_increment.
+
+        Для фьючерсов цена в пунктах. point_value переводит в рубли.
+        Fallback: 1.0 (если справочника нет; health-audit это поймает).
+        """
+        from models import InstrumentORM
+
+        inst = (
+            session.query(InstrumentORM)
+            .filter(InstrumentORM.uid == instrument_uid)
+            .first()
+        )
+        if inst is None:
+            return Decimal("1")
+        step = getattr(inst, "min_price_increment", None)
+        step_amount = getattr(inst, "min_price_increment_amount", None)
+        if step is None or step_amount is None:
+            return Decimal("1")
+        try:
+            step_d = Decimal(str(step))
+            amount_d = Decimal(str(step_amount))
+            if step_d == 0:
+                return Decimal("1")
+            return amount_d / step_d
+        except Exception:
+            return Decimal("1")
+
+    def _replace_positions_from_live(self, live_positions: list) -> None:
+        """
+        Заменить все PositionORM строки аккаунта тем, что вернул Tinkoff
+        portfolio API. Это даёт точный snapshot реальных открытых позиций.
+        """
+        from models import PositionORM
+
+        session = self._session_factory()
+        try:
+            # 1) Удаляем все наши накопленные FIFO-derived позиции.
+            session.query(PositionORM).filter(
+                PositionORM.account_id == self._account_id
+            ).delete(synchronize_session=False)
+
+            # 2) Вставляем то что реально на счёте.
+            now = utc_now_naive()
+            inserted = 0
+            for p in live_positions:
+                qty_obj = getattr(p, "quantity", None)
+                if qty_obj is None:
+                    continue
+                qty_int = qty_obj.units or 0
+                qty_nano = qty_obj.nano or 0
+                # Округление до целого: Tinkoff позиции в инструментах все
+                # дискретны (лотовые), nano у quantity почти всегда 0.
+                # Currency-позиция (cash на счёте) — её игнорируем как
+                # "позицию", она проходит через total_amount_currencies.
+                itype = getattr(p, "instrument_type", "") or ""
+                if itype == "currency":
+                    continue
+                if qty_int == 0 and qty_nano == 0:
+                    continue
+                quantity_signed = qty_int  # cash positions исключены выше
+
+                uid = getattr(p, "instrument_uid", None)
+                figi = getattr(p, "figi", None) or ""
+                if not uid:
+                    log.warning("live_positions: skip position without uid (figi=%s)", figi)
+                    continue
+
+                avg_obj = getattr(p, "average_position_price", None)
+                if avg_obj is not None:
+                    avg = Decimal(avg_obj.units or 0) + Decimal(avg_obj.nano or 0) / Decimal(1_000_000_000)
+                else:
+                    avg = Decimal(0)
+
+                cur_obj = getattr(p, "current_price", None)
+                if cur_obj is not None:
+                    cur = Decimal(cur_obj.units or 0) + Decimal(cur_obj.nano or 0) / Decimal(1_000_000_000)
+                else:
+                    cur = None
+
+                # Phase 7 (2026-05-17): authoritative fields from Tinkoff.
+                # `expected_yield` — broker's official position P&L in RUB.
+                # Для futures с FX-adjusted dynamic point_value (XIM6, ETM6
+                # на USD-denomination) наша static-pv формула расходится с
+                # broker. Берём expected_yield напрямую как source of truth.
+                ey_obj = getattr(p, "expected_yield", None)
+                expected_yield_rub: Optional[Decimal] = None
+                if ey_obj is not None:
+                    try:
+                        expected_yield_rub = Decimal(ey_obj.units or 0) + Decimal(ey_obj.nano or 0) / Decimal(1_000_000_000)
+                    except Exception:
+                        expected_yield_rub = None
+
+                vm_obj_raw = getattr(p, "var_margin", None)
+                var_margin_rub: Optional[Decimal] = None
+                if vm_obj_raw is not None:
+                    try:
+                        var_margin_rub = Decimal(vm_obj_raw.units or 0) + Decimal(vm_obj_raw.nano or 0) / Decimal(1_000_000_000)
+                    except Exception:
+                        var_margin_rub = None
+
+                dy_obj = getattr(p, "daily_yield", None)
+                daily_yield_rub: Optional[Decimal] = None
+                if dy_obj is not None:
+                    try:
+                        daily_yield_rub = Decimal(dy_obj.units or 0) + Decimal(dy_obj.nano or 0) / Decimal(1_000_000_000)
+                    except Exception:
+                        daily_yield_rub = None
+
+                # PR 24: для фьючерсов цены в ПУНКТАХ, не рублях. Чтобы получить
+                # unrealized в ₽, умножаем на point_value = min_price_increment_amount
+                # / min_price_increment (из справочника инструмента).
+                #
+                # Phase 7 (2026-05-17): для futures используем expected_yield_rub
+                # (Tinkoff authoritative) — он точнее для USD-denominated контрактов
+                # с dynamic FX-adjusted pv. Для shares/etf/bonds — fallback formula.
+                unrealized = None
+                point_value: Optional[Decimal] = None
+                if itype in ("futures", "option") and expected_yield_rub is not None:
+                    # Tinkoff's expected_yield is the canonical position P&L in RUB
+                    unrealized = expected_yield_rub
+                    # Still compute point_value for backward-compat / display
+                    point_value = self._get_point_value(session, uid)
+                elif cur is not None and avg is not None:
+                    delta = cur - avg
+                    if itype in ("futures", "option"):
+                        # Fallback if expected_yield не пришёл — static pv formula
+                        point_value = self._get_point_value(session, uid)
+                        unrealized = delta * Decimal(quantity_signed) * point_value
+                    else:
+                        unrealized = delta * Decimal(quantity_signed)
+
+                # Currency для отображения unrealized_pnl. avg_position_price.currency
+                # у Tinkoff для фьючерсов = "pt" (пункты) — это техническая единица
+                # цены контракта, а не валюта реальных денег. PnL/варм-маржа всегда
+                # в рублях (для MOEX). Поэтому "pt"/"" нормализуем в "rub".
+                raw_currency = (getattr(avg_obj, "currency", None) if avg_obj else None) or ""
+                rc = raw_currency.lower().strip(".")
+                if rc in ("pt", "point", "points", "пт", ""):
+                    currency = "rub"
+                elif rc == "rur":  # старый ISO код, ныне deprecated в пользу RUB
+                    currency = "rub"
+                else:
+                    currency = rc
+
+                extra: dict = {}
+                if point_value is not None:
+                    extra["point_value"] = str(point_value)
+                # PortfolioPosition.var_margin теперь хранится в выделенной
+                # колонке `var_margin_rub` (Phase 7, 2026-05-17). Это
+                # «вариомаржа с момента последнего clearing» (intraday).
+
+                row = PositionORM(
+                    account_id=self._account_id,
+                    instrument_uid=uid,
+                    instrument_type=itype,
+                    quantity=quantity_signed,
+                    avg_entry_price=avg,
+                    current_price=cur,
+                    unrealized_pnl=unrealized,
+                    expected_yield_rub=expected_yield_rub,
+                    var_margin_rub=var_margin_rub,
+                    daily_yield_rub=daily_yield_rub,
+                    last_priced_at=now if cur is not None else None,
+                    currency=currency,
+                    extra=extra,
+                )
+                session.add(row)
+                inserted += 1
+            session.commit()
+            log.info(
+                "live_positions: replaced PositionORM for account_id=%s inserted=%d",
+                self._account_id,
+                inserted,
+            )
+        except Exception:
+            log.exception("live_positions replace failed")
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
 
     def _list_open_positions(self) -> list[dict]:
         """Snapshot полей нужных для MTM (вне session)."""
@@ -591,6 +1222,260 @@ class SyncPipeline:
             )
         return total
 
+    def _stage_attribute_fees(self) -> None:
+        """TR1.3: распределяет account-level fees по trades аккаунта.
+
+        Алгоритм:
+        1. Load all fee ops для аккаунта (varmargin, margin_fee, service_fee,
+           generic tax).
+        2. Load all Trade rows аккаунта (closed + open).
+        3. Запустить `attribute_fees` — proportional by notional × time.
+        4. Bulk UPDATE Trade rows с attributed values + recompute net_pnl.
+
+        Идемпотентно — RESET attribution fields перед расчётом, потом fill.
+        """
+        from models import OperationORM, Trade as TradeORM, InstrumentORM
+        from domain.pnl.fee_attribution import attribute_fees, apply_attribution_to_trade
+        from domain.pnl.futures import _point_value as futures_point_value
+        from domain.entities import Trade as DomainTrade, Operation as DomainOp, Instrument
+        from domain.enums import InstrumentType, OperationType, OperationState, TradeDirection
+        from domain.value_objects import MoneyValue
+        from utils.datetime_utils import utc_now_naive
+
+        session = self._session_factory()
+        try:
+            # 1. Fetch fee ops для ВСЕХ attributable категорий (Phase 3c, 2026-05-17).
+            # До этой даты было hardcoded 5 типов — упускались tax_progressive,
+            # benefit_tax, tax_repo*, track_*, success_fee, overnight, cash_fee
+            # и др. → silent cash drift на тех аккаунтах.
+            from domain.pnl.cash_flow_classification import (
+                CashFlowCategory,
+                operation_types_in,
+            )
+            fee_types_set: set[str] = (
+                operation_types_in(CashFlowCategory.VARMARGIN)
+                | operation_types_in(CashFlowCategory.ATTRIBUTABLE_FEE)
+                | operation_types_in(CashFlowCategory.TAX)
+                | operation_types_in(CashFlowCategory.INCOME)
+                | operation_types_in(CashFlowCategory.INCOME_TAX)
+            )
+            fee_op_rows = (
+                session.query(OperationORM)
+                .filter(
+                    OperationORM.account_id == self._account_id,
+                    OperationORM.state == "executed",
+                    OperationORM.operation_type.in_(tuple(fee_types_set)),
+                )
+                .order_by(OperationORM.executed_at)
+                .all()
+            )
+
+            # 2. Fetch all Trade rows аккаунта.
+            trade_rows = (
+                session.query(TradeORM)
+                .filter(TradeORM.account_id == self._account_id)
+                .all()
+            )
+
+            if not trade_rows:
+                return  # nothing to attribute to
+            if not fee_op_rows:
+                # Reset attribution columns to 0 если ничего нет
+                for tr in trade_rows:
+                    tr.varmargin_attributed = Decimal(0)
+                    tr.margin_fee_attributed = Decimal(0)
+                    tr.service_fee_attributed = Decimal(0)
+                    tr.other_fees_attributed = Decimal(0)
+                session.commit()
+                return
+
+            # 3. Build instrument lookup для point_value.
+            uids = {tr.instrument_uid for tr in trade_rows if tr.instrument_uid}
+            instr_rows = (
+                session.query(InstrumentORM).filter(InstrumentORM.uid.in_(uids)).all()
+                if uids
+                else []
+            )
+            instr_by_uid = {i.uid: i for i in instr_rows}
+
+            def pv_for(uid: Optional[str]) -> Decimal:
+                if not uid or uid not in instr_by_uid:
+                    return Decimal(1)
+                i = instr_by_uid[uid]
+                # Для futures используем formula min_price_increment_amount/min_price_increment
+                if (i.instrument_type or "").lower() == "futures":
+                    # Reuse futures._point_value — нужен Instrument entity
+                    try:
+                        instr_entity = Instrument(
+                            uid=i.uid,
+                            figi=i.figi,
+                            ticker=i.ticker,
+                            instrument_type=InstrumentType.FUTURES,
+                            lot=i.lot or 1,
+                            min_price_increment=Decimal(i.min_price_increment)
+                            if i.min_price_increment
+                            else None,
+                            min_price_increment_amount=Decimal(i.min_price_increment_amount)
+                            if i.min_price_increment_amount
+                            else None,
+                        )
+                        return futures_point_value(instr_entity)
+                    except Exception:
+                        return Decimal(1)
+                return Decimal(1)
+
+            def instrument_type_for(uid: Optional[str]) -> Optional[str]:
+                """Phase 3c: используется fee_attribution для restrict
+                VARMARGIN-без-instrument_uid → только FUTURES (иначе phantom
+                varmargin loss на shares, как в acc#4 audit -9,174₽)."""
+                if not uid or uid not in instr_by_uid:
+                    return None
+                return instr_by_uid[uid].instrument_type
+
+            # 4. Convert ORM rows → domain entities (frozen Pydantic).
+            now = utc_now_naive()
+            domain_trades: list[DomainTrade] = []
+            for tr in trade_rows:
+                try:
+                    domain_trades.append(self._orm_trade_to_domain(tr))
+                except Exception as exc:
+                    log.warning(
+                        "fee_attribution.skip_invalid_trade",
+                        extra={"trade_id": tr.id, "error": str(exc)},
+                    )
+                    domain_trades.append(None)  # placeholder для index alignment
+
+            domain_ops: list[DomainOp] = []
+            for op in fee_op_rows:
+                try:
+                    domain_ops.append(self._orm_op_to_domain(op))
+                except Exception:
+                    continue  # skip malformed
+
+            # 5. Filter None placeholders — attribute_fees им не нужны.
+            valid_pairs = [(i, t) for i, t in enumerate(domain_trades) if t is not None]
+            valid_trades = [t for _, t in valid_pairs]
+            attributions = attribute_fees(
+                fee_ops=domain_ops,
+                trades=valid_trades,
+                now=now,
+                point_value_for=pv_for,
+                instrument_type_for=instrument_type_for,
+            )
+
+            # 6. UPDATE Trade rows с attributed values.
+            for (orig_idx, _), attr in zip(valid_pairs, attributions):
+                tr = trade_rows[orig_idx]
+                tr.varmargin_attributed = attr.varmargin
+                tr.margin_fee_attributed = attr.margin_fee
+                tr.service_fee_attributed = attr.service_fee
+                tr.other_fees_attributed = attr.other
+                # Recompute net_pnl для closed trades (open остаются с net_pnl=None).
+                if tr.exit_at is not None and tr.net_pnl is not None:
+                    # net_pnl в БД был computed FIFO calculator'ом БЕЗ этих fees.
+                    # Чтобы избежать double-add при повторном attribution stage,
+                    # храним base net_pnl в pnl (gross body) и attribution отдельно.
+                    # Final net_pnl = gross body − commission + Σ attribution.
+                    base = Decimal(tr.pnl or 0) - abs(Decimal(tr.commission or 0))
+                    delta = attr.varmargin + attr.margin_fee + attr.service_fee + attr.other
+                    tr.net_pnl = base + delta
+
+            session.commit()
+            log.info(
+                "fee_attribution.stage_done",
+                extra={
+                    "account_id": self._account_id,
+                    "fee_ops": len(domain_ops),
+                    "trades": len(valid_trades),
+                },
+            )
+        except Exception:
+            session.rollback()
+            log.exception("fee_attribution.stage_failed")
+        finally:
+            session.close()
+
+    def _orm_trade_to_domain(self, orm_trade) -> "DomainTrade":
+        """Конвертирует TradeORM → domain Trade (для attribution algorithm)."""
+        from domain.entities import Trade as DomainTrade
+        from domain.enums import InstrumentType, TradeDirection
+
+        # Direction ORM enum → domain enum (string values совпадают).
+        direction_str = (
+            orm_trade.direction.value
+            if hasattr(orm_trade.direction, "value")
+            else str(orm_trade.direction).lower()
+        )
+        domain_direction = (
+            TradeDirection.LONG if direction_str.lower() == "long" else TradeDirection.SHORT
+        )
+
+        # Instrument type fallback.
+        itype_str = orm_trade.instrument_type_v2 or orm_trade.asset_type or "share"
+        try:
+            itype = InstrumentType(itype_str.lower())
+        except Exception:
+            itype = InstrumentType.SHARE
+
+        return DomainTrade(
+            account_id=str(orm_trade.account_id),
+            instrument_uid=orm_trade.instrument_uid or "",
+            instrument_figi=orm_trade.instrument_figi,
+            instrument_type=itype,
+            direction=domain_direction,
+            quantity=int(orm_trade.quantity or 0),
+            entry_price=Decimal(orm_trade.entry_price or 0),
+            exit_price=Decimal(orm_trade.exit_price) if orm_trade.exit_price is not None else None,
+            entry_at=orm_trade.entry_at,
+            exit_at=orm_trade.exit_at,
+            pnl=Decimal(orm_trade.pnl) if orm_trade.pnl is not None else None,
+            net_pnl=Decimal(orm_trade.net_pnl) if orm_trade.net_pnl is not None else None,
+            commission_total=Decimal(orm_trade.commission or 0),
+            tax_total=Decimal(orm_trade.tax_total or 0) if hasattr(orm_trade, "tax_total") else Decimal(0),
+            entry_value=Decimal(orm_trade.entry_value) if orm_trade.entry_value is not None else None,
+            exit_value=Decimal(orm_trade.exit_value) if orm_trade.exit_value is not None else None,
+            currency=orm_trade.currency or "rub",
+        )
+
+    def _orm_op_to_domain(self, orm_op):
+        """Конвертирует OperationORM → domain Operation (только нужные поля)."""
+        from domain.entities import Operation as DomainOp
+        from domain.enums import InstrumentType, OperationState, OperationType
+        from domain.value_objects import MoneyValue
+
+        # Quantity → 0 для fee ops (они не trading).
+        payment = None
+        if orm_op.payment_units is not None or orm_op.payment_nano is not None:
+            value = Decimal(int(orm_op.payment_units or 0)) + Decimal(
+                int(orm_op.payment_nano or 0)
+            ) / Decimal(1_000_000_000)
+            payment = MoneyValue.from_decimal(value, orm_op.payment_currency or "rub")
+
+        try:
+            op_type = OperationType(orm_op.operation_type)
+        except Exception:
+            return None
+
+        try:
+            itype = InstrumentType(orm_op.instrument_type or "share")
+        except Exception:
+            itype = InstrumentType.SHARE
+
+        return DomainOp(
+            operation_id=orm_op.operation_id,
+            account_id=str(orm_op.account_id),
+            instrument_uid=orm_op.instrument_uid,
+            instrument_figi=orm_op.instrument_figi,
+            instrument_type=itype,
+            operation_type=op_type,
+            state=OperationState.EXECUTED,
+            quantity=orm_op.quantity or 0,
+            price=None,
+            payment=payment,
+            commission=None,
+            executed_at=orm_op.executed_at,
+        )
+
     # ── helpers ───────────────────────────────────────────────────────
 
     @staticmethod
@@ -649,6 +1534,49 @@ class SyncPipeline:
             session.commit()
         except Exception:
             log.exception("failed to record error state")
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    def _save_sync_details(self, report: "SyncReport") -> None:
+        """
+        После успешного pipeline записать счётчики в BrokerConnection чтобы
+        UI (/broker/sync-status, SyncStatusIndicator) показывал детализацию:
+        кол-во операций, сделок, позиций, длительность.
+
+        Также обнуляем consecutive_failures и circuit_open_until — sync
+        прошёл, значит брокер доступен.
+        """
+        session: Session = self._session_factory()
+        try:
+            from models import BrokerConnection
+
+            conn = (
+                session.query(BrokerConnection)
+                .filter(
+                    BrokerConnection.account_id == self._account_id,
+                    BrokerConnection.broker_account_id == self._broker_account_id,
+                    BrokerConnection.is_active.is_(True),
+                )
+                .first()
+            )
+            if conn is None:
+                return
+            conn.last_sync_at = utc_now_naive()
+            conn.last_sync_status = "success"
+            conn.last_sync_error = None
+            conn.consecutive_failures = 0
+            conn.circuit_open_until = None
+            conn.last_sync_operations_count = report.operations_new_or_updated
+            conn.last_sync_trades_count = report.trades_built
+            conn.last_sync_positions_count = report.positions_open
+            conn.last_sync_duration_ms = int(report.duration_sec * 1000)
+            session.commit()
+        except Exception:
+            log.exception("failed to record sync details")
             try:
                 session.rollback()
             except Exception:
