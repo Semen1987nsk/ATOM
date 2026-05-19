@@ -467,7 +467,17 @@ async def get_stats(
 
     # Расчет дополнительных метрик
     sortino_data = analytics.calculate_sharpe_sortino(pnls)
-    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted, initial_balance=drawdown_baseline)
+    trade_dates_sorted = [
+        (t.exit_at or t.entry_at)
+        for t in sorted_trades
+        if (t.exit_at or t.entry_at) is not None
+    ]
+    dates_arg = trade_dates_sorted if len(trade_dates_sorted) == len(pnls_sorted) else None
+    drawdown_data = analytics.calculate_drawdown_stats(
+        pnls_sorted,
+        initial_balance=drawdown_baseline,
+        dates=dates_arg,
+    )
     win_loss_data = analytics.calculate_win_loss_stats(pnls)
     streaks_data = analytics.calculate_streaks(pnls_sorted)
     tail_ratio_data = analytics.calculate_tail_ratio(pnls)
@@ -707,6 +717,9 @@ async def get_stats(
         "max_drawdown_pct": drawdown_data.get("max_drawdown_pct", 0),
         "max_drawdown_abs": drawdown_data.get("max_drawdown_abs", 0),
         "current_drawdown_pct": drawdown_data.get("current_drawdown_pct", 0),
+        "max_drawdown_peak_date":   drawdown_data.get("peak_date"),
+        "max_drawdown_trough_date": drawdown_data.get("trough_date"),
+        "max_drawdown_duration_days": drawdown_data.get("dd_duration_days"),
         "avg_win": win_loss_data.get("avg_win", 0),
         "avg_loss": win_loss_data.get("avg_loss", 0),
         "largest_win": win_loss_data.get("largest_win", 0),
