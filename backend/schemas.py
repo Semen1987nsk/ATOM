@@ -716,9 +716,15 @@ class DashboardStats(BaseModel):
     account_level_adjustments_gross: float = 0
     # Phase 12 (2026-05-17): отдельная карточка «Расходы» (best practices).
     # total_costs = разница net vs gross headline.
-    # breakdown: {broker_commission, attributed_fees, taxes}
+    # breakdown: {broker_commission, margin_fees, service_fees, taxes}
+    # (2026-05-18: margin_fees + service_fees заменили общий attributed_fees
+    # для гранулярного UI карточки расходов на дашборде.)
     total_costs: float = 0
     total_costs_breakdown: dict = {}
+    # Phase 6.4 (2026-05-18): broker cash truth для PnLHealthBadge.
+    # cash_truth_pnl = last_portfolio_value − Σ NET_DEPOSIT. Surface'ится отдельно
+    # от headline (total_pnl_with_unrealized = realized + unrealized, journal-style).
+    cash_truth_pnl: float = 0
 
 # ==================== BLOG SCHEMAS ====================
 
