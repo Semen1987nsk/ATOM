@@ -20,6 +20,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   ReferenceArea,
+  ReferenceDot,
 } from "recharts";
 
 // recharts v3 убрал стабильный экспорт TooltipProps — используем локальный shape
@@ -214,23 +215,42 @@ export function EquityCurveCard({
             {peakDate && troughDate && (() => {
               // Найти точку в dataAdjusted по date prefix (YYYY-MM-DD) чтобы Recharts
               // matched по точному значению XAxis dataKey.
-              const findClosestDate = (target: string): string | null => {
+              const findClosest = (target: string) => {
                 if (!target || !dataAdjusted) return null;
                 const prefix = target.slice(0, 10);
-                const point = dataAdjusted.find((p) => p.date.startsWith(prefix));
-                return point ? point.date : null;
+                return dataAdjusted.find((p) => p.date.startsWith(prefix)) ?? null;
               };
-              const peakX = findClosestDate(peakDate);
-              const troughX = findClosestDate(troughDate);
-              if (!peakX || !troughX) return null;
+              const peakPt = findClosest(peakDate);
+              const troughPt = findClosest(troughDate);
+              if (!peakPt || !troughPt) return null;
               return (
-                <ReferenceArea
-                  x1={peakX}
-                  x2={troughX}
-                  fill="var(--danger)"
-                  fillOpacity={0.06}
-                  ifOverflow="extendDomain"
-                />
+                <>
+                  <ReferenceArea
+                    x1={peakPt.date}
+                    x2={troughPt.date}
+                    fill="var(--danger)"
+                    fillOpacity={0.15}
+                    ifOverflow="extendDomain"
+                  />
+                  <ReferenceDot
+                    x={peakPt.date}
+                    y={peakPt.balance}
+                    r={5}
+                    fill="var(--success)"
+                    stroke="var(--surface-1)"
+                    strokeWidth={2}
+                    label={{ value: "пик", position: "top", fill: "var(--success)", fontSize: 10, offset: 8 }}
+                  />
+                  <ReferenceDot
+                    x={troughPt.date}
+                    y={troughPt.balance}
+                    r={5}
+                    fill="var(--danger)"
+                    stroke="var(--surface-1)"
+                    strokeWidth={2}
+                    label={{ value: "дно", position: "bottom", fill: "var(--danger)", fontSize: 10, offset: 8 }}
+                  />
+                </>
               );
             })()}
             <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />

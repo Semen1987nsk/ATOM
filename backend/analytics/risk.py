@@ -271,6 +271,21 @@ def calculate_drawdown_stats(
         if peak_idx is not None and trough_idx is not None:
             dd_duration_days = (dates[trough_idx] - dates[peak_idx]).days
 
+    # peak/trough на cumulative-PnL curve (baseline = 0). Это позиции, которые
+    # видит пользователь на equity_curve. Backend's `peak` выше — это peak ОТ
+    # initial_balance (внутренний расчёт для % drawdown), а для curve-view
+    # нужно cumulative sum pnls от 0 до того момента.
+    peak_value_on_curve = None
+    trough_value_on_curve = None
+    if peak_idx is not None or trough_idx is not None:
+        cumul = 0.0
+        for i, pnl in enumerate(trades_pnl):
+            cumul += pnl
+            if i == peak_idx:
+                peak_value_on_curve = round(cumul, 2)
+            if i == trough_idx:
+                trough_value_on_curve = round(cumul, 2)
+
     return {
         "max_drawdown_pct": round(max_dd_pct, 2),
         "max_drawdown_abs": round(max_dd_abs, 2),
@@ -279,6 +294,8 @@ def calculate_drawdown_stats(
         "peak_date": peak_date_iso,
         "trough_date": trough_date_iso,
         "dd_duration_days": dd_duration_days,
+        "peak_value_on_curve": peak_value_on_curve,
+        "trough_value_on_curve": trough_value_on_curve,
     }
 
 def calculate_risk_of_ruin(win_rate: float, payoff_ratio: float, risk_per_trade: float = 0.02) -> Dict:

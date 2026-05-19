@@ -720,6 +720,8 @@ async def get_stats(
         "max_drawdown_peak_date":   drawdown_data.get("peak_date"),
         "max_drawdown_trough_date": drawdown_data.get("trough_date"),
         "max_drawdown_duration_days": drawdown_data.get("dd_duration_days"),
+        "max_drawdown_peak_value":   drawdown_data.get("peak_value_on_curve"),
+        "max_drawdown_trough_value": drawdown_data.get("trough_value_on_curve"),
         "avg_win": win_loss_data.get("avg_win", 0),
         "avg_loss": win_loss_data.get("avg_loss", 0),
         "largest_win": win_loss_data.get("largest_win", 0),

@@ -77,6 +77,8 @@ interface DashboardData {
   max_drawdown_peak_date?: string | null;
   max_drawdown_trough_date?: string | null;
   max_drawdown_duration_days?: number | null;
+  max_drawdown_peak_value?: number | null;     // cumulative PnL в момент пика
+  max_drawdown_trough_value?: number | null;   // cumulative PnL в момент дна
   current_drawdown_pct: number;
   tail_ratio: number;
   max_win_streak: number;
@@ -365,18 +367,40 @@ export function StatsGrid({ stats, hasData, liveUnrealizedSum }: StatsGridProps)
         title={t.stats.maxDrawdown.title}
         value={formatStatPercent(stats?.max_drawdown_pct)}
         description={hasData ? (() => {
+          // Компактный формат — description truncate'нится. Показываем размах
+          // в виде «пик → дно» чтобы было ясно, что max_drawdown_abs это
+          // расстояние между двумя точками на curve, а не одна точка.
+          const compact = (n: number) => {
+            const abs = Math.abs(n);
+            const sign = n < 0 ? '-' : (n > 0 ? '+' : '');
+            if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+            if (abs >= 1_000)     return `${sign}${(abs / 1_000).toFixed(1)}K`;
+            return `${sign}${abs.toFixed(0)}`;
+          };
           const parts: string[] = [formatCurrency(stats?.max_drawdown_abs || 0)];
-          if (stats?.max_drawdown_peak_date && stats?.max_drawdown_trough_date) {
-            const peakStr   = formatShortDate(stats.max_drawdown_peak_date);
-            const troughStr = formatShortDate(stats.max_drawdown_trough_date);
-            const days = stats.max_drawdown_duration_days ?? 0;
-            parts.push(`${peakStr} → ${troughStr} (${days} дн.)`);
+          const peakV = stats?.max_drawdown_peak_value;
+          const troughV = stats?.max_drawdown_trough_value;
+          if (peakV !== null && peakV !== undefined && troughV !== null && troughV !== undefined) {
+            parts.push(`пик ${compact(peakV)} → дно ${compact(troughV)}`);
           }
           return parts.join(' · ');
         })() : ''}
         trend={hasData ? 'down' : undefined}
         icon={<TrendingDown size={18} />}
-        tooltipText={t.stats.maxDrawdown.tooltip}
+        tooltipText={hasData ? (() => {
+          const lines: string[] = [t.stats.maxDrawdown.tooltip];
+          if (stats?.max_drawdown_peak_date && stats?.max_drawdown_trough_date) {
+            const peakStr   = formatShortDate(stats.max_drawdown_peak_date);
+            const troughStr = formatShortDate(stats.max_drawdown_trough_date);
+            const days = stats.max_drawdown_duration_days ?? 0;
+            lines.push('');
+            lines.push(`Пик капитала: ${formatCurrency(stats?.max_drawdown_peak_value ?? 0)} (${peakStr})`);
+            lines.push(`Дно просадки: ${formatCurrency(stats?.max_drawdown_trough_value ?? 0)} (${troughStr})`);
+            lines.push(`Длительность: ${days} дн.`);
+            lines.push(`Размах (пик − дно): ${formatCurrency(stats?.max_drawdown_abs ?? 0)}`);
+          }
+          return lines.join('\n');
+        })() : t.stats.maxDrawdown.tooltip}
         manualAnchor="drawdown"
       />
       <StatsCard 
