@@ -38,3 +38,13 @@ test("SimpleFact section has 3 columns with statements", async ({ page }) => {
   await expect(section.getByText("02").first()).toBeVisible();
   await expect(section.getByText("03").first()).toBeVisible();
 });
+
+test('Champions section has 6 cards', async ({ page }) => {
+  await page.goto('/');
+  const section = page.locator('#champions');
+  await expect(section).toBeVisible();
+  await expect(section.locator('[data-testid="champion-card"]')).toHaveCount(6);
+  for (const name of ['Ливермор', 'Дарвас', 'Минервини', 'Тюдор Джонс', 'Элдер', 'Рашке']) {
+    await expect(section.getByText(name).first()).toBeVisible();
+  }
+});

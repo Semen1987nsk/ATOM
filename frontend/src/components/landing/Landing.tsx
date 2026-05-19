@@ -15,6 +15,7 @@ import { TradeReplayWidget } from "./parts/TradeReplayWidget";
 import { ManifestCutIn } from "./parts/ManifestCutIn";
 import { MaattOrigin } from "./parts/MaattOrigin";
 import { SimpleFactSection } from "./parts/SimpleFactSection";
+import { ChampionsSection } from "./parts/ChampionsSection";
 
 const NAV_LINKS = [
   { href: "/manual", label: "Возможности" },
@@ -123,18 +124,7 @@ export function Landing() {
       <SimpleFactSection />
 
       {/* 5. CHAMPIONS */}
-      <section
-        id="champions"
-        className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)]"
-      >
-        <div className="max-w-[1200px] mx-auto">
-          <p className="editorial-eyebrow mb-6">Раздел 00 — Дисциплина чемпионов</p>
-          <h2 className="editorial-h2 mb-6 text-[var(--ink)]">Дисциплина чемпионов.</h2>
-          <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] max-w-[60ch]">
-            [Stub — компонент в Task 9]
-          </p>
-        </div>
-      </section>
+      <ChampionsSection />
 
       {/* 6. NUMBERS BAND */}
       <section className="px-6 lg:px-12 py-14 border-b border-[var(--rule)]">
