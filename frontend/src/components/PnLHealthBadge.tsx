@@ -125,31 +125,35 @@ export function PnLHealthBadge({
   onRefresh,
   refreshing = false,
 }: PnLHealthBadgeProps) {
-  const status: PnLHealthStatus = data?.status || "stale";
+  // Пересчитываем status по diff_pct на фронте — БД хранит status строкой,
+  // и пока user не нажал ↻, там может лежать старое значение. Frontend
+  // же должен мгновенно отражать текущий threshold (1%/5%) без round-trip.
+  const status: PnLHealthStatus = useMemo(() => {
+    if (!data) return "stale";
+    if (data.diff_pct === null || data.diff_pct === undefined) return data.status || "stale";
+    const pct = Math.abs(data.diff_pct);
+    if (data.status === "na") return "na";  // sentinel для пустых счетов
+    if (pct < 1.0) return "ok";
+    if (pct < 5.0) return "warning";
+    return "mismatch";
+  }, [data]);
   const style = styleFor(status);
 
   const tooltipContent = useMemo(() => {
     if (!data) return "Проверка P&L ещё не выполнялась";
-    const journalP = (data.breakdown as Record<string, number> | null)?.journal_pnl;
-    const cashP = (data.breakdown as Record<string, number> | null)?.cash_pnl;
-    const lines: string[] = [];
-
-    lines.push("Что это значит:");
-    lines.push("Мы сверяем две цифры — что насчитал журнал сделок и что");
-    lines.push("показывает Тинькофф (баланс минус депозиты). Разница = сборы,");
-    lines.push("которые сняли со счёта, но в журнал привязать к конкретной");
-    lines.push("сделке не удалось: варм-маржа MOEX после клиринга, плата за");
-    lines.push("маржу/сервис в дни без позиций. Деньги уже учтены в общем");
-    lines.push("балансе — на торговые решения не влияет.");
-    lines.push("");
-
-    if (journalP !== undefined) lines.push(`Журнал сделок: ${formatCurrency(journalP)}`);
-    if (cashP !== undefined) lines.push(`Брокер (cash): ${formatCurrency(cashP)}`);
-    if (data.diff_rub !== null) lines.push(`Разница: ${formatCurrency(data.diff_rub)} (${formatPct(data.diff_pct)})`);
-    lines.push("");
-    lines.push("Шкала: до 1% — ✅ корректно, до 5% — ⚠️ внимание, выше — 🔴.");
-    lines.push(`Проверено: ${timeAgo(data.checked_at)}`);
-    return lines.join("\n");
+    if (data.diff_rub === null || data.diff_pct === null) {
+      return "Журнал и брокер сходятся.";
+    }
+    // 4 строки максимум — длинные tooltip обрезаются браузером.
+    return [
+      `Расхождение журнала с брокером: ${formatCurrency(data.diff_rub)} (${formatPct(data.diff_pct)}).`,
+      "",
+      "Это сборы, которые брокер снял со счёта, но в журнал не привязались",
+      "к конкретной сделке (варм-маржа MOEX после клиринга, плата за сервис).",
+      "Деньги уже учтены в балансе — на торговлю не влияет.",
+      "",
+      "Норма: ≤ 1% ✅, до 5% ⚠️, выше 5% — стоит проверить.",
+    ].join("\n");
   }, [data]);
 
   const isCompact = size === "sm";
