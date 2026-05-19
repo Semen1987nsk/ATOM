@@ -30,7 +30,7 @@
 | `frontend/src/components/landing/parts/ChampionsSection.tsx` | Секция «Дисциплина чемпионов» |
 | `frontend/src/components/landing/parts/ChampionCard.tsx` | Презентационная карточка |
 | `frontend/src/app/structured-data.ts` | 4 JSON-LD блока |
-| `frontend/public/landing/champions/{livermore,darvas,minervini,druckenmiller,elder,nayman}.svg` | 6 SVG-гравюр |
+| `frontend/public/landing/champions/{livermore,darvas,minervini,tudor-jones,elder,raschke}.svg` | 6 SVG-гравюр |
 | `frontend/e2e/landing-ia.spec.ts` | Smoke + visual regression для новых блоков |
 
 ### Модифицируются
@@ -674,7 +674,7 @@ test('Champions section has 6 cards', async ({ page }) => {
   const section = page.locator('#champions');
   await expect(section).toBeVisible();
   await expect(section.locator('[data-testid="champion-card"]')).toHaveCount(6);
-  for (const name of ['Ливермор','Дарвас','Минервини','Дракенмиллер','Элдер','Найман']) {
+  for (const name of ['Ливермор','Дарвас','Минервини','Тюдор Джонс','Элдер','Рашке']) {
     await expect(section.getByText(name).first()).toBeVisible();
   }
 });
@@ -742,33 +742,34 @@ export const CHAMPIONS: Champion[] = [
     portraitSrc: "/landing/champions/minervini.svg",
   },
   {
-    slug: "druckenmiller",
-    firstName: "Стэнли",
-    lastName: "Дракенмиллер",
-    originalName: "Stanley Druckenmiller",
-    birthYear: 1953,
+    slug: "tudor-jones",
+    firstName: "Пол",
+    lastName: "Тюдор Джонс",
+    originalName: "Paul Tudor Jones",
+    birthYear: 1954,
     bio: "", quote: "", source: "",
-    wikipediaUrl: "https://en.wikipedia.org/wiki/Stanley_Druckenmiller",
-    portraitSrc: "/landing/champions/druckenmiller.svg",
+    wikipediaUrl: "https://en.wikipedia.org/wiki/Paul_Tudor_Jones",
+    portraitSrc: "/landing/champions/tudor-jones.svg",
   },
   {
     slug: "elder",
     firstName: "Александр",
     lastName: "Элдер",
     originalName: "Alexander Elder",
-    birthYear: 1932,
+    birthYear: 1950,
     bio: "", quote: "", source: "",
     wikipediaUrl: "https://ru.wikipedia.org/wiki/Элдер,_Александр",
     portraitSrc: "/landing/champions/elder.svg",
   },
   {
-    slug: "nayman",
-    firstName: "Эрик",
-    lastName: "Найман",
-    birthYear: 1969,
+    slug: "raschke",
+    firstName: "Линда",
+    lastName: "Брэдфорд Рашке",
+    originalName: "Linda Bradford Raschke",
+    birthYear: 1959,
     bio: "", quote: "", source: "",
-    wikipediaUrl: "https://ru.wikipedia.org/wiki/Найман,_Эрик_Леонович",
-    portraitSrc: "/landing/champions/nayman.svg",
+    wikipediaUrl: "https://en.wikipedia.org/wiki/Linda_Bradford_Raschke",
+    portraitSrc: "/landing/champions/raschke.svg",
   },
 ];
 ```
@@ -880,7 +881,7 @@ export function ChampionsSection() {
 </svg>
 ```
 
-Инициалы: livermore=ДЛ, darvas=НД, minervini=ММ, druckenmiller=СД, elder=АЭ, nayman=ЭН.
+Инициалы: livermore=ДЛ, darvas=НД, minervini=ММ, tudor-jones=ПТ, elder=АЭ, raschke=ЛР.
 
 - [ ] **Step 6: Wire into Landing.tsx**
 
@@ -1209,7 +1210,7 @@ Manual browser walk-through `http://localhost:3001/` от начала до ко
 ### Task 14: 6 engraved portrait SVGs
 
 **Files:**
-- Replace: `frontend/public/landing/champions/{livermore,darvas,minervini,druckenmiller,elder,nayman}.svg`
+- Replace: `frontend/public/landing/champions/{livermore,darvas,minervini,tudor-jones,elder,raschke}.svg`
 
 - [ ] **Step 1: Generate stipple portraits (Strategy A)**
 
@@ -1225,10 +1226,10 @@ transparent background, 1:1 square, minimal background, high contrast
 Конкретные подсказки для description:
 - Livermore (1877-1940 American stock trader, 1920s formal suit, side-parted hair)
 - Darvas (1920-1977 Hungarian-American dancer/trader, 1950s vintage formal)
-- Minervini (modern US business casual)
-- Druckenmiller (contemporary US business attire)
-- Elder (senior Russian-American psychiatrist-trader, thoughtful expression)
-- Nayman (contemporary Russian businessman/economist)
+- Minervini (born 1965, modern US business casual)
+- Paul Tudor Jones (born 1954, contemporary US business attire, often photographed with legal pad)
+- Elder (born 1950, Russian-American psychiatrist-trader, thoughtful expression)
+- Linda Bradford Raschke (born 1959, only woman in cast, contemporary US business)
 
 - [ ] **Step 2: Vectorize**
 
