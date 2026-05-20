@@ -23,7 +23,7 @@ import {
   type PositionResponse,
 } from './joinPositionsTrades';
 import { OpenPositionExpand } from './OpenPositionExpand';
-import { EditTradeModal } from '@/components/EditTradeModal';
+import { EditTradeModal, type EditableTrade } from '@/components/EditTradeModal';
 
 /**
  * Форматирует сумму в валюте позиции из ответа API (rub/usd/eur/...).
@@ -123,7 +123,7 @@ export default function PositionsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('pnl');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [editingTradeId, setEditingTradeId] = useState<number | null>(null);
+  const [editingTrade, setEditingTrade] = useState<EditableTrade | null>(null);
 
   const fetchPositions = useCallback(async () => {
     setLoading(true);
@@ -425,7 +425,15 @@ export default function PositionsPage() {
                           <td colSpan={10} className="px-4 py-3">
                             <OpenPositionExpand
                               executions={p.open_executions}
-                              onEdit={(executionId) => setEditingTradeId(executionId)}
+                              onEdit={async (executionId) => {
+                                try {
+                                  const full = await api.get<EditableTrade>(`/trades/${executionId}`);
+                                  setEditingTrade(full);
+                                } catch (err: unknown) {
+                                  const msg = err instanceof Error ? err.message : 'Не удалось загрузить сделку';
+                                  setError(msg);
+                                }
+                              }}
                             />
                           </td>
                         </tr>
@@ -439,17 +447,13 @@ export default function PositionsPage() {
         )}
       </div>
     </AppShell>
-    {editingTradeId !== null && (
+    {editingTrade !== null && (
       <EditTradeModal
         isOpen={true}
-        trade={
-          enriched
-            .flatMap((p) => p.open_executions)
-            .find((ex) => ex.id === editingTradeId) ?? null
-        }
-        onClose={() => setEditingTradeId(null)}
+        trade={editingTrade}
+        onClose={() => setEditingTrade(null)}
         onSuccess={() => {
-          setEditingTradeId(null);
+          setEditingTrade(null);
           fetchPositions();
         }}
       />

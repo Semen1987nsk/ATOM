@@ -34,7 +34,6 @@ import {
   BarChart3,
   ListChecks,
   CalendarDays,
-  Briefcase,
   PieChart,
   Target,
   Clock,

@@ -11,7 +11,7 @@ interface EditTradeModalProps {
   trade: EditableTrade | null;
 }
 
-interface EditableTrade {
+export interface EditableTrade {
   id: number;
   symbol?: string;
   asset_name?: string | null;

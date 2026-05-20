@@ -961,10 +961,34 @@ async def delete_screenshot(
     return {"message": "Скриншот удалён"}
 
 
+@router.get("/{trade_id}", response_model=schemas.Trade)
+async def read_trade(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """Возвращает полный Trade row для editing surface (/positions → modal).
+
+    /trades/positions executions содержат только subset полей (per-execution
+    metrics), а для редактирования manual fields (notes, tags, confidence,
+    mood, discipline, timeframe, stop_loss/take_profit, risk_amount, etc.)
+    нужна полная Trade-запись. Иначе EditTradeModal заполнит form defaults
+    и стерёт legitimate metadata при PATCH.
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    db_trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id,
+    ).first()
+    if not db_trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return db_trade
+
+
 @router.patch("/{trade_id}", response_model=schemas.Trade)
 async def update_trade(
-    trade_id: int, 
-    trade_update: schemas.TradeUpdate, 
+    trade_id: int,
+    trade_update: schemas.TradeUpdate,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
@@ -975,11 +999,11 @@ async def update_trade(
     ).first()
     if not db_trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-    
+
     update_data = trade_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_trade, key, value)
-    
+
     db.commit()
     db.refresh(db_trade)
     return db_trade
