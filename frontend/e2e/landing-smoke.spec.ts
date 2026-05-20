@@ -55,6 +55,20 @@ test.describe("Landing — smoke", () => {
     expect(fontFamily.toLowerCase()).toContain("mono");
   });
 
+  test("Hero on dark background with Manrope H1 and orange second line", async ({ page }) => {
+    const hero = page.locator('[data-section="hero"]');
+    await expect(hero).toBeVisible();
+    const bg = await hero.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(10, 10, 10)"); // --ink-dark
+    const h1 = hero.locator("h1").first();
+    const h1Font = await h1.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(h1Font.toLowerCase()).toContain("manrope");
+    const orangeLine = hero.locator('[data-h1-accent="true"]').first();
+    await expect(orangeLine).toBeVisible();
+    const orangeColor = await orangeLine.evaluate((el) => getComputedStyle(el).color);
+    expect(orangeColor).toBe("rgb(232, 78, 28)");
+  });
+
   test("footer has МААТТ wordmark + email", async ({ page }) => {
     await expect(page.locator("footer >> text=МААТТ").first()).toBeVisible();
     await expect(page.locator("footer >> text=hello@maatt.ru")).toBeVisible();

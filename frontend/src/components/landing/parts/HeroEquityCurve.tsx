@@ -1,12 +1,13 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import { heroEquity } from "../data/hero-equity-snapshot";
 
-/**
- * Mini equity curve в Hero. SSR, static path из snapshot.
- * Без анимации reveal.
- */
 type Props = { width?: number; height?: number };
 
 export function HeroEquityCurve({ width = 280, height = 140 }: Props) {
+  const pathRef = useRef<SVGPathElement | null>(null);
+
   const n = heroEquity.length;
   const max = Math.max(...heroEquity);
   const min = Math.min(...heroEquity);
@@ -25,6 +26,17 @@ export function HeroEquityCurve({ width = 280, height = 140 }: Props) {
 
   const [endX, endY] = points[points.length - 1];
 
+  useEffect(() => {
+    const el = pathRef.current;
+    if (!el) return;
+    const len = el.getTotalLength();
+    el.style.setProperty("--curve-length", String(len));
+    el.style.strokeDasharray = String(len);
+    el.style.strokeDashoffset = String(len);
+    void el.getBoundingClientRect();
+    el.classList.add("uplift-curve-animate");
+  }, []);
+
   return (
     <figure className="m-0 p-0">
       <svg
@@ -36,17 +48,17 @@ export function HeroEquityCurve({ width = 280, height = 140 }: Props) {
       >
         <defs>
           <linearGradient id="hero-equity-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--ink)" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="var(--ink)" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--orange)" stopOpacity="0.20" />
+            <stop offset="100%" stopColor="var(--orange)" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path d={fillD} fill="url(#hero-equity-fill)" />
-        <path d={pathD} stroke="var(--ink)" strokeWidth="1.4" fill="none" />
-        <circle cx={endX} cy={endY} r="3" fill="var(--accent)" />
+        <path ref={pathRef} d={pathD} stroke="var(--orange)" strokeWidth="2" fill="none" />
+        <circle cx={endX} cy={endY} r="3" fill="var(--orange)" />
       </svg>
       <figcaption
-        className="text-[11px] italic text-[var(--ink-3)] mt-2 leading-snug"
-        style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+        className="text-[11px] italic mt-2 leading-snug"
+        style={{ fontFamily: "var(--font-serif), Georgia, serif", color: "var(--paper-on-dark-3)" }}
       >
         cohort · 60 закрытых сделок · апрель 2026
       </figcaption>

@@ -95,32 +95,41 @@ export function Landing() {
       <LiveTicker />
 
       {/* 3. HERO */}
-      <section className="px-6 lg:px-12 pt-20 lg:pt-32 pb-20 lg:pb-28 border-b border-[var(--rule-strong)]">
+      <section
+        data-section="hero"
+        className="uplift-section-dark px-6 lg:px-12 pt-16 lg:pt-24 pb-20 lg:pb-28"
+      >
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-10 items-center">
           <div className="col-span-12 lg:col-span-7">
-            <p className="editorial-eyebrow mb-7">── Журнал сделок · MOEX</p>
-            <h1 className="editorial-display mb-9 text-[var(--ink)]">
-              Запись делает трейдера.
-              <br />
-              <em>Что записано — то измерено.</em>
+            <p className="editorial-eyebrow mb-7" style={{ color: "var(--paper-on-dark-3)" }}>
+              ── Журнал сделок · MOEX · <span style={{ color: "var(--orange)" }}>● LIVE</span>
+            </p>
+            <h1 className="uplift-h1 mb-9" style={{ color: "var(--paper-on-dark)" }}>
+              Запись делает<br />
+              <span data-h1-accent="true" style={{ color: "var(--orange)" }}>трейдера.</span>
             </h1>
-            <p className="editorial-lede max-w-[36ch] mb-10">
+            <p className="text-[16px] lg:text-[17px] leading-[1.55] max-w-[44ch] mb-10" style={{ color: "var(--paper-on-dark-2)" }}>
               MAE и MFE из биржевых свечей. Тридцать с лишним метрик из работ
               Винса и Тарпа. На ваших сделках MOEX. Автосинхронизация
               с Тинькофф — 60 сек.
             </p>
             <div className="flex flex-col sm:flex-row items-start gap-5">
-              <Link href="/register" className="btn-primary">
-                Начать бесплатно <ArrowRight size={16} />
+              <Link
+                href="/register"
+                className="uplift-focus inline-flex items-center gap-2 px-8 py-4 text-[13px] font-bold uppercase tracking-[0.06em] no-underline transition-colors"
+                style={{ backgroundColor: "var(--orange)", color: "#0a0a0a", fontFamily: "var(--font-display), sans-serif" }}
+              >
+                → Начать бесплатно
               </Link>
               <Link
                 href="/register?provider=tinkoff_id"
-                className="text-[14px] text-[var(--ink-2)] hover:text-[var(--ink)] transition-colors no-underline inline-flex items-center gap-1 py-3"
+                className="text-[14px] no-underline inline-flex items-center gap-1 py-3 transition-colors"
+                style={{ color: "var(--paper-on-dark-2)" }}
               >
                 Войти через Тинькофф ID <ArrowRight size={13} />
               </Link>
             </div>
-            <p className="mt-6 text-[12px] text-[var(--ink-3)] num">
+            <p className="mt-6 text-[12px] num" style={{ color: "var(--paper-on-dark-3)" }}>
               Бесплатно до 50 сделок. Без карты. 21 день Pro в подарок.
             </p>
           </div>
