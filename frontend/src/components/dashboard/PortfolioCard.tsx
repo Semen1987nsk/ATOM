@@ -156,6 +156,7 @@ export default function PortfolioCard() {
   };
 
   const formatMoney = (value: number) => {
+    if (value == null || !Number.isFinite(value)) return '—';
     return new Intl.NumberFormat('ru-RU', {
       style: 'currency',
       currency: 'RUB',

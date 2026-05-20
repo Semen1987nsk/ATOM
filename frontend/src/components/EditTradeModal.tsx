@@ -352,12 +352,21 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             />
           </div>
 
-          <button 
-            type="submit"
-            className="btn-primary w-full py-3 text-center justify-center"
-          >
-            Обновить сделку
-          </button>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-secondary flex-1 py-3 text-center justify-center"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              className="btn-primary flex-1 py-3 text-center justify-center"
+            >
+              Обновить сделку
+            </button>
+          </div>
         </form>
       </div>
     </div>
