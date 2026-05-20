@@ -22,47 +22,54 @@ export function LiveTicker() {
   });
 
   const items = data ?? (isError ? [...tickerFallback] : [...tickerFallback]);
-  const isLive = !!data && !isError;
 
   return (
-    <div
-      className="px-6 lg:px-12 py-2 border-b border-[var(--rule)]"
-      style={{ background: "rgba(20,17,11,0.025)" }}
+    <section
+      data-section="live-ticker"
+      className="uplift-ticker-strip overflow-hidden"
+      style={{ backgroundColor: "#E84E1C", color: "#0a0a0a", borderTop: "1px solid #0a0a0a", borderBottom: "1px solid #0a0a0a" }}
+      aria-label="Биржевой тикер MOEX"
     >
-      <div className="max-w-[1200px] mx-auto flex flex-wrap items-center gap-x-7 gap-y-1 overflow-x-auto">
-        {items.map((t, i) => (
-          <div key={t.symbol} className="num text-[12px] inline-flex items-baseline gap-2 whitespace-nowrap">
-            {i === 0 && isLive && (
-              <span
-                className="inline-block w-[5px] h-[5px] rounded-full"
-                style={{
-                  background: "var(--profit)",
-                  animation: "maatt-pulse 1.6s infinite",
-                }}
-                aria-label="live"
-              />
-            )}
-            <span className="text-[var(--ink-3)] tracking-wider">{t.symbol}</span>
-            <span className="text-[var(--ink)] font-medium">{t.last.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}</span>
-            <span style={{ color: t.change_pct >= 0 ? "var(--profit)" : "var(--loss)" }}>
-              {t.change_pct >= 0 ? "+" : ""}{t.change_pct.toFixed(2)}%
+      <div className="relative h-9.5 flex items-center">
+        <div
+          className="uplift-ticker-track"
+          aria-hidden="false"
+          style={{
+            display: "inline-flex",
+            gap: "36px",
+            whiteSpace: "nowrap",
+            animation: "uplift-ticker-scroll 60s linear infinite",
+            fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+            fontWeight: 500,
+            fontSize: "12px",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {/* двойная копия списка для seamless loop при translateX(-50%) */}
+          {[...items, ...items].map((t, idx) => (
+            <span key={`${t.symbol}-${idx}`} className="inline-flex items-center gap-2">
+              <span className="font-semibold">{t.symbol}</span>
+              <span>{t.last.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}</span>
+              <span>
+                {t.change_pct >= 0 ? "▲" : "▼"} {Math.abs(t.change_pct).toFixed(2)}%
+              </span>
+              <span style={{ opacity: 0.5, margin: "0 8px" }}>·</span>
             </span>
-          </div>
-        ))}
-        <div className="num text-[11px] text-[var(--ink-3)] ml-auto whitespace-nowrap">
-          MSK · {new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+          ))}
         </div>
       </div>
-      <style jsx global>{`
-        @keyframes maatt-pulse {
-          0%   { box-shadow: 0 0 0 0 rgba(31, 106, 71, 0.30); }
-          70%  { box-shadow: 0 0 0 6px rgba(31, 106, 71, 0.00); }
-          100% { box-shadow: 0 0 0 0 rgba(31, 106, 71, 0.00); }
+      <style>{`
+        @keyframes uplift-ticker-scroll {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
         }
         @media (prefers-reduced-motion: reduce) {
-          [aria-label="live"] { animation: none !important; }
+          [data-section="live-ticker"] .uplift-ticker-track {
+            animation: none;
+            transform: none;
+          }
         }
       `}</style>
-    </div>
+    </section>
   );
 }

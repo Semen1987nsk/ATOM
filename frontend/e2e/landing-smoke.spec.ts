@@ -43,6 +43,18 @@ test.describe("Landing — smoke", () => {
     await expect(page.locator("text=MFE").first()).toBeVisible({ timeout: 2000 });
   });
 
+  test("LiveTicker rendered on orange strip with mono text", async ({ page }) => {
+    const ticker = page.locator('[data-section="live-ticker"]');
+    await expect(ticker).toBeVisible();
+    const bg = await ticker.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // #E84E1C = rgb(232, 78, 28)
+    expect(bg).toBe("rgb(232, 78, 28)");
+    const track = ticker.locator(".uplift-ticker-track").first();
+    await expect(track).toBeVisible();
+    const fontFamily = await track.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(fontFamily.toLowerCase()).toContain("mono");
+  });
+
   test("footer has МААТТ wordmark + email", async ({ page }) => {
     await expect(page.locator("footer >> text=МААТТ").first()).toBeVisible();
     await expect(page.locator("footer >> text=hello@maatt.ru")).toBeVisible();
