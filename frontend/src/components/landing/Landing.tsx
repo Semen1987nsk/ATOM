@@ -546,72 +546,88 @@ export function Landing() {
       </section>
 
       {/* 15. FINAL CTA */}
-      <section className="px-6 lg:px-12 py-32 lg:py-40 border-t border-[var(--rule)] border-b border-[var(--rule)]">
-        <div className="max-w-[860px] mx-auto text-center">
-          <h2 className="editorial-display mb-10 text-[var(--ink)]">
+      <section
+        data-section="final-cta"
+        className="uplift-section-dark px-6 lg:px-12 py-28 lg:py-36"
+      >
+        <div className="max-w-[900px] mx-auto text-center">
+          <h2
+            className="uplift-h1 mb-10"
+            style={{ color: "var(--paper-on-dark)", fontSize: "clamp(40px, 6vw, 80px)" }}
+          >
             Запись делает трейдера.
             <br />
-            <em>Начните вести.</em>
+            <span style={{ color: "var(--orange)" }}>Начните вести.</span>
           </h2>
-          <p className="editorial-lede max-w-2xl mx-auto mb-12">
+          <p
+            className="text-[17px] leading-[1.55] max-w-[50ch] mx-auto mb-12"
+            style={{ color: "var(--paper-on-dark-2)" }}
+          >
             Тинькофф через API. CSV из БКС, Финама, Сбера, Альфы, ВТБ. Ручной ввод. Первая статистика — через две минуты.
           </p>
-          <Link href="/register" className="btn-primary inline-flex">
-            Начать бесплатно <ArrowRight size={16} />
+          <Link
+            href="/register"
+            className="uplift-focus inline-flex items-center gap-2 px-9 py-4 text-[14px] font-bold uppercase tracking-[0.06em] no-underline"
+            style={{ backgroundColor: "var(--orange)", color: "var(--ink-dark)", fontFamily: "var(--font-display), sans-serif" }}
+          >
+            → Начать бесплатно
           </Link>
-          <p className="mt-6 text-[13px] text-[var(--ink-3)]">
-            Без карты. 21 день Pro в подарок. До 50 сделок в месяц — бесплатно бесконечно.
+          <p
+            className="mt-6 num text-[11px] uppercase tracking-[0.08em]"
+            style={{ color: "var(--paper-on-dark-3)" }}
+          >
+            Без карты · 21 день Pro в подарок · 50 сделок в месяц бесплатно
           </p>
         </div>
       </section>
 
       {/* 16. FOOTER */}
-      <footer className="px-6 lg:px-12 py-16 text-[14px]">
+      <footer className="uplift-section-dark px-6 lg:px-12 pt-16 pb-10 text-[14px] border-t border-[var(--rule-on-dark)]">
         <div className="max-w-[1200px] mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
             <div>
               <Link
                 href="/"
-                className="text-[22px] italic no-underline text-[var(--ink)] mb-4 block"
-                style={{ fontFamily: "var(--font-serif), Georgia, serif", letterSpacing: "-0.015em" }}
+                className="text-[22px] no-underline mb-4 block"
+                style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: 800, color: "var(--paper-on-dark)", letterSpacing: "-0.025em", textTransform: "uppercase" }}
               >
                 МААТТ
               </Link>
-              <p className="text-[var(--ink-3)] leading-relaxed text-[13px]">
+              <p className="leading-relaxed text-[13px]" style={{ color: "var(--paper-on-dark-3)" }}>
                 Журнал сделок для активных трейдеров MOEX. На минутных свечах биржи. На вашем брокере через API или CSV.
               </p>
             </div>
             <div>
-              <div className="editorial-eyebrow mb-4 text-[var(--ink-2)]">Продукт</div>
+              <div className="editorial-eyebrow mb-4" style={{ color: "var(--paper-on-dark-3)" }}>Продукт</div>
               <nav className="flex flex-col gap-2.5">
-                <Link href="/manual" className="text-[var(--ink-3)] hover:text-[var(--ink)] transition-colors no-underline">Возможности</Link>
-                <Link href="/pricing" className="text-[var(--ink-3)] hover:text-[var(--ink)] transition-colors no-underline">Тарифы</Link>
+                <Link href="/manual" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Возможности</Link>
+                <Link href="/pricing" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Тарифы</Link>
               </nav>
             </div>
             <div>
-              <div className="editorial-eyebrow mb-4 text-[var(--ink-2)]">Контент</div>
+              <div className="editorial-eyebrow mb-4" style={{ color: "var(--paper-on-dark-3)" }}>Контент</div>
               <nav className="flex flex-col gap-2.5">
-                <Link href="/blog" className="text-[var(--ink-3)] hover:text-[var(--ink)] transition-colors no-underline">Блог</Link>
-                <Link href="/help" className="text-[var(--ink-3)] hover:text-[var(--ink)] transition-colors no-underline">Помощь</Link>
-                <Link href="/manual" className="text-[var(--ink-3)] hover:text-[var(--ink)] transition-colors no-underline">Руководство</Link>
+                <Link href="/blog" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Блог</Link>
+                <Link href="/help" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Помощь</Link>
+                <Link href="/manual" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Руководство</Link>
               </nav>
             </div>
             <div>
-              <div className="editorial-eyebrow mb-4 text-[var(--ink-2)]">Контакты</div>
-              <nav className="flex flex-col gap-2.5 text-[var(--ink-3)]">
-                <a href="mailto:hello@maatt.ru" className="hover:text-[var(--ink)] transition-colors no-underline">hello@maatt.ru</a>
-                <a href="mailto:support@maatt.ru" className="hover:text-[var(--ink)] transition-colors no-underline">support@maatt.ru</a>
-                <Link href="/privacy" className="hover:text-[var(--ink)] transition-colors no-underline">Политика · 152-ФЗ</Link>
+              <div className="editorial-eyebrow mb-4" style={{ color: "var(--paper-on-dark-3)" }}>Контакты</div>
+              <nav className="flex flex-col gap-2.5">
+                <a href="mailto:hello@maatt.ru" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>hello@maatt.ru</a>
+                <a href="mailto:support@maatt.ru" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>support@maatt.ru</a>
+                <Link href="/privacy" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Политика · 152-ФЗ</Link>
               </nav>
             </div>
           </div>
           <div
-            className="pt-8 border-t border-[var(--rule)] mb-6 text-[11px] text-[var(--ink-3)] uppercase tracking-[0.08em]"
-            style={{ fontFamily: "var(--font-mono), monospace" }}
+            className="pt-8 border-t mb-6 text-[11px] uppercase tracking-[0.08em]"
+            style={{ fontFamily: "var(--font-mono), monospace", borderColor: "var(--rule-on-dark)", color: "var(--paper-on-dark-3)" }}
           >
             152-ФЗ · Хостинг Yandex Cloud · Тинькофф Invest API read-only · 30 дней передумать
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 text-[13px] text-[var(--ink-3)]">
+          <div className="flex flex-wrap items-center justify-between gap-4 text-[13px]" style={{ color: "var(--paper-on-dark-3)" }}>
             <div>© МААТТ · Запись. Учёт. Свидетельство.</div>
             <div>Данные: MOEX ISS · Брокеры через API и CSV · Бета-период · Платный запуск Q3 2026</div>
           </div>

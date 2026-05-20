@@ -146,6 +146,25 @@ test.describe("Landing — smoke", () => {
     expect(ctaBg).toBe("rgb(232, 78, 28)");
   });
 
+  test("Final CTA and Footer are both dark", async ({ page }) => {
+    const cta = page.locator('[data-section="final-cta"]');
+    const footer = page.locator("footer");
+    const ctaBg = await cta.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const footerBg = await footer.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(ctaBg).toBe("rgb(10, 10, 10)");
+    expect(footerBg).toBe("rgb(10, 10, 10)");
+    const ctaButton = cta.locator('a[href="/register"]').first();
+    const buttonBg = await ctaButton.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(buttonBg).toBe("rgb(232, 78, 28)");
+  });
+
+  test("Header stays light at top", async ({ page }) => {
+    const header = page.locator("header").first();
+    const bg = await header.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // Header background may be transparent (no explicit bg) — then parent paper shows through
+    expect(["rgb(250, 248, 242)", "rgba(0, 0, 0, 0)"]).toContain(bg);
+  });
+
   test("uplift tokens defined on landing root", async ({ page }) => {
     await page.waitForSelector('[data-theme="maatt-cream"]');
     const tokens = await page.evaluate(() => {
