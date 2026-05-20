@@ -14,10 +14,12 @@
  * - Indicators gutter справа (📷 screenshot, 🪜 scale-in, 📝 notes)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ChevronDown,
   ChevronRight,
+  ChevronUp,
+  ArrowUpDown,
   TrendingUp,
   Briefcase,
   Coins,
@@ -36,6 +38,15 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
+import { JournalNavigatorBar } from './journal/JournalNavigatorBar';
+import { TableTopScrollbar } from './journal/TableTopScrollbar';
+import { useJournalFilters } from './journal/useJournalFilters';
+import {
+  applyFilters,
+  applySort,
+  extractUniqueSetups,
+} from './journal/filterUtils';
+import type { SortKey } from './journal/types';
 
 interface TradeExecution {
   id: number;
@@ -124,6 +135,11 @@ interface PositionTrade {
   body_from_prices?: number | null;
   executions: TradeExecution[];
 }
+
+// 2026-05-19: убрали 'open' таб — после Position = source of truth rewrite
+// открытые позиции живут в PositionORM (страница /positions), а журнал —
+// архив закрытых сделок. Phantom Trades с exit_at=None закрываются стадией
+// _stage_phantom_sweep на следующем sync.
 
 // TR1.1: column configuration. Default visible — 12 core columns.
 interface ColumnConfig {
@@ -333,10 +349,10 @@ function ExecutionList({
 }: {
   executions: TradeExecution[];
 }) {
-  // Phase 12 (2026-05-17): журнал ВСЕГДА показывает body P&L (от цен open/close).
-  // body_from_prices = (exit-entry)*qty*pv для futures, = Trade.pnl для shares.
-  // Расходы (commissions/fees/taxes) показываются отдельно — карточка «Расходы» на дашборде.
-  const pnlFor = (ex: TradeExecution) => ex.body_from_prices ?? ex.pnl;
+  // 2026-05-19: per-execution P&L = net_pnl (включает варм-маржу, fees,
+  // commissions). Согласовано с агрегированной колонкой P&L. Fallback на body
+  // (ex.pnl) если net_pnl отсутствует (legacy/manual trades без attribution).
+  const pnlFor = (ex: TradeExecution) => ex.net_pnl ?? ex.pnl;
   return (
     <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/30">
       <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2 font-semibold">
@@ -492,13 +508,14 @@ function PositionRow({
   visibleColumns: Set<string>;
 }) {
   const isOpen = position.status === 'open';
-  // Phase 12 (2026-05-17): журнал ВСЕГДА показывает body P&L (от цен open/close).
-  //   open   → unrealized_pnl от Tinkoff (broker authoritative MTM).
-  //   closed → body_from_prices (precise) || body_pnl || realized_pnl (fallback).
-  // Расходы (commissions/fees/taxes) → отдельная карточка «Расходы» на дашборде.
-  const pnlValue = isOpen
-    ? position.unrealized_pnl
-    : (position.body_from_prices ?? position.body_pnl ?? position.realized_pnl);
+  // 2026-05-19: колонка P&L = реальный net P&L (включает варм-маржа, fees,
+  // commissions). Раньше показывали body_from_prices (price-only), но это
+  // вводило в заблуждение для фьючерсов: phantom_sweep устанавливает
+  // exit_price = entry_price → body=0₽, при том что реальный убыток уже
+  // списан через ежедневную варм-маржу. Теперь P&L согласован с % колонкой
+  // и отражает реальный денежный поток. Breakdown по компонентам — в
+  // expand-карточке (body + var-маржа + fees).
+  const pnlValue = isOpen ? position.unrealized_pnl : position.realized_pnl;
   const has = (id: string) => visibleColumns.has(id);
 
   // Подсчёт количества visible колонок (для colSpan expand row).
@@ -713,16 +730,32 @@ function PositionRow({
   );
 }
 
+// Phase 13 (2026-05-17): mapping column id → SortKey pair (desc, asc).
+// Click на заголовок такой колонки переключает sort. Если колонка скрыта
+// через column-picker — фильтры не теряются, sort работает на back-end данных.
+const SORTABLE_COLUMNS: Record<string, [SortKey, SortKey]> = {
+  date: ['date_desc', 'date_asc'],
+  pnl: ['pnl_desc', 'pnl_asc'],
+  pnl_pct: ['pct_desc', 'pct_asc'],
+  duration: ['duration_desc', 'duration_asc'],
+};
+
 export function PositionJournalView() {
   // Phase 12: журнал показывает body P&L ВСЕГДА — toggle settings.pnlDisplayMode
   // не влияет на журнал (он управляет ТОЛЬКО dashboard headline).
   const [positions, setPositions] = useState<PositionTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => loadVisibleColumns());
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  // Phase 14: refs + state для top-sticky duplicate scrollbar.
+  // ResizeObserver на <table> отслеживает изменение scrollWidth (column-picker
+  // → колонки meняются → ширина пересчитывается).
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
 
   // Persist column visibility
   useEffect(() => {
@@ -742,6 +775,27 @@ export function PositionJournalView() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showColumnPicker]);
+
+  // Phase 14: ResizeObserver — отслеживает изменение table.scrollWidth и
+  // container.clientWidth. Top scrollbar показывается только когда есть
+  // реальный horizontal overflow. RO сам реагирует на изменения content-rect,
+  // поэтому effect монтируется один раз (rebind при изменении
+  // table/container refs покрыт через recompute).
+  useEffect(() => {
+    const table = tableRef.current;
+    const main = mainScrollRef.current;
+    if (!table || !main) return;
+    const recompute = () => {
+      const innerW = table.scrollWidth;
+      const outerW = main.clientWidth;
+      setScrollWidth(innerW > outerW ? innerW : 0);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(table);
+    ro.observe(main);
+    return () => ro.disconnect();
+  }, [positions.length, visibleColumns]);
 
   useEffect(() => {
     let cancelled = false;
@@ -765,11 +819,11 @@ export function PositionJournalView() {
     };
   }, []);
 
-  const toggleRow = (positionId: number) => {
+  const toggleRow = (positionKey: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(positionId)) next.delete(positionId);
-      else next.add(positionId);
+      if (next.has(positionKey)) next.delete(positionKey);
+      else next.add(positionKey);
       return next;
     });
   };
@@ -783,13 +837,56 @@ export function PositionJournalView() {
     });
   };
 
-  // Render header conditionally based on visible columns
+  // Phase 13: derived filter/sort/limit pipeline. Все три уровня в useMemo —
+  // фильтрация запускается только когда меняется input.
+  const { filters, update: updateFilters, reset: resetFilters } = useJournalFilters();
+  const availableSetups = useMemo(() => extractUniqueSetups(positions), [positions]);
+  const filteredPositions = useMemo(
+    () => applyFilters(positions, filters),
+    [positions, filters],
+  );
+  const sortedPositions = useMemo(
+    () => applySort(filteredPositions, filters.sort),
+    [filteredPositions, filters.sort],
+  );
+  const visiblePositions = useMemo(
+    () => sortedPositions.slice(0, filters.visibleLimit),
+    [sortedPositions, filters.visibleLimit],
+  );
+  const remainingCount = sortedPositions.length - visiblePositions.length;
+
+  const toggleSort = (columnId: string) => {
+    const sortPair = SORTABLE_COLUMNS[columnId];
+    if (!sortPair) return;
+    const [descKey, ascKey] = sortPair;
+    // Click toggle: если сейчас desc этой колонки → asc; иначе → desc.
+    updateFilters({ sort: filters.sort === descKey ? ascKey : descKey });
+  };
+
+  // Render header conditionally based on visible columns.
+  // Phase 13: для sortable колонок — клик переключает sort + показывает arrow.
   const renderHeader = (id: string, label: string, align: 'left' | 'right' | 'center' = 'left', tooltip?: string) => {
     if (!visibleColumns.has(id)) return null;
     const alignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+    const sortPair = SORTABLE_COLUMNS[id];
+    const sortable = !!sortPair;
+    const [descKey, ascKey] = sortPair || [];
+    const isActive = sortable && (filters.sort === descKey || filters.sort === ascKey);
+    const isDesc = sortable && filters.sort === descKey;
     return (
-      <th key={id} className={`${alignClass} py-2 px-2 font-medium`} title={tooltip}>
-        {label}
+      <th
+        key={id}
+        className={`${alignClass} py-2 px-2 font-medium ${sortable ? 'cursor-pointer select-none hover:text-slate-200' : ''}`}
+        title={tooltip}
+        onClick={sortable ? () => toggleSort(id) : undefined}
+      >
+        <span className={`inline-flex items-center gap-1 ${align === 'right' ? 'justify-end w-full' : ''}`}>
+          {label}
+          {sortable && isActive && (
+            isDesc ? <ChevronDown size={12} className="text-accent" /> : <ChevronUp size={12} className="text-accent" />
+          )}
+          {sortable && !isActive && <ArrowUpDown size={10} className="opacity-25" />}
+        </span>
       </th>
     );
   };
@@ -797,10 +894,8 @@ export function PositionJournalView() {
   return (
     <div className="space-y-3">
       {/* Column picker */}
-      <div className="flex items-center justify-end gap-3">
-        <div className="text-[11px] text-slate-500">
-          {!loading && `${positions.length} ${positions.length === 1 ? 'сделка' : 'сделок'}`}
-        </div>
+      <div className="flex items-center justify-end">
+        {/* Phase 13: счётчик перенесён в NavigatorBar (более релевантен при фильтре). */}
         <div className="relative" ref={pickerRef}>
           <button
             onClick={() => setShowColumnPicker((v) => !v)}
@@ -823,26 +918,58 @@ export function PositionJournalView() {
         </div>
       </div>
 
+      {/* Phase 13 (2026-05-17): Journal Navigator Bar — sticky filter row. */}
+      <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-[var(--bg,#0a0a0a)]/95 backdrop-blur-sm">
+        <JournalNavigatorBar
+          filters={filters}
+          onUpdate={updateFilters}
+          onReset={resetFilters}
+          filteredCount={filteredPositions.length}
+          totalCount={positions.length}
+          availableSetups={availableSetups}
+        />
+      </div>
+
       {/* Hint */}
       <div className="text-[11px] text-slate-500 bg-cyan-500/5 border border-cyan-500/20 rounded p-2 flex items-start gap-2">
         <Layers3 size={14} className="text-cyan-400 shrink-0 mt-0.5" />
         <div>
           Сделки группируются по round-trip: scaled-in добавления и partial closes
           собираются в одну строку. Клик на строку → исполнения. Шестерёнка справа → колонки.
+          <span className="ml-2 text-cyan-400/80">
+            💡 Shift + колесо мыши = горизонтальная прокрутка таблицы.
+          </span>
         </div>
       </div>
 
+      {/* Phase 14: Top sticky horizontal scrollbar — дублирует bottom,
+          sticky под NavigatorBar чтобы скроллить вправо БЕЗ перехода вниз. */}
+      <TableTopScrollbar mainScrollRef={mainScrollRef} scrollWidth={scrollWidth} />
+
       {/* Table */}
-      <div className="rounded-xl border border-slate-700/40 bg-slate-800/20 overflow-hidden">
+      {/* Phase 13: убрали overflow-hidden — sticky thead требует прокручиваемого ancestor.
+          Скруглённые углы сохраняем через overflow-x-auto на inner wrapper. */}
+      <div className="rounded-xl border border-slate-700/40 bg-slate-800/20">
         {loading ? (
           <div className="p-8 text-center text-slate-500 text-sm">Загрузка...</div>
         ) : error ? (
           <div className="p-8 text-center text-rose-400 text-sm">{error}</div>
         ) : positions.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-sm">Нет сделок в выбранном фильтре</div>
+        ) : filteredPositions.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm space-y-2">
+            <div>Ничего не найдено по текущим фильтрам</div>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-xs text-accent hover:underline"
+            >
+              Сбросить фильтры
+            </button>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+          <div ref={mainScrollRef} className="overflow-x-auto scrollbar-visible rounded-xl journal-scroll-container">
+            <table ref={tableRef} className="w-full text-sm border-collapse journal-table-sticky">
               <thead>
                 <tr className="text-[10px] uppercase tracking-wider text-slate-500 border-b border-slate-700/50 bg-slate-800/40">
                   {visibleColumns.has('expand') && <th className="text-left py-2 pl-3 pr-2 font-medium w-8"></th>}
@@ -851,7 +978,7 @@ export function PositionJournalView() {
                   {renderHeader('side', 'Сторона')}
                   {renderHeader('qty', 'Объём', 'right')}
                   {renderHeader('prices', 'Вход → Выход', 'right')}
-                  {renderHeader('pnl', 'P&L', 'right', 'P&L от цен открытия и закрытия. Для открытых сделок — нереализованный MTM от брокера. Комиссии и сборы — в карточке «Расходы» на дашборде.')}
+                  {renderHeader('pnl', 'P&L', 'right', 'Чистый P&L по сделке: для закрытых — реальный денежный исход (движение цены + варм-маржа за каждый день удержания + комиссии/fees). Для открытых — нереализованный MTM от брокера. Раскрой строку для разбивки.')}
                   {renderHeader('pnl_pct', '%', 'right')}
                   {renderHeader('r_multiple', 'R', 'right')}
                   {renderHeader('duration', 'Длительность')}
@@ -871,12 +998,17 @@ export function PositionJournalView() {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p) => {
-                  const key = `${p.instrument_uid || p.symbol}-${p.position_id}`;
-                  const stateKey = parseInt(`${p.position_id}${p.account_id}`) || p.position_id;
+                {visiblePositions.map((p) => {
+                  // Unique key per position: использует instrument_uid+position_id если есть,
+                  // иначе fallback на symbol+first_entry_at (для legacy trades без position_id).
+                  // Bug-fix 2026-05-19: parseInt(`${undefined}${account_id}`) давал NaN → все
+                  // legacy позиции схлопывались в одну expand-группу.
+                  const stateKey = p.position_id != null
+                    ? `${p.instrument_uid || p.symbol}-${p.position_id}`
+                    : `legacy-${p.symbol}-${p.first_entry_at}`;
                   return (
                     <PositionRow
-                      key={key}
+                      key={stateKey}
                       position={p}
                       expanded={expandedIds.has(stateKey)}
                       onToggle={() => toggleRow(stateKey)}
@@ -886,6 +1018,25 @@ export function PositionJournalView() {
                 })}
               </tbody>
             </table>
+            {/* Phase 13: «Показать ещё» pagination — load +100 каждый клик. */}
+            {remainingCount > 0 && (
+              <div className="p-3 text-center border-t border-slate-700/40 bg-slate-900/30">
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateFilters({
+                      visibleLimit: filters.visibleLimit + 100,
+                    })
+                  }
+                  className="px-4 py-2 text-xs font-medium rounded-md border border-slate-700 hover:border-accent text-slate-300 hover:text-accent transition-colors"
+                >
+                  Показать ещё 100{' '}
+                  <span className="text-slate-500">
+                    (осталось {remainingCount})
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
