@@ -69,7 +69,9 @@
 
 | Роль | Шрифт | Веса | CSS-переменная |
 |---|---|---|---|
-| Display sans (DARK-секции, bold uppercase H1/H2, Numbers, CTA labels) | **Manrope** | 500, 700, 800, 900 | `--font-display` |
+| Display sans (DARK-секции, bold uppercase H1/H2, Numbers, CTA labels) | **Manrope** | 500, 700, 800 | `--font-display` |
+
+> **Note (2026-05-19):** Google Fonts Manrope max-weight = 800 (ExtraBold). Веса 900 нет — для Bloomberg-bold uppercase используем 800 везде, где спека упоминает «Manrope 800».
 | Body sans (текущий, без изменений) | Inter (latin+cyr) | 400, 500, 600, 700 | `--font-sans` |
 | Mono (цифры, eyebrow'ы, источники, ticker) | JetBrains Mono | 400, 500 | `--font-mono` |
 | Editorial serif (Manifest, цитаты Champions, pull-quote) | **Fraunces** + Cormorant cyr companion | 300, 400 italic | `--font-serif`, `--font-serif-cyr` |
@@ -80,8 +82,8 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 
 | Где | Шрифт + treatment | Пример |
 |---|---|---|
-| H1 Hero | Manrope 900 uppercase, fs 56–88px, line-height 0.92, letter-spacing −0.03em | «ЗАПИСЬ ДЕЛАЕТ\nТРЕЙДЕРА.» |
-| H2 DARK-секций | Manrope 900 uppercase, fs 40–56px, letter-spacing −0.025em | «ЦИФРЫ БЕЗ ПАФОСА» |
+| H1 Hero | Manrope 800 uppercase, fs 56–88px, line-height 0.92, letter-spacing −0.03em | «ЗАПИСЬ ДЕЛАЕТ\nТРЕЙДЕРА.» |
+| H2 DARK-секций | Manrope 800 uppercase, fs 40–56px, letter-spacing −0.025em | «ЦИФРЫ БЕЗ ПАФОСА» |
 | H2 LIGHT-секций (Champions, SimpleFact, Heuristics, Audience) | Manrope 800 uppercase, fs 36–48px на ink | «ДИСЦИПЛИНА ЧЕМПИОНОВ» |
 | Manifest cut-in | Fraunces italic 400, fs 28–48px, sentence case | «Запись — это ремесло.» |
 | Champion имя | Manrope 800 uppercase, fs 18px, letter-spacing −0.015em | «ДЖЕССИ ЛИВЕРМОР» |
@@ -90,10 +92,10 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 | Champion цитата | Fraunces italic 400, fs 15–18px, ink + orange `border-left` | «Я завёл маленькую книжку…» |
 | Champion источник | JetBrains Mono 10px caps, letter-spacing 0.08em | «REMINISCENCES · ЛЕФЕВР · 1923» |
 | Pull-quote (DARK) | Fraunces italic 300, fs 32–56px, paper + ginormous orange `«` opacity 0.4 | — |
-| Numbers band (DARK) | Manrope 900, fs 64–96px, paper, count-up на цифрах | «30+», «60c», «≤24h» |
+| Numbers band (DARK) | Manrope 800, fs 64–96px, paper, count-up на цифрах | «30+», «60c», «≤24h» |
 | Eyebrow секции | JetBrains Mono 11px caps, letter-spacing 0.18em, ink-3 на light / paper-3 на dark | «── ЖУРНАЛ · MOEX» |
 | Ticker | JetBrains Mono 12px medium, black on orange, auto-scroll | — |
-| Pricing цена | Manrope 900, fs 64px | «0 ₽», «399 ₽» |
+| Pricing цена | Manrope 800, fs 64px | «0 ₽», «399 ₽» |
 | CTA primary | Manrope 700 uppercase 13px, letter-spacing 0.06em | «→ НАЧАТЬ БЕСПЛАТНО» |
 | Body параграфы | Inter 400, fs 16–17px, line-height 1.65 | — |
 
@@ -172,7 +174,7 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 
 ```
 [ Top-rule с mono-eyebrow ]    ── ЖУРНАЛ · MOEX · ● LIVE
-[ H1 Manrope 900 uppercase ]   ЗАПИСЬ ДЕЛАЕТ
+[ H1 Manrope 800 uppercase ]   ЗАПИСЬ ДЕЛАЕТ
                                 ТРЕЙДЕРА.   ← вторая строка #E84E1C
 [ Lede Inter 17px paper-2 ]    Тридцать с лишним метрик и MAE/MFE из биржевых
                                 свечей — на ваших сделках.
@@ -188,7 +190,7 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 ### 6.3. SimpleFact (Section 4, LIGHT)
 
 - 3 колонки editorial-вёрстки, gap 48px
-- Каждая: большая orange-цифра `01` / `02` / `03` (Manrope 900, fs 120px, line-height 0.85, color `#E84E1C`)
+- Каждая: большая orange-цифра `01` / `02` / `03` (Manrope 800, fs 120px, line-height 0.85, color `#E84E1C`)
 - Под цифрой: H3 Manrope 700 uppercase 18px ink
 - Под H3: параграф Inter 16px ink-2 line-height 1.65
 - Между колонками: vertical rule `1px solid var(--rule-strong)`
@@ -209,7 +211,7 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 ### 6.5. Numbers band (Section 6, DARK)
 
 - 4 числа в горизонтальный ряд, gap 80px
-- Каждое: orange `#E84E1C` Manrope 900, fs 96px, line-height 0.9, count-up при viewport-enter (1.5s)
+- Каждое: orange `#E84E1C` Manrope 800, fs 96px, line-height 0.9, count-up при viewport-enter (1.5s)
 - Под числом: подпись Inter 13px paper-on-dark-2 line-height 1.4
 - Над числами: eyebrow «ПО-ПРОСТУ» mono caps paper-on-dark-3
 - Внизу секции: связка Inter italic 17px paper-on-dark-2, ≤80ch
@@ -231,14 +233,14 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 ### 6.8. Pricing split (Section 14)
 
 - Две колонки одинаковой высоты, между ними `1px solid #0a0a0a` (ink)
-- **Free карточка**: фон paper, ink, заголовок «БЕСПЛАТНО» Manrope 800 uppercase, цена «0 ₽» Manrope 900 fs 64px, bullet'ы Inter 15px, CTA вторичная
-- **Pro карточка**: фон ink-dark `#0a0a0a`, paper текст, заголовок «PRO» Manrope 800 uppercase orange, цена «399 ₽/мес» Manrope 900 paper, bullet'ы paper-2 с orange-checkmark'ом, CTA primary orange
-- Над сплитом — eyebrow «ТАРИФЫ» mono ink-3 + H2 «ПРОСТО И ПРОЗРАЧНО» Manrope 900
+- **Free карточка**: фон paper, ink, заголовок «БЕСПЛАТНО» Manrope 800 uppercase, цена «0 ₽» Manrope 800 fs 64px, bullet'ы Inter 15px, CTA вторичная
+- **Pro карточка**: фон ink-dark `#0a0a0a`, paper текст, заголовок «PRO» Manrope 800 uppercase orange, цена «399 ₽/мес» Manrope 800 paper, bullet'ы paper-2 с orange-checkmark'ом, CTA primary orange
+- Над сплитом — eyebrow «ТАРИФЫ» mono ink-3 + H2 «ПРОСТО И ПРОЗРАЧНО» Manrope 800
 
 ### 6.9. Final CTA (Section 15, DARK)
 
 - Полная высота 60vh
-- Heading Manrope 900 uppercase, fs 56–80px paper, max-width 16ch
+- Heading Manrope 800 uppercase, fs 56–80px paper, max-width 16ch
 - Под H — Inter 17px paper-on-dark-2 max-width 50ch
 - CTA orange кнопка large, padding 18×36, Manrope 700 uppercase 14px black
 - Под кнопкой mono 11px caps paper-on-dark-3: «БЕЗ КАРТЫ · 50 СДЕЛОК БЕСПЛАТНО»
@@ -352,7 +354,7 @@ Visual regression тесты прогоняются в обоих режимах
 ## 10. Acceptance criteria
 
 - [ ] Все 16 секций следуют ритму dark/light из §3
-- [ ] H1, H2 в DARK-секциях — Manrope 900 uppercase
+- [ ] H1, H2 в DARK-секциях — Manrope 800 uppercase
 - [ ] Manifest и Pull-quote остаются Fraunces italic
 - [ ] LiveTicker на оранжевом фоне `#E84E1C` с auto-scroll
 - [ ] Equity curve в Hero рисуется за 1.2s при mount

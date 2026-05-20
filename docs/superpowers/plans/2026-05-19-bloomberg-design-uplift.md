@@ -95,7 +95,7 @@ import { Cormorant, Fraunces, Inter, JetBrains_Mono, Manrope } from "next/font/g
 const manrope = Manrope({
   subsets: ["latin", "latin-ext", "cyrillic"],
   variable: "--font-display",
-  weight: ["500", "700", "800", "900"],
+  weight: ["500", "700", "800"],
   display: "swap",
 });
 ```
@@ -122,7 +122,7 @@ Expected: 0 ошибок.
 git add frontend/src/app/layout.tsx frontend/e2e/landing-smoke.spec.ts
 git commit -m "feat(landing): add Manrope display font via next/font
 
-- subsets latin+latin-ext+cyrillic, weights 500/700/800/900
+- subsets latin+latin-ext+cyrillic, weights 500/700/800
 - exposes --font-display CSS variable
 - smoke test asserts font loaded and var defined"
 ```
@@ -706,7 +706,7 @@ git add frontend/src/components/landing/Landing.tsx frontend/src/components/land
 git commit -m "feat(landing): Hero — DARK section + Manrope H1 + orange accent + curve motion
 
 - Section wrapper: uplift-section-dark (ink-dark background)
-- H1 Manrope 900 uppercase, second line 'трейдера.' in orange
+- H1 Manrope 800 uppercase, second line 'трейдера.' in orange
 - Eyebrow with orange LIVE indicator
 - Orange primary CTA on black background
 - HeroEquityCurve: stroke-dashoffset auto-draw via uplift-curve-animate"
@@ -890,7 +890,7 @@ Expected: PASS.
 
 `http://localhost:3001/`:
 - Numbers band на чёрном фоне
-- Цифры оранжевые Manrope 900
+- Цифры оранжевые Manrope 800
 - Count-up анимация при прокрутке в viewport
 - В reduced-motion — цифры сразу финальные
 
@@ -904,7 +904,7 @@ git commit -m "feat(landing): NumbersBand — DARK section + orange count-up
 - Wrapped in uplift-section-dark (ink-dark background)
 - Numerals use CountUp component with RAF easeOutCubic 1.5s
 - Reduced-motion short-circuits to final value
-- Manrope 900 orange tabular-nums"
+- Manrope 800 orange tabular-nums"
 ```
 
 ---
