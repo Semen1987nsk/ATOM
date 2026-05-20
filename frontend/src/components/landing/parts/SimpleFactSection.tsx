@@ -9,7 +9,8 @@ export function SimpleFactSection() {
   return (
     <section
       id="simple-fact"
-      className="px-6 lg:px-12 py-24 lg:py-32 border-b border-[var(--rule)] bg-[var(--paper-tint)]"
+      data-section="simple-fact"
+      className="uplift-section-light px-6 lg:px-12 py-24 lg:py-32 border-y border-[var(--rule-strong)]"
     >
       <div className="max-w-[1200px] mx-auto">
         <p className="editorial-eyebrow mb-8">{SIMPLE_FACT_EYEBROW}</p>
@@ -18,17 +19,15 @@ export function SimpleFactSection() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-16 mb-16">
           {SIMPLE_FACT_ITEMS.map((item) => (
-            <div key={item.caption} data-testid="simple-fact-column">
-              <div className="num text-[56px] text-[var(--ink-3)] leading-none mb-6">
-                {item.caption}
-              </div>
+            <div key={item.caption} data-testid="simple-fact-column" className="flex flex-col">
+              <div data-fact-numeral className="uplift-numbers mb-4">{item.caption}</div>
               <h3
-                className="text-[22px] mb-4 text-[var(--ink)]"
-                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+                className="uplift-h2 text-[clamp(20px,2vw,28px)] mb-3"
+                style={{ color: "var(--ink)", letterSpacing: "-0.015em" }}
               >
                 {item.heading}
               </h3>
-              <p className="text-[15px] leading-[1.65] text-[var(--ink-2)]">
+              <p className="text-[15px] lg:text-[16px] leading-[1.65]" style={{ color: "var(--ink-2)" }}>
                 {item.body}
               </p>
             </div>

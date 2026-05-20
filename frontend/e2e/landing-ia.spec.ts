@@ -39,6 +39,17 @@ test("SimpleFact section has 3 columns with statements", async ({ page }) => {
   await expect(section.getByText("03").first()).toBeVisible();
 });
 
+test("SimpleFact columns show large orange numerals", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator("#simple-fact");
+  const numerals = section.locator('[data-fact-numeral]');
+  await expect(numerals).toHaveCount(3);
+  const color = await numerals.first().evaluate((el) => getComputedStyle(el).color);
+  expect(color).toBe("rgb(232, 78, 28)");
+  const fontFamily = await numerals.first().evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(fontFamily.toLowerCase()).toContain("manrope");
+});
+
 test('Champions section has 6 cards', async ({ page }) => {
   await page.goto('/');
   const section = page.locator('#champions');
