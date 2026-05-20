@@ -46,6 +46,19 @@
 - Перед каждым тестом ждать `document.fonts.ready` + 500ms (как в `landing-visual.spec.ts`).
 - Каждая задача с visual-эффектом сопровождается smoke-тестом (DOM, computed styles, data-атрибуты). Pixel-snapshot'ы рефрешим оптом в Task 14.
 
+## Известный gotcha: Turbopack cache + новые CSS-классы
+
+Если после изменения `globals.css` (добавили class или token) браузер не подхватывает новые правила (классы выглядят без стилей, в DevTools селектор не найден), это stale Turbopack cache в `.next/`. Не инлайнить стили в TSX-обход — это создаст дублирование, конфликтующее с глобальными правилами. Правильный fix:
+
+```powershell
+# kill dev server on port 3001, then:
+cd C:\Users\Administrator\Eqio\ATOM-landing\frontend
+Remove-Item -Recurse -Force .next
+npm run dev -- -p 3001
+```
+
+После рестарта `curl -s http://localhost:3001/_next/static/chunks/<hash>.css | grep <new-class>` должен вернуть совпадение.
+
 ---
 
 ## Task 1: Подключить Manrope через next/font
