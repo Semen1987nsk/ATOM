@@ -900,7 +900,7 @@ h1 { letter-spacing: -0.02em; }
   display: inline-flex;
   gap: 36px;
   white-space: nowrap;
-  animation: uplift-ticker-scroll 60s linear infinite;
+  animation: uplift-ticker-scroll 35s linear infinite;
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-weight: 500;
   font-size: 12px;
@@ -956,9 +956,20 @@ h1 { letter-spacing: -0.02em; }
   outline-offset: 2px;
 }
 
+/* Hero text mount entrance — fade-in + 8px translate-up */
+@keyframes uplift-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-theme="maatt-cream"] .uplift-fade-in {
+  opacity: 0;
+  animation: uplift-fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 /* prefers-reduced-motion — disable all uplift motion */
 @media (prefers-reduced-motion: reduce) {
   [data-theme="maatt-cream"] .uplift-ticker-track { animation: none; transform: none; }
   [data-theme="maatt-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
   [data-theme="maatt-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
+  [data-theme="maatt-cream"] .uplift-fade-in { animation: none; opacity: 1 !important; transform: none !important; }
 }

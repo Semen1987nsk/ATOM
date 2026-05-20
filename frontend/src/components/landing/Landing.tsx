@@ -111,19 +111,25 @@ export function Landing() {
       >
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-10 items-center">
           <div className="col-span-12 lg:col-span-7">
-            <p className="editorial-eyebrow mb-7">
+            <p className="editorial-eyebrow mb-7 uplift-fade-in" style={{ animationDelay: "0ms" }}>
               ── Журнал сделок · MOEX · <span style={{ color: "var(--orange)" }}>● LIVE</span>
             </p>
-            <h1 className="uplift-h1 mb-9" style={{ color: "var(--paper-on-dark)" }}>
+            <h1 className="uplift-h1 mb-9 uplift-fade-in" style={{ color: "var(--paper-on-dark)", animationDelay: "80ms" }}>
               Запись делает<br />
               <span data-h1-accent="true" style={{ color: "var(--orange)" }}>трейдера.</span>
             </h1>
-            <p className="text-[16px] lg:text-[17px] leading-[1.55] max-w-[44ch] mb-10" style={{ color: "var(--paper-on-dark-2)" }}>
+            <p
+              className="text-[16px] lg:text-[17px] leading-[1.55] max-w-[44ch] mb-10 uplift-fade-in"
+              style={{ color: "var(--paper-on-dark-2)", animationDelay: "200ms" }}
+            >
               MAE и MFE из биржевых свечей. Тридцать с лишним метрик из работ
               Винса и Тарпа. На ваших сделках MOEX. Автосинхронизация
               с Тинькофф — 60 сек.
             </p>
-            <div className="flex flex-col sm:flex-row items-start gap-5">
+            <div
+              className="flex flex-col sm:flex-row items-start gap-5 uplift-fade-in"
+              style={{ animationDelay: "320ms" }}
+            >
               <Link
                 href="/register"
                 className="uplift-focus uplift-cta-primary px-8 py-4 text-[13px]"
@@ -138,7 +144,10 @@ export function Landing() {
                 Войти через Тинькофф ID
               </Link>
             </div>
-            <p className="mt-6 text-[12px] num" style={{ color: "var(--paper-on-dark-3)" }}>
+            <p
+              className="mt-6 text-[12px] num uplift-fade-in"
+              style={{ color: "var(--paper-on-dark-3)", animationDelay: "420ms" }}
+            >
               Бесплатно до 50 сделок. Без карты. 21 день Pro в подарок.
             </p>
           </div>
