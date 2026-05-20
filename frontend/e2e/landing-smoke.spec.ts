@@ -131,6 +131,21 @@ test.describe("Landing — smoke", () => {
     }
   });
 
+  test("Pricing split — Free is paper, Pro is dark with orange CTA", async ({ page }) => {
+    const free = page.locator('[data-pricing="free"]');
+    const pro = page.locator('[data-pricing="pro"]');
+    await expect(free).toBeVisible();
+    await expect(pro).toBeVisible();
+    const freeBg = await free.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const proBg = await pro.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // Free is paper (#FAF8F2 = rgb(250, 248, 242))
+    expect(freeBg).toBe("rgb(250, 248, 242)");
+    expect(proBg).toBe("rgb(10, 10, 10)");
+    const proCta = pro.locator('a[href="/register"]').first();
+    const ctaBg = await proCta.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(ctaBg).toBe("rgb(232, 78, 28)");
+  });
+
   test("uplift tokens defined on landing root", async ({ page }) => {
     await page.waitForSelector('[data-theme="maatt-cream"]');
     const tokens = await page.evaluate(() => {

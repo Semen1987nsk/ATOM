@@ -433,55 +433,95 @@ export function Landing() {
       <AudienceQualifier />
 
       {/* 14. PRICING TEASER */}
-      <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule-strong)]">
-        <div className="max-w-[1200px] mx-auto">
-          <p className="editorial-eyebrow mb-6">Раздел 06 — Тарифы</p>
-          <h2 className="editorial-h2 mb-16 text-[var(--ink)]">Free — чтобы понять. Pro — чтобы&nbsp;изменить.</h2>
+      <section
+        data-section="pricing-06"
+        className="uplift-section-light px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule-strong)]"
+      >
+        <div className="max-w-[1100px] mx-auto">
+          <p className="editorial-eyebrow mb-6">── Тарифы</p>
+          <h2 className="uplift-h2 mb-12" style={{ color: "var(--ink)" }}>
+            Free — чтобы понять. Pro — чтобы изменить.
+          </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
-            <div className="border-t border-[var(--rule)] pt-8">
-              <div className="flex items-baseline justify-between mb-4">
-                <h3 className="text-[26px] font-medium" style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>Free</h3>
-                <div className="num text-[28px] text-[var(--ink-2)]">0 ₽</div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 border border-[var(--ink)]">
+            {/* FREE */}
+            <div
+              data-pricing="free"
+              className="uplift-section-light px-8 lg:px-12 py-10 lg:py-14 border-b md:border-b-0 md:border-r border-[var(--ink)]"
+            >
+              <p className="num text-[11px] uppercase tracking-[0.08em] mb-3" style={{ color: "var(--ink-3)" }}>
+                Free
+              </p>
+              <h3
+                className="text-[clamp(36px,4vw,52px)] font-extrabold uppercase mb-2"
+                style={{ fontFamily: "var(--font-display), sans-serif", color: "var(--ink)", letterSpacing: "-0.025em", lineHeight: 0.96 }}
+              >
+                Бесплатно
+              </h3>
               <p
-                className="text-[14px] italic text-[var(--ink-3)] mb-6 leading-snug"
-                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+                className="num text-[64px] leading-none mb-6"
+                style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: 800, color: "var(--ink)" }}
+              >
+                0 ₽
+              </p>
+              <p
+                className="text-[14px] italic mb-6 leading-snug"
+                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif", color: "var(--ink-3)" }}
               >
                 Чтобы понять, что происходит на счёте.
               </p>
-              <ul className="space-y-3 mb-8 list-none p-0 text-[15px] text-[var(--ink-2)] leading-relaxed">
+              <ul className="space-y-3 mb-8 list-none p-0 text-[15px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
                 <li>До 50 сделок в месяц с FIFO-учётом. Выше — старые вытесняются.</li>
                 <li>P&amp;L, Win Rate, Profit Factor — базовые метрики на закрытых сделках.</li>
                 <li>Импорт CSV / Excel из любого терминала MOEX. Ручной ввод сделок.</li>
                 <li>Календарный P&amp;L по дням недели — какие дни в плюсе, какие в минусе.</li>
                 <li>Журнал на одном счёте. MAE/MFE из свечей — в Pro.</li>
               </ul>
-              <Link href="/register" className="text-[14px] text-[var(--ink)] hover:text-[var(--accent)] transition-colors no-underline inline-flex items-center gap-1.5">
+              <Link
+                href="/register"
+                className="text-[14px] no-underline inline-flex items-center gap-1.5 transition-colors"
+                style={{ color: "var(--ink)" }}
+              >
                 Открыть бесплатно <ArrowRight size={13} />
               </Link>
             </div>
 
-            <div className="border-t-2 border-[var(--accent)] pt-8">
-              <div className="flex items-baseline justify-between mb-4">
-                <h3 className="text-[26px] font-medium" style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>Pro</h3>
-                <div className="num text-[28px] text-[var(--ink)]">
-                  399 ₽<span className="text-[14px] text-[var(--ink-3)] font-normal"> / мес</span>
-                </div>
-              </div>
+            {/* PRO */}
+            <div
+              data-pricing="pro"
+              className="uplift-section-dark px-8 lg:px-12 py-10 lg:py-14"
+            >
+              <p
+                className="num text-[11px] uppercase tracking-[0.08em] mb-3"
+                style={{ color: "var(--orange)" }}
+              >
+                Pro
+              </p>
+              <h3
+                className="text-[clamp(36px,4vw,52px)] font-extrabold uppercase mb-2"
+                style={{ fontFamily: "var(--font-display), sans-serif", color: "var(--paper-on-dark)", letterSpacing: "-0.025em", lineHeight: 0.96 }}
+              >
+                Pro
+              </h3>
+              <p
+                className="num text-[64px] leading-none mb-6"
+                style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: 800, color: "var(--paper-on-dark)" }}
+              >
+                399 ₽<span className="text-[20px] font-medium" style={{ color: "var(--paper-on-dark-2)" }}> /мес</span>
+              </p>
               <div
-                className="inline-flex items-center mb-4 px-2.5 py-1 border border-[var(--accent)] text-[11px] text-[var(--accent)] uppercase tracking-[0.08em]"
-                style={{ fontFamily: "var(--font-mono), monospace" }}
+                className="inline-flex items-center mb-6 px-2.5 py-1 text-[11px] uppercase tracking-[0.08em]"
+                style={{ fontFamily: "var(--font-mono), monospace", border: "1px solid var(--orange)", color: "var(--orange)" }}
               >
                 21 день в подарок · без карты
               </div>
               <p
-                className="text-[14px] italic text-[var(--ink-3)] mb-6 leading-snug"
-                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+                className="text-[14px] italic mb-6 leading-snug"
+                style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif", color: "var(--paper-on-dark-3)" }}
               >
                 Чтобы изменить то, что вы там увидели.
               </p>
-              <ul className="space-y-3 mb-8 list-none p-0 text-[15px] text-[var(--ink-2)] leading-relaxed">
+              <ul className="space-y-3 mb-8 list-none p-0 text-[15px] leading-relaxed" style={{ color: "var(--paper-on-dark-2)" }}>
                 <li>MAE и MFE автоматически из минутных свечей MOEX ISS. Видно, где стоп стоит слишком далеко.</li>
                 <li>Optimal f (Винс) и SQN (Тарп) на ваших закрытых сделках — не из бэктеста, не из Excel.</li>
                 <li>Trade Replay со свечами биржи вокруг входа и выхода. Маркеры stop / take / entry / exit.</li>
@@ -489,13 +529,17 @@ export function Landing() {
                 <li>Тинькофф Invest API read-only, обновление 60 сек. CSV / Excel из БКС, Финама, Сбера, Альфы, ВТБ.</li>
                 <li>До 5 счетов. Безлимит сделок. Экспорт CSV / PDF.</li>
               </ul>
-              <Link href="/register" className="btn-primary">
-                Открыть Pro <ArrowRight size={14} />
+              <Link
+                href="/register"
+                className="uplift-focus inline-flex items-center gap-2 px-6 py-3 text-[13px] font-bold uppercase tracking-[0.06em] no-underline"
+                style={{ backgroundColor: "var(--orange)", color: "var(--ink-dark)", fontFamily: "var(--font-display), sans-serif" }}
+              >
+                → Открыть Pro
               </Link>
             </div>
           </div>
 
-          <p className="mt-12 text-center text-[13px] text-[var(--ink-3)]">
+          <p className="mt-12 text-center text-[13px]" style={{ color: "var(--ink-3)" }}>
             Без карты на старте. 21 день полного Pro в подарок при регистрации. Отмена в один клик. Все данные экспортируются в CSV.
           </p>
         </div>
