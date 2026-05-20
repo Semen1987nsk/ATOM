@@ -64,3 +64,10 @@ test("rhythm map covers all 14 uplift sections", async ({ page }) => {
     expect(uplift, `expected section ${section} in DOM`).toContain(section);
   }
 });
+
+test("page has exactly 14 uplift sections (no accidental additions or renames)", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForSelector('[data-theme="maatt-cream"]');
+  const sections = await page.locator('[data-section]').count();
+  expect(sections).toBe(14);
+});

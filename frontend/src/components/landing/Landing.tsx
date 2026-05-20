@@ -126,8 +126,7 @@ export function Landing() {
             <div className="flex flex-col sm:flex-row items-start gap-5">
               <Link
                 href="/register"
-                className="uplift-focus inline-flex items-center gap-2 px-8 py-4 text-[13px] font-bold uppercase tracking-[0.06em] no-underline transition-colors"
-                style={{ backgroundColor: "var(--orange)", color: "#0a0a0a", fontFamily: "var(--font-display), sans-serif" }}
+                className="uplift-focus uplift-cta-primary px-8 py-4 text-[13px]"
               >
                 → Начать бесплатно
               </Link>
@@ -531,8 +530,7 @@ export function Landing() {
               </ul>
               <Link
                 href="/register"
-                className="uplift-focus inline-flex items-center gap-2 px-6 py-3 text-[13px] font-bold uppercase tracking-[0.06em] no-underline"
-                style={{ backgroundColor: "var(--orange)", color: "var(--ink-dark)", fontFamily: "var(--font-display), sans-serif" }}
+                className="uplift-focus uplift-cta-primary px-6 py-3 text-[13px]"
               >
                 → Открыть Pro
               </Link>
@@ -567,8 +565,7 @@ export function Landing() {
           </p>
           <Link
             href="/register"
-            className="uplift-focus inline-flex items-center gap-2 px-9 py-4 text-[14px] font-bold uppercase tracking-[0.06em] no-underline"
-            style={{ backgroundColor: "var(--orange)", color: "var(--ink-dark)", fontFamily: "var(--font-display), sans-serif" }}
+            className="uplift-focus uplift-cta-primary px-9 py-4 text-[14px]"
           >
             → Начать бесплатно
           </Link>

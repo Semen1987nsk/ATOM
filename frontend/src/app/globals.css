@@ -932,6 +932,24 @@ h1 { letter-spacing: -0.02em; }
   transform: translateY(0);
 }
 
+/* Primary CTA button — orange bg + ink-dark text + Manrope bold uppercase */
+[data-theme="maatt-cream"] .uplift-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--orange);
+  color: var(--ink-dark);
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+[data-theme="maatt-cream"] .uplift-cta-primary:hover {
+  background-color: var(--orange-hover);
+}
+
 /* Focus ring for orange CTAs */
 [data-theme="maatt-cream"] .uplift-focus:focus-visible {
   outline: 2px solid var(--orange);
