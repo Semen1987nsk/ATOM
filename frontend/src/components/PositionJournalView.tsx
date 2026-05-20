@@ -125,8 +125,6 @@ interface PositionTrade {
   executions: TradeExecution[];
 }
 
-type StatusFilter = 'all' | 'open' | 'closed';
-
 // TR1.1: column configuration. Default visible — 12 core columns.
 interface ColumnConfig {
   id: string;
@@ -721,7 +719,6 @@ export function PositionJournalView() {
   const [positions, setPositions] = useState<PositionTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => loadVisibleColumns());
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -751,7 +748,7 @@ export function PositionJournalView() {
     setLoading(true);
     setError(null);
     api
-      .get<PositionTrade[]>(`/trades/positions?status=${statusFilter}&limit=500`)
+      .get<PositionTrade[]>('/trades/positions?status=closed&limit=500')
       .then((data) => {
         if (cancelled) return;
         setPositions(data);
@@ -766,7 +763,7 @@ export function PositionJournalView() {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter]);
+  }, []);
 
   const toggleRow = (positionId: number) => {
     setExpandedIds((prev) => {
@@ -786,12 +783,6 @@ export function PositionJournalView() {
     });
   };
 
-  const counts = {
-    all: positions.length,
-    open: positions.filter((p) => p.status === 'open').length,
-    closed: positions.filter((p) => p.status === 'closed').length,
-  };
-
   // Render header conditionally based on visible columns
   const renderHeader = (id: string, label: string, align: 'left' | 'right' | 'center' = 'left', tooltip?: string) => {
     if (!visibleColumns.has(id)) return null;
@@ -807,25 +798,6 @@ export function PositionJournalView() {
     <div className="space-y-3">
       {/* Filter pills + column picker */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-1.5 bg-slate-800/40 rounded-lg p-1">
-          {(['all', 'open', 'closed'] as StatusFilter[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                statusFilter === s ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {s === 'all' && 'Все'}
-              {s === 'open' && 'Открытые'}
-              {s === 'closed' && 'Закрытые'}
-              <span className="ml-1.5 text-[10px] text-slate-500">
-                {counts[s] > 0 ? counts[s] : ''}
-              </span>
-            </button>
-          ))}
-        </div>
-
         <div className="flex items-center gap-3">
           <div className="text-[11px] text-slate-500">
             {!loading && `${positions.length} ${positions.length === 1 ? 'сделка' : 'сделок'}`}
