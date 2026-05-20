@@ -60,4 +60,28 @@ test.describe("Landing — smoke", () => {
     );
     expect(cssVar.length).toBeGreaterThan(0);
   });
+
+  test("uplift tokens defined on landing root", async ({ page }) => {
+    await page.waitForSelector('[data-theme="maatt-cream"]');
+    const tokens = await page.evaluate(() => {
+      const root = document.querySelector('[data-theme="maatt-cream"]') ?? document.documentElement;
+      const cs = getComputedStyle(root);
+      return {
+        orange: cs.getPropertyValue("--orange").trim(),
+        orangeHover: cs.getPropertyValue("--orange-hover").trim(),
+        orangeSoft: cs.getPropertyValue("--orange-soft").trim(),
+        inkDark: cs.getPropertyValue("--ink-dark").trim(),
+        paperOnDark: cs.getPropertyValue("--paper-on-dark").trim(),
+        ruleOnDark: cs.getPropertyValue("--rule-on-dark").trim(),
+      };
+    });
+    expect(tokens.orange.toLowerCase()).toBe("#e84e1c");
+    expect(tokens.orangeHover.toLowerCase()).toBe("#d44516");
+    // Chromium serialises rgba(232,78,28,0.10) as #e84e1c1a — match either form
+    expect(tokens.orangeSoft.toLowerCase()).toMatch(/0\.10|#e84e1c1a/);
+    expect(tokens.inkDark.toLowerCase()).toBe("#0a0a0a");
+    expect(tokens.paperOnDark.toLowerCase()).toBe("#fafafa");
+    // Chromium serialises rgba(250,250,250,0.10) as #fafafa1a — match either form
+    expect(tokens.ruleOnDark.toLowerCase()).toMatch(/0\.10|#fafafa1a/);
+  });
 });

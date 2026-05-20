@@ -730,6 +730,22 @@ h1 { letter-spacing: -0.02em; }
   --accent-soft:     rgba(181, 138, 47, 0.10);
   --profit:          #1F6A47;
   --loss:            #A03A2A;
+
+  /* ─── Bloomberg uplift tokens (2026-05-19) ─── */
+  --orange:           #E84E1C;
+  --orange-hover:     #d44516;
+  --orange-strip:     #E84E1C;
+  --orange-soft:      rgba(232, 78, 28, 0.10);
+  --orange-quote:     rgba(232, 78, 28, 0.40);
+
+  --ink-dark:         #0a0a0a;
+  --ink-dark-2:       #1a1a1a;
+  --paper-on-dark:    #fafafa;
+  --paper-on-dark-2:  rgba(250, 250, 250, 0.70);
+  --paper-on-dark-3:  rgba(250, 250, 250, 0.45);
+  --rule-on-dark:     rgba(250, 250, 250, 0.10);
+  --rule-on-dark-strong: rgba(250, 250, 250, 0.22);
+
   background-color: var(--paper);
   color: var(--ink);
 }
@@ -822,4 +838,109 @@ h1 { letter-spacing: -0.02em; }
   padding: 14px 8px;
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
+}
+
+/* ═════════ Bloomberg uplift — utility classes (2026-05-19) ═════════ */
+
+[data-theme="maatt-cream"] .uplift-section-light {
+  background-color: var(--paper);
+  color: var(--ink);
+}
+[data-theme="maatt-cream"] .uplift-section-tint {
+  background-color: var(--paper-tint);
+  color: var(--ink);
+}
+[data-theme="maatt-cream"] .uplift-section-dark {
+  background-color: var(--ink-dark);
+  color: var(--paper-on-dark);
+}
+[data-theme="maatt-cream"] .uplift-section-dark .uplift-eyebrow,
+[data-theme="maatt-cream"] .uplift-section-dark .editorial-eyebrow {
+  color: var(--paper-on-dark-3);
+}
+[data-theme="maatt-cream"] .uplift-section-dark a {
+  color: var(--paper-on-dark);
+}
+
+/* Display sans (Manrope) heading family */
+[data-theme="maatt-cream"] .uplift-h1 {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(48px, 7vw, 88px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+[data-theme="maatt-cream"] .uplift-h2 {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(36px, 4.5vw, 56px);
+  line-height: 0.96;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+[data-theme="maatt-cream"] .uplift-numbers {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(56px, 7vw, 96px);
+  line-height: 0.88;
+  letter-spacing: -0.02em;
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ticker strip */
+[data-theme="maatt-cream"] .uplift-ticker-strip {
+  background-color: var(--orange-strip);
+  color: #0a0a0a;
+  border-top: 1px solid #0a0a0a;
+  border-bottom: 1px solid #0a0a0a;
+}
+[data-theme="maatt-cream"] .uplift-ticker-track {
+  display: inline-flex;
+  gap: 36px;
+  white-space: nowrap;
+  animation: uplift-ticker-scroll 60s linear infinite;
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+@keyframes uplift-ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Hero equity curve draw */
+@keyframes uplift-curve-draw {
+  from { stroke-dashoffset: var(--curve-length, 800); }
+  to   { stroke-dashoffset: 0; }
+}
+[data-theme="maatt-cream"] .uplift-curve-animate {
+  animation: uplift-curve-draw 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Champions raise on scroll */
+[data-theme="maatt-cream"] .uplift-raise {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme="maatt-cream"] .uplift-raise[data-inview="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Focus ring for orange CTAs */
+[data-theme="maatt-cream"] .uplift-focus:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+/* prefers-reduced-motion — disable all uplift motion */
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="maatt-cream"] .uplift-ticker-track { animation: none; transform: none; }
+  [data-theme="maatt-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
+  [data-theme="maatt-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
 }
