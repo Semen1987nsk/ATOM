@@ -101,7 +101,7 @@ export function Landing() {
       >
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-10 items-center">
           <div className="col-span-12 lg:col-span-7">
-            <p className="editorial-eyebrow mb-7" style={{ color: "var(--paper-on-dark-3)" }}>
+            <p className="editorial-eyebrow mb-7">
               ── Журнал сделок · MOEX · <span style={{ color: "var(--orange)" }}>● LIVE</span>
             </p>
             <h1 className="uplift-h1 mb-9" style={{ color: "var(--paper-on-dark)" }}>
@@ -123,10 +123,10 @@ export function Landing() {
               </Link>
               <Link
                 href="/register?provider=tinkoff_id"
-                className="text-[14px] no-underline inline-flex items-center gap-1 py-3 transition-colors"
+                className="text-[14px] no-underline inline-flex items-center py-3 transition-colors"
                 style={{ color: "var(--paper-on-dark-2)" }}
               >
-                Войти через Тинькофф ID <ArrowRight size={13} />
+                Войти через Тинькофф ID
               </Link>
             </div>
             <p className="mt-6 text-[12px] num" style={{ color: "var(--paper-on-dark-3)" }}>

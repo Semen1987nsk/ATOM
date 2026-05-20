@@ -53,7 +53,14 @@ export function HeroEquityCurve({ width = 280, height = 140 }: Props) {
           </linearGradient>
         </defs>
         <path d={fillD} fill="url(#hero-equity-fill)" />
-        <path ref={pathRef} d={pathD} stroke="var(--orange)" strokeWidth="2" fill="none" />
+        <path
+          ref={pathRef}
+          d={pathD}
+          stroke="var(--orange)"
+          strokeWidth="2"
+          fill="none"
+          style={{ strokeDasharray: 9999, strokeDashoffset: 9999 }}
+        />
         <circle cx={endX} cy={endY} r="3" fill="var(--orange)" />
       </svg>
       <figcaption
