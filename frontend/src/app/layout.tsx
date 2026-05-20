@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant, Fraunces, Inter, JetBrains_Mono } from "next/font/google";
+import { Cormorant, Fraunces, Inter, JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
@@ -43,6 +43,14 @@ const geistMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Manrope: Bloomberg-style display sans — max weight 800 (no 900 in Google Fonts subset)
+const manrope = Manrope({
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  variable: "--font-display",
+  weight: ["500", "700", "800"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "МААТТ — журнал торговых сделок | Точно. Чисто. Честно.",
   description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка измерена. Каждое решение взвешено.",
@@ -75,7 +83,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${fraunces.variable} ${cormorant.variable} ${inter.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html lang="ru" className={`${fraunces.variable} ${cormorant.variable} ${inter.variable} ${geistMono.variable} ${manrope.variable}`} suppressHydrationWarning>
       <body className="antialiased">
         <ErrorBoundary>
           <QueryProvider>

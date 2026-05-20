@@ -47,4 +47,17 @@ test.describe("Landing — smoke", () => {
     await expect(page.locator("footer >> text=МААТТ").first()).toBeVisible();
     await expect(page.locator("footer >> text=hello@maatt.ru")).toBeVisible();
   });
+
+  test("Manrope font loaded and applied to body display class", async ({ page }) => {
+    await page.evaluate(() => document.fonts.ready);
+    const fontFaces = await page.evaluate(() =>
+      Array.from(document.fonts).map((f) => f.family.toLowerCase())
+    );
+    expect(fontFaces.some((f) => f.includes("manrope"))).toBe(true);
+
+    const cssVar = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--font-display").trim()
+    );
+    expect(cssVar.length).toBeGreaterThan(0);
+  });
 });
