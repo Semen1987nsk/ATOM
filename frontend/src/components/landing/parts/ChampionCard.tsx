@@ -1,15 +1,23 @@
+"use client";
+
 import Image from "next/image";
+import { useInView } from "@/hooks/useInView";
 import type { Champion } from "../data/champions";
 
-export function ChampionCard({ champion }: { champion: Champion }) {
+export function ChampionCard({ champion, idx = 0 }: { champion: Champion; idx?: number }) {
+  const { ref, inView } = useInView<HTMLElement>({ rootMargin: "0px 0px -50px 0px", once: true });
+
   const yearsLabel = champion.deathYear
     ? `${champion.birthYear} — ${champion.deathYear}`
     : `р. ${champion.birthYear}`;
 
   return (
     <article
+      ref={ref as React.RefObject<HTMLElement>}
       data-testid="champion-card"
-      className="border border-[var(--rule)] p-8 bg-[var(--paper)] flex flex-col"
+      data-inview={inView ? "true" : "false"}
+      className="uplift-raise border border-[var(--rule)] p-8 bg-[var(--paper)] flex flex-col"
+      style={{ transitionDelay: `${idx * 80}ms` }}
     >
       <div className="mb-6 mx-auto" style={{ width: 220, height: 220 }}>
         <Image
@@ -22,12 +30,15 @@ export function ChampionCard({ champion }: { champion: Champion }) {
         />
       </div>
       <h3
-        className="text-[26px] italic mb-2 text-[var(--ink)] leading-tight"
-        style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+        data-champion-name
+        className="text-[18px] font-extrabold uppercase tracking-[-0.015em] mb-1 leading-tight"
+        style={{ fontFamily: "var(--font-display), sans-serif", color: "var(--ink)" }}
       >
-        {champion.firstName}<br />{champion.lastName}
+        {champion.firstName} {champion.lastName}
       </h3>
-      <div className="num text-[12px] text-[var(--ink-3)] mb-6">{yearsLabel}</div>
+      <div className="num text-[11px] text-[var(--ink-3)] uppercase tracking-[0.06em] mb-6">
+        {yearsLabel}
+      </div>
       {champion.bio && (
         <p className="text-[14px] leading-[1.55] text-[var(--ink-2)] mb-6">
           {champion.bio}
@@ -35,8 +46,12 @@ export function ChampionCard({ champion }: { champion: Champion }) {
       )}
       {champion.quote && (
         <blockquote
-          className="text-[15px] italic text-[var(--ink)] leading-[1.55] border-l-2 border-[var(--accent)] pl-4 mb-4 flex-grow"
-          style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
+          data-champion-quote
+          className="text-[15px] italic text-[var(--ink)] leading-[1.55] pl-4 mb-4 flex-grow m-0"
+          style={{
+            borderLeft: "2px solid var(--orange)",
+            fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif",
+          }}
         >
           «{champion.quote}»
         </blockquote>

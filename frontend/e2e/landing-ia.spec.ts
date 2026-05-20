@@ -59,3 +59,21 @@ test('Champions section has 6 cards', async ({ page }) => {
     await expect(section.getByText(name).first()).toBeVisible();
   }
 });
+
+test("Champion cards have Manrope names and orange quote rule", async ({ page }) => {
+  await page.goto("/");
+  const card = page.locator('[data-testid="champion-card"]').first();
+  await expect(card).toBeVisible();
+  const name = card.locator('[data-champion-name]');
+  const nameFont = await name.evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(nameFont.toLowerCase()).toContain("manrope");
+  const quote = card.locator('[data-champion-quote]').first();
+  const borderColor = await quote.evaluate((el) => getComputedStyle(el).borderLeftColor);
+  expect(borderColor).toBe("rgb(232, 78, 28)");
+});
+
+test("Champion cards have uplift-raise scroll-trigger class", async ({ page }) => {
+  await page.goto("/");
+  const cards = page.locator('[data-testid="champion-card"]');
+  await expect(cards.first()).toHaveClass(/uplift-raise/);
+});
