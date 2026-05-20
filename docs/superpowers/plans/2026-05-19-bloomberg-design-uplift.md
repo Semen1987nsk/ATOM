@@ -1279,10 +1279,10 @@ export function AudienceQualifier() {
 ```typescript
   test("sections 01-04 wrappers applied", async ({ page }) => {
     for (const { id, expectedBg } of [
-      { id: "replay-01", expectedBg: "rgb(250, 246, 238)" },
+      { id: "replay-01", expectedBg: "rgb(250, 248, 242)" },
       { id: "mae-mfe-02", expectedBg: "rgb(10, 10, 10)" },
-      { id: "metrics-03", expectedBg: "rgb(250, 246, 238)" },
-      { id: "heuristics-04", expectedBg: "rgb(250, 246, 238)" },
+      { id: "metrics-03", expectedBg: "rgb(250, 248, 242)" },
+      { id: "heuristics-04", expectedBg: "rgb(250, 248, 242)" },
       { id: "audience-05", expectedBg: "rgb(244, 236, 220)" },
     ]) {
       const section = page.locator(`[data-section="${id}"]`);
@@ -1339,7 +1339,7 @@ Read: `frontend/src/components/landing/Landing.tsx` строки 380-450 (где
     await expect(pro).toBeVisible();
     const freeBg = await free.evaluate((el) => getComputedStyle(el).backgroundColor);
     const proBg = await pro.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(freeBg).toBe("rgb(250, 246, 238)");
+    expect(freeBg).toBe("rgb(250, 248, 242)");
     expect(proBg).toBe("rgb(10, 10, 10)");
     const proCta = pro.locator('a[href="/register"]').first();
     const ctaBg = await proCta.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -1533,7 +1533,7 @@ Expected: оба PASS.
     const header = page.locator("header").first();
     const bg = await header.evaluate((el) => getComputedStyle(el).backgroundColor);
     // Header может быть transparent — тогда родитель paper
-    expect(["rgb(250, 246, 238)", "rgba(0, 0, 0, 0)"]).toContain(bg);
+    expect(["rgb(250, 248, 242)", "rgba(0, 0, 0, 0)"]).toContain(bg);
   });
 ```
 
@@ -1569,17 +1569,17 @@ import { test, expect } from "@playwright/test";
 const EXPECTED_RHYTHM: Array<{ section: string; bg: string }> = [
   { section: "live-ticker",  bg: "rgb(232, 78, 28)"   }, // orange strip
   { section: "hero",         bg: "rgb(10, 10, 10)"    }, // DARK
-  { section: "simple-fact",  bg: "rgb(250, 246, 238)" }, // LIGHT paper
-  { section: "champions",    bg: "rgb(250, 246, 238)" }, // LIGHT paper
+  { section: "simple-fact",  bg: "rgb(250, 248, 242)" }, // LIGHT paper
+  { section: "champions",    bg: "rgb(250, 248, 242)" }, // LIGHT paper
   { section: "numbers-band", bg: "rgb(10, 10, 10)"    }, // DARK
   { section: "manifest",     bg: "rgb(244, 236, 220)" }, // LIGHT tint
-  { section: "replay-01",    bg: "rgb(250, 246, 238)" }, // LIGHT paper
+  { section: "replay-01",    bg: "rgb(250, 248, 242)" }, // LIGHT paper
   { section: "mae-mfe-02",   bg: "rgb(10, 10, 10)"    }, // DARK
-  { section: "metrics-03",   bg: "rgb(250, 246, 238)" }, // LIGHT paper
+  { section: "metrics-03",   bg: "rgb(250, 248, 242)" }, // LIGHT paper
   { section: "pull-quote",   bg: "rgb(10, 10, 10)"    }, // DARK
-  { section: "heuristics-04", bg: "rgb(250, 246, 238)" }, // LIGHT paper
+  { section: "heuristics-04", bg: "rgb(250, 248, 242)" }, // LIGHT paper
   { section: "audience-05",  bg: "rgb(244, 236, 220)" }, // LIGHT tint
-  { section: "pricing-06",   bg: "rgb(250, 246, 238)" }, // SPLIT root paper
+  { section: "pricing-06",   bg: "rgb(250, 248, 242)" }, // SPLIT root paper
   { section: "final-cta",    bg: "rgb(10, 10, 10)"    }, // DARK
 ];
 
