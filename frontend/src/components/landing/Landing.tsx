@@ -16,6 +16,7 @@ import { ManifestCutIn } from "./parts/ManifestCutIn";
 import { AudienceQualifier } from "./parts/AudienceQualifier";
 import { SimpleFactSection } from "./parts/SimpleFactSection";
 import { ChampionsSection } from "./parts/ChampionsSection";
+import { CountUp } from "@/components/common/CountUp";
 
 const NAV_LINKS = [
   { href: "/manual", label: "Возможности" },
@@ -30,6 +31,15 @@ const NUMBERS_BAND = [
   { value: "60 сек", label: "синхронизация сделок", note: "через Tinkoff Invest API · read-only" },
   { value: "399 ₽", label: "в месяц · Pro", note: "без карты на старте · 21 день в подарок" },
 ];
+
+function renderNumeral(value: string) {
+  const m = value.match(/^(\d+)(.*)$/);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    return <CountUp to={num} suffix={m[2]} />;
+  }
+  return <span>{value}</span>;
+}
 
 const METRICS_TABLE: Array<{ metric: string; source: string; what: string; where: string; explainer?: string }> = [
   { metric: "Optimal f", source: "Винс", what: "Оптимальная доля капитала на сделку", where: "Риск",
@@ -146,17 +156,30 @@ export function Landing() {
       <ChampionsSection />
 
       {/* 6. NUMBERS BAND */}
-      <section className="px-6 lg:px-12 py-14 border-b border-[var(--rule)]">
-        <div className="max-w-[1200px] mx-auto grid grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-10">
-          {NUMBERS_BAND.map((n) => (
-            <div key={n.label}>
-              <div className="num text-[clamp(36px,4.5vw,56px)] font-medium leading-none mb-3 text-[var(--ink)]">{n.value}</div>
-              <div className="text-[13px] italic text-[var(--ink-2)] leading-snug mb-1" style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
-                {n.label}
+      <section
+        data-section="numbers-band"
+        className="uplift-section-dark px-6 lg:px-12 py-20 lg:py-28"
+      >
+        <div className="max-w-[1200px] mx-auto">
+          <p className="editorial-eyebrow mb-10">── По-простому</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-12">
+            {NUMBERS_BAND.map((n) => (
+              <div key={n.label}>
+                <div data-numeral className="uplift-numbers mb-4">
+                  {renderNumeral(n.value)}
+                </div>
+                <div
+                  className="text-[13px] italic leading-snug mb-1"
+                  style={{ fontFamily: "var(--font-serif), Georgia, serif", color: "var(--paper-on-dark-2)" }}
+                >
+                  {n.label}
+                </div>
+                <div className="text-[11px] leading-tight" style={{ color: "var(--paper-on-dark-3)" }}>
+                  {n.note}
+                </div>
               </div>
-              <div className="text-[11px] text-[var(--ink-3)] leading-tight">{n.note}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 

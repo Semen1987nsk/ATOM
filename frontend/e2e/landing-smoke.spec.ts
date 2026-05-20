@@ -87,6 +87,17 @@ test.describe("Landing — smoke", () => {
     expect(cssVar.length).toBeGreaterThan(0);
   });
 
+  test("NumbersBand section is dark with orange numerals", async ({ page }) => {
+    const band = page.locator('[data-section="numbers-band"]');
+    await expect(band).toBeVisible();
+    const bg = await band.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(10, 10, 10)");
+    const numerals = band.locator('[data-numeral]');
+    await expect(numerals).toHaveCount(4);
+    const color = await numerals.first().evaluate((el) => getComputedStyle(el).color);
+    expect(color).toBe("rgb(232, 78, 28)");
+  });
+
   test("uplift tokens defined on landing root", async ({ page }) => {
     await page.waitForSelector('[data-theme="maatt-cream"]');
     const tokens = await page.evaluate(() => {
