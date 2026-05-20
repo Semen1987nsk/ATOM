@@ -796,32 +796,30 @@ export function PositionJournalView() {
 
   return (
     <div className="space-y-3">
-      {/* Filter pills + column picker */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="text-[11px] text-slate-500">
-            {!loading && `${positions.length} ${positions.length === 1 ? 'сделка' : 'сделок'}`}
-          </div>
-          <div className="relative" ref={pickerRef}>
-            <button
-              onClick={() => setShowColumnPicker((v) => !v)}
-              className={`p-2 rounded-lg border transition-all ${
-                showColumnPicker
-                  ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300'
-                  : 'border-slate-700/50 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300'
-              }`}
-              title="Настройки колонок"
-            >
-              <Settings size={16} />
-            </button>
-            {showColumnPicker && (
-              <ColumnPicker
-                visible={visibleColumns}
-                onToggle={toggleColumn}
-                onClose={() => setShowColumnPicker(false)}
-              />
-            )}
-          </div>
+      {/* Column picker */}
+      <div className="flex items-center justify-end gap-3">
+        <div className="text-[11px] text-slate-500">
+          {!loading && `${positions.length} ${positions.length === 1 ? 'сделка' : 'сделок'}`}
+        </div>
+        <div className="relative" ref={pickerRef}>
+          <button
+            onClick={() => setShowColumnPicker((v) => !v)}
+            className={`p-2 rounded-lg border transition-all ${
+              showColumnPicker
+                ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-300'
+                : 'border-slate-700/50 hover:border-cyan-500/40 text-slate-400 hover:text-cyan-300'
+            }`}
+            title="Настройки колонок"
+          >
+            <Settings size={16} />
+          </button>
+          {showColumnPicker && (
+            <ColumnPicker
+              visible={visibleColumns}
+              onToggle={toggleColumn}
+              onClose={() => setShowColumnPicker(false)}
+            />
+          )}
         </div>
       </div>
 
