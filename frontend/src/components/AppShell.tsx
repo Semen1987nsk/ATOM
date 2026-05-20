@@ -53,6 +53,7 @@ import {
   ChevronDown,
   LogOut,
   Sparkles,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -80,9 +81,9 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Торговля",
     items: [
       { label: "Дашборд", href: "/", icon: <BarChart3 size={18} /> },
-      { label: "Сделки", href: "/history", icon: <ListChecks size={18} /> },
+      { label: "Дневник сделок", href: "/history", icon: <ListChecks size={18} /> },
+      { label: "Открытые позиции", href: "/positions", icon: <Wallet size={18} /> },
       { label: "Календарь P&L", href: "/analysis/calendar", icon: <CalendarDays size={18} /> },
-      { label: "Калькулятор позиции", href: "/calculator", icon: <Briefcase size={18} /> },
     ],
   },
   {
@@ -106,7 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const FOOTER_ITEMS: NavItem[] = [
-  { label: "Брокеры", href: "/", icon: <Plug size={18} />, todo: true },
+  { label: "Брокеры", href: "/profile?tab=brokers", icon: <Plug size={18} /> },
   { label: "Настройки", href: "/profile", icon: <Settings size={18} /> },
   { label: "Помощь", href: "/help", icon: <HelpCircle size={18} /> },
 ];
