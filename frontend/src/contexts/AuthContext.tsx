@@ -47,7 +47,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       setToken('cookie-session');
     } catch (error) {
-      if (!(error instanceof ApiError && error.status === 401)) {
+      const is401 = error instanceof ApiError && error.status === 401;
+      const isNetworkDown = error instanceof TypeError && /fetch/i.test(error.message);
+      if (!is401 && !isNetworkDown) {
         console.error('[Auth] Failed to fetch user:', error);
       }
       clearAuthTokens();
