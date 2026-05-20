@@ -187,7 +187,7 @@ export function Landing() {
       <ManifestCutIn />
 
       {/* 8. SECTION 01 · TRADE REPLAY */}
-      <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
+      <section data-section="replay-01" className="uplift-section-light px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
             <p className="editorial-eyebrow mb-6">Раздел 01 — Trade Replay</p>
@@ -219,24 +219,24 @@ export function Landing() {
       </section>
 
       {/* 9. SECTION 02 · MAE/MFE — mirrored */}
-      <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
+      <section data-section="mae-mfe-02" className="uplift-section-dark px-6 lg:px-12 py-24 lg:py-32">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-7 lg:order-1 order-2">
-            <div className="border border-[var(--rule-strong)] p-6 lg:p-8">
-              <div className="editorial-eyebrow mb-5 text-[var(--ink-3)]">Свечи MOEX · SBER · 21 апреля</div>
+            <div className="border border-[var(--rule-on-dark-strong)] p-6 lg:p-8">
+              <div className="editorial-eyebrow mb-5 text-[var(--paper-on-dark-3)]">Свечи MOEX · SBER · 21 апреля</div>
               <InteractiveCandleChart />
             </div>
           </div>
           <div className="col-span-12 lg:col-span-5 lg:order-2 order-1 flex flex-col justify-center lg:pl-8">
             <p className="editorial-eyebrow mb-6">Раздел 02 — MAE / MFE</p>
-            <h2 className="editorial-h2 mb-6 text-[var(--ink)]">MAE и MFE — из минутных свечей&nbsp;биржи.</h2>
-            <dl className="border border-[var(--rule)] p-4 mb-6 bg-[var(--paper-tint)]/40">
+            <h2 className="editorial-h2 mb-6 text-[var(--paper-on-dark)]">MAE и MFE — из минутных свечей&nbsp;биржи.</h2>
+            <dl className="border border-[var(--rule-on-dark)] p-4 mb-6 bg-[var(--ink-dark-2)]">
               <div className="flex gap-3 mb-2 last:mb-0">
-                <dt className="num text-[12px] font-medium text-[var(--ink)] uppercase tracking-[0.06em] w-[80px] shrink-0">
+                <dt className="num text-[12px] font-medium text-[var(--paper-on-dark)] uppercase tracking-[0.06em] w-[80px] shrink-0">
                   MAE
                 </dt>
                 <dd
-                  className="text-[14px] leading-[1.55] text-[var(--ink-2)] m-0"
+                  className="text-[14px] leading-[1.55] text-[var(--paper-on-dark-2)] m-0"
                   style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
                 >
                   Maximum Adverse Excursion: насколько глубоко цена уходила
@@ -244,11 +244,11 @@ export function Landing() {
                 </dd>
               </div>
               <div className="flex gap-3 mb-2 last:mb-0">
-                <dt className="num text-[12px] font-medium text-[var(--ink)] uppercase tracking-[0.06em] w-[80px] shrink-0">
+                <dt className="num text-[12px] font-medium text-[var(--paper-on-dark)] uppercase tracking-[0.06em] w-[80px] shrink-0">
                   MFE
                 </dt>
                 <dd
-                  className="text-[14px] leading-[1.55] text-[var(--ink-2)] m-0"
+                  className="text-[14px] leading-[1.55] text-[var(--paper-on-dark-2)] m-0"
                   style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
                 >
                   Maximum Favorable Excursion: насколько далеко цена уходила
@@ -256,11 +256,11 @@ export function Landing() {
                 </dd>
               </div>
               <div className="flex gap-3 mb-2 last:mb-0">
-                <dt className="num text-[12px] font-medium text-[var(--ink)] uppercase tracking-[0.06em] w-[80px] shrink-0">
+                <dt className="num text-[12px] font-medium text-[var(--paper-on-dark)] uppercase tracking-[0.06em] w-[80px] shrink-0">
                   Edge Ratio
                 </dt>
                 <dd
-                  className="text-[14px] leading-[1.55] text-[var(--ink-2)] m-0"
+                  className="text-[14px] leading-[1.55] text-[var(--paper-on-dark-2)] m-0"
                   style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}
                 >
                   средний MFE / средний MAE. {">"} 1 — у системы есть edge;
@@ -268,20 +268,20 @@ export function Landing() {
                 </dd>
               </div>
             </dl>
-            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-5">
+            <p className="text-[16px] leading-[1.65] text-[var(--paper-on-dark-2)] mb-5">
               Считаются по минутным свечам MOEX ISS — биржевым, не из реквоутов
               брокера. Брокерские реквоуты сглаживают экстремумы, биржевые
               свечи — нет. Средний MAE убыточных в 1,5× дальше стопа — стоп
               ставится слишком далеко. Средний MFE прибыльных в 2× дальше
               тейка — тейк закрывается рано. Цифра не спорит.
             </p>
-            <p className="text-[16px] leading-[1.65] text-[var(--ink-2)] mb-8">
+            <p className="text-[16px] leading-[1.65] text-[var(--paper-on-dark-2)] mb-8">
               В России такой автомат — только у нас; у TradeZella и Edgewonk
               биржи другие, российских свечей нет.
             </p>
             <Link
               href="/manual#mae-mfe"
-              className="text-[13px] text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors no-underline inline-flex items-center gap-1.5"
+              className="text-[13px] text-[var(--orange)] hover:text-[var(--orange-hover)] transition-colors no-underline inline-flex items-center gap-1.5"
             >
               Подробнее о методе <ArrowRight size={13} />
             </Link>
@@ -290,7 +290,7 @@ export function Landing() {
       </section>
 
       {/* 10. SECTION 03 · METRICS TABLE */}
-      <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
+      <section data-section="metrics-03" className="uplift-section-light px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto">
           <div className="grid grid-cols-12 gap-6 mb-12">
             <div className="col-span-12 lg:col-span-7">
@@ -392,7 +392,7 @@ export function Landing() {
       </section>
 
       {/* 12. SECTION 04 · HEURISTIC REVIEW */}
-      <section className="px-6 lg:px-12 py-24 lg:py-32">
+      <section data-section="heuristics-04" className="uplift-section-light px-6 lg:px-12 py-24 lg:py-32">
         <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
           <div className="col-span-12 lg:col-span-5 flex flex-col justify-center">
             <p className="editorial-eyebrow mb-6">Раздел 04 — Эвристический разбор</p>

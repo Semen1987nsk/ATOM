@@ -116,6 +116,21 @@ test.describe("Landing — smoke", () => {
     expect(decorColor).toMatch(/rgba?\(232,\s*78,\s*28/);
   });
 
+  test("sections 01-05 wrappers applied", async ({ page }) => {
+    for (const { id, expectedBg } of [
+      { id: "replay-01",   expectedBg: "rgb(250, 248, 242)" }, // paper #FAF8F2
+      { id: "mae-mfe-02",  expectedBg: "rgb(10, 10, 10)" },    // ink-dark
+      { id: "metrics-03",  expectedBg: "rgb(250, 248, 242)" }, // paper #FAF8F2
+      { id: "heuristics-04", expectedBg: "rgb(250, 248, 242)" }, // paper #FAF8F2
+      { id: "audience-05", expectedBg: "rgb(244, 236, 220)" }, // paper-tint
+    ]) {
+      const section = page.locator(`[data-section="${id}"]`);
+      await expect(section).toBeVisible();
+      const bg = await section.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg).toBe(expectedBg);
+    }
+  });
+
   test("uplift tokens defined on landing root", async ({ page }) => {
     await page.waitForSelector('[data-theme="maatt-cream"]');
     const tokens = await page.evaluate(() => {

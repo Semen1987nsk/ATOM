@@ -6,7 +6,7 @@
  */
 export function AudienceQualifier() {
   return (
-    <section className="px-6 lg:px-12 py-28 lg:py-40 border-t border-[var(--rule)]">
+    <section data-section="audience-05" className="uplift-section-tint px-6 lg:px-12 py-28 lg:py-40 border-y border-[var(--rule-strong)]">
       <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12">
         <div className="col-span-12 lg:col-span-5">
           <p className="editorial-eyebrow mb-6">Раздел 05 — Для серьёзного трейдера</p>
@@ -34,7 +34,7 @@ export function AudienceQualifier() {
                 "Готов, чтобы сделки подтягивались сами через Тинькофф read-only — без передачи пароля и без торговых прав.",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-[15px] leading-[1.55] text-[var(--ink)]">
-                  <span className="text-[var(--accent)] mt-[2px] flex-shrink-0 num">✓</span>
+                  <span className="text-[var(--orange)] mt-[2px] flex-shrink-0 num">✓</span>
                   <span>{item}</span>
                 </li>
               ))}
