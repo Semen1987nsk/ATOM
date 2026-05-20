@@ -354,17 +354,37 @@ export function Landing() {
 
       {/* 11. PULL-QUOTE */}
       {/* placeholder — заменить после реальных интервью (Q3 2026 paid launch onwards) */}
-      <section className="px-6 lg:px-12 py-20 border-y border-[var(--rule)]">
-        <div className="max-w-[920px] mx-auto">
-          <div className="w-12 h-px bg-[var(--accent)] mb-10" aria-hidden />
-          <blockquote className="editorial-pullquote text-[var(--ink)] m-0 p-0">
+      <section
+        data-section="pull-quote"
+        className="uplift-section-dark relative overflow-hidden px-6 lg:px-12 py-28 lg:py-36"
+      >
+        <span
+          data-decor-quote
+          aria-hidden="true"
+          className="absolute -top-20 -left-4 lg:-left-12 select-none pointer-events-none"
+          style={{
+            fontFamily: "var(--font-serif), Georgia, serif",
+            fontStyle: "italic",
+            fontSize: "clamp(320px, 32vw, 480px)",
+            lineHeight: 0.85,
+            color: "var(--orange-quote)",
+            fontWeight: 300,
+          }}
+        >
+          «
+        </span>
+        <div className="relative max-w-[920px] mx-auto">
+          <blockquote
+            className="text-[clamp(28px,4vw,52px)] italic leading-[1.15] m-0 p-0 max-w-[28ch]"
+            style={{ fontFamily: "var(--font-serif), Georgia, serif", color: "var(--paper-on-dark)", fontWeight: 300 }}
+          >
             «Перестал спорить с памятью.
             <br />
             <em>Открыл журнал.»</em>
           </blockquote>
           <cite
-            className="block mt-6 text-[13px] not-italic text-[var(--ink-3)]"
-            style={{ fontFamily: "var(--font-mono), monospace", letterSpacing: "0.08em", textTransform: "uppercase" }}
+            className="block mt-8 text-[11px] not-italic"
+            style={{ fontFamily: "var(--font-mono), monospace", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--paper-on-dark-3)" }}
           >
             Алексей · проп-трейдер, Москва · бета-период
           </cite>

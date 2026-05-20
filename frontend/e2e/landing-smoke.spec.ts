@@ -98,6 +98,24 @@ test.describe("Landing — smoke", () => {
     expect(color).toBe("rgb(232, 78, 28)");
   });
 
+  test("Manifest section uses paper-tint background", async ({ page }) => {
+    const section = page.locator('[data-section="manifest"]');
+    await expect(section).toBeVisible();
+    const bg = await section.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(244, 236, 220)");
+  });
+
+  test("Pull-quote section is dark with orange decorative quote mark", async ({ page }) => {
+    const section = page.locator('[data-section="pull-quote"]');
+    await expect(section).toBeVisible();
+    const bg = await section.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(10, 10, 10)");
+    const decor = section.locator('[data-decor-quote]');
+    await expect(decor).toBeVisible();
+    const decorColor = await decor.evaluate((el) => getComputedStyle(el).color);
+    expect(decorColor).toMatch(/rgba?\(232,\s*78,\s*28/);
+  });
+
   test("uplift tokens defined on landing root", async ({ page }) => {
     await page.waitForSelector('[data-theme="maatt-cream"]');
     const tokens = await page.evaluate(() => {
