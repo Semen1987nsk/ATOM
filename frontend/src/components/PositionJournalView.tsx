@@ -14,7 +14,7 @@
  * - Indicators gutter справа (📷 screenshot, 🪜 scale-in, 📝 notes)
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -36,8 +36,10 @@ import {
   X,
   Eye,
   EyeOff,
+  Edit2,
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
+import { EditTradeModal, type EditableTrade } from '@/components/EditTradeModal';
 import { JournalNavigatorBar } from './journal/JournalNavigatorBar';
 import { TableTopScrollbar } from './journal/TableTopScrollbar';
 import { useJournalFilters } from './journal/useJournalFilters';
@@ -158,10 +160,13 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'prices',     label: 'Вход → Выход',    defaultVisible: true },
   { id: 'pnl',        label: 'P&L',             defaultVisible: true },
   { id: 'pnl_pct',    label: '%',               defaultVisible: true },
-  { id: 'r_multiple', label: 'R',               defaultVisible: true },
+  // BUG-PREV-003: уменьшили default columns с 12 до 9 (включая expand) — на 1080p
+  // горизонтальный overflow. R-Multiple, Сетап, Индикаторы — power-user features,
+  // доступны через column picker.
+  { id: 'r_multiple', label: 'R',               defaultVisible: false },
   { id: 'duration',   label: 'Длительность',    defaultVisible: true },
-  { id: 'setup',      label: 'Сетап',           defaultVisible: true },
-  { id: 'indicators', label: 'Инд.',            defaultVisible: true },
+  { id: 'setup',      label: 'Сетап',           defaultVisible: false },
+  { id: 'indicators', label: 'Инд.',            defaultVisible: false },
   // Hidden by default — power-user
   { id: 'tags',       label: 'Теги',            defaultVisible: false },
   { id: 'mae_mfe',    label: 'MAE / MFE',       defaultVisible: false },
@@ -177,7 +182,10 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'timeframe',  label: 'ТФ',              defaultVisible: false },
 ];
 
-const COLUMN_STORAGE_KEY = 'eqio_position_journal_columns';
+// BUG-PREV-003: bump v1 → v2 чтобы сбросить persisted 12-column layout у
+// существующих юзеров (иначе они продолжают видеть overflow). Новый default —
+// 9 колонок; кастомизация через picker сохраняется под v2-ключом.
+const COLUMN_STORAGE_KEY = 'eqio_position_journal_columns_v2';
 
 function loadVisibleColumns(): Set<string> {
   if (typeof window === 'undefined') {
@@ -346,8 +354,10 @@ function NotesIndicator({ notes, has_notes }: { notes: string | null; has_notes:
 
 function ExecutionList({
   executions,
+  onEdit,
 }: {
   executions: TradeExecution[];
+  onEdit: (executionId: number) => void;
 }) {
   // 2026-05-19: per-execution P&L = net_pnl (включает варм-маржу, fees,
   // commissions). Согласовано с агрегированной колонкой P&L. Fallback на body
@@ -368,7 +378,8 @@ function ExecutionList({
             <th className="text-right py-1.5 px-2 font-medium">Цена</th>
             <th className="text-right py-1.5 px-2 font-medium">Цена выхода</th>
             <th className="text-right py-1.5 px-2 font-medium">Комиссия</th>
-            <th className="text-right py-1.5 pl-2 font-medium">P&amp;L</th>
+            <th className="text-right py-1.5 px-2 font-medium">P&amp;L</th>
+            <th className="text-right py-1.5 pl-2 font-medium">Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -389,7 +400,17 @@ function ExecutionList({
                 <td className="py-1.5 px-2 text-right font-mono tabular-nums text-slate-500">
                   {ex.commission !== null ? fmtMoney(ex.commission) : '—'}
                 </td>
-                <td className="py-1.5 pl-2 text-right"><PnLValue value={pnlFor(ex)} /></td>
+                <td className="py-1.5 px-2 text-right"><PnLValue value={pnlFor(ex)} /></td>
+                <td className="py-1.5 pl-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(ex.id)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-slate-200 bg-slate-700/50 hover:bg-slate-700"
+                  >
+                    <Edit2 size={11} />
+                    Редактировать
+                  </button>
+                </td>
               </tr>
             );
           })}
@@ -501,11 +522,13 @@ function PositionRow({
   expanded,
   onToggle,
   visibleColumns,
+  onEdit,
 }: {
   position: PositionTrade;
   expanded: boolean;
   onToggle: () => void;
   visibleColumns: Set<string>;
+  onEdit: (executionId: number) => void;
 }) {
   const isOpen = position.status === 'open';
   // 2026-05-19: колонка P&L = реальный net P&L (включает варм-маржа, fees,
@@ -710,7 +733,7 @@ function PositionRow({
         <tr className="bg-slate-900/30">
           <td colSpan={visibleCount} className="p-3 px-6">
             <PnLBreakdownCard position={position} />
-            <ExecutionList executions={position.executions} />
+            <ExecutionList executions={position.executions} onEdit={onEdit} />
             {position.notes && (
               <div className="mt-3 text-xs text-slate-400 bg-slate-900/40 rounded p-3 border border-slate-700/30">
                 <div className="text-[10px] uppercase text-slate-500 mb-1 font-semibold">Заметка</div>
@@ -756,6 +779,11 @@ export function PositionJournalView() {
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [scrollWidth, setScrollWidth] = useState(0);
+  // BUG-PREV-002: Edit-flow прямо из /history expand row (унификация с /positions).
+  // editingTrade null → modal закрыт; ненулевой → modal открыт с полным Trade.
+  // reloadCounter инкрементируется после save, что триггерит re-fetch ниже.
+  const [editingTrade, setEditingTrade] = useState<EditableTrade | null>(null);
+  const [reloadCounter, setReloadCounter] = useState(0);
 
   // Persist column visibility
   useEffect(() => {
@@ -817,6 +845,15 @@ export function PositionJournalView() {
     return () => {
       cancelled = true;
     };
+  }, [reloadCounter]);
+
+  const handleEditExecution = useCallback(async (executionId: number) => {
+    try {
+      const full = await api.get<EditableTrade>(`/trades/${executionId}`);
+      setEditingTrade(full);
+    } catch (e) {
+      setError((e as Error).message || 'Не удалось загрузить сделку');
+    }
   }, []);
 
   const toggleRow = (positionKey: string) => {
@@ -892,6 +929,7 @@ export function PositionJournalView() {
   };
 
   return (
+    <>
     <div className="space-y-3">
       {/* Column picker */}
       <div className="flex items-center justify-end">
@@ -1013,6 +1051,7 @@ export function PositionJournalView() {
                       expanded={expandedIds.has(stateKey)}
                       onToggle={() => toggleRow(stateKey)}
                       visibleColumns={visibleColumns}
+                      onEdit={handleEditExecution}
                     />
                   );
                 })}
@@ -1041,5 +1080,17 @@ export function PositionJournalView() {
         )}
       </div>
     </div>
+    {editingTrade !== null && (
+      <EditTradeModal
+        isOpen={true}
+        trade={editingTrade}
+        onClose={() => setEditingTrade(null)}
+        onSuccess={() => {
+          setEditingTrade(null);
+          setReloadCounter((c) => c + 1);
+        }}
+      />
+    )}
+    </>
   );
 }

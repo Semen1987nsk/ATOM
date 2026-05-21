@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth, RequireAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/apiClient';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import {
   Download
 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
+import BrokerConnectModal from '@/components/BrokerConnectModal';
 
 interface Subscription {
   plan: 'free' | 'pro' | 'corporate';
@@ -34,7 +36,18 @@ function ProfileContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  
+  // BUG-008: footer-sidebar «Брокеры» ведёт на /profile?tab=brokers, но
+  // tab-system на странице не реализована. Открываем BrokerConnectModal
+  // напрямую при наличии параметра.
+  const searchParams = useSearchParams();
+  const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.get('tab') === 'brokers') {
+      setIsBrokerModalOpen(true);
+    }
+  }, [searchParams]);
+
   // Синхронизация с user
   useEffect(() => {
     if (user) {
@@ -215,16 +228,16 @@ function ProfileContent() {
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${
-                  subscription.plan === 'pro' 
-                    ? 'bg-gradient-to-br from-purple-500 to-indigo-600' 
+                <div className={`p-3 rounded-[var(--radius-md)] border ${
+                  subscription.plan === 'pro'
+                    ? 'bg-[var(--accent-soft)] border-[var(--accent)]/30'
                     : subscription.plan === 'corporate'
-                    ? 'bg-gradient-to-br from-amber-500 to-orange-600'
-                    : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                    ? 'bg-[var(--surface-2)] border-[var(--border-strong)]'
+                    : 'bg-[var(--surface-2)] border-[var(--border)]'
                 }`}>
-                  {subscription.plan === 'pro' && <Crown size={24} className="text-white" />}
-                  {subscription.plan === 'corporate' && <Building2 size={24} className="text-white" />}
-                  {subscription.plan === 'free' && <Zap size={24} className="text-white" />}
+                  {subscription.plan === 'pro' && <Crown size={24} className="text-[var(--accent)]" />}
+                  {subscription.plan === 'corporate' && <Building2 size={24} className="text-[var(--ink)]" />}
+                  {subscription.plan === 'free' && <Zap size={24} className="text-[var(--text-secondary)]" />}
                 </div>
                 <div>
                   <h3 className="font-bold text-lg">
@@ -438,6 +451,11 @@ function ProfileContent() {
         </div>
       </div>
     </main>
+    <BrokerConnectModal
+      isOpen={isBrokerModalOpen}
+      onClose={() => setIsBrokerModalOpen(false)}
+      onConnectionChange={() => { /* nothing to refresh on profile */ }}
+    />
     </AppShell>
   );
 }
@@ -445,7 +463,9 @@ function ProfileContent() {
 export default function ProfilePage() {
   return (
     <RequireAuth>
-      <ProfileContent />
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>}>
+        <ProfileContent />
+      </Suspense>
     </RequireAuth>
   );
 }

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, computed_field
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, computed_field, model_validator
 from datetime import datetime
 from typing import Optional, List, Any, Dict
 from decimal import Decimal
@@ -401,6 +401,31 @@ class Trade(TradeBase):
     point_value_source: Optional[str] = None  # live_api|cache|empirical_payment|manual_override
     # Setup relation (simplified)
     setup: Optional[SetupBase] = None
+
+    @model_validator(mode='after')
+    def _normalize_asset_type(self) -> 'Trade':
+        # BUG-005: брокерские сделки в БД могут хранить asset_type как T-API
+        # lowercase enum ('share'/'futures'/'etf'...) либо как NULL (Tinkoff
+        # пишет в instrument_type_v2). Frontend EditTradeModal dropdown
+        # ожидает Capitalized ('Stock'/'Futures'/...) — при mismatch select
+        # схлопывается на дефолт 'Stock' и PATCH перепишет real type.
+        # Маппим T-API enum → UI strings (consistent с AddTradeModal options).
+        mapping = {
+            'share': 'Stock',
+            'bond': 'Bond',
+            'etf': 'ETF',
+            'futures': 'Futures',
+            'option': 'Option',
+            'currency': 'Currency',
+        }
+        if self.asset_type and self.asset_type.lower() in mapping:
+            self.asset_type = mapping[self.asset_type.lower()]
+        elif not self.asset_type and self.instrument_type_v2:
+            self.asset_type = mapping.get(
+                self.instrument_type_v2.lower(),
+                self.instrument_type_v2.capitalize(),
+            )
+        return self
 
     @computed_field  # type: ignore[misc]
     @property

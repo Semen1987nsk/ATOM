@@ -57,7 +57,7 @@ export default function CalendarPage() {
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(day);
     }
-    return Object.entries(grouped)
+    const result = Object.entries(grouped)
       .sort(([a], [b]) => b.localeCompare(a)) // по убыванию (свежие сверху)
       .map(([yearMonth, days]) => {
         const [y, m] = yearMonth.split("-").map(Number);
@@ -65,6 +65,23 @@ export default function CalendarPage() {
         const trades = days.reduce((s, d) => s + d.trades_count, 0);
         return { yearMonth, year: y, month: m - 1, days, pnl, trades };
       });
+
+    // BUG-006: гарантируем текущий месяц в navigator (даже без закрытых сделок).
+    // Иначе при открытой позиции в текущем месяце календарь «застревает» на
+    // последнем месяце с закрытыми сделками (март), а «Следующий месяц» disabled.
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    if (!result.some((m) => m.yearMonth === currentYM)) {
+      result.unshift({
+        yearMonth: currentYM,
+        year: now.getFullYear(),
+        month: now.getMonth(),
+        days: [],
+        pnl: 0,
+        trades: 0,
+      });
+    }
+    return result;
   }, [data]);
 
   const maxAbsPnl = useMemo(() => {
@@ -73,6 +90,18 @@ export default function CalendarPage() {
   }, [data]);
 
   const [monthIdx, setMonthIdx] = useState(0);
+
+  // BUG-006: landing на текущем месяце если он есть в данных. Иначе остаёмся
+  // на дефолтном 0 (самый свежий доступный месяц). Раньше всегда открывался
+  // monthsData[0] — пользователь видел март вместо мая, потому что свежие
+  // сделки могли быть open (без pnl, не попадают в /stats/calendar).
+  useEffect(() => {
+    if (monthsData.length === 0) return;
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const idx = monthsData.findIndex((m) => m.yearMonth === currentYM);
+    if (idx >= 0) setMonthIdx(idx);
+  }, [monthsData]);
 
   if (authLoading) return <DashboardSkeleton />;
 
