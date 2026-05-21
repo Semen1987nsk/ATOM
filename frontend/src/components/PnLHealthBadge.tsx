@@ -119,6 +119,119 @@ interface PnLHealthBadgeProps {
   refreshing?: boolean;
 }
 
+interface HealthBreakdown {
+  journal_pnl?: number | null;
+  cash_pnl?: number | null;
+  components?: {
+    total_pnl_closed?: number | null;
+    unrealized_pnl?: number | null;
+    net_deposits?: number | null;
+    portfolio_value?: number | null;
+  } | null;
+}
+
+function PopoverRow({ label, value, strong = false, accent }: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  accent?: string;
+}) {
+  return (
+    <div className={`flex justify-between gap-4 ${strong ? "font-semibold" : ""}`}>
+      <span className={strong ? "text-slate-200" : "text-slate-400"}>{label}</span>
+      <span className={`font-mono tabular-nums ${accent ?? (strong ? "text-slate-100" : "text-slate-300")}`}>{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Богатый popover при наведении: подробная сверка журнала с брокером.
+ * Объясняет ОБЕ цифры по компонентам + причину расхождения + шкалу.
+ * Данные из breakdown (journal_pnl/cash_pnl/components) — приходят в /stats/.
+ */
+function HealthPopover({ data, status, style }: {
+  data: PnLHealthData;
+  status: PnLHealthStatus;
+  style: BadgeStyle;
+}) {
+  const bd = (data.breakdown ?? null) as HealthBreakdown | null;
+  const comp = bd?.components ?? null;
+
+  // Нет данных / пустой счёт — короткое сообщение.
+  if (status === "na" || data.diff_rub === null || data.diff_pct === null) {
+    return (
+      <div className="text-xs text-slate-300 leading-relaxed">
+        {status === "na"
+          ? "Недостаточно данных для сверки (нет операций по счёту)."
+          : "Журнал и брокер сходятся — расхождений нет."}
+      </div>
+    );
+  }
+
+  const closed = comp?.total_pnl_closed ?? null;
+  const unreal = comp?.unrealized_pnl ?? null;
+  const deposits = comp?.net_deposits ?? null;
+  const portfolio = comp?.portfolio_value ?? null;
+  const journal = bd?.journal_pnl ?? null;
+  const cash = bd?.cash_pnl ?? null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[13px] font-semibold text-slate-100">Сверка журнала с брокером</span>
+        <span className={`text-xs font-semibold ${style.textColor}`}>{formatPct(data.diff_pct)}</span>
+      </div>
+
+      {/* Журнал */}
+      <div className="space-y-1 text-[11px]">
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Как считает журнал (дневник)</div>
+        <PopoverRow label="Закрытые сделки (по ценам)" value={formatCurrency(closed)} />
+        <PopoverRow label="Открытая позиция (текущая)" value={formatCurrency(unreal)} />
+        <div className="border-t border-white/10 pt-1">
+          <PopoverRow label="Итого журнал" value={formatCurrency(journal)} strong />
+        </div>
+      </div>
+
+      {/* Брокер */}
+      <div className="space-y-1 text-[11px]">
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Как считает брокер (факт)</div>
+        <PopoverRow label="Внесено (депозиты − выводы)" value={formatCurrency(deposits)} />
+        <PopoverRow label="Сейчас на счёте" value={formatCurrency(portfolio)} />
+        <div className="border-t border-white/10 pt-1">
+          <PopoverRow label="Итого брокер" value={formatCurrency(cash)} strong />
+        </div>
+      </div>
+
+      {/* Расхождение */}
+      <div className="border-t border-white/10 pt-2">
+        <PopoverRow
+          label="Расхождение"
+          value={`${formatCurrency(data.diff_rub)} (${formatPct(data.diff_pct)})`}
+          strong
+          accent={style.textColor}
+        />
+      </div>
+
+      {/* Причина */}
+      <p className="text-[11px] text-slate-400 leading-relaxed">
+        Фьючерсы журнал считает по цене сделки (вход → выход), а брокер — по
+        варм-марже (ежедневный клиринг по расчётной цене). Для закрытых сделок
+        разрыв уже зафиксирован и сам не исчезнет. Деньги реально списаны со
+        счёта — в балансе учтены, на торговлю не влияют.
+      </p>
+
+      {/* Шкала референсов */}
+      <div className="border-t border-white/10 pt-2 text-[10px] text-slate-500">
+        <span className="text-emerald-400">≤1% норма</span>
+        <span className="mx-1">·</span>
+        <span className="text-amber-400">1–5% ок для фьючерсов</span>
+        <span className="mx-1">·</span>
+        <span className="text-rose-400">&gt;5% стоит проверить</span>
+      </div>
+    </div>
+  );
+}
+
 export function PnLHealthBadge({
   data,
   size = "md",
@@ -139,46 +252,37 @@ export function PnLHealthBadge({
   }, [data]);
   const style = styleFor(status);
 
-  const tooltipContent = useMemo(() => {
-    if (!data) return "Проверка P&L ещё не выполнялась";
-    if (data.diff_rub === null || data.diff_pct === null) {
-      return "Журнал и брокер сходятся.";
-    }
-    // 4 строки максимум — длинные tooltip обрезаются браузером.
-    return [
-      `Расхождение журнала с брокером: ${formatCurrency(data.diff_rub)} (${formatPct(data.diff_pct)}).`,
-      "",
-      "Это сборы, которые брокер снял со счёта, но в журнал не привязались",
-      "к конкретной сделке (варм-маржа MOEX после клиринга, плата за сервис).",
-      "Деньги уже учтены в балансе — на торговлю не влияет.",
-      "",
-      "Норма: ≤ 1% ✅, до 5% ⚠️, выше 5% — стоит проверить.",
-    ].join("\n");
-  }, [data]);
-
   const isCompact = size === "sm";
   return (
-    <div
-      className={`inline-flex items-center gap-2 rounded-lg border ${style.borderColor} ${style.bgColor} ${isCompact ? "px-2 py-1" : "px-3 py-1.5"} ${style.textColor}`}
-      title={tooltipContent}
-    >
-      <span className={`w-2 h-2 rounded-full ${style.dotColor} ${status === "warning" || status === "mismatch" ? "animate-pulse" : ""}`} />
-      <span className={`inline-flex items-center gap-1 ${isCompact ? "text-xs" : "text-sm"} font-medium`}>
-        {style.icon}
-        {style.label}
-        {data?.diff_pct !== null && data?.diff_pct !== undefined && (
-          <span className="opacity-75">{formatPct(data.diff_pct)}</span>
+    <div className="relative inline-block group">
+      <div
+        className={`inline-flex items-center gap-2 rounded-lg border ${style.borderColor} ${style.bgColor} ${isCompact ? "px-2 py-1" : "px-3 py-1.5"} ${style.textColor} cursor-help`}
+      >
+        <span className={`w-2 h-2 rounded-full ${style.dotColor} ${status === "warning" || status === "mismatch" ? "animate-pulse" : ""}`} />
+        <span className={`inline-flex items-center gap-1 ${isCompact ? "text-xs" : "text-sm"} font-medium`}>
+          {style.icon}
+          {style.label}
+          {data?.diff_pct !== null && data?.diff_pct !== undefined && (
+            <span className="opacity-75">{formatPct(data.diff_pct)}</span>
+          )}
+        </span>
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="ml-1 text-xs underline decoration-dotted opacity-75 hover:opacity-100 disabled:opacity-40"
+            title="Запустить проверку сейчас"
+          >
+            {refreshing ? "..." : "↻"}
+          </button>
         )}
-      </span>
-      {onRefresh && (
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="ml-1 text-xs underline decoration-dotted opacity-75 hover:opacity-100 disabled:opacity-40"
-          title="Запустить проверку сейчас"
-        >
-          {refreshing ? "..." : "↻"}
-        </button>
+      </div>
+
+      {/* Богатый popover при наведении */}
+      {data && (
+        <div className="absolute left-0 top-full mt-2 z-50 w-[340px] max-w-[90vw] rounded-xl border border-slate-700 bg-slate-900/98 backdrop-blur-sm p-4 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity duration-150 pointer-events-none">
+          <HealthPopover data={data} status={status} style={style} />
+        </div>
       )}
     </div>
   );
