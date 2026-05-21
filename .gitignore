@@ -65,3 +65,6 @@ htmlcov/
 .claude/*
 !.claude/skills/
 .claude/skills/**/.local/
+
+# Superpowers brainstorm visual-companion state (local tooling artifacts)
+.superpowers/
