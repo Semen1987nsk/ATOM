@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant, Fraunces, Inter, JetBrains_Mono, Manrope } from "next/font/google";
+import { Cormorant, Inter, JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
@@ -8,19 +8,11 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryProvider } from "@/lib/QueryProvider";
 import { CookieConsent } from "@/components/CookieConsent";
 
-// Fraunces: Latin/Latin-ext editorial display — axes opsz/SOFT/WONK
-// No Cyrillic subset exists for Fraunces on Google Fonts
-const fraunces = Fraunces({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-serif",
-  axes: ["opsz", "SOFT", "WONK"],
-  weight: "variable",
-  style: ["normal", "italic"],
-  display: "swap",
-});
-
-// Cormorant: Cyrillic companion serif — old-style humanist, harmonizes with Fraunces
-// Used as Cyrillic fallback via --font-serif-cyr CSS variable in the font-family stack
+// Cormorant: editorial serif (Cyrillic + Latin) for cited quotes.
+// Replaced Fraunces (Latin-only, 3-axis variable, ~150KB) — on this RU page
+// the visible quote text is Cyrillic, which Fraunces could not render anyway,
+// so Cormorant carries the serif role alone. globals.css aliases
+// --font-serif → --font-serif-cyr so existing stacks resolve to Cormorant.
 const cormorant = Cormorant({
   subsets: ["cyrillic", "cyrillic-ext", "latin"],
   variable: "--font-serif-cyr",
@@ -43,11 +35,12 @@ const geistMono = JetBrains_Mono({
   display: "swap",
 });
 
-// Manrope: Bloomberg-style display sans — max weight 800 (no 900 in Google Fonts subset)
+// Manrope: Bloomberg-style display sans — max weight 800 (no 900 in Google Fonts subset).
+// Only 700 (CTA) and 800 (H1/H2/numbers/names) are used — 500 dropped to trim weight.
 const manrope = Manrope({
-  subsets: ["latin", "latin-ext", "cyrillic"],
+  subsets: ["latin", "cyrillic"],
   variable: "--font-display",
-  weight: ["500", "700", "800"],
+  weight: ["700", "800"],
   display: "swap",
 });
 
@@ -83,7 +76,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru" className={`${fraunces.variable} ${cormorant.variable} ${inter.variable} ${geistMono.variable} ${manrope.variable}`} suppressHydrationWarning>
+    <html lang="ru" className={`${cormorant.variable} ${inter.variable} ${geistMono.variable} ${manrope.variable}`} suppressHydrationWarning>
       <body className="antialiased">
         <ErrorBoundary>
           <QueryProvider>

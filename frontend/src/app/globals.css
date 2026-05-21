@@ -718,6 +718,9 @@ h1 { letter-spacing: -0.02em; }
    Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
    См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
 [data-theme="maatt-cream"] {
+  /* Fraunces dropped for perf — Cormorant (--font-serif-cyr) is now the sole
+     editorial serif; alias keeps existing var(--font-serif) stacks resolving. */
+  --font-serif:      var(--font-serif-cyr);
   --paper:           #FAF8F2;
   --paper-tint:      #f4ecdc;
   --ink:             #14110B;
