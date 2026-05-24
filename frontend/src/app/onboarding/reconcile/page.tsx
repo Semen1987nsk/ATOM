@@ -116,7 +116,7 @@ export default function OnboardingReconcilePage() {
         <div className="mb-6">
           <h1 className="text-2xl font-semibold mb-2">Проверка корректности данных</h1>
           <p className="text-slate-400 text-sm">
-            Eqio сверит свои расчёты с официальным брокерским отчётом Tinkoff за
+            Эмпирик сверит свои расчёты с официальным брокерским отчётом Tinkoff за
             последние 30 дней. Это разовая проверка для уверенности, что цифры в
             журнале совпадают с тем, что показывает Тинькофф в личном кабинете.
           </p>
@@ -168,10 +168,10 @@ export default function OnboardingReconcilePage() {
                       отличаются — свяжитесь с поддержкой, мы разберёмся.
                     </p>
                     <a
-                      href="mailto:support@eqio.app?subject=Расхождение%20в%20reconciliation"
+                      href="mailto:support@empirik.app?subject=Расхождение%20в%20reconciliation"
                       className="inline-flex items-center gap-1 text-sm text-orange-300 hover:text-orange-200"
                     >
-                      <Mail size={14} /> support@eqio.app
+                      <Mail size={14} /> support@empirik.app
                     </a>
                   </div>
                 </div>
@@ -214,7 +214,7 @@ export default function OnboardingReconcilePage() {
                       <thead>
                         <tr className="text-slate-500 text-xs uppercase tracking-wide">
                           <th className="text-left pb-2">Метрика</th>
-                          <th className="text-right pb-2">Eqio</th>
+                          <th className="text-right pb-2">Эмпирик</th>
                           <th className="text-right pb-2">Tinkoff</th>
                           <th className="text-right pb-2">Разница</th>
                           <th className="text-center pb-2">Статус</th>

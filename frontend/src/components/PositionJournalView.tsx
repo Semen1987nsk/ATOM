@@ -185,7 +185,7 @@ const ALL_COLUMNS: ColumnConfig[] = [
 // BUG-PREV-003: bump v1 → v2 чтобы сбросить persisted 12-column layout у
 // существующих юзеров (иначе они продолжают видеть overflow). Новый default —
 // 9 колонок; кастомизация через picker сохраняется под v2-ключом.
-const COLUMN_STORAGE_KEY = 'eqio_position_journal_columns_v2';
+const COLUMN_STORAGE_KEY = 'empirik_position_journal_columns_v2';
 
 function loadVisibleColumns(): Set<string> {
   if (typeof window === 'undefined') {

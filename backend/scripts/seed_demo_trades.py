@@ -105,7 +105,7 @@ def make_trade(account_id: int, idx: int, base_date: datetime) -> models.Trade:
 
 def main():
     db = SessionLocal()
-    user = db.query(models.User).filter(models.User.email == "demo@eqio.app").first()
+    user = db.query(models.User).filter(models.User.email == "demo@empirik.app").first()
     if not user:
         print("Demo user not found")
         return

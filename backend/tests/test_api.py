@@ -1198,7 +1198,7 @@ class TestAdmin:
         )
         # уже анонимизирован
         anonymized = User(
-            email="deleted-99@anon.eqio",
+            email="deleted-99@anon.empirik",
             hashed_password=None,
             is_active=0,
             deletion_requested_at=now - timedelta(days=60),

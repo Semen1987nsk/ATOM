@@ -98,7 +98,7 @@ const ITEMS: CommandItem[] = [
     onSelect: ({ closePalette }) => {
       closePalette();
       // Хук-эвент — Home/History страницы слушают и открывают AddTradeModal
-      window.dispatchEvent(new CustomEvent("eqio:add-trade"));
+      window.dispatchEvent(new CustomEvent("empirik:add-trade"));
     },
   },
   {
@@ -109,7 +109,7 @@ const ITEMS: CommandItem[] = [
     keywords: ["загрузить", "csv", "excel"],
     onSelect: ({ closePalette }) => {
       closePalette();
-      window.dispatchEvent(new CustomEvent("eqio:import-trades"));
+      window.dispatchEvent(new CustomEvent("empirik:import-trades"));
     },
   },
   {
@@ -165,8 +165,8 @@ export function CommandPalette() {
   // Внешний триггер из header search-кнопки.
   useEffect(() => {
     const handler = () => setOpen(true);
-    window.addEventListener("eqio:open-palette", handler);
-    return () => window.removeEventListener("eqio:open-palette", handler);
+    window.addEventListener("empirik:open-palette", handler);
+    return () => window.removeEventListener("empirik:open-palette", handler);
   }, []);
 
   // Body scroll lock пока палитра открыта.

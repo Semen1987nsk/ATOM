@@ -16,7 +16,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { api, getApiUrl, ApiError } from '@/lib/apiClient';
 
 // TR1: view-mode toggle persistence key
-const VIEW_MODE_STORAGE_KEY = 'eqio_history_view_mode';
+const VIEW_MODE_STORAGE_KEY = 'empirik_history_view_mode';
 type JournalViewMode = 'grouped' | 'flat';
 
 type SortMode = 'latest_activity' | 'opened_at' | 'closed_at';
@@ -90,8 +90,8 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
   currency: 'Валюта',
 };
 
-const STORAGE_KEY = 'eqio_history_columns';
-const SORT_STORAGE_KEY = 'eqio_history_sort';
+const STORAGE_KEY = 'empirik_history_columns';
+const SORT_STORAGE_KEY = 'empirik_history_sort';
 
 interface Trade {
   id: number;

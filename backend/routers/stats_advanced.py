@@ -7,7 +7,7 @@ Stats Advanced Router — продвинутые quant-метрики и benchma
 Endpoints:
     GET /stats/advanced  — Ulcer, K-Ratio, Sterling, Omega, MAR, hold-time,
                            psycho-correlations, mistake-categories, …
-    GET /stats/benchmark — сравнение метрик пользователя с когортой Eqio
+    GET /stats/benchmark — сравнение метрик пользователя с когортой Эмпирик
                            (синтетическая база до Phase 5)
 
 Helpers (load_filtered_trades, build_equity_curve) импортируются из
@@ -148,7 +148,7 @@ async def get_benchmark(
     current_user: models.User = Depends(auth_service.get_current_user),
 ):
     """
-    Сравнение метрик пользователя с когортой Eqio. Пока живых юзеров мало —
+    Сравнение метрик пользователя с когортой Эмпирик. Пока живых юзеров мало —
     база синтетическая (academic baselines). При росте — переключается на real.
     """
     account_id = auth_service.get_account_id(db, current_user)

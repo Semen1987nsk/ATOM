@@ -58,7 +58,7 @@ async def test_sandbox_open_account_and_fetch_operations(monkeypatch) -> None:
 
     # 1. Открыть sandbox-аккаунт через native SDK.
     async with AsyncClient(
-        token, target="sandbox-invest-public-api.tbank.ru:443", app_name="eqio.smoke"
+        token, target="sandbox-invest-public-api.tbank.ru:443", app_name="empirik.smoke"
     ) as client:
         open_response = await client.sandbox.open_sandbox_account()
         account_id = open_response.account_id
@@ -105,7 +105,7 @@ async def test_sandbox_users_list_accounts_returns_at_least_one(monkeypatch) -> 
 
     # Откроем sandbox-аккаунт чтобы было что вернуть.
     async with AsyncClient(
-        token, target="sandbox-invest-public-api.tbank.ru:443", app_name="eqio.smoke"
+        token, target="sandbox-invest-public-api.tbank.ru:443", app_name="empirik.smoke"
     ) as native:
         opened = await native.sandbox.open_sandbox_account()
         try:

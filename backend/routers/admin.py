@@ -239,16 +239,16 @@ def admin_pd_deletions_status(
     now = utc_now_naive()
     threshold = now - timedelta(days=GRACE_PERIOD_DAYS)
 
-    # Уже анонимизированные: email вида deleted-{id}@anon.eqio
+    # Уже анонимизированные: email вида deleted-{id}@anon.empirik
     finalized_count = db.query(func.count(models.User.id)).filter(
-        models.User.email.like("deleted-%@anon.eqio")
+        models.User.email.like("deleted-%@anon.empirik")
     ).scalar() or 0
 
     # В очереди (deletion_requested_at IS NOT NULL и НЕ анонимизирован)
     pending_q = db.query(models.User).filter(
         and_(
             models.User.deletion_requested_at.isnot(None),
-            not_(models.User.email.like("deleted-%@anon.eqio")),
+            not_(models.User.email.like("deleted-%@anon.empirik")),
         )
     )
     pending_count = pending_q.count()
@@ -1488,7 +1488,7 @@ def admin_pd_deletions_list(
     overdue = []
     finalized = []
     for u in q.order_by(models.User.deletion_requested_at.desc()).limit(500).all():
-        is_anonymized = u.email.endswith("@anon.eqio")
+        is_anonymized = u.email.endswith("@anon.empirik")
         entry = {
             "user_id": u.id,
             "email": u.email if not is_anonymized else "[anonymized]",
@@ -1614,7 +1614,7 @@ def admin_backups_status(
     from pathlib import Path
     from datetime import datetime as _dt
 
-    backup_dir = os.getenv("BACKUP_DIR", "/var/lib/eqio/backups")
+    backup_dir = os.getenv("BACKUP_DIR", "/var/lib/empirik/backups")
 
     # 1. Сначала пытаемся читать из БД (backup_runs)
     db_rows = (
@@ -1657,7 +1657,7 @@ def admin_backups_status(
     fs_entries = []
     p = Path(backup_dir)
     if p.exists():
-        files = sorted(p.glob("eqio-*.sql.gz"), key=lambda f: f.stat().st_mtime, reverse=True)
+        files = sorted(p.glob("empirik-*.sql.gz"), key=lambda f: f.stat().st_mtime, reverse=True)
         for f in files[:20]:
             st = f.stat()
             fs_entries.append({

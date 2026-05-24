@@ -111,7 +111,7 @@ const FOOTER_ITEMS: NavItem[] = [
   { label: "Помощь", href: "/help", icon: <HelpCircle size={18} /> },
 ];
 
-const SIDEBAR_STATE_KEY = "eqio:sidebar-collapsed";
+const SIDEBAR_STATE_KEY = "empirik:sidebar-collapsed";
 
 // ──────────────────────────────────────────────
 //  Component
@@ -152,11 +152,11 @@ export function AppShell({ children, pageTitle, headerRight, onAddTrade, onImpor
   useEffect(() => {
     const onAdd = () => onAddTrade?.();
     const onImp = () => onImport?.();
-    window.addEventListener("eqio:add-trade", onAdd);
-    window.addEventListener("eqio:import-trades", onImp);
+    window.addEventListener("empirik:add-trade", onAdd);
+    window.addEventListener("empirik:import-trades", onImp);
     return () => {
-      window.removeEventListener("eqio:add-trade", onAdd);
-      window.removeEventListener("eqio:import-trades", onImp);
+      window.removeEventListener("empirik:add-trade", onAdd);
+      window.removeEventListener("empirik:import-trades", onImp);
     };
   }, [onAddTrade, onImport]);
 
@@ -640,7 +640,7 @@ function Header({
       <div className="flex-1 min-w-0 flex justify-center md:justify-start md:max-w-md md:ml-4">
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent("eqio:open-palette"))}
+          onClick={() => window.dispatchEvent(new CustomEvent("empirik:open-palette"))}
           className={clsx(
             "w-full max-w-[420px] flex items-center gap-2.5 px-3 py-1.5",
             "rounded-[var(--radius-md)] bg-[var(--surface-1)] border border-[var(--border)]",

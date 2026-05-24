@@ -31,7 +31,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Eqio",
+  title: "Эмпирик",
   description: "Система торговой аналитики на базе ИИ",
 };
 

@@ -283,7 +283,7 @@ export default function AdminReconciliationDetailPage() {
         </div>
 
         <div className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-          <strong className="text-slate-400">Eqio</strong> — сумма по нашей БД (что показывает дашборд).
+          <strong className="text-slate-400">Эмпирик</strong> — сумма по нашей БД (что показывает дашборд).
           <span className="mx-1">·</span>
           <strong className="text-slate-400">Tinkoff</strong> — то же из broker_report API.
           <span className="mx-1">·</span>
@@ -297,7 +297,7 @@ export default function AdminReconciliationDetailPage() {
             <thead>
               <tr className="text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-700/50">
                 <th className="text-left pb-2 pr-3 font-medium" style={{ width: '35%' }}>Метрика</th>
-                <th className="text-right pb-2 px-3 font-medium" style={{ width: '15%' }}>Eqio</th>
+                <th className="text-right pb-2 px-3 font-medium" style={{ width: '15%' }}>Эмпирик</th>
                 <th className="text-right pb-2 px-3 font-medium" style={{ width: '15%' }}>Tinkoff</th>
                 <th className="text-right pb-2 px-3 font-medium" style={{ width: '12%' }}>Δ abs ₽</th>
                 <th className="text-right pb-2 px-3 font-medium" style={{ width: '10%' }}>Δ %</th>
@@ -359,7 +359,7 @@ export default function AdminReconciliationDetailPage() {
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-xs">
                   <div className="bg-slate-900/40 rounded px-3 py-2">
-                    <div className="text-slate-500 text-[10px] uppercase">Eqio</div>
+                    <div className="text-slate-500 text-[10px] uppercase">Эмпирик</div>
                     <div className="font-mono tabular-nums text-slate-100 mt-0.5">
                       {fmtMoney(b.our_value)}
                     </div>

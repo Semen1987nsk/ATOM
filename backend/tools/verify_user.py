@@ -144,7 +144,7 @@ async def _run_for_all(*, max_concurrency: int, skip_live: bool):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Eqio: verify user data correctness")
+    parser = argparse.ArgumentParser(description="Empirik: verify user data correctness")
     parser.add_argument("--user-id", type=int, help="Verify single user")
     parser.add_argument("--account-id", type=int, help="Limit to single account")
     parser.add_argument("--all-users", action="store_true", help="Verify all active users")

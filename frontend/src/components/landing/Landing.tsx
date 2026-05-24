@@ -58,7 +58,7 @@ export function Landing() {
             className="font-serif italic text-[26px] font-normal tracking-tight no-underline text-[var(--ink)]"
             style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
           >
-            Eqio
+            Эмпирик
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-[13px] text-[var(--ink-2)]">
             {NAV_LINKS.map((l) => (
@@ -441,7 +441,7 @@ export function Landing() {
                 className="text-[20px] font-normal italic tracking-tight no-underline text-[var(--ink)] mb-4 block"
                 style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
               >
-                Eqio
+                Эмпирик
               </Link>
               <p className="text-[var(--ink-3)] leading-relaxed text-[13px]">
                 Торговый журнал для активных трейдеров MOEX.
@@ -471,7 +471,7 @@ export function Landing() {
             </div>
           </div>
           <div className="pt-8 border-t border-[var(--rule)] flex flex-wrap items-center justify-between gap-4 text-[13px] text-[var(--ink-3)]">
-            <div>© Eqio · Торговая аналитика для российских трейдеров</div>
+            <div>© Эмпирик · Торговая аналитика для российских трейдеров</div>
             <div>Данные: MOEX ISS · Брокеры через API и CSV</div>
           </div>
         </div>

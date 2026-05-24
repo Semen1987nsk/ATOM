@@ -36,7 +36,7 @@ const currencySymbols: Record<Currency, string> = {
   BTC: '₿',
 };
 
-// Eqio таргетится на трейдеров MOEX — все сделки приходят из Tinkoff API
+// Эмпирик таргетится на трейдеров MOEX — все сделки приходят из Tinkoff API
 // в рублях. Дефолтная валюта = RUB. USD/EUR/USDT/BTC доступны для тех
 // кто торгует не на MOEX (опциональный override в настройках).
 const defaultSettings: Settings = {

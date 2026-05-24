@@ -34,13 +34,13 @@ from typing import Any, Optional
 # contextvars обновляются строго в рамках async-контекста, не утекают
 # между задачами.
 _sync_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "eqio_sync_id", default=None
+    "empirik_sync_id", default=None
 )
 _account_hash_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "eqio_account_hash", default=None
+    "empirik_account_hash", default=None
 )
 _broker_account_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "eqio_broker_account", default=None
+    "empirik_broker_account", default=None
 )
 
 

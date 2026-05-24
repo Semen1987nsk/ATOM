@@ -351,7 +351,7 @@ class SyncScheduler:
 # Уникальный 64-bit ключ для pg_try_advisory_lock. Просто constant — он
 # должен быть стабилен across deployments чтобы все worker'ы боролись за
 # один и тот же lock.
-_SCHEDULER_LOCK_KEY = 0x4551494F535953  # "EQIOSYS" в hex
+_SCHEDULER_LOCK_KEY = 0x4551494F535953  # "EMPIRIKSYS" в hex
 _lock_connection = None  # держим коннект пока lock активен (session-level lock)
 
 

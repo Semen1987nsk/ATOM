@@ -313,7 +313,7 @@ class Settings:
     TINKOFF_API_ENV: str = os.getenv("TINKOFF_API_ENV", "prod").lower()
     # App name отправляется в gRPC metadata; Тинькофф просит указывать в формате
     # "вендор.приложение" для отслеживания grade и issue-репортов.
-    TINKOFF_APP_NAME: str = os.getenv("TINKOFF_APP_NAME", "eqio.journal")
+    TINKOFF_APP_NAME: str = os.getenv("TINKOFF_APP_NAME", "empirik.journal")
     # Per-token rate-limit cap. Официальный лимит OperationsService — 200/min.
     # Делаем 150/min — запас 25% на бурсты и retries.
     # (Раньше было 60/min — слишком консервативно, особенно для full re-sync.)

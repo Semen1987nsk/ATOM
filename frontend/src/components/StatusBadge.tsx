@@ -4,7 +4,7 @@
  * StatusBadge — small green/orange/red dot showing system health (PR 26 Phase 2).
  *
  * Polls /ready every 60s. Если backend down → red, if 5xx rate spike → orange.
- * Linked to status.eqio.app для подробностей.
+ * Linked to status.empirik.app для подробностей.
  */
 
 import { useEffect, useState } from 'react';

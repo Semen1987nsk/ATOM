@@ -123,7 +123,7 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     Анонимизация пользователя после истечения grace period.
 
     Что делаем:
-      - User: email -> "deleted-{id}@anon.eqio", name/oauth/utm -> NULL, settings -> {}
+      - User: email -> "deleted-{id}@anon.empirik", name/oauth/utm -> NULL, settings -> {}
       - Trade: notes, screenshot_url, ai_analysis -> NULL (свободный текст)
       - DailyReview: reflection, intention, trade_reflections -> NULL
       - Payment: card_last4/external_id оставляем для бухучёта (402-ФЗ, 4 года)
@@ -167,7 +167,7 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     ).rowcount
 
     # Анонимизируем User последним.
-    user.email = f"deleted-{user_id}@anon.eqio"
+    user.email = f"deleted-{user_id}@anon.empirik"
     user.name = None
     user.hashed_password = None
     user.oauth_provider = None
@@ -222,8 +222,8 @@ def run_pending_deletions(db: Session) -> int:
         select(models.User).where(
             models.User.deletion_requested_at.isnot(None),
             models.User.deletion_requested_at <= threshold,
-            # Не обрабатываем уже анонимизированных (email уже @anon.eqio)
-            ~models.User.email.like("deleted-%@anon.eqio"),
+            # Не обрабатываем уже анонимизированных (email уже @anon.empirik)
+            ~models.User.email.like("deleted-%@anon.empirik"),
         )
     ).scalars().all()
 

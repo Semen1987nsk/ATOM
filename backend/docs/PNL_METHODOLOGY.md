@@ -1,6 +1,6 @@
 # P&L Methodology
 
-Формальная спецификация расчёта P&L в Eqio/ATOM. Обновлена 2026-05-17
+Формальная спецификация расчёта P&L в Empirik/ATOM. Обновлена 2026-05-17
 (Plan `lazy-meandering-bonbon`).
 
 ## 1. Основные формулы
@@ -241,7 +241,7 @@ pytest падает. Защита от silent regression.
 ## 9. Cross-references
 
 - Plan: `C:\Users\Administrator\.claude\plans\lazy-meandering-bonbon.md`
-- Phase 1 audit: `C:\Users\Administrator\Eqio\audit_phase1_summary.md`
+- Phase 1 audit: `C:\Users\Administrator\Empirik\audit_phase1_summary.md`
 - Classifier: `domain/pnl/cash_flow_classification.py`
 - Attribution: `domain/pnl/fee_attribution.py`
 - Reconcile tool: `tools/reconcile_journal_vs_cash.py`

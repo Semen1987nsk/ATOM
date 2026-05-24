@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { JournalFilters, DEFAULT_JOURNAL_FILTERS } from './types';
 
-const STORAGE_KEY = 'eqio_journal_filters_v1';
+const STORAGE_KEY = 'empirik_journal_filters_v1';
 
 function loadFromStorage(): JournalFilters {
   if (typeof window === 'undefined') return DEFAULT_JOURNAL_FILTERS;

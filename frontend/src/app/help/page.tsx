@@ -69,7 +69,7 @@ const faqData: FAQItem[] = [
   {
     category: 'billing',
     question: 'Можно ли вернуть деньги?',
-    answer: 'Да, в течение 14 дней с момента оплаты. Напишите на support@eqio.app с указанием email аккаунта.'
+    answer: 'Да, в течение 14 дней с момента оплаты. Напишите на support@empirik.app с указанием email аккаунта.'
   },
   {
     category: 'billing',
@@ -86,7 +86,7 @@ const faqData: FAQItem[] = [
   {
     category: 'security',
     question: 'Как удалить свой аккаунт?',
-    answer: 'Напишите на support@eqio.app с просьбой об удалении. Мы удалим все ваши данные в течение 24 часов.'
+    answer: 'Напишите на support@empirik.app с просьбой об удалении. Мы удалим все ваши данные в течение 24 часов.'
   },
   
   // Технические
@@ -169,7 +169,7 @@ export default function HelpPage() {
         {/* Quick Contact Cards */}
         <div className="grid md:grid-cols-3 gap-4 mb-10">
           <a
-            href="mailto:support@eqio.app"
+            href="mailto:support@empirik.app"
             className="cyber-card p-5 hover:border-cyan-500/50 transition-all group"
           >
             <div className="flex items-center gap-4">
@@ -178,7 +178,7 @@ export default function HelpPage() {
               </div>
               <div>
                 <h3 className="font-bold">Email</h3>
-                <p className="text-sm text-muted-foreground">support@eqio.app</p>
+                <p className="text-sm text-muted-foreground">support@empirik.app</p>
                 <p className="text-xs text-cyan-400 mt-1">Ответим за 24 часа</p>
               </div>
             </div>
@@ -282,7 +282,7 @@ export default function HelpPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="mailto:support@eqio.app"
+              href="mailto:support@empirik.app"
               className="btn-primary inline-flex items-center justify-center gap-2"
             >
               <Mail size={18} />

@@ -167,7 +167,7 @@ class SyncResultResponse(BaseModel):
 def _validate_token_scope(accounts: List[TinkoffAccountInfo], broker_account_id: str) -> None:
     """Подтверждает, что токен strictly READ_ONLY на выбранном счёте.
 
-    AU7 hardening: FULL_ACCESS токены отклоняются — Eqio это
+    AU7 hardening: FULL_ACCESS токены отклоняются — Эмпирик это
     журнал-аналитика, ему хватает read-only прав, а у full-access
     blast radius существенно больше (потенциальные ордера, вывод средств).
     Раньше мы принимали оба уровня; теперь требуем строго read-only.
@@ -183,7 +183,7 @@ def _validate_token_scope(accounts: List[TinkoffAccountInfo], broker_account_id:
             status_code=400,
             detail=(
                 f"Токен имеет FULL_ACCESS на счёте {broker_account_id}. "
-                "Для безопасности Eqio принимает только read-only токены. "
+                "Для безопасности Эмпирик принимает только read-only токены. "
                 "Создайте новый read-only токен в lk.tbank.ru → Инвестиции → "
                 "Настройки → API → «Доступ только на чтение»."
             ),

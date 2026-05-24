@@ -39,8 +39,8 @@ def generate_secret() -> str:
     return base64.b32encode(secrets.token_bytes(20)).decode("ascii")
 
 
-def provisioning_uri(secret: str, email: str, issuer: str = "Eqio") -> str:
-    """URI для QR-кода: otpauth://totp/Eqio:email?secret=...&issuer=Eqio."""
+def provisioning_uri(secret: str, email: str, issuer: str = "Empirik") -> str:
+    """URI для QR-кода: otpauth://totp/Empirik:email?secret=...&issuer=Empirik."""
     if not PYOTP_AVAILABLE:
         return f"otpauth://totp/{issuer}:{email}?secret={secret}&issuer={issuer}"
     totp = pyotp.TOTP(secret)

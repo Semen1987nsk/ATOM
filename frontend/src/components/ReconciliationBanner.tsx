@@ -22,7 +22,7 @@ type BannerState = {
   last_status?: string;
 };
 
-const DISMISS_KEY = 'eqio_reconciliation_banner_dismissed_until';
+const DISMISS_KEY = 'empirik_reconciliation_banner_dismissed_until';
 const DISMISS_HOURS = 24;
 
 function isDismissed(): boolean {
@@ -78,7 +78,7 @@ export function ReconciliationBanner() {
           </Link>
           <span className="text-orange-300/60 mx-1">·</span>
           <a
-            href="mailto:support@eqio.app?subject=Расхождение%20в%20reconciliation"
+            href="mailto:support@empirik.app?subject=Расхождение%20в%20reconciliation"
             className="text-orange-300 hover:text-orange-200 underline"
           >
             написать поддержке
