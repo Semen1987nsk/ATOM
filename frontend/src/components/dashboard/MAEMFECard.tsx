@@ -510,12 +510,12 @@ export function MAEMFECard({ analysis, onRecalculate, getApiUrl }: MAEMFECardPro
           {calculating && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
-                <span className="text-slate-300">{progressText}</span>
-                <span className="text-cyan-400 font-medium">{Math.round(progress)}%</span>
+                <span className="text-[var(--text-secondary)]">{progressText}</span>
+                <span className="text-[var(--accent)] font-medium num">{Math.round(progress)}%</span>
               </div>
-              <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-cyan-500 to-teal-500 h-full rounded-full transition-all duration-300 ease-out"
+              <div className="w-full bg-[var(--surface-2)] rounded-[var(--radius-xs)] h-1.5 overflow-hidden">
+                <div
+                  className="bg-[var(--accent)] h-full rounded-[var(--radius-xs)] transition-all duration-300 ease-out"
                   style={{ width: `${progress}%` }}
                 />
               </div>

@@ -4,8 +4,8 @@ Smoke-тест PR 1: client_factory открывает async-клиент к Tin
 
 Тест skip-ится если:
 * `TINKOFF_SANDBOX_TOKEN_TEST` не установлен (в CI без секрета — ок),
-* SDK `tinkoff-investments` не установлен (PR 1 ставит его, но среда
-  без зависимостей должна не падать).
+* SDK `t-tech-investments` не установлен (раньше `tinkoff-investments`,
+  переименован в AU10).
 
 Что проверяется:
 * фабрика выбирает sandbox endpoint, когда TINKOFF_API_ENV=sandbox;
@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 
 
 def _sdk_installed() -> bool:
-    return importlib.util.find_spec("tinkoff.invest") is not None
+    # AU10: SDK переименован tinkoff.invest → t_tech.invest.
+    return importlib.util.find_spec("t_tech.invest") is not None
 
 
 def _sandbox_token() -> str | None:
@@ -38,7 +39,7 @@ def _sandbox_token() -> str | None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not _sdk_installed(), reason="tinkoff-investments SDK not installed")
+@pytest.mark.skipif(not _sdk_installed(), reason="t-tech-investments SDK not installed")
 @pytest.mark.skipif(not _sandbox_token(), reason="TINKOFF_SANDBOX_TOKEN_TEST not set")
 async def test_sandbox_get_accounts_via_factory(monkeypatch):
     """Открыть клиент к sandbox через фабрику и убедиться что get_accounts работает."""

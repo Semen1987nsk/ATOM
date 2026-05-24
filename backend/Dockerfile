@@ -24,7 +24,8 @@ COPY requirements.txt .
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt \
+      --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple && \
     pip install --no-cache-dir gunicorn sentry-sdk[fastapi] python-json-logger
 
 # ───────────────── Stage 2: runtime ─────────────────

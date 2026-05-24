@@ -69,8 +69,10 @@ class TinkoffUsersClient:
 
     async def list_accounts(self) -> list[TinkoffAccountInfo]:
         """Список доступных аккаунтов с access_level (для валидации scope)."""
-        with wrap_sdk_errors():
-            response = await self._svc.users.get_accounts()
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await self._svc.users.get_accounts()
 
         result: list[TinkoffAccountInfo] = []
         for acc in getattr(response, "accounts", []) or []:
@@ -92,9 +94,13 @@ class TinkoffUsersClient:
         методах) и stream_limits (лимит open streams). Сейчас (PR 3) не
         парсим — используется в observability (PR 16) для алертов.
         """
-        with wrap_sdk_errors():
-            return await self._svc.users.get_user_tariff()
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                return await self._svc.users.get_user_tariff()
 
     async def get_info_raw(self) -> Any:
-        with wrap_sdk_errors():
-            return await self._svc.users.get_info()
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                return await self._svc.users.get_info()

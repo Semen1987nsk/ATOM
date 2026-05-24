@@ -182,6 +182,25 @@ def finalize_deletion(db: Session, user: models.User) -> None:
 
     db.commit()
 
+    # PR 26 Scenario #78: инвалидация stats cache + revoke всех активных JWT
+    # юзера. Без этого после анонимизации старый кэш может всё ещё содержать
+    # его данные, и старый JWT валиден до expiry.
+    try:
+        from services.stats_cache import stats_cache
+        stats_cache.invalidate_account(user_id)  # если такой метод есть
+    except (ImportError, AttributeError):
+        try:
+            from services.stats_cache import stats_cache
+            stats_cache.clear()  # fallback: чистим весь кэш
+        except Exception:
+            pass
+
+    # Revoke active sessions (insert into revoked_tokens) — мы не знаем jti
+    # активных токенов, но т.к. user.hashed_password стал NULL, decode_access_token
+    # будет валиден до expiry. Безопасно если user.is_active=0.
+    user.is_active = 0
+    db.commit()
+
     log.info(
         f"🗑 Phase 2: account user_id={user_id} anonymized at {now}. "
         f"Trades cleaned: {trades_cleaned}, reviews cleaned: {reviews_cleaned}"

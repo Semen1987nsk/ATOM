@@ -27,6 +27,13 @@ interface BrokerConnection {
   last_sync_status: string | null;
   total_synced_trades: number;
   created_at: string;
+  // PR 26 Phase 3 — детали последнего sync + реальные counts
+  last_sync_operations_count?: number | null;
+  last_sync_trades_count?: number | null;
+  last_sync_positions_count?: number | null;
+  last_sync_duration_ms?: number | null;
+  real_trades_count?: number;
+  real_operations_count?: number;
 }
 
 interface BrokerConnectModalProps {
@@ -58,18 +65,42 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
   
   // Sync state
   const [syncing, setSyncing] = useState<number | null>(null);
-  const [syncResult, setSyncResult] = useState<{success: boolean; message: string} | null>(null);
+  const [syncResult, setSyncResult] = useState<{
+    success: boolean;
+    message: string;
+    connectionId?: number;
+    operations?: number;
+    trades?: number;
+    positions?: number;
+    durationSec?: number;
+    completedAt?: Date;
+  } | null>(null);
+  // Live elapsed timer while sync is in progress (sec).
+  const [syncElapsedSec, setSyncElapsedSec] = useState<number>(0);
+
+  // Tick elapsed timer every second while syncing is non-null.
+  useEffect(() => {
+    if (syncing === null) {
+      setSyncElapsedSec(0);
+      return;
+    }
+    const start = Date.now();
+    const timer = setInterval(() => {
+      setSyncElapsedSec(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [syncing]);
 
   useEffect(() => {
     if (isOpen) {
       fetchConnections();
-      // Reset state
+      // Reset state — но НЕ сбрасываем syncResult, чтобы юзер видел
+      // последний результат если только что нажал sync и закрыл/открыл модал.
       setStep('list');
       setApiToken('');
       setVerifyError('');
       setAvailableAccounts([]);
       setSelectedAccountId('');
-      setSyncResult(null);
     }
   }, [isOpen]);
 
@@ -155,27 +186,67 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
         params: { full: forceFullSync },
       });
 
+      const hasNewData = data.operations_synced > 0 || data.trades_built > 0;
       const message = data.success
-        ? `✓ Синхронизация завершена за ${data.duration_sec}s: ` +
-          `${data.operations_synced} операций, ` +
-          `${data.trades_built} сделок, ` +
-          `${data.positions_open} открытых позиций` +
-          (parseFloat(data.account_varmargin_total) !== 0
-            ? `. Варм-маржа: ${parseFloat(data.account_varmargin_total).toFixed(2)} ₽`
-            : '')
-        : `✗ Ошибка: ${data.error ?? 'неизвестная'}`;
-      setSyncResult({ success: data.success, message });
+        ? (hasNewData
+            ? `Готово за ${data.duration_sec}с — добавлено: +${data.operations_synced} операций, +${data.trades_built} сделок, ${data.positions_open} открытых позиций` +
+              (parseFloat(data.account_varmargin_total) !== 0
+                ? `. Варм-маржа: ${parseFloat(data.account_varmargin_total).toFixed(2)} ₽`
+                : '')
+            : `Готово за ${data.duration_sec}с — новых сделок нет, всё уже импортировано. Открытых позиций: ${data.positions_open}`)
+        : `Ошибка: ${data.error ?? 'неизвестная'}`;
+      setSyncResult({
+        success: data.success,
+        message,
+        connectionId,
+        operations: data.operations_synced,
+        trades: data.trades_built,
+        positions: data.positions_open,
+        durationSec: data.duration_sec,
+        completedAt: new Date(),
+      });
 
       if (data.success) {
         await fetchConnections();
         onConnectionChange?.();
+        // PR 26 Phase 3 UX fix: toast НЕ исчезает автоматически — юзер сам
+        // решит когда закрыть. Раньше через 8 сек он пропадал и юзер был
+        // в недоумении «что произошло».
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Ошибка синхронизации';
-      setSyncResult({ success: false, message: msg });
+      setSyncResult({
+        success: false,
+        message: msg,
+        connectionId,
+        completedAt: new Date(),
+      });
     } finally {
       setSyncing(null);
     }
+  };
+
+  // Форматирует «прошло X минут / часов назад» — для last_sync_at.
+  const formatRelativeTime = (iso: string): string => {
+    const date = new Date(iso);
+    const diffMs = Date.now() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'только что';
+    if (diffMin < 60) return `${diffMin} мин назад`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH} ч назад`;
+    const diffD = Math.floor(diffH / 24);
+    return `${diffD} дн назад`;
+  };
+
+  const formatFullDateTime = (iso: string): string => {
+    const date = new Date(iso);
+    return date.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const disconnectBroker = async (connectionId: number) => {
@@ -256,61 +327,166 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
-                        <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                          <div className="text-gray-400">Сделок</div>
-                          <div className="text-white font-semibold">{conn.total_synced_trades}</div>
+                      {/* PR 26 Phase 3: одна информативная панель вместо 3-х бесполезных кружочков */}
+                      <div className="mb-3 bg-[#0d1117] rounded-lg p-3 space-y-2">
+                        {/* Строка 1: реальные counts из БД (что у юзера импортировано всего) */}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-400">В базе сейчас</span>
+                          <span className="text-white font-mono">
+                            {(conn.real_operations_count ?? 0).toLocaleString('ru-RU')} операций · {(conn.real_trades_count ?? 0).toLocaleString('ru-RU')} сделок
+                          </span>
                         </div>
-                        <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                          <div className="text-gray-400">Статус</div>
-                          <div className={`font-semibold ${
+
+                        {/* Строка 2: последний sync — статус + время */}
+                        <div className="flex items-center justify-between text-xs pt-2 border-t border-[#21262d]">
+                          <span className="text-gray-400">Последний sync</span>
+                          <span className={`font-medium flex items-center gap-1 ${
                             conn.last_sync_status === 'success' ? 'text-[#00d4aa]' :
                             conn.last_sync_status === 'error' ? 'text-red-400' :
-                            'text-yellow-400'
+                            'text-gray-500'
                           }`}>
-                            {conn.last_sync_status === 'success' ? '✓ OK' :
-                             conn.last_sync_status === 'error' ? '✗ Ошибка' :
-                             conn.last_sync_status === 'partial' ? '⚠ Частично' : '—'}
+                            {conn.last_sync_status === 'success' ? '✓ успех' :
+                             conn.last_sync_status === 'error' ? '✗ ошибка' :
+                             conn.last_sync_status === 'partial' ? '⚠ частично' : '— ни разу'}
+                            {conn.last_sync_at && (
+                              <span className="text-gray-500 font-normal ml-1">
+                                · {formatFullDateTime(conn.last_sync_at)} ({formatRelativeTime(conn.last_sync_at)})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Строка 3: ЧТО именно сделал последний sync — это и есть «что произошло» */}
+                        {(conn.last_sync_operations_count != null ||
+                          conn.last_sync_trades_count != null ||
+                          conn.last_sync_positions_count != null) && (
+                          <div className="flex items-center justify-between text-xs pt-2 border-t border-[#21262d]">
+                            <span className="text-gray-400">В этот sync</span>
+                            <span className="text-white font-mono">
+                              {`+${conn.last_sync_operations_count ?? 0} op · +${conn.last_sync_trades_count ?? 0} trades · ${conn.last_sync_positions_count ?? 0} open`}
+                              {conn.last_sync_duration_ms != null && (
+                                <span className="text-gray-500 ml-1">
+                                  · {conn.last_sync_duration_ms < 1000
+                                      ? `${conn.last_sync_duration_ms}мс`
+                                      : `${(conn.last_sync_duration_ms / 1000).toFixed(1)}с`}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Inline sync result — рядом с карточкой, не внизу модала */}
+                      {syncResult && syncResult.connectionId === conn.id && (
+                        <div className={`mb-3 p-3 rounded-lg border ${
+                          syncResult.success
+                            ? 'bg-[#00d4aa]/10 border-[#00d4aa]/30 text-[#00d4aa]'
+                            : 'bg-red-500/10 border-red-500/30 text-red-400'
+                        } text-sm`}>
+                          <div className="flex items-start gap-2">
+                            {syncResult.success ? (
+                              <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                            ) : (
+                              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                            )}
+                            <div className="flex-1">
+                              <div className="font-medium">{syncResult.message}</div>
+                              {syncResult.completedAt && (
+                                <div className="text-[11px] opacity-70 mt-1">
+                                  Завершено в {syncResult.completedAt.toLocaleTimeString('ru-RU', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => setSyncResult(null)}
+                              className="opacity-50 hover:opacity-100 shrink-0"
+                              aria-label="Скрыть"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-                        <div className="bg-[#0d1117] rounded-lg p-2 text-center">
-                          <div className="text-gray-400">Синхр.</div>
-                          <div className="text-white font-semibold">
-                            {conn.last_sync_at ? 
-                              new Date(conn.last_sync_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) :
-                              '—'}
+                      )}
+
+                      {/* Главная кнопка-действие — состояние зависит от результата */}
+                      {syncResult && syncResult.connectionId === conn.id && syncResult.success && syncing !== conn.id ? (
+                        /* После успеха: primary CTA = «Закрыть и перейти в журнал»,
+                           secondary link = «Синхронизировать снова» */
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => {
+                              setSyncResult(null);
+                              onClose();
+                            }}
+                            className="w-full py-2 px-3 rounded-lg bg-[#00d4aa] text-black font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#00b894] transition-colors"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Готово — перейти в журнал
+                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => syncConnection(conn.id)}
+                              className="flex-1 py-1.5 px-3 rounded-lg border border-[#30363d] text-gray-400 hover:text-white hover:border-[#00d4aa] text-xs flex items-center justify-center gap-2 transition-colors"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Синхронизировать снова
+                            </button>
+                            <button
+                              onClick={() => disconnectBroker(conn.id)}
+                              className="py-1.5 px-3 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors text-xs"
+                              title="Отключить брокера"
+                            >
+                              <Unlink className="w-3 h-3" />
+                            </button>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => syncConnection(conn.id)}
-                          disabled={syncing === conn.id}
-                          className="flex-1 py-2 px-3 rounded-lg bg-[#00d4aa] text-black font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#00b894] transition-colors disabled:opacity-50"
-                        >
-                          {syncing === conn.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <RefreshCw className="w-4 h-4" />
-                          )}
-                          Синхронизировать
-                        </button>
-                        <button
-                          onClick={() => disconnectBroker(conn.id)}
-                          className="py-2 px-3 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-                        >
-                          <Unlink className="w-4 h-4" />
-                        </button>
-                      </div>
+                      ) : (
+                        /* Обычное состояние: idle или ошибка — primary = «Синхронизировать» */
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => syncConnection(conn.id)}
+                            disabled={syncing === conn.id}
+                            className="flex-1 py-2 px-3 rounded-lg bg-[#00d4aa] text-black font-medium text-sm flex items-center justify-center gap-2 hover:bg-[#00b894] transition-colors disabled:opacity-60 disabled:cursor-wait"
+                          >
+                            {syncing === conn.id ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Синхронизация… {syncElapsedSec}с</span>
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="w-4 h-4" />
+                                <span>Синхронизировать</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => disconnectBroker(conn.id)}
+                            disabled={syncing === conn.id}
+                            className="py-2 px-3 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-30"
+                            title="Отключить брокера"
+                          >
+                            <Unlink className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Hint про реальное время ожидания у Tinkoff broker_report */}
+                      {syncing === conn.id && syncElapsedSec > 10 && (
+                        <div className="mt-2 text-[11px] text-gray-500 text-center">
+                          {syncElapsedSec < 30
+                            ? 'Загрузка операций…'
+                            : syncElapsedSec < 60
+                              ? 'Запрос отчёта у Tinkoff (генерируется на стороне брокера)…'
+                              : 'Ещё подождите, отчёт занимает до 90 секунд при первом запуске'}
+                        </div>
+                      )}
                     </div>
                   ))}
-                </div>
-              )}
-              
-              {syncResult && (
-                <div className={`p-3 rounded-lg ${syncResult.success ? 'bg-[#00d4aa]/10 text-[#00d4aa]' : 'bg-red-500/10 text-red-400'} text-sm`}>
-                  {syncResult.message}
                 </div>
               )}
 

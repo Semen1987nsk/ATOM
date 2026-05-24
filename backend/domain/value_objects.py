@@ -34,7 +34,8 @@ _NANO_DENOMINATOR: Decimal = Decimal(1_000_000_000)
 class MoneyValue:
     """Денежная сумма в указанной валюте.
 
-    Соответствует protobuf-типу `tinkoff.invest.MoneyValue`.
+    Соответствует protobuf-типу `t_tech.invest.MoneyValue` (после AU10
+    rename; раньше `tinkoff.invest.MoneyValue` — shape идентичен).
 
     >>> mv = MoneyValue(units=1, nano=500_000_000, currency='rub')
     >>> mv.to_decimal()
@@ -75,7 +76,8 @@ class MoneyValue:
 class Quotation:
     """Безвалютное число с фиксированной точностью (price, ratio и т.п.).
 
-    Соответствует protobuf-типу `tinkoff.invest.Quotation`. От `MoneyValue`
+    Соответствует protobuf-типу `t_tech.invest.Quotation` (после AU10
+    rename; shape идентичен). От `MoneyValue`
     отличается отсутствием поля currency. Используется для цен инструментов,
     шагов цены, коэффициентов.
     """

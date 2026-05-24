@@ -8,9 +8,17 @@ TinkoffClientFactory — единственная точка создания gR
 Ключевые принципы (см. план PR 1 / PR 3):
 
 * sandbox vs prod определяется `settings.TINKOFF_API_ENV` (по умолчанию prod).
-* Per-token aiolimiter (`TINKOFF_RATE_LIMIT_PER_MIN`, default 60/min) — запас
+* Per-token aiolimiter (`TINKOFF_RATE_LIMIT_PER_MIN`, default 150/min) — запас
   от официального лимита 200/min на Operations. Один лимитер на токен,
-  переиспользуется через WeakValueDictionary, чтобы не плодить bucket'ы.
+  переиспользуется через dict (бессрочно — масштаб ≤ thousands of tokens,
+  memory cost ~200B/limiter).
+* AU1 fix: лимитер срабатывает на КАЖДЫЙ RPC, не только при открытии клиента.
+  Раньше `async with limiter` оборачивал лишь `AsyncClient(...)` open;
+  последующие RPC внутри `yield` шли без throttling — на 1000 юзеров это
+  выжигало лимит T-Bank API за секунды. Теперь yielded объект — обёртка
+  `RateLimitedServices`, у которой есть `.limiter` attribute, и каждый клиент
+  (TinkoffOperationsClient, TinkoffUsersClient, TinkoffInstrumentsClient)
+  оборачивает каждый RPC через `async with self._svc.limiter:`.
 * App name отправляется в gRPC metadata (`TINKOFF_APP_NAME`) — Тинькофф
   использует это для аналитики grade и issue-репортов.
 * Все ошибки наружу — RPC-исключения SDK; маппинг в domain-исключения
@@ -24,14 +32,48 @@ TinkoffClientFactory — единственная точка создания gR
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
-from aiolimiter import AsyncLimiter
-
+from adapters.tinkoff.grpc_rate_limiter import (
+    SharedRateLimiter,
+    build_token_bucket_backend,
+    token_key,
+)
 from config import settings
 from logger import get_logger
 
 log = get_logger("tinkoff.client_factory")
+
+
+class RateLimitedServices:
+    """Wrapper над SDK `services` объектом с дополнительными limiter-атрибутами.
+
+    Прозрачно прокидывает обращения к `services.users`, `services.operations`,
+    `services.instruments` и т.д. Клиенты-обёртки (TinkoffOperationsClient и пр.)
+    обязаны брать `self._svc.limiter` token перед каждым RPC, иначе мы
+    регрессируем на оригинальный AU1 баг.
+
+    AU2: отдельный `broker_report_limiter` для `GenerateBrokerReport` /
+    `GetBrokerReport`, у которых официальный лимит 5/min — намного жёстче
+    обычного OperationsService лимита 200/min.
+    """
+
+    __slots__ = ("_services", "limiter", "broker_report_limiter")
+
+    def __init__(
+        self,
+        services: Any,
+        limiter: SharedRateLimiter,
+        broker_report_limiter: SharedRateLimiter,
+    ) -> None:
+        self._services = services
+        self.limiter = limiter
+        self.broker_report_limiter = broker_report_limiter
+
+    def __getattr__(self, name: str) -> Any:
+        # __getattr__ вызывается только если атрибут не найден через __slots__,
+        # т.е. для users / operations / instruments / sandbox / market_data etc.
+        return getattr(self._services, name)
 
 
 class TinkoffClientFactory:
@@ -42,18 +84,32 @@ class TinkoffClientFactory:
     Использование (PR 3+):
 
         factory = TinkoffClientFactory()
-        async with factory.async_client(token) as client:
-            accounts = await client.users.get_accounts()
+        async with factory.async_client(token) as services:
+            # services.limiter — единый per-token leaky-bucket
+            # клиенты-обёртки внутри RPC делают `async with services.limiter:`
+            ops_client = TinkoffOperationsClient(services)
+            ops = await ops_client.fetch_operations_cursor(account_id)
     """
 
     def __init__(self) -> None:
-        # Каждый токен — свой leaky-bucket лимитер.
-        # Обычный dict (а не WeakValueDictionary): `aiolimiter.AsyncLimiter`
-        # использует __slots__ без __weakref__, и weakref на него вызовет
-        # TypeError. На текущем масштабе (десятки активных токенов в памяти)
-        # утечки нет; при подключении к Redis (см. план) лимит уедет
-        # вообще из процесса.
-        self._limiters: dict[str, AsyncLimiter] = {}
+        # SYNC-02: ОДИН общий backend на процесс. SharedRateLimiter'ы stateless
+        # (состояние в backend/Redis), поэтому per-token dict больше не нужен —
+        # нет утечки лимитеров на токен.
+        self._backend = build_token_bucket_backend()
+
+    def _limiter_for(self, token: str, *, kind: str) -> SharedRateLimiter:
+        """SharedRateLimiter для (token, kind). kind ∈ {'ops','broker_report'}."""
+        if kind == "broker_report":
+            rate = settings.TINKOFF_BROKER_REPORT_RATE_LIMIT_PER_MIN
+        else:
+            rate = settings.TINKOFF_RATE_LIMIT_PER_MIN
+        return SharedRateLimiter(
+            self._backend,
+            key=token_key(token, kind=kind),
+            rate=rate,
+            period=60,
+            max_wait=settings.TINKOFF_LIMITER_MAX_WAIT_SECONDS,
+        )
 
     @property
     def endpoint(self) -> str:
@@ -66,31 +122,25 @@ class TinkoffClientFactory:
     def is_sandbox(self) -> bool:
         return settings.TINKOFF_API_ENV == "sandbox"
 
-    def _get_limiter(self, token: str) -> AsyncLimiter:
-        """Возвращает (или создаёт) per-token leaky-bucket."""
-        limiter = self._limiters.get(token)
-        if limiter is None:
-            # AsyncLimiter(max_rate, time_period). 60 req per 60 sec.
-            limiter = AsyncLimiter(
-                max_rate=settings.TINKOFF_RATE_LIMIT_PER_MIN,
-                time_period=60,
-            )
-            self._limiters[token] = limiter
-        return limiter
-
     @asynccontextmanager
-    async def async_client(self, token: str) -> AsyncIterator[object]:
+    async def async_client(self, token: str) -> AsyncIterator[RateLimitedServices]:
         """
-        Открывает async-клиент к T-Invest API, держит rate-limit на токене.
+        Открывает async-клиент к T-Invest API. Yields `RateLimitedServices`
+        с per-token `.limiter` атрибутом — throttling делают сами клиенты-
+        обёртки в каждом RPC.
 
         Импорт SDK ленивый: пакет `tinkoff-investments` подключается только
         при реальном использовании, чтобы dev-окружение могло поднимать
         backend без него (для тестов, не зависящих от gRPC).
         """
         # Поздний импорт: keeps fastapi import-time чистым.
-        from tinkoff.invest import AsyncClient  # type: ignore
+        # AU10: SDK переименован tinkoff-investments → t-tech-investments,
+        # namespace tinkoff.invest → t_tech.invest. AsyncClient signature
+        # идентичен (token, *, target, sandbox_token, options, app_name, interceptors).
+        from t_tech.invest import AsyncClient  # type: ignore
 
-        limiter = self._get_limiter(token)
+        limiter = self._limiter_for(token, kind="ops")
+        broker_report_limiter = self._limiter_for(token, kind="broker_report")
         target = self.endpoint
         app_name = settings.TINKOFF_APP_NAME
 
@@ -99,11 +149,10 @@ class TinkoffClientFactory:
             extra={"endpoint": target, "sandbox": self.is_sandbox, "app_name": app_name},
         )
 
-        async with limiter:
-            async with AsyncClient(token, target=target, app_name=app_name) as client:
-                yield client
+        async with AsyncClient(token, target=target, app_name=app_name) as client:
+            yield RateLimitedServices(client, limiter, broker_report_limiter)
 
 
 # Единственный фабричный синглтон процесса. Можно безопасно импортировать
-# из любого места — состояние ограничивается WeakValueDictionary с лимитерами.
+# из любого места — состояние ограничивается dict с лимитерами.
 client_factory = TinkoffClientFactory()

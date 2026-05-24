@@ -19,7 +19,8 @@ import pytest
 
 
 def _sdk_installed() -> bool:
-    return importlib.util.find_spec("tinkoff.invest") is not None
+    # AU10: SDK переименован tinkoff.invest → t_tech.invest.
+    return importlib.util.find_spec("t_tech.invest") is not None
 
 
 def _sandbox_token() -> str | None:
@@ -27,7 +28,7 @@ def _sandbox_token() -> str | None:
 
 
 pytestmark = [
-    pytest.mark.skipif(not _sdk_installed(), reason="tinkoff-investments SDK not installed"),
+    pytest.mark.skipif(not _sdk_installed(), reason="t-tech-investments SDK not installed"),
     pytest.mark.skipif(not _sandbox_token(), reason="TINKOFF_SANDBOX_TOKEN_TEST not set"),
 ]
 
@@ -45,8 +46,9 @@ async def test_sandbox_open_account_and_fetch_operations(monkeypatch) -> None:
     """
     monkeypatch.setenv("TINKOFF_API_ENV", "sandbox")
 
-    from tinkoff.invest import AsyncClient
-    from tinkoff.invest.schemas import GetOperationsByCursorRequest, MoneyValue as PbMoney
+    # AU10: SDK переименован tinkoff.invest → t_tech.invest.
+    from t_tech.invest import AsyncClient
+    from t_tech.invest.schemas import GetOperationsByCursorRequest, MoneyValue as PbMoney
 
     from adapters.tinkoff.client_factory import TinkoffClientFactory
     from adapters.tinkoff.operations_client import TinkoffOperationsClient
@@ -56,7 +58,7 @@ async def test_sandbox_open_account_and_fetch_operations(monkeypatch) -> None:
 
     # 1. Открыть sandbox-аккаунт через native SDK.
     async with AsyncClient(
-        token, target="sandbox-invest-public-api.tinkoff.ru:443", app_name="eqio.smoke"
+        token, target="sandbox-invest-public-api.tbank.ru:443", app_name="eqio.smoke"
     ) as client:
         open_response = await client.sandbox.open_sandbox_account()
         account_id = open_response.account_id
@@ -92,7 +94,8 @@ async def test_sandbox_users_list_accounts_returns_at_least_one(monkeypatch) -> 
     """`users.get_accounts()` через наш adapter возвращает sandbox-аккаунт."""
     monkeypatch.setenv("TINKOFF_API_ENV", "sandbox")
 
-    from tinkoff.invest import AsyncClient
+    # AU10: SDK переименован tinkoff.invest → t_tech.invest.
+    from t_tech.invest import AsyncClient
 
     from adapters.tinkoff.client_factory import TinkoffClientFactory
     from adapters.tinkoff.users_client import TinkoffUsersClient
@@ -102,7 +105,7 @@ async def test_sandbox_users_list_accounts_returns_at_least_one(monkeypatch) -> 
 
     # Откроем sandbox-аккаунт чтобы было что вернуть.
     async with AsyncClient(
-        token, target="sandbox-invest-public-api.tinkoff.ru:443", app_name="eqio.smoke"
+        token, target="sandbox-invest-public-api.tbank.ru:443", app_name="eqio.smoke"
     ) as native:
         opened = await native.sandbox.open_sandbox_account()
         try:

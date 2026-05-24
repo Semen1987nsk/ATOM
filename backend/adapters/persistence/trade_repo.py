@@ -23,7 +23,7 @@ from typing import Sequence
 
 from sqlalchemy.orm import Session
 
-from domain.entities import Trade
+from domain.entities import Instrument, Trade
 from domain.enums import TradeDataSource, TradeDirection
 from logger import get_logger
 from models import Trade as TradeORM
@@ -51,6 +51,7 @@ class TradeRepository:
         account_id: int,
         instrument_uid: str,
         trades: Sequence[Trade],
+        instrument: Instrument | None = None,
         data_source: str = TradeDataSource.TINKOFF_V2.value,
     ) -> int:
         """
@@ -59,6 +60,10 @@ class TradeRepository:
 
         Транзакция управляется снаружи — здесь только session.add()/flush(),
         commit делает вызывающий код.
+
+        `instrument` нужен чтобы записать в Trade.symbol человекочитаемый
+        ticker (SBER, GAZP) вместо FIGI/UID. Опционально для обратной
+        совместимости с тестами и старыми вызовами.
         """
         # 1) Удалить старые записи (только своего data_source!).
         session.query(TradeORM).filter(
@@ -70,7 +75,9 @@ class TradeRepository:
         # 2) Вставить новые.
         now = utc_now_naive()
         for trade in trades:
-            session.add(self._trade_to_orm(trade, account_id, data_source, now))
+            session.add(
+                self._trade_to_orm(trade, account_id, data_source, now, instrument)
+            )
         session.flush()
         return len(trades)
 
@@ -114,11 +121,18 @@ class TradeRepository:
         account_id: int,
         data_source: str,
         synced_at,
+        instrument: Instrument | None = None,
     ) -> TradeORM:
-        # У ORM-Trade много обязательных полей из старых требований
-        # (symbol, entry_at, direction, entry_price, quantity).
-        # Symbol для нового sync = instrument_figi или uid (для опционов).
-        symbol = trade.instrument_figi or trade.instrument_uid
+        # Symbol — человекочитаемый ticker (SBER/GAZP/USDRUB) если справочник
+        # доступен, иначе FIGI, иначе UID. Это то, что видит пользователь
+        # в таблице сделок — нужен normal ticker, не технический ID.
+        ticker = instrument.ticker if (instrument and instrument.ticker) else None
+        symbol = ticker or trade.instrument_figi or trade.instrument_uid
+
+        # Полное название бумаги ("ETHA-6.26 Ethereum ETF", "Софтлайн", "Сбер").
+        # Берём из Instrument.name — это то что пользователь хочет видеть рядом
+        # с тикером в журнале. Без instrument'а оставляем None (legacy/manual).
+        asset_name = instrument.name if (instrument and instrument.name) else None
 
         # naive UTC для БД.
         entry_at = (
@@ -134,9 +148,18 @@ class TradeRepository:
                 else trade.exit_at
             )
 
+        # Holding time в минутах — для трейдинговой аналитики и UI колонки.
+        # Только для closed-trades (exit_at не None).
+        holding_minutes = None
+        if exit_at is not None and entry_at is not None:
+            delta_sec = (exit_at - entry_at).total_seconds()
+            if delta_sec >= 0:
+                holding_minutes = int(delta_sec / 60)
+
         return TradeORM(
             account_id=account_id,
             symbol=symbol,
+            asset_name=asset_name,
             asset_type=(
                 trade.instrument_type.value if trade.instrument_type else None
             ),
@@ -149,6 +172,8 @@ class TradeRepository:
             pnl=trade.pnl,
             net_pnl=trade.net_pnl,
             commission=trade.commission_total,
+            entry_value=trade.entry_value,
+            exit_value=trade.exit_value,
             currency=trade.currency or "RUB",
             data_source=data_source,
             instrument_uid=trade.instrument_uid,
@@ -156,6 +181,7 @@ class TradeRepository:
             instrument_type_v2=(
                 trade.instrument_type.value if trade.instrument_type else None
             ),
+            holding_time_minutes=holding_minutes,
             operations=[
                 {"role": "entry", "operation_id": op_id}
                 for op_id in trade.entry_operation_ids
@@ -164,4 +190,18 @@ class TradeRepository:
                 {"role": "exit", "operation_id": op_id}
                 for op_id in trade.exit_operation_ids
             ],
+            # TR1: round-trip group ID для журнала.
+            position_id=trade.position_id,
+            # TR1.3: per-trade attribution для account-level fees.
+            # Заполняется в pipeline._stage_attribute_fees после FIFO match —
+            # здесь обычно None (will be filled на next stage). Если уже
+            # установлено в domain Trade — pass through.
+            varmargin_attributed=trade.varmargin_attributed,
+            margin_fee_attributed=trade.margin_fee_attributed,
+            service_fee_attributed=trade.service_fee_attributed,
+            other_fees_attributed=trade.other_fees_attributed,
+            # Phase 9: point_value snapshot для futures (защищает historical
+            # P&L от dynamic FX-scaling в InstrumentORM cache).
+            point_value=trade.point_value,
+            point_value_source=trade.point_value_source,
         )

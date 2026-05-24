@@ -17,9 +17,10 @@ context manager, чтобы выше по стеку видели только `
 | DEADLINE_EXCEEDED    | BrokerUnavailable         | yes       |
 | (anything else)      | BrokerError               | no        |
 
-SDK-исключения (`tinkoff.invest.exceptions.AioRequestError` и т.п.) имеют
+SDK-исключения (`t_tech.invest.exceptions.AioRequestError` и т.п.) имеют
 поле `.code` (типа `grpc.StatusCode`) и `.details` (строка). Async и sync
 варианты обрабатываем одинаково через MRO-совпадение по `InvestError`.
+(AU10: SDK переименован tinkoff.invest → t_tech.invest, hierarchy одинаков.)
 """
 
 from __future__ import annotations

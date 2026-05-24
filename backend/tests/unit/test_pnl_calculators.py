@@ -187,7 +187,9 @@ class TestBonds:
         extras = [
             _op(
                 "amort1",
-                OperationType.PARTIAL_BOND_REPAYMENT,
+                # PR 24: PARTIAL_BOND_REPAYMENT не существует в SDK; амортизация
+                # приходит как BOND_REPAYMENT (без full).
+                OperationType.BOND_REPAYMENT,
                 Decimal("250"),  # 50 руб × 5 шт
                 instrument_uid="uid-amort",
             ),
@@ -220,7 +222,13 @@ class TestBonds:
 
 
 class TestFutures:
-    def test_body_only_no_varmargin(self) -> None:
+    def test_body_from_prices_phase8(self) -> None:
+        """Phase 8 (2026-05-17): body = (exit − entry) × qty × point_value × sign.
+
+        Прямой расчёт body P&L из цен. Математическое тождество с MOEX
+        variation margin telescoping sum (см. domain/pnl/futures.py docstring
+        + plan Phase 8). Без min_price_increment* → pv fallback = 1.
+        """
         calc = FuturesPnLCalculator()
         instr = Instrument(
             uid="uid-si",
@@ -234,10 +242,89 @@ class TestFutures:
             exit_price=Decimal("86000"),
         )
         gross, net = calc.compute(m, instr, extra_operations=[])
+        # Phase 8: body = (86000 − 85000) × 1 × 1 (pv fallback) × +1 (LONG) = 1000.
+        assert gross == Decimal("1000")
+        assert net == Decimal("1000")  # commission=0 в этом тесте
+
+    def test_body_with_explicit_point_value(self) -> None:
+        """Phase 8: SiH6-style контракт с pv ≠ 1.
+
+        min_price_increment=1, min_price_increment_amount=100 → cached pv = 100.
+        Real Tinkoff payment для Si embeds pv: payment = -qty×price×pv =
+        -1×85000×100 = -8,500,000. Empirical pv = |payment|/price = 100 → ≈
+        cached → drift < 5% → cached wins.
+
+        body = (86000 − 85000) × 1 × 100 = +100,000 ₽.
+        """
+        calc = FuturesPnLCalculator()
+        instr = Instrument(
+            uid="uid-si",
+            figi="FUTSI0625",
+            instrument_type=InstrumentType.FUTURES,
+            min_price_increment=Decimal("1"),
+            min_price_increment_amount=Decimal("100"),
+        )
+        # Реалистичный payment_per_unit: для Si pv=100 → entry payment = -8,500,000
+        entry_lot = FifoLot(
+            operation_id="buy1",
+            direction=TradeDirection.LONG,
+            quantity_remaining=0,
+            quantity_original=1,
+            price_per_unit=Decimal("85000"),
+            payment_per_unit=Decimal("-8500000"),  # 85000 × 100 × sign(BUY)
+            commission_per_unit=Decimal(0),
+            executed_at=datetime(2026, 5, 1, tzinfo=UTC),
+        )
+        exit_fill = ExitFill(
+            operation_id="sell1",
+            quantity=1,
+            price_per_unit=Decimal("86000"),
+            payment_per_unit=Decimal("8600000"),
+            commission_per_unit=Decimal(0),
+            executed_at=datetime(2026, 5, 10, tzinfo=UTC),
+        )
+        m = MatchedTrade(
+            direction=TradeDirection.LONG,
+            entry_slices=(FillSlice(lot=entry_lot, matched_qty=1),),
+            exit=exit_fill,
+            instrument_uid="uid-si",
+            currency="rub",
+        )
+        gross, net = calc.compute(m, instr, extra_operations=[])
+        assert gross == Decimal("100000")
+        assert net == Decimal("100000")
+
+    def test_body_short_direction(self) -> None:
+        """Phase 8: SHORT — entry высоко, exit низко → body > 0.
+
+        SHORT body = (exit − entry) × qty × pv × −1 = (low − high) × qty × pv × −1.
+        Для прибыльного шорта (high → low): negative × negative = positive.
+        """
+        calc = FuturesPnLCalculator()
+        instr = Instrument(
+            uid="uid-si",
+            figi="FUTSI0625",
+            instrument_type=InstrumentType.FUTURES,
+        )
+        m = _matched(
+            instrument_uid="uid-si",
+            entry_price=Decimal("86000"),  # SHORT в высокой
+            entry_qty=1,
+            exit_price=Decimal("85000"),   # covered в низкой
+            direction=TradeDirection.SHORT,
+        )
+        gross, net = calc.compute(m, instr, extra_operations=[])
+        # body = (85000 − 86000) × 1 × 1 × (−1) = +1000
         assert gross == Decimal("1000")
         assert net == Decimal("1000")
 
-    def test_varmargin_added_to_net(self) -> None:
+    def test_varmargin_NOT_added_to_net_phase8(self) -> None:
+        """Phase 8: FuturesPnLCalculator не добавляет varmargin к net.
+
+        body = (exit − entry) × qty × pv уже включает ВСЕ varmargin
+        в окне entry→exit (telescoping identity). Varmargin для OPEN
+        trades attribute'тся через fee_attribution (Phase 8.2 skip closed).
+        """
         calc = FuturesPnLCalculator()
         instr = Instrument(
             uid="uid-si",
@@ -254,29 +341,21 @@ class TestFutures:
             entry_at=entry_at,
             exit_at=exit_at,
         )
-        # Два клиринговых начисления: +1200 и -500 = net +700 от маржи.
         extras = [
-            _op(
-                "vm1",
-                OperationType.ACCRUING_VARMARGIN,
-                Decimal("1200"),
-                instrument_uid="uid-si",
-                executed_at=entry_at + timedelta(hours=12),
-            ),
-            _op(
-                "vm2",
-                OperationType.WRITING_OFF_VARMARGIN,
-                Decimal("-500"),
-                instrument_uid="uid-si",
-                executed_at=entry_at + timedelta(hours=36),
-            ),
+            _op("vm1", OperationType.ACCRUING_VARMARGIN, Decimal("1200"),
+                instrument_uid="uid-si", executed_at=entry_at + timedelta(hours=12)),
+            _op("vm2", OperationType.WRITING_OFF_VARMARGIN, Decimal("-500"),
+                instrument_uid="uid-si", executed_at=entry_at + timedelta(hours=36)),
         ]
         gross, net = calc.compute(m, instr, extra_operations=extras)
-        assert gross == Decimal("100")  # body 100
-        assert net == Decimal("800")    # 100 + 1200 - 500
+        # Phase 8: body = (85100 − 85000) × 1 × 1 × +1 = 100.
+        # Varmargin в extras игнорируется compute() (attribution отдельно).
+        assert gross == Decimal("100")
+        assert net == Decimal("100")
 
-    def test_varmargin_matched_by_figi_when_no_uid(self) -> None:
-        """Tinkoff иногда даёт варм-маржу только с figi."""
+    def test_varmargin_in_extras_ignored_TR13(self) -> None:
+        """TR1.3: даже с uid/figi match calculator игнорирует varmargin —
+        она teперь обрабатывается attribution module."""
         calc = FuturesPnLCalculator()
         instr = Instrument(
             uid="uid-si",
@@ -290,16 +369,11 @@ class TestFutures:
             exit_price=Decimal("85000"),
         )
         extras = [
-            _op(
-                "vm1",
-                OperationType.ACCRUING_VARMARGIN,
-                Decimal("500"),
-                instrument_uid=None,
-                figi="FUTSI0625",
-            ),
+            _op("vm1", OperationType.ACCRUING_VARMARGIN, Decimal("500"),
+                instrument_uid=None, figi="FUTSI0625"),
         ]
         gross, net = calc.compute(m, instr, extra_operations=extras)
-        assert net == Decimal("500")
+        assert net == Decimal("0")  # body 0, varmargin attribution в pipeline
 
     def test_varmargin_without_identifier_ignored(self) -> None:
         """Безопасно: без uid и figi не относим к конкретному трейду."""
@@ -337,6 +411,111 @@ class TestFutures:
         ]
         gross, net = calc.compute(m, instr, extra_operations=extras)
         assert net == Decimal("0")
+
+    def test_empirical_pv_overrides_cached_when_drift_high(self) -> None:
+        """2026-05-19: для индексных фьючерсов (DAX/Brent/foreign) cached pv
+        от Tinkoff metadata завышено в 1000x — payment к ним не применяет
+        этот множитель. Empirical pv = |payment|/(qty×price) — truth.
+
+        Cached pv = min_pi_amt/min_pi = 1000/1 = 1000 (DAX-style).
+        Empirical pv = 178265.86/(10×17276) ≈ 1.0319 (truth from payment).
+        Drift = (1000-1.03)/1000 ≈ 99.9% >> 5% → empirical wins.
+
+        Без этого fix body для DAX-style контракта = -2,630,000 ₽ (1000x).
+        """
+        calc = FuturesPnLCalculator()
+        instr = Instrument(
+            uid="uid-dax",
+            figi="FUTDAX0325",
+            instrument_type=InstrumentType.FUTURES,
+            # Cached metadata — misleading 1000 для индексных
+            min_price_increment=Decimal("1"),
+            min_price_increment_amount=Decimal("1000"),
+        )
+        # Empirical: payment=178265.86, qty=10, price=17276 → pv ≈ 1.0319
+        # Это SHORT (sell first @ 17276, buy back @ 17539)
+        entry_price = Decimal("17276")
+        exit_price = Decimal("17539")
+        qty = 10
+        # payment_per_unit for entry SELL = +17826.586 (with pv=1.03 embedded)
+        entry_payment_per_unit = Decimal("17826.586")  # = 178265.86 / 10
+        exit_payment_per_unit = Decimal("-17818.922")  # = -178189.22 / 10
+        entry_lot = FifoLot(
+            operation_id="sell1",
+            direction=TradeDirection.SHORT,
+            quantity_remaining=0,
+            quantity_original=qty,
+            price_per_unit=entry_price,
+            payment_per_unit=entry_payment_per_unit,
+            commission_per_unit=Decimal(0),
+            executed_at=datetime(2025, 1, 27, tzinfo=UTC),
+        )
+        exit_fill = ExitFill(
+            operation_id="buy1",
+            quantity=qty,
+            price_per_unit=exit_price,
+            payment_per_unit=exit_payment_per_unit,
+            commission_per_unit=Decimal(0),
+            executed_at=datetime(2025, 1, 28, tzinfo=UTC),
+        )
+        m = MatchedTrade(
+            direction=TradeDirection.SHORT,
+            entry_slices=(FillSlice(lot=entry_lot, matched_qty=qty),),
+            exit=exit_fill,
+            instrument_uid="uid-dax",
+            currency="rub",
+        )
+        gross, _ = calc.compute(m, instr, extra_operations=[])
+        # С empirical pv ≈ 1.03: body = (17539 - 17276) × 10 × 1.03 × (-1) ≈ -2710
+        # С old cached pv = 1000:                       ≈ -2,630,000  ❌
+        # Проверяем что gross в реалистичном диапазоне:
+        assert Decimal("-3000") < gross < Decimal("-2500"), (
+            f"empirical pv должна быть выбрана: gross={gross}, "
+            f"ожидаем ~-2710 ₽ (drift > 5% → empirical wins)"
+        )
+
+    def test_cached_pv_used_when_drift_small(self) -> None:
+        """Когда empirical и cached в пределах 5% — используем cached
+        (для стабильности и совместимости). Si/RTS контракты где Tinkoff
+        metadata корректное.
+        """
+        calc = FuturesPnLCalculator()
+        instr = Instrument(
+            uid="uid-si",
+            figi="FUTSI0625",
+            instrument_type=InstrumentType.FUTURES,
+            min_price_increment=Decimal("1"),
+            min_price_increment_amount=Decimal("100"),  # cached pv = 100
+        )
+        # Empirical: payment = qty × price × 99 → pv ≈ 99 (within 5% of 100)
+        entry_lot = FifoLot(
+            operation_id="buy1",
+            direction=TradeDirection.LONG,
+            quantity_remaining=0,
+            quantity_original=1,
+            price_per_unit=Decimal("85000"),
+            payment_per_unit=Decimal("-8415000"),  # = -85000 × 99
+            commission_per_unit=Decimal(0),
+            executed_at=datetime(2026, 5, 1, tzinfo=UTC),
+        )
+        exit_fill = ExitFill(
+            operation_id="sell1",
+            quantity=1,
+            price_per_unit=Decimal("86000"),
+            payment_per_unit=Decimal("8514000"),
+            commission_per_unit=Decimal(0),
+            executed_at=datetime(2026, 5, 10, tzinfo=UTC),
+        )
+        m = MatchedTrade(
+            direction=TradeDirection.LONG,
+            entry_slices=(FillSlice(lot=entry_lot, matched_qty=1),),
+            exit=exit_fill,
+            instrument_uid="uid-si",
+            currency="rub",
+        )
+        gross, _ = calc.compute(m, instr, extra_operations=[])
+        # Cached pv=100 wins (drift 1% < 5%): body = 1000 × 1 × 100 = 100,000
+        assert gross == Decimal("100000")
 
 
 # ── Options ──────────────────────────────────────────────────────────

@@ -4,17 +4,24 @@
 
 ## Q2 2026 (текущий)
 
-**Тема квартала: «Юридический и платёжный фундамент»**
+**Тема квартала: «Юридический и платёжный фундамент + Reverse-Trial»**
 
 - [x] PR1: 152-ФЗ согласие + удаление + политика
-- [ ] ЮKassa интеграция (рекуррент + чеки 54-ФЗ)
+- [x] Решение о тарифной модели: Reverse-Trial 21d + Free+ + Pro 399₽ ([ADR-0005](../tech/decisions/0005-reverse-trial-model.md), 2026-05-14)
+- [ ] ЮKassa интеграция (рекуррент + чеки 54-ФЗ) — **блокер для запуска Reverse-Trial**
+- [ ] Backend: Subscription статусы `trial_active` / `free_plus`, downgrade-job D+21
+- [ ] Backend: фильтрация `sync_enabled` в `sync_scheduler.py` (Free+ не sync)
+- [ ] Backend: email/push-flow D-7/D-3/D-1/D+7
+- [ ] Frontend: перерисовка `/pricing` (Trial / Free+ / Pro) + компонент `<FrozenFeatureBadge />`
+- [ ] Frontend: D+21 экран «Подарок за trial» с PDF
+- [ ] Policy v2: параграф про хранение API-токена на Free+
 - [ ] Финам импорт (через Excel)
 - [ ] БКС импорт
 - [ ] Закрыть «SOON»: Календарь P&L, Сетапы, Отчёты
 - [ ] РКН-уведомление подано
 - [ ] Перенос на Yandex Cloud
 
-**KPI:** готовность к платному запуску.
+**KPI:** готовность к платному запуску с Reverse-Trial-моделью.
 
 ## Q3 2026
 

@@ -27,6 +27,48 @@
 - `nextjs-react19-server-patterns` — для Server Components
 - `eqio-context-bridge` — мостик к базе знаний (срабатывает на широкий набор слов проекта)
 
+## CRITICAL: superpowers на каждом промте
+
+**Перед ответом на КАЖДЫЙ промт в этом проекте — первым tool call вызвать `Skill` с `superpowers:using-superpowers`. Без exceptions для info-queries / acks / typos.**
+
+User rule зафиксирован 2026-05-19 в [`memory/feedback_always_invoke_superpowers.md`]. Сделано после нескольких сессий где я пропускал skill в "простых" промтах и срезал углы — пропустил stale-cursor bug, mis-aligned P&L columns, и т.д. Теперь: каждый промт = invoke first.
+
+## Pre-flight ritual (≤ 90 сек на старте сессии)
+
+Перед нетривиальной задачей — пройди checklist. **Полный гайд**: [`docs/PREFLIGHT_CHECKLIST.md`](docs/PREFLIGHT_CHECKLIST.md).
+
+Краткая версия (7 шагов):
+
+1. **Identify Project** — это Eqio/ATOM? (если другой — STOP, см. [`memory/feedback_not_my_task.md`])
+2. **Read `.business/index.md`** — карта доменов + триггеры
+3. **Read recent memories** — `memory/MEMORY.md` index + 5 most-recent files
+4. **Map task → skills** — активируй соответствующий skill
+5. **Check ERROR_CATALOG** — есть ли known issue по keywords? ([`docs/ERROR_CATALOG.md`](docs/ERROR_CATALOG.md))
+6. **Validate environment** — backend running, deps, env vars (только если нужно)
+7. **Acknowledge phase status** — read latest `project_state_*.md`
+
+**Когда checklist обязателен**: fresh conversation (после compact/clear), multi-file task, TLS/Tinkoff/migrations/152-ФЗ работа.
+
+## Navigation map
+
+Где что лежит — быстрый pointer:
+
+| Категория | Path | Зачем |
+|---|---|---|
+| Карта доменов | `.business/index.md` | Триггеры → файлы |
+| ADR (immutable) | `.business/tech/decisions/` | Архитектурные решения |
+| **P&L инварианты** | **[ADR-0007](.business/tech/decisions/0007-pnl-methodology-invariants.md)** | **ОБЯЗАТЕЛЬНО при любой P&L работе** |
+| **P&L cheatsheet** | **[docs/PNL_PLAYBOOK.md](docs/PNL_PLAYBOOK.md)** | Куда смотреть когда числа не сходятся |
+| Feature canon | `.business/product/feature-canon/` | UI эталоны |
+| Compliance | `.business/compliance/` | 152-ФЗ обязательная остановка |
+| Operational | `docs/RUNBOOK.md` | Rollback, deploy, инциденты |
+| Known errors | `docs/ERROR_CATALOG.md` | ERR-NNN tracking IDs |
+| Pre-flight | `docs/PREFLIGHT_CHECKLIST.md` | 7 шагов на старте |
+| Coding rules | `docs/CODING_CONVENTIONS.md` | Backend + Frontend + Tests + Git |
+| External API | `docs/TINKOFF_*.md`, `docs/MOEX_*.md` | T-Bank / MOEX contracts |
+| Memory | `C:\Users\Administrator\.claude\projects\c--Users-Administrator-Eqio\memory\` | Кросс-сессионные уроки |
+| Plans | `C:\Users\Administrator\.claude\plans\` | Рабочие планы прошлых сессий |
+
 ## Кто пользователь
 
 - Веди себя как специалист мирового топ уровня **супер-сеньор**: ставь себе максимальную планку перед задачей.
@@ -50,6 +92,65 @@
 - Бороться с **причиной**, не симптомом. Не глушить ошибку, чтобы «прошло».
 - Для важной правки — второй проход: запусти под-агента «независимо отревьюй на edge cases и race conditions». Свежий контекст не предвзят к только что написанному коду.
 - Не подгоняй решение под тесты — тесты проверяют корректность, а не определяют решение.
+
+**Конкретные критерии "done" по типу изменения:**
+
+| Тип | Что должно pass до "done" |
+|---|---|
+| Backend code | `pytest tests/unit -q` зелёный + backend импортится `python -c "from main import app"` |
+| DB migration | `alembic upgrade head` clean + `alembic check` + roundtrip up/down тест |
+| UI change | Открыть в браузере → simulate user path → сравнить с `feature-canon/0X-*.md` |
+| API endpoint | curl/Postman smoke + 1 unit test на happy path + 1 на error |
+| Tinkoff API integration | Live smoke на sandbox с TINKOFF_GRPC_CA_BUNDLE set |
+| Reconciliation/audit | Reconcile acc#4 → audit=0 + no new HARD breaks |
+
+**Урок 2026-05-15** (см. `memory/feedback_self_verification.md`): тесты прошли,
+но в браузере UI был сломан. Нельзя заявлять "done" без visual check для UI.
+
+## Error catalog — pitfall'ы которые УЖЕ задокументированы
+
+Перед расследованием новой ошибки → grep по [`docs/ERROR_CATALOG.md`](docs/ERROR_CATALOG.md):
+
+| Симптом | ERR-NNN range |
+|---|---|
+| TLS / cert / grpcio / handshake | ERR-001..010 |
+| Tinkoff / broker_report / SDK quirks | ERR-101..112 |
+| Alembic / migration / schema | ERR-201..206 |
+| Frontend / sync UX / PowerShell | ERR-301..306 |
+
+34 записи уже задокументировано — не дебажь то что known. Каждая запись:
+symptom, root cause, fix command, prevention, reference.
+
+## Coding conventions
+
+Стилистические правила (backend Python + frontend TS + tests + git) —
+[`docs/CODING_CONVENTIONS.md`](docs/CODING_CONVENTIONS.md). Принцип:
+**rules > taste**. Если конвенция противоречит готовому паттерну в codebase —
+следуй существующему паттерну, не вводи новый стиль.
+
+## Auto-memory rules — что save в memory/ автоматически
+
+Memory location: `C:\Users\Administrator\.claude\projects\c--Users-Administrator-Eqio\memory\`.
+
+Полные правила: `memory/MEMORY.md` (rules section).
+
+**4 категории и когда save**:
+
+| Категория | Файл pattern | Save когда |
+|---|---|---|
+| `feedback` | `feedback_<topic>.md` | Явная коррекция от user'а ИЛИ validated unusual approach |
+| `project_state` | `project_state_YYYY_MM_DD.md` | Закрытие phase / AU pack / feature complete |
+| `tools_workflow` | `tools_workflow_<topic>.md` | Успешный non-trivial command sequence (повторно полезен) |
+| `references` | `references_<topic>.md` | После fetch внешнего URL который полезен далее |
+
+**Когда НЕ save**:
+- Code patterns (read git history instead)
+- Ephemeral task state (use todo list / plan file)
+- Already-documented stuff (deduplicate с `.business/`, `docs/`)
+- Routine sync results / test runs
+
+**Ротация**: для `project_state_*` — keep last 3 snapshots, старые удалять.
+Для `tools_workflow_*` — merge если паттерн recurring.
 
 ## Глубина размышления
 
@@ -104,10 +205,16 @@
 
 **Скиллы Eqio (в `.claude/skills/` этого репо, активируются автоматически):**
 
-- `152-fz-compliance-checklist` — согласие на ОПД, политика, удаление аккаунта, РКН
-- `fastapi-sqlalchemy-patterns` — новый роутер/модель/миграция Alembic
-- `moex-iss-api-patterns` — котировки, свечи, MAE/MFE через ISS API
-- `nextjs-react19-server-patterns` — Server Components, Server Actions, Suspense
+| Триггер задачи в ATOM | Skill / правило |
+|---|---|
+| FastAPI router / SQLAlchemy model / Alembic migration | `fastapi-sqlalchemy-patterns` |
+| Next.js 16 Server Components, Server Actions, Suspense | `nextjs-react19-server-patterns` |
+| MOEX котировки / свечи / MAE / MFE через ISS API | `moex-iss-api-patterns` |
+| Tinkoff/T-Bank gRPC integration | прочитать `docs/TINKOFF_*.md` + `tools_workflow_au10_stream.md` |
+| 152-ФЗ — согласие на ОПД, политика, удаление, РКН | `152-fz-compliance-checklist` |
+| P&L работы (журнал, cash, reconcile, FIFO, varmargin, futures formula) | **ОБЯЗАТЕЛЬНО:** прочитать [ADR-0007](.business/tech/decisions/0007-pnl-methodology-invariants.md) (8 инвариантов + reconciliation формула + что НЕ ломать). Cheatsheet: [docs/PNL_PLAYBOOK.md](docs/PNL_PLAYBOOK.md). Memory: `feedback_pnl_cash_sanity_check` |
+| UI rebrand / Editorial Financial канон v3 | `.business/product/CLAUDE.md` + `design-system.md` v3 |
+| Любая Eqio задача в широком смысле | `eqio-context-bridge` (auto-triggers по словарю) |
 
 **MCP-серверы (подключены):** context7, deepwiki, github, playwright. Остальные (YooKassa, Sentry, Yandex Cloud, YouTrack, Postgres) — план на ближайшие недели, см. STACK.md §3.
 

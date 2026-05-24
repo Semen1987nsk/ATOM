@@ -23,25 +23,19 @@ from services.pnl_health_service import (
 # ── Status threshold tests ────────────────────────────────────────────
 
 
-def test_status_ok_below_one_percent():
-    """До 1% — orphan'ы технические (post-clearing варм-маржа, sysтемные сборы)."""
+def test_status_ok_below_five_percent():
     assert _status_from_diff_pct(Decimal("0.0"), Decimal("100000")) == "ok"
-    assert _status_from_diff_pct(Decimal("0.5"), Decimal("100000")) == "ok"
-    assert _status_from_diff_pct(Decimal("0.99"), Decimal("100000")) == "ok"
+    assert _status_from_diff_pct(Decimal("4.99"), Decimal("100000")) == "ok"
 
 
-def test_status_warning_between_one_and_five():
-    """1-5% — нормально для фьючерсного аккаунта с большим объёмом orphan-сборов."""
-    assert _status_from_diff_pct(Decimal("1.0"), Decimal("100000")) == "warning"
-    assert _status_from_diff_pct(Decimal("2.71"), Decimal("100000")) == "warning"
-    assert _status_from_diff_pct(Decimal("4.99"), Decimal("100000")) == "warning"
+def test_status_warning_between_five_and_twentyfive():
+    assert _status_from_diff_pct(Decimal("5.0"), Decimal("100000")) == "warning"
+    assert _status_from_diff_pct(Decimal("24.99"), Decimal("100000")) == "warning"
 
 
-def test_status_mismatch_above_five_percent():
-    """Выше 5% — может быть реальная проблема с attribution, стоит расследовать."""
-    assert _status_from_diff_pct(Decimal("5.0"), Decimal("100000")) == "mismatch"
-    assert _status_from_diff_pct(Decimal("10.0"), Decimal("100000")) == "mismatch"
-    assert _status_from_diff_pct(Decimal("100.0"), Decimal("100000")) == "mismatch"
+def test_status_investigate_above_twentyfive_percent():
+    assert _status_from_diff_pct(Decimal("25.0"), Decimal("100000")) == "investigate"
+    assert _status_from_diff_pct(Decimal("100.0"), Decimal("100000")) == "investigate"
 
 
 def test_status_na_when_cash_truth_is_zero():
@@ -52,10 +46,9 @@ def test_status_na_when_cash_truth_is_zero():
 
 
 def test_status_negative_diff_uses_absolute():
-    """Signed diff_pct → status считается от |diff_pct|."""
-    assert _status_from_diff_pct(Decimal("-0.5"), Decimal("100000")) == "ok"
-    assert _status_from_diff_pct(Decimal("-2.0"), Decimal("100000")) == "warning"
-    assert _status_from_diff_pct(Decimal("-7.0"), Decimal("100000")) == "mismatch"
+    assert _status_from_diff_pct(Decimal("-4.0"), Decimal("100000")) == "ok"
+    assert _status_from_diff_pct(Decimal("-10.0"), Decimal("100000")) == "warning"
+    assert _status_from_diff_pct(Decimal("-30.0"), Decimal("100000")) == "investigate"
 
 
 # ── is_stale tests ────────────────────────────────────────────────────
@@ -168,11 +161,9 @@ def test_to_breakdown_json_contains_all_fields():
 
 
 def test_threshold_constants_match_spec():
-    """Sanity: thresholds raised к realistic для фьючерсного трейдинга (2026-05-19).
-    Post-clearing варм-маржа MOEX + системные сборы Тинькофф = orphan'ы 1-5%
-    от cash_pnl, не реальная проблема (деньги уже учтены в balance)."""
-    assert THRESHOLD_OK_PCT == Decimal("1.0")
-    assert THRESHOLD_WARNING_PCT == Decimal("5.0")
+    """ADR-0008: пороги слоя 3 (клиринг-band) = ADR-0007 (5/25)."""
+    assert THRESHOLD_OK_PCT == Decimal("5.0")
+    assert THRESHOLD_WARNING_PCT == Decimal("25.0")
 
 
 # ── Phase 6.3 (2026-05-18): cash-anchored health check ────────────────
@@ -210,9 +201,29 @@ def test_journal_proxy_is_realized_plus_unrealized_only(in_memory_session):
         state="executed", payment_units=100000, payment_nano=0,
         executed_at=datetime(2026, 4, 1),
     )
+    # Non-deposit ops so layer-1 cash reconstruction sees full history.
+    # buy LKOH -100_000, sell LKOH +103_000, accruing_varmargin +2_000 → non_dep=5_000
+    op_buy = models.OperationORM(
+        operation_id="op-buy-lkoh", account_id=1, broker_account_id="ba-1",
+        operation_type="buy", state="executed",
+        payment_units=-100000, payment_nano=0, executed_at=datetime(2026, 5, 1),
+    )
+    op_sell = models.OperationORM(
+        operation_id="op-sell-lkoh", account_id=1, broker_account_id="ba-1",
+        operation_type="sell", state="executed",
+        payment_units=103000, payment_nano=0, executed_at=datetime(2026, 5, 10),
+    )
+    op_vm = models.OperationORM(
+        operation_id="op-vm-1", account_id=1, broker_account_id="ba-1",
+        operation_type="accruing_varmargin", state="executed",
+        payment_units=2000, payment_nano=0, executed_at=datetime(2026, 5, 11),
+    )
     in_memory_session.add(closed)
     in_memory_session.add(open_pos)
     in_memory_session.add(op)
+    in_memory_session.add(op_buy)
+    in_memory_session.add(op_sell)
+    in_memory_session.add(op_vm)
     in_memory_session.commit()
 
     result = pnl_health_service.compute_health(in_memory_session, account_id=1)
@@ -224,6 +235,7 @@ def test_journal_proxy_is_realized_plus_unrealized_only(in_memory_session):
     # diff = -100 (journal undershoots cash by 100), residual_pct = 2% → mismatch
     assert result.diff_rub == Decimal("-100")
     assert abs(result.diff_pct - Decimal("2.0")) < Decimal("0.01")
+    assert result.status == "ok"   # ADR-0008: 2% within 5% OK band
 
 
 def test_health_status_ok_when_small_residual(in_memory_session):
@@ -249,8 +261,22 @@ def test_health_status_ok_when_small_residual(in_memory_session):
         state="executed", payment_units=99000, payment_nano=0,
         executed_at=datetime(2026, 4, 1),
     )
+    # Non-deposit ops so layer-1 cash reconstruction sees full history.
+    # buy GAZP -9_900, sell GAZP +10_890 → non_dep=990, residual=10 ≤ 100₽ tolerance
+    op_buy = models.OperationORM(
+        operation_id="op-buy-gazp", account_id=1, broker_account_id="ba-1",
+        operation_type="buy", state="executed",
+        payment_units=-9900, payment_nano=0, executed_at=datetime(2026, 5, 1),
+    )
+    op_sell = models.OperationORM(
+        operation_id="op-sell-gazp", account_id=1, broker_account_id="ba-1",
+        operation_type="sell", state="executed",
+        payment_units=10890, payment_nano=0, executed_at=datetime(2026, 5, 2),
+    )
     in_memory_session.add(closed)
     in_memory_session.add(op)
+    in_memory_session.add(op_buy)
+    in_memory_session.add(op_sell)
     in_memory_session.commit()
 
     result = pnl_health_service.compute_health(in_memory_session, account_id=1)
@@ -259,5 +285,93 @@ def test_health_status_ok_when_small_residual(in_memory_session):
     # residual = 10₽ = 1% от cash_truth → warning
     assert result.cash_pnl == Decimal("1000")
     assert result.journal_pnl == Decimal("990")
-    assert result.status == "warning"
+    assert result.status == "ok"   # ADR-0008: 1% < 5% OK band
     assert abs(result.diff_pct - Decimal("1.0")) < Decimal("0.01")
+
+
+def test_health_includes_layer_components(in_memory_session):
+    user = models.User(id=1, email="t@t.com")
+    acc = models.Account(id=1, user_id=1, name="t", last_portfolio_value=Decimal("105000"))
+    in_memory_session.add(user); in_memory_session.add(acc)
+    closed = models.Trade(
+        account_id=1, symbol="LKOH", direction="LONG",
+        entry_price=100, exit_price=103, quantity=1000,
+        pnl=Decimal("3000"), net_pnl=Decimal("2900"), commission=Decimal("100"),
+        entry_at=datetime(2026, 5, 1), exit_at=datetime(2026, 5, 10),
+    )
+    op = models.OperationORM(
+        operation_id="op-1", account_id=1, broker_account_id="ba-1",
+        operation_type="input", state="executed",
+        payment_units=100000, payment_nano=0, executed_at=datetime(2026, 4, 1),
+    )
+    in_memory_session.add(closed); in_memory_session.add(op)
+    in_memory_session.commit()
+    result = pnl_health_service.compute_health(in_memory_session, account_id=1)
+    assert "clearing_adjustment" in result.components
+    assert "layers" in result.components
+    layers = result.components["layers"]
+    assert "ratio_sanity" in layers and "cash_reconstruction" in layers
+    assert "trade_outliers" in layers
+
+
+def test_health_flags_unknown_op_with_cash(in_memory_session):
+    user = models.User(id=1, email="t@t.com")
+    acc = models.Account(id=1, user_id=1, name="t", last_portfolio_value=Decimal("100000"))
+    in_memory_session.add(user); in_memory_session.add(acc)
+    in_memory_session.add(models.OperationORM(
+        operation_id="op-d", account_id=1, broker_account_id="ba",
+        operation_type="input", state="executed",
+        payment_units=100000, payment_nano=0, executed_at=datetime(2026, 4, 1)))
+    in_memory_session.add(models.OperationORM(
+        operation_id="op-x", account_id=1, broker_account_id="ba",
+        operation_type="totally_new_2099", state="executed",
+        payment_units=-500, payment_nano=0, executed_at=datetime(2026, 4, 2)))
+    in_memory_session.commit()
+    result = pnl_health_service.compute_health(in_memory_session, account_id=1)
+    assert result.components["layers"]["unknown_types"] in ("warning", "red")
+    assert "totally_new_2099" in str(result.components.get("unknown_types_detail", ""))
+
+
+def test_health_surfaces_last_reconciliation(in_memory_session):
+    import json
+    user = models.User(id=1, email="t@t.com")
+    acc = models.Account(id=1, user_id=1, name="t", last_portfolio_value=Decimal("100000"))
+    in_memory_session.add(user); in_memory_session.add(acc)
+    in_memory_session.add(models.OperationORM(
+        operation_id="op", account_id=1, broker_account_id="ba",
+        operation_type="input", state="executed",
+        payment_units=100000, payment_nano=0, executed_at=datetime(2026, 4, 1)))
+    in_memory_session.add(models.ReconciliationRunORM(
+        account_id=1, user_id=1, status="break", breaks_count=1,
+        period_start=datetime(2026, 1, 1), period_end=datetime(2026, 5, 20),
+        started_at=datetime(2026, 5, 20), finished_at=datetime(2026, 5, 20),
+        metrics=json.dumps({"trade_count": {"ours": "5", "broker": "6", "status": "hard"}})))
+    in_memory_session.commit()
+    result = pnl_health_service.compute_health(in_memory_session, account_id=1)
+    assert result.components["layers"]["three_way_recon"] in ("break", "warning", "ok")
+
+
+def test_health_clearing_adjustment_closes_identity_to_cash(in_memory_session):
+    """clearing_adjustment must satisfy: closed + unrealized + clearing_adjustment == cash_pnl."""
+    user = models.User(id=1, email="t@t.com")
+    acc = models.Account(id=1, user_id=1, name="t", last_portfolio_value=Decimal("105000"))
+    in_memory_session.add(user); in_memory_session.add(acc)
+    closed = models.Trade(
+        account_id=1, symbol="LKOH", direction="LONG",
+        entry_price=100, exit_price=103, quantity=1000,
+        pnl=Decimal("3000"), net_pnl=Decimal("2900"), commission=Decimal("100"),
+        entry_at=datetime(2026, 5, 1), exit_at=datetime(2026, 5, 10),
+    )
+    op = models.OperationORM(
+        operation_id="op-1", account_id=1, broker_account_id="ba-1",
+        operation_type="input", state="executed",
+        payment_units=100000, payment_nano=0, executed_at=datetime(2026, 4, 1),
+    )
+    in_memory_session.add(closed); in_memory_session.add(op)
+    in_memory_session.commit()
+    result = pnl_health_service.compute_health(in_memory_session, account_id=1)
+    ca = Decimal(str(result.components["clearing_adjustment"]))
+    # identity: journal (closed+unrealized) + clearing_adjustment == cash
+    assert abs(result.journal_pnl + ca - result.cash_pnl) < Decimal("0.01")
+    # sign: clearing_adjustment == cash - journal
+    assert abs(ca - (result.cash_pnl - result.journal_pnl)) < Decimal("0.01")

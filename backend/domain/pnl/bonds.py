@@ -42,7 +42,6 @@ from domain.pnl.shares import SharesPnLCalculator
 
 _INCOME_TYPES = frozenset({
     OperationType.COUPON,
-    OperationType.PARTIAL_BOND_REPAYMENT,
     OperationType.BOND_REPAYMENT,
     OperationType.BOND_REPAYMENT_FULL,
 })

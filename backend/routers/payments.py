@@ -165,10 +165,13 @@ def create_checkout_link(
 def stub_confirm(payment_id: str, user: str, plan: str, amount: float, db: Session = Depends(database.get_db)):
     """
     Stub-симулятор успешной оплаты — DEV ONLY.
-    Делает то же, что webhook YooKassa с status=succeeded.
+
+    PR 26: жёсткая проверка `settings.DEBUG` (не `os.getenv`, чтобы не
+    обходилось env-trick'ом). В prod возвращает 404.
     """
-    if os.getenv("DEBUG", "false").lower() != "true":
-        raise HTTPException(status_code=404, detail="Stub disabled in production")
+    from config import settings as _settings
+    if not _settings.DEBUG:
+        raise HTTPException(status_code=404)
 
     user_obj = db.query(models.User).filter(models.User.email == user).first()
     if not user_obj:
@@ -179,26 +182,136 @@ def stub_confirm(payment_id: str, user: str, plan: str, amount: float, db: Sessi
 
 
 @router.post("/webhook")
-def payment_webhook(payload: WebhookIn, db: Session = Depends(database.get_db)):
+async def payment_webhook(request: Request, db: Session = Depends(database.get_db)):
     """
-    Webhook для YooKassa / CloudPayments.
+    PR 26: реальный YooKassa webhook handler.
 
-    ВНИМАНИЕ: реальный YooKassa подписывает webhook через `Idempotence-Key`
-    + проверяет `notification.event` + payload-format. Подключение реального
-    провайдера = отдельный модуль `services/yookassa.py` с валидацией подписи.
+    Защита:
+    1. **HMAC signature**: проверяем `X-YooKassa-Signature` HMAC-SHA256 по
+       `YOOKASSA_WEBHOOK_SECRET`. Без этого любой может POSTить fake-webhook
+       и активировать платную подписку себе.
+    2. **Idempotency**: дубликат `payment.id` → 200 без re-активации.
+       YooKassa повторяет webhook до 30 раз пока не получит 200.
+    3. **`payment.refunded`**: если приходит — деактивируем подписку.
 
-    Текущий вариант: принимает unified stub-payload, активирует подписку.
+    Stub-режим (DEBUG=true + WebhookIn-формат): принимаем для удобства dev,
+    но в prod автоматически отключён.
+
+    Документация YooKassa webhook: https://yookassa.ru/developers/using-api/webhooks
     """
-    log.info(f"Payment webhook: {payload.payment_id} {payload.status} for {payload.user_email}")
-    if payload.status != "succeeded":
-        return {"ok": True, "ignored": True}
+    from config import settings as _settings
 
-    user = db.query(models.User).filter(models.User.email == payload.user_email).first()
-    if not user:
-        log.error(f"webhook: unknown user {payload.user_email}")
-        raise HTTPException(status_code=404, detail="User not found")
+    raw_body = await request.body()
+    signature_header = request.headers.get("X-YooKassa-Signature", "")
 
-    _activate_subscription(db, user, payload.plan, payload.amount, payload.payment_id, "webhook")
+    # 1. Парсим JSON (поддержка YooKassa и stub формата)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    # 2. HMAC verification (если задан webhook secret)
+    webhook_secret = os.getenv("YOOKASSA_WEBHOOK_SECRET", "")
+    if webhook_secret:
+        import hmac
+        import hashlib
+        expected = hmac.new(
+            webhook_secret.encode("utf-8"),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, signature_header):
+            log.warning("payment_webhook: HMAC mismatch — REJECTED. body_len=%d", len(raw_body))
+            raise HTTPException(status_code=403, detail="invalid signature")
+    elif not _settings.DEBUG:
+        # Prod без webhook_secret = security incident.
+        log.error("payment_webhook: YOOKASSA_WEBHOOK_SECRET not set in production — REJECTED")
+        raise HTTPException(status_code=500, detail="webhook secret not configured")
+
+    # 3. Парсим под два формата: real YooKassa и stub.
+    yookassa_event = body.get("event")
+    yookassa_payment = body.get("object") or {}
+
+    if yookassa_event:
+        # Real YooKassa format
+        payment_id = yookassa_payment.get("id", "")
+        status = yookassa_payment.get("status", "")
+        amount_obj = yookassa_payment.get("amount", {})
+        amount_rub = float(amount_obj.get("value", 0) or 0)
+        metadata = yookassa_payment.get("metadata", {}) or {}
+        user_id = metadata.get("user_id")
+        plan = metadata.get("plan", "pro")
+
+        if yookassa_event == "payment.succeeded":
+            target_status = "succeeded"
+        elif yookassa_event == "payment.canceled":
+            target_status = "canceled"
+        elif yookassa_event == "refund.succeeded":
+            target_status = "refunded"
+            payment_id = yookassa_payment.get("payment_id", payment_id)
+        else:
+            log.info("payment_webhook: ignored event=%s", yookassa_event)
+            return {"ok": True, "ignored": True}
+    else:
+        # Stub format (для dev-тестов) — поддерживаем только в DEBUG
+        if not _settings.DEBUG:
+            raise HTTPException(status_code=400, detail="unknown webhook format")
+        payment_id = body.get("payment_id", "")
+        target_status = body.get("status", "")
+        amount_rub = float(body.get("amount", 0) or 0)
+        plan = body.get("plan", "pro")
+        user_email = body.get("user_email", "")
+        if not user_email:
+            raise HTTPException(status_code=400, detail="missing user_email")
+        user_id = None  # будем искать по email ниже
+
+    # 4. Idempotency: дубликат payment_id → 200 без действий
+    attempt_attr = getattr(models, "PaymentAttemptORM", None)
+    if attempt_attr is not None and payment_id:
+        existing = db.query(attempt_attr).filter(attempt_attr.external_id == payment_id).first()
+        if existing and existing.status == target_status:
+            log.info("payment_webhook: idempotent replay payment_id=%s status=%s", payment_id, target_status)
+            return {"ok": True, "idempotent": True}
+
+    # 5. Найти юзера
+    user = None
+    if user_id:
+        user = db.query(models.User).filter(models.User.id == int(user_id)).first()
+    elif "user_email" in body:
+        user = db.query(models.User).filter(models.User.email == body["user_email"]).first()
+
+    if user is None:
+        log.error("payment_webhook: user not found payment_id=%s", payment_id)
+        raise HTTPException(status_code=404, detail="user not found")
+
+    # 6. Применить действие
+    if target_status == "succeeded":
+        _activate_subscription(db, user, plan, amount_rub, payment_id, "yookassa")
+    elif target_status == "refunded":
+        _deactivate_subscription(db, user, payment_id)
+    else:
+        log.info("payment_webhook: status=%s — no action", target_status)
+
+    # 7. Запись попытки (idempotency для следующего раза)
+    if attempt_attr is not None and payment_id:
+        try:
+            row = db.query(attempt_attr).filter(attempt_attr.external_id == payment_id).first()
+            if row is None:
+                row = attempt_attr(
+                    external_id=payment_id,
+                    user_id=user.id,
+                    amount_rub=amount_rub,
+                    status=target_status,
+                    created_at=utc_now_naive(),
+                )
+                db.add(row)
+            else:
+                row.status = target_status
+            db.commit()
+        except Exception:
+            log.exception("PaymentAttemptORM write failed (non-blocking)")
+            db.rollback()
+
     return {"ok": True}
 
 
@@ -251,3 +364,20 @@ def _activate_subscription(
     db.add(payment)
     db.commit()
     log.info(f"Subscription activated: user={user.email} plan={plan_str} expires={expires}")
+
+
+def _deactivate_subscription(db: Session, user: models.User, payment_id: str) -> None:
+    """PR 26: refund handling. Деактивирует все активные подписки юзера."""
+    affected = db.query(models.Subscription).filter(
+        models.Subscription.user_id == user.id,
+        models.Subscription.is_active == 1,
+    ).update({"is_active": 0})
+
+    # Помечаем Payment как REFUNDED
+    db.query(models.Payment).filter(
+        models.Payment.external_id == payment_id
+    ).update({"status": models.PaymentStatus.REFUNDED if hasattr(models.PaymentStatus, "REFUNDED") else models.PaymentStatus.FAILED})
+
+    db.commit()
+    log.warning("Subscription DEACTIVATED (refund): user=%s payment_id=%s affected=%d",
+                user.email, payment_id, affected)

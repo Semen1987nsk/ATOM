@@ -35,12 +35,38 @@ KNOWN_FUTURES_SPECS = {
     "GD": {"minstep": Decimal("0.1"), "stepprice": Decimal(10), "point_value": Decimal(100)},  # Gold
     "NG": {"minstep": Decimal("0.001"), "stepprice": Decimal(10), "point_value": Decimal(10000)},  # Natural Gas
     
-    # Акционные фьючерсы
+    # Акционные фьючерсы российских эмитентов (point_value=1: 1 пип = 1 RUB).
+    # Tinkoff API возвращает amount=0 для большинства этих контрактов;
+    # fallback на эту таблицу даёт корректный P&L scale. Если конкретный
+    # base_code здесь отсутствует — лог WARNING в _enrich_futures_from_moex,
+    # P&L по нему может быть занижен в 100×.
     "SR": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Sberbank
+    "SF": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Sberbank-pref
     "GZ": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Gazprom
     "LK": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Lukoil
     "VB": {"minstep": Decimal("0.000001"), "stepprice": Decimal(1), "point_value": Decimal(1000000)},  # VTB
     "GM": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Norilsk Nickel
+    "NC": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Norilsk-Cobalt alt
+    "PS": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Polus Gold (Полюс)
+    "AK": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Alrosa
+    "TI": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # TCS / Tinkoff
+    "MM": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Magnit (Магнит)
+    "MN": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Magnit alt
+    "VK": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # VK Group
+    "S0": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # SOFL (Софтлайн)
+    "S1": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # SOFL alt
+    "BS": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # base-asset shares
+    "RD": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # RENI (Ренессанс)
+    "X5": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # X5 Retail
+    "SZ": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # Surgutneftegaz (Сургут)
+    "TG": {"minstep": Decimal(1), "stepprice": Decimal(1), "point_value": Decimal(1)},  # TGKA (ТГК)
+    "CR": {"minstep": Decimal("0.001"), "stepprice": Decimal(1), "point_value": Decimal(1000)},  # CNY/USD cross
+    # Товарные дополнительно
+    "ET": {"minstep": Decimal("0.01"), "stepprice": Decimal(10), "point_value": Decimal(1000)},  # ETHA Ethereum ETF
+    "XI": {"minstep": Decimal("0.01"), "stepprice": Decimal(10), "point_value": Decimal(1000)},  # XIA Xiaomi
+    "PD": {"minstep": Decimal("0.1"), "stepprice": Decimal(10), "point_value": Decimal(100)},  # Palladium
+    "NR": {"minstep": Decimal("0.001"), "stepprice": Decimal(1), "point_value": Decimal(1000)},  # Nickel
+    "CC": {"minstep": Decimal("0.1"), "stepprice": Decimal("0.1"), "point_value": Decimal(1)},  # Cocoa (товарный)
     
     # Иностранные акции
     "BB": {"minstep": Decimal("0.01"), "stepprice": Decimal(10), "point_value": Decimal(1000)},  # Alibaba

@@ -5,14 +5,17 @@
  * - Использует httpOnly cookie-based auth
  * - Обрабатывает 401 → refresh cookie → retry
  * - Определяет правильный baseUrl (localhost / Codespaces)
+ * - Ставит таймаут на каждый запрос (зависший бэкенд → ошибка, не вечный спиннер)
  */
+
+import { fetchWithTimeout, TimeoutError } from './fetchWithTimeout';
 
 function getApiBase(): string {
   if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
     const codespaceName = window.location.hostname.split('-3000')[0];
     return `https://${codespaceName}-8000.app.github.dev`;
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8003';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 }
 
 const CSRF_COOKIE_NAME = 'atom_csrf_token';
@@ -68,7 +71,7 @@ export async function refreshAccessToken(): Promise<boolean> {
         headers[CSRF_HEADER_NAME] = csrfToken;
       }
 
-      const response = await fetch(`${getApiBase()}/auth/refresh`, {
+      const response = await fetchWithTimeout(`${getApiBase()}/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers,
@@ -103,12 +106,24 @@ export interface ApiRequestOptions {
 export class ApiError extends Error {
   status: number;
   detail: string;
+  // PR 26 Scenario #68: X-Request-ID из ответа сервера. Юзер может скопировать
+  // в support email/чат, и мы найдём в логах за секунду что произошло.
+  requestId?: string;
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, requestId?: string) {
     super(detail);
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
+    this.requestId = requestId;
+  }
+
+  /** Сообщение для toast'а с request_id (если есть). */
+  toUserMessage(): string {
+    if (this.requestId) {
+      return `${this.detail} (id: ${this.requestId.slice(0, 8)})`;
+    }
+    return this.detail;
   }
 }
 
@@ -154,7 +169,20 @@ async function request<T>(
     fetchOptions.body = body instanceof FormData ? body : JSON.stringify(body);
   }
 
-  let response = await fetch(url, fetchOptions);
+  // Любой запрос с таймаутом: зависший бэкенд → ApiError(408), а не вечное
+  // ожидание (страница покажет ошибку/повтор вместо бесконечного скелетона).
+  const doFetch = async (): Promise<Response> => {
+    try {
+      return await fetchWithTimeout(url, fetchOptions);
+    } catch (e) {
+      if (e instanceof TimeoutError) {
+        throw new ApiError(408, 'Сервер не отвечает. Попробуйте ещё раз.');
+      }
+      throw e;
+    }
+  };
+
+  let response = await doFetch();
 
   // Auth-эндпоинты (login/register/refresh) сами «являются» аутентификацией —
   // если они вернули 401, refresh-retry бессмысленен и приводит к ложному
@@ -166,7 +194,7 @@ async function request<T>(
   if (response.status === 401 && !noAuth && !isAuthEndpoint) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
-      response = await fetch(url, fetchOptions);
+      response = await doFetch();
     }
   }
 
@@ -188,7 +216,9 @@ async function request<T>(
       }
     }
 
-    throw new ApiError(response.status, detail);
+    // PR 26 Scenario #68: пробрасываем X-Request-ID в ApiError для toast'а
+    const requestId = response.headers.get('X-Request-ID') ?? undefined;
+    throw new ApiError(response.status, detail, requestId);
   }
 
   if (rawResponse) return response as unknown as T;

@@ -20,9 +20,15 @@ import database
 from contextlib import asynccontextmanager
 from config import settings
 from rate_limiter import limiter, rate_limit_exceeded_handler
-from middleware import CSRFMiddleware, RequestContextMiddleware, RequestLoggingMiddleware, get_request_id_from_request
+from middleware import (
+    CSRFMiddleware,
+    RequestContextMiddleware,
+    RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
+    get_request_id_from_request,
+)
 from logger import get_logger
-from observability import init_sentry
+from observability import init_sentry, block_third_party_sentry_init
 
 # Импорт роутеров
 from routers import (
@@ -47,9 +53,44 @@ from routers.accounts import router as accounts_router
 from routers.review import router as review_router
 from routers.replay import router as replay_router
 from routers.payments import router as payments_router
+from routers.onboarding import router as onboarding_router
 from sync_scheduler import scheduler
 
 log = get_logger("api")
+
+
+def _check_alembic_head() -> None:
+    """PR 26: refuse to start если есть pending Alembic миграции.
+
+    В prod схема должна управляться через `alembic upgrade head` ПЕРЕД
+    запуском API. Если миграции не применены — модели могут быть несовместимы
+    с реальной БД, что приводит к 500-кам в рантайме.
+    """
+    try:
+        from alembic.config import Config
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+        from sqlalchemy import create_engine
+
+        alembic_cfg = Config("alembic.ini")
+        script = ScriptDirectory.from_config(alembic_cfg)
+        head_rev = script.get_current_head()
+
+        engine = create_engine(settings.DATABASE_URL)
+        with engine.connect() as conn:
+            context = MigrationContext.configure(conn)
+            current_rev = context.get_current_revision()
+
+        if current_rev != head_rev:
+            raise RuntimeError(
+                f"⛔ Alembic schema out of sync: db at {current_rev!r}, "
+                f"head is {head_rev!r}. Run `alembic upgrade head` before starting."
+            )
+        log.info("✅ Alembic head check passed (revision=%s)", current_rev)
+    except RuntimeError:
+        raise
+    except Exception:
+        log.exception("alembic head check failed (non-blocking in dev)")
 
 
 @asynccontextmanager
@@ -60,17 +101,62 @@ async def lifespan(app: FastAPI):
 
     # Sentry — раньше всего, чтобы стартовые ошибки тоже доезжали.
     init_sentry()
+    # AU10 Phase 4b: блокируем third-party Sentry-init (t-tech-investments
+    # ErrorHub автоматически зовёт sentry_sdk.init с DSN error-hub.tbank.ru).
+    # Должно идти ПОСЛЕ нашего init_sentry — наш Hub уже создан, фильтр
+    # подменяет sentry_sdk.init для последующих вызовов.
+    block_third_party_sentry_init()
 
     if settings.AUTO_INIT_DB:
         database.init_db()
         log.warning("⚠️ AUTO_INIT_DB enabled: database schema ensured via SQLAlchemy create_all()")
     else:
         log.info("🗄️ AUTO_INIT_DB disabled: expecting schema to be managed via migrations")
+        # PR 26: в prod проверяем что Alembic on head; иначе схема может быть
+        # рассогласована с моделями → ranking time bombs.
+        if not settings.DEBUG:
+            _check_alembic_head()
 
     await scheduler.start()
     log.info("🔄 Auto-sync scheduler started")
+
+    # Sprint 1A: краткий readiness-снимок (тип БД, наличие Redis, роль воркера).
+    from worker_role import is_scheduler_worker
+    import database as _db
+    log.info(
+        "🩺 Readiness: db=%s redis=%s scheduler_worker=%s",
+        "postgres" if _db.IS_POSTGRES else "sqlite" if _db.IS_SQLITE else "other",
+        "set" if settings.REDIS_URL else "MISSING",
+        is_scheduler_worker(),
+    )
+
+    # AU-stream Phase 1+: запускаем real-time stream tasks для connections
+    # с stream_enabled=True. Cursor-based polling продолжает работать для
+    # всех connections как catch-up + safety net.
+    # SYNC-01: stream-consumers — singleton-фоновая работа. Без этого гарда
+    # они стартуют на КАЖДОМ gunicorn-воркере → N×500 gRPC-стримов →
+    # IP-cooldown T-Bank в первую минуту мульти-воркер деплоя.
+    # (is_scheduler_worker уже импортирован выше для readiness-лога.)
+    if is_scheduler_worker():
+        try:
+            from application.sync.stream_manager import stream_manager
+            started = await stream_manager.start_all_enabled()
+            if started > 0:
+                log.info("📡 Stream consumers started: %d", started)
+        except Exception:
+            log.exception("Failed to start stream_manager (non-blocking)")
+    else:
+        log.info("⏭️ Stream consumers skipped on this worker (IS_SCHEDULER_WORKER=false)")
+
     yield
     log.info("🛑 ATOM API shutting down...")
+    # Stream первым — он держит долгоживущие gRPC соединения; даём им
+    # graceful shutdown ДО того как scheduler.stop() закроет connections.
+    try:
+        from application.sync.stream_manager import stream_manager
+        await stream_manager.stop_all(timeout_s=10.0)
+    except Exception:
+        log.exception("Failed to stop stream_manager (non-blocking)")
     await scheduler.stop()
     log.info("✅ Cleanup complete")
 
@@ -181,6 +267,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ==================== MIDDLEWARE ====================
 
+# PR 26: security headers — outermost, чтобы покрыть ВСЕ ответы (включая
+# 4xx/5xx от CSRF/Auth middleware ниже). В Starlette первым добавленный
+# middleware = outermost layer.
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Request logging
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(CSRFMiddleware)
@@ -227,6 +318,7 @@ app.include_router(accounts_router)
 app.include_router(review_router)
 app.include_router(replay_router)
 app.include_router(payments_router)
+app.include_router(onboarding_router)  # PR 26 Phase 3: reconciliation wizard
 
 # ==================== СТАТИЧЕСКИЕ ФАЙЛЫ ====================
 # Создаём папку uploads если её нет
@@ -237,10 +329,23 @@ uploads_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ==================== ДОКУМЕНТАЦИЯ ====================
+#
+# PR 26: /docs, /redoc, /openapi.json доступны ТОЛЬКО при DEBUG=true.
+# В prod они возвращают 404 — иначе любой может увидеть полную карту
+# внутренних endpoints, схем, валидаций (помогает атакующим).
+
+from fastapi import HTTPException
+
+
+def _docs_guard() -> None:
+    if not settings.DEBUG:
+        raise HTTPException(status_code=404)
+
 
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
-    """Swagger UI с поддержкой HTTPS прокси (Codespaces)"""
+    """Swagger UI с поддержкой HTTPS прокси (Codespaces). Гейтится за DEBUG."""
+    _docs_guard()
     return get_swagger_ui_html(
         openapi_url=app.openapi_url,
         title=app.title + " - Swagger UI",
@@ -252,12 +357,26 @@ async def custom_swagger_ui_html():
 
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
-    """ReDoc документация"""
+    """ReDoc документация. Гейтится за DEBUG."""
+    _docs_guard()
     return get_redoc_html(
         openapi_url=app.openapi_url,
         title=app.title + " - ReDoc",
         redoc_js_url="https://unpkg.com/redoc@next/bundles/redoc.standalone.js",
     )
+
+
+# openapi.json тоже надо защитить — иначе схема доступна напрямую.
+_original_openapi = app.openapi
+
+
+def _gated_openapi():
+    if not settings.DEBUG:
+        raise HTTPException(status_code=404)
+    return _original_openapi()
+
+
+app.openapi = _gated_openapi
 
 
 # ==================== КОРНЕВЫЕ ENDPOINTS ====================

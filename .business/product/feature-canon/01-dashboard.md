@@ -44,11 +44,13 @@
 
 ## Семантика цвета на дашборде
 
-- PnL > 0 — `var(--success)` (`#10b981`)
-- PnL < 0 — `var(--danger)` (`#f43f5e`)
-- Все остальные числа — белые/foreground на dark
-- Sparkline / линия equity — в зелёном (если в плюсе) или красном (в минусе)
-- IMOEX overlay — приглушённый indigo, dashed line
+> Обновлено через [ADR-0006](../../tech/decisions/0006-editorial-financial-rebrand.md) — desaturated editorial-print цвета вместо неоновых.
+
+- PnL > 0 — `var(--profit)` / `var(--success)` (`#2c8c5c` forest green; в light — `#1e7a4e`)
+- PnL < 0 — `var(--loss)` / `var(--danger)` (`#b94731` brick red; в light — `#a53c25`)
+- Все остальные числа — `var(--ink)` warm-white на dark, без «пёстрых цветов для разных метрик»
+- Sparkline / линия equity — `var(--profit)` если в плюсе, `var(--loss)` если в минусе
+- IMOEX overlay — приглушённый ochre `var(--accent)`, dashed line
 
 ## Filters bar
 

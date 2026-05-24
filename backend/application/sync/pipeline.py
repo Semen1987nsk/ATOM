@@ -223,6 +223,11 @@ class SyncPipeline:
                 self._count_open_positions
             )
 
+            # 2026-05-19: подтянуть ticker/name для UID-ов в живых позициях,
+            # которых нет в instrument cache (новые серии фьючерсов / опционы).
+            # Без этого UI показывает UUID вместо тикера.
+            await self._stage_enrich_position_instruments()
+
             # Phase (2026-05-19): закрыть phantom open Trades — позиций нет в
             # Position table. Защита от случая когда Tinkoff закрыл позицию,
             # но SELL operation в Operations API задержалась.
@@ -451,9 +456,45 @@ class SyncPipeline:
                 all_ops.extend(page)
                 # Финал — пустой next_cursor.
                 if not next_cursor or next_cursor == current:
-                    # AU3: cursor застрял на non-empty значении и не дал
-                    # операций → переключаемся на from_dt-based fetch.
-                    if cursor and not all_ops and current == cursor:
+                    # AU3+ (2026-05-19): cursor может застрять двумя способами:
+                    # (1) Empty-batch: cursor невалиден → не отдаёт ops вообще.
+                    # (2) Stale-batch: cursor валиден, но указывает на старую
+                    #     точку в потоке — Tinkoff отдаёт N старых ops
+                    #     (которые у нас уже в БД дубликатами) и говорит
+                    #     next_cursor=None, "история закончилась". При этом
+                    #     реальные свежие операции пропускаются.
+                    # Оба случая лечатся одинаково: cursor="" + from_dt =
+                    # последняя известная дата − 1 день.
+                    needs_fallback = False
+                    fallback_reason = None
+                    if cursor and current == cursor:
+                        if not all_ops:
+                            needs_fallback = True
+                            fallback_reason = "empty_batch"
+                        else:
+                            # Stale-batch detection: если max(executed_at) в
+                            # ответе строго старше max(executed_at) в БД, это
+                            # 100% индикатор stale cursor — мы и так знаем
+                            # более свежие данные.
+                            max_in_batch = max(o.executed_at for o in all_ops)
+                            max_in_db = await self._get_max_executed_at()
+                            if (
+                                max_in_db is not None
+                                and max_in_batch < max_in_db - timedelta(hours=1)
+                            ):
+                                needs_fallback = True
+                                fallback_reason = "stale_batch_older_than_db"
+                                log.warning(
+                                    "cursor_returned_stale_data",
+                                    extra={
+                                        "account_id": self._account_id,
+                                        "stuck_cursor": (cursor or "")[:32],
+                                        "batch_max_executed_at": max_in_batch.isoformat(),
+                                        "db_max_executed_at": max_in_db.isoformat(),
+                                        "ops_returned": len(all_ops),
+                                    },
+                                )
+                    if needs_fallback:
                         fallback_anchor = await self._get_max_executed_at()
                         if fallback_anchor is not None:
                             fallback_from = fallback_anchor - timedelta(days=1)
@@ -463,11 +504,15 @@ class SyncPipeline:
                                     "account_id": self._account_id,
                                     "stuck_cursor": (cursor or "")[:32],
                                     "fallback_from": fallback_from.isoformat(),
+                                    "reason": fallback_reason,
                                 },
                             )
                             # Сбрасываем cursor и идём по from_dt.
+                            # Также выбрасываем stale ops чтобы не смешать с
+                            # фактически свежими (которые сейчас зафетчим).
                             current = ""
                             from_dt = fallback_from
+                            all_ops = []
                             continue  # обратно в while-loop, теперь с cursor=""
                     return all_ops, next_cursor or current, pages
                 current = next_cursor
@@ -868,6 +913,83 @@ class SyncPipeline:
             )
         finally:
             session.close()
+
+    async def _stage_enrich_position_instruments(self) -> int:
+        """
+        Дотянуть ticker/name для инструментов в открытых позициях, которых
+        нет в локальном instrument cache. Симптом без этой стадии — на
+        странице «Открытые позиции» вместо тикера отображается UUID
+        (новая серия фьючерсов / опцион, не попавший в bootstrap).
+
+        Аналог `_stage_enrich`, но источник UID-ов — PositionORM, а не
+        Operations. Делать пачкой нет смысла — обычно 0-1 missing.
+        """
+        from models import PositionORM
+
+        def _gather_uids() -> list[str]:
+            session = self._session_factory()
+            try:
+                rows = (
+                    session.query(PositionORM.instrument_uid)
+                    .filter(
+                        PositionORM.account_id == self._account_id,
+                        PositionORM.quantity != 0,
+                    )
+                    .all()
+                )
+                return [r[0] for r in rows if r[0]]
+            finally:
+                session.close()
+
+        uids = await asyncio.to_thread(_gather_uids)
+        if not uids:
+            return 0
+
+        def _missing() -> list[str]:
+            session = self._session_factory()
+            try:
+                return self._instrument_repo.missing_uids(session, uids)
+            finally:
+                session.close()
+
+        missing = await asyncio.to_thread(_missing)
+        if not missing:
+            return 0
+
+        targets = missing[: self._max_instruments_per_run]
+        log.info(
+            "position_enrich: %d missing instruments for live positions, resolving %d",
+            len(missing),
+            len(targets),
+        )
+
+        async with client_factory.async_client(self._token) as services:
+            instruments_client = TinkoffInstrumentsClient(services)
+            resolved = []
+            for uid in targets:
+                try:
+                    inst = await instruments_client.get_instrument_by_uid(uid)
+                    resolved.append(inst)
+                except InstrumentNotFound:
+                    log.warning("position_enrich: instrument %s not found", uid)
+                except BrokerError as exc:
+                    log.warning(
+                        "position_enrich: %s: %s — %s",
+                        uid,
+                        type(exc).__name__,
+                        exc.message,
+                    )
+
+        if resolved:
+            def _persist() -> None:
+                session = self._session_factory()
+                try:
+                    self._instrument_repo.upsert_many(session, resolved)
+                    session.commit()
+                finally:
+                    session.close()
+            await asyncio.to_thread(_persist)
+        return len(resolved)
 
     def _save_portfolio_snapshot(self) -> None:
         """

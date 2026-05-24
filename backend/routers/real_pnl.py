@@ -30,6 +30,7 @@ from database import get_db
 from domain.exceptions import BrokerError, TokenInvalid
 from logger import get_logger
 from models import BrokerConnection, OperationORM
+from services import pnl_health_service
 from utils.datetime_utils import utc_now_naive
 
 log = get_logger("real_pnl")
@@ -90,32 +91,18 @@ async def get_real_pnl(
     current_balance = float(_money_to_decimal(getattr(portfolio, "total_amount_portfolio", None)))
     cash = float(_money_to_decimal(getattr(portfolio, "total_amount_currencies", None)))
 
-    # 2. Аггрегаты из БД операций (один запрос на все типы).
-    breakdown = {
-        "stocks_pnl": Decimal(0),
-        "futures_varmargin": Decimal(0),
-        "broker_fee": Decimal(0),
-        "margin_fee": Decimal(0),
-        "service_fee": Decimal(0),
-        "tax": Decimal(0),
-        "input_total": Decimal(0),
-        "output_total": Decimal(0),
-        "coupons": Decimal(0),
-        "dividends": Decimal(0),
-    }
+    # 2. Аггрегаты из БД операций — по категориям из единого классификатора.
+    # До 2026-05-17 здесь был hardcoded type_to_key с 8 типами, упускавший
+    # input_swift, output_swift, input_acquiring, output_acquiring, out_multi
+    # — пользователи с такими пополнениями получали real_pnl = current_balance
+    # (P&L завышен на сумму неучтённых пополнений). См. plan B1.
+    from domain.pnl.cash_flow_classification import (
+        CASH_FLOW_MAP,
+        CashFlowCategory,
+    )
 
-    type_to_key = {
-        "accruing_varmargin": "futures_varmargin",
-        "writing_off_varmargin": "futures_varmargin",
-        "broker_fee": "broker_fee",
-        "margin_fee": "margin_fee",
-        "service_fee": "service_fee",
-        "tax": "tax",
-        "tax_progressive": "tax",
-        "input": "input_total",
-        "output": "output_total",
-        "coupon": "coupons",
-        "dividend": "dividends",
+    breakdown_by_category: dict[CashFlowCategory, Decimal] = {
+        cat: Decimal(0) for cat in CashFlowCategory
     }
 
     rows = (
@@ -126,24 +113,56 @@ async def get_real_pnl(
         )
         .filter(
             OperationORM.account_id == account.id,
-            OperationORM.operation_type.in_(tuple(type_to_key.keys())),
             OperationORM.state == "executed",
         )
         .all()
     )
+    unknown_types: dict[str, int] = {}
     for op_type, units, nano in rows:
-        key = type_to_key.get(op_type)
-        if key is None:
-            continue
         if units is None and nano is None:
             continue
+        category = CASH_FLOW_MAP.get(op_type)
+        if category is None:
+            unknown_types[op_type] = unknown_types.get(op_type, 0) + 1
+            category = CashFlowCategory.UNKNOWN
         amount = Decimal(int(units or 0)) + Decimal(int(nano or 0)) / Decimal(1_000_000_000)
-        breakdown[key] += amount
+        breakdown_by_category[category] += amount
 
-    # 3. Real PnL = current_balance - net_deposit.
-    net_deposit = float(breakdown["input_total"] + breakdown["output_total"])
+    if unknown_types:
+        log.warning(
+            "real_pnl.unknown_operation_types",
+            extra={"account_id": account.id, "types": unknown_types},
+        )
+
+    # 3. Real PnL = current_balance - net_deposit. net_deposit = все каналы
+    # NET_DEPOSIT (input, output, swift, acquiring, multi). НЕ включает
+    # internal_transfer (trans_iis_bs/trans_bs_bs — зеркальные записи) и
+    # security_transfer (input_securities/output_securities — без cash).
+    net_deposit = float(breakdown_by_category[CashFlowCategory.NET_DEPOSIT])
     real_pnl = current_balance - net_deposit
     roi = (real_pnl / net_deposit * 100) if net_deposit > 0 else 0
+
+    health = pnl_health_service.compute_health(db, account.id)
+    clearing_adjustment = health.components.get("clearing_adjustment", 0)
+
+    # Pretty breakdown для UI: legacy ключи + категорий-агрегаты.
+    breakdown_legacy: dict[str, float] = {
+        "stocks_pnl": 0.0,  # требует FIFO matcher result — рекомендуем читать через /stats
+        "futures_varmargin": float(breakdown_by_category[CashFlowCategory.VARMARGIN]),
+        "broker_fee": float(breakdown_by_category[CashFlowCategory.BROKER_COMMISSION]),
+        "margin_fee": 0.0,  # уже в attributable_fee, см. ниже
+        "service_fee": 0.0,
+        "tax": float(breakdown_by_category[CashFlowCategory.TAX]
+                     + breakdown_by_category[CashFlowCategory.INCOME_TAX]),
+        "input_total": net_deposit if net_deposit >= 0 else 0.0,
+        "output_total": 0.0,
+        "coupons": 0.0,  # часть income
+        "dividends": 0.0,  # часть income
+        "attributable_fee_total": float(breakdown_by_category[CashFlowCategory.ATTRIBUTABLE_FEE]),
+        "income_total": float(breakdown_by_category[CashFlowCategory.INCOME]),
+        "internal_transfer_total": float(breakdown_by_category[CashFlowCategory.INTERNAL_TRANSFER]),
+        "unknown_total": float(breakdown_by_category[CashFlowCategory.UNKNOWN]),
+    }
 
     return {
         "current_balance": round(current_balance, 2),
@@ -151,6 +170,12 @@ async def get_real_pnl(
         "net_deposit": round(net_deposit, 2),
         "real_pnl": round(real_pnl, 2),
         "roi": round(roi, 2),
-        "breakdown": {k: float(v) for k, v in breakdown.items()},
+        "breakdown": breakdown_legacy,
+        "breakdown_by_category": {
+            cat.value: float(amt) for cat, amt in breakdown_by_category.items() if abs(amt) > Decimal("0.01")
+        },
+        "clearing_adjustment": round(float(clearing_adjustment), 2),
+        "health_status": health.status,
+        "health_layers": health.components.get("layers", {}),
         "updated_at": utc_now_naive().isoformat(),
     }

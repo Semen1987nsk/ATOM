@@ -244,6 +244,59 @@ class TestOperationFromProto:
         assert op.operation_type == OperationType.DIVIDEND
         assert op.instrument_uid is None
 
+    def test_quantity_reconciled_from_payment_when_inconsistent(self) -> None:
+        """
+        PR 18 регрессия: Tinkoff иногда отдаёт quantity, не сходящееся с
+        payment/price. Реальный случай (OZON 2025-03-31): qty=30, price=3535,
+        payment=-3535 (на самом деле 1 акция). Реконструкция через payment/price
+        даёт правильное qty=1.
+        """
+        item = _OpItem(
+            id="op-buy-dirty",
+            broker_account_id="acc-1",
+            type="OPERATION_TYPE_BUY",
+            state="OPERATION_STATE_EXECUTED",
+            quantity=30,  # Tinkoff врёт
+            price=_Money(units=3535, nano=0, currency="rub"),
+            payment=_Money(units=-3535, nano=0, currency="rub"),  # за 1 акцию
+            date=datetime(2025, 3, 31, 5, 13, tzinfo=timezone.utc),
+        )
+        op = operation_from_proto(item)
+        # Должно быть 1, не 30 — pawment/price = 3535/3535 = 1.
+        assert op.quantity == 1, (
+            f"Реконструкция не сработала: получено quantity={op.quantity}, "
+            f"ожидалось 1 (payment/price = -3535 / 3535)"
+        )
+
+    def test_quantity_preserved_when_consistent(self) -> None:
+        """Нормальный случай: quantity сходится с payment/price → не трогаем."""
+        item = _OpItem(
+            id="op-buy-clean",
+            broker_account_id="acc-1",
+            type="OPERATION_TYPE_BUY",
+            state="OPERATION_STATE_EXECUTED",
+            quantity=28,
+            price=_Money(units=3545, nano=500_000_000, currency="rub"),
+            payment=_Money(units=-99274, nano=0, currency="rub"),  # 28 × 3545.5
+            date=datetime(2025, 3, 31, 5, 15, tzinfo=timezone.utc),
+        )
+        op = operation_from_proto(item)
+        assert op.quantity == 28
+
+    def test_quantity_not_reconciled_for_non_trade_op(self) -> None:
+        """Для не-торговых операций (dividend, broker_fee) qty не реконструируем."""
+        item = _OpItem(
+            id="op-fee",
+            broker_account_id="acc-1",
+            type="OPERATION_TYPE_BROKER_FEE",
+            state="OPERATION_STATE_EXECUTED",
+            quantity=0,
+            payment=_Money(units=-50, nano=0, currency="rub"),
+            date=datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc),
+        )
+        op = operation_from_proto(item)
+        assert op.quantity == 0  # для broker_fee qty=0 это нормально
+
 
 # ── Instrument ──
 

@@ -1,0 +1,46 @@
+{
+  "description": "Фьючерсы SiH6 — критичный case на T1 (point_value=100 для USDRUB)",
+  "account_id": "test-acc-3",
+  "period_start": "2026-01-01T00:00:00+00:00",
+  "period_end": "2026-02-28T23:59:59+00:00",
+  "broker_report": [
+    {
+      "trade_id": "F1",
+      "direction": "buy",
+      "ticker": "SiH6",
+      "name": "USDRUB-3.26",
+      "trade_datetime": "2026-01-15T10:00:00+00:00",
+      "quantity": 5,
+      "price": "85000",
+      "order_amount": "42500000",
+      "total_order_amount": "42500000",
+      "broker_commission": "125.00",
+      "exchange_commission": "10.00",
+      "exchange_clearing_commission": "5.00",
+      "currency": "rub"
+    },
+    {
+      "trade_id": "F2",
+      "direction": "sell",
+      "ticker": "SiH6",
+      "name": "USDRUB-3.26",
+      "trade_datetime": "2026-02-20T15:00:00+00:00",
+      "quantity": 5,
+      "price": "86000",
+      "order_amount": "43000000",
+      "total_order_amount": "43000000",
+      "broker_commission": "125.00",
+      "exchange_commission": "10.00",
+      "exchange_clearing_commission": "5.00",
+      "currency": "rub"
+    }
+  ],
+  "foreign_dividends": [],
+  "expected_metrics": {
+    "trade_count": 2,
+    "broker_commission_total": "250.00",
+    "exchange_commission_total": "20.00",
+    "clearing_commission_total": "10.00",
+    "_note": "Если point_value=100 (правильно для SiH6): P&L ≈ (86000-85000)*5*100 = 500 000 ₽. Если point_value=1 (T1 баг): P&L всего 5 000 ₽"
+  }
+}

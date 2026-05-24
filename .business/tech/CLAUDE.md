@@ -17,6 +17,7 @@
 | «как устроено», «архитектура», «N+1», «рефакторинг», «god-router» | `architecture.md` + `audit-report.md` |
 | «MCP», «скилл», «расширение VS Code», «новая среда» | `stack.md` |
 | «почему так сделано», «почему SQLite», «почему Server Components» | `decisions/NNNN-*.md` |
+| **«P&L», «журнал», «cash», «reconcile», «futures formula», «varmargin», «phantom_sweep», «point_value»** | **`decisions/0007-pnl-methodology-invariants.md`** (8 инвариантов, immutable) + `../../docs/PNL_PLAYBOOK.md` (практический cheatsheet) |
 | «контракт API», «формат ответа /stats» | `api-contracts.md` |
 
 ## Дисциплина ADR

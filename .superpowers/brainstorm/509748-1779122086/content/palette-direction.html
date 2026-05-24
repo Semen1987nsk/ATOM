@@ -1,0 +1,130 @@
+<h2>Какая палитра у МААТТ-лендинга?</h2>
+<p class="subtitle">Один и тот же Hero, три прочтения. Кликни вариант — мы пойдём дальше с ним.</p>
+
+<style>
+  /* Локальные стили для card-мокапов лендинга */
+  .lp-card { border: 1px solid #2a2a2a; padding: 0; overflow: hidden; aspect-ratio: 4 / 5; display: flex; flex-direction: column; }
+  .lp-card .hdr { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid currentColor; }
+  .lp-card .hdr .wm { font-family: 'Fraunces', 'Playfair Display', Georgia, serif; font-style: italic; font-size: 18px; letter-spacing: -0.01em; }
+  .lp-card .hdr .nav { font-size: 10px; opacity: 0.55; letter-spacing: 0.06em; text-transform: uppercase; }
+  .lp-card .body { padding: 28px 22px 18px; flex: 1; display: flex; flex-direction: column; gap: 14px; position: relative; }
+  .lp-card .eyebrow { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.6; }
+  .lp-card .h1 { font-family: 'Fraunces', 'Playfair Display', Georgia, serif; font-weight: 500; font-size: 26px; line-height: 1.05; letter-spacing: -0.015em; }
+  .lp-card .h1 em { font-style: italic; }
+  .lp-card .feather { position: absolute; top: 12px; right: 14px; font-size: 28px; opacity: 0.45; }
+  .lp-card .lede { font-family: 'Fraunces', Georgia, serif; font-size: 11px; line-height: 1.55; opacity: 0.78; max-width: 22ch; font-style: italic; }
+  .lp-card .cta { display: inline-block; font-size: 10px; padding: 7px 12px; text-decoration: none; }
+  .lp-card .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 18px; border-top: 1px solid currentColor; font-family: 'JetBrains Mono', 'Geist Mono', monospace; }
+  .lp-card .nums .n { font-size: 18px; font-weight: 500; letter-spacing: -0.02em; }
+  .lp-card .nums .l { font-size: 8px; opacity: 0.55; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; font-family: inherit; }
+
+  /* A: Papyrus light — канон BRAND.md */
+  .pal-papyrus { background: #F5E6C8; color: #1A1A1A; border-color: #1A1A1A33; }
+  .pal-papyrus .hdr { border-color: #1A1A1A22; }
+  .pal-papyrus .cta { background: #1A1A1A; color: #F5E6C8; }
+  .pal-papyrus .accent { color: #B8941F; }
+  .pal-papyrus .nums { border-color: #1A1A1A22; }
+
+  /* B: Dark ink+gold — премиум как Bloomberg Wealth */
+  .pal-ink { background: #0E0E0C; color: #E8E2D4; border-color: #E8E2D422; }
+  .pal-ink .hdr { border-color: #E8E2D422; }
+  .pal-ink .cta { background: #D4AF37; color: #0E0E0C; }
+  .pal-ink .accent { color: #D4AF37; }
+  .pal-ink .nums { border-color: #E8E2D422; }
+
+  /* C: Cream white — современнее, ближе к Stripe/Linear-financial */
+  .pal-cream { background: #FAF8F2; color: #14110B; border-color: #14110B22; }
+  .pal-cream .hdr { border-color: #14110B14; }
+  .pal-cream .cta { background: #14110B; color: #FAF8F2; }
+  .pal-cream .accent { color: #B58A2F; }
+  .pal-cream .nums { border-color: #14110B14; }
+</style>
+
+<div class="cards">
+
+  <div class="card" data-choice="papyrus" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0;">
+      <div class="lp-card pal-papyrus">
+        <div class="hdr">
+          <div class="wm">МААТТ</div>
+          <div class="nav">Возможности · Тарифы · Блог</div>
+        </div>
+        <div class="body">
+          <div class="feather">𓆄</div>
+          <div class="eyebrow">Торговый журнал · MOEX</div>
+          <h1 class="h1">Системная торговля<br/><em>начинается с дневника.</em></h1>
+          <p class="lede">Тридцать с лишним метрик, MAE/MFE из биржевых свечей, AI-разбор каждого закрытия.</p>
+          <div><a class="cta">Начать бесплатно →</a></div>
+        </div>
+        <div class="nums">
+          <div><div class="n">30+</div><div class="l">метрик</div></div>
+          <div><div class="n">10 000</div><div class="l">Monte Carlo</div></div>
+          <div><div class="n">60 сек</div><div class="l">обновление</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · Папирус (канон BRAND.md)</h3>
+      <p>Бежевый #F5E6C8 + угольный #1A1A1A + золото #D4AF37. Бережно к глазам днём, прямая отсылка к Маатт/папирусу. Риск — выглядит «культурно-старомодно» если переборщить.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="ink" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0;">
+      <div class="lp-card pal-ink">
+        <div class="hdr">
+          <div class="wm">МААТТ</div>
+          <div class="nav">Возможности · Тарифы · Блог</div>
+        </div>
+        <div class="body">
+          <div class="feather" style="color: #D4AF37;">𓆄</div>
+          <div class="eyebrow">Торговый журнал · MOEX</div>
+          <h1 class="h1">Системная торговля<br/><em>начинается с дневника.</em></h1>
+          <p class="lede">Тридцать с лишним метрик, MAE/MFE из биржевых свечей, AI-разбор каждого закрытия.</p>
+          <div><a class="cta">Начать бесплатно →</a></div>
+        </div>
+        <div class="nums">
+          <div><div class="n">30+</div><div class="l">метрик</div></div>
+          <div><div class="n">10 000</div><div class="l">Monte Carlo</div></div>
+          <div><div class="n">60 сек</div><div class="l">обновление</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · Тёмный ink+gold</h3>
+      <p>Уголь #0E0E0C + кость #E8E2D4 + золото #D4AF37. Премиум как Bloomberg Wealth, серьёзность для аудитории «системный трейдер». Меньше отсылок к древнему Египту — больше к финансовому терминалу.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="cream" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 0;">
+      <div class="lp-card pal-cream">
+        <div class="hdr">
+          <div class="wm">МААТТ</div>
+          <div class="nav">Возможности · Тарифы · Блог</div>
+        </div>
+        <div class="body">
+          <div class="feather" style="color: #B58A2F;">𓆄</div>
+          <div class="eyebrow">Торговый журнал · MOEX</div>
+          <h1 class="h1">Системная торговля<br/><em>начинается с дневника.</em></h1>
+          <p class="lede">Тридцать с лишним метрик, MAE/MFE из биржевых свечей, AI-разбор каждого закрытия.</p>
+          <div><a class="cta">Начать бесплатно →</a></div>
+        </div>
+        <div class="nums">
+          <div><div class="n">30+</div><div class="l">метрик</div></div>
+          <div><div class="n">10 000</div><div class="l">Monte Carlo</div></div>
+          <div><div class="n">60 сек</div><div class="l">обновление</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C · Сливочный (мягкий папирус)</h3>
+      <p>Слоновая кость #FAF8F2 + почти чёрный #14110B + приглушённое золото #B58A2F. Современнее A, ближе к Stripe/Linear-financial, при этом не «банковский холод». Хороший компромисс.</p>
+    </div>
+  </div>
+
+</div>
+
+<p style="margin-top: 28px; font-size: 13px; opacity: 0.7;">
+  Это <strong>не финальный дизайн</strong> — это срез по цвету. Hero, типографика, иллюстрации перо — всё буду подробно разбирать в следующих экранах после выбора палитры.
+</p>

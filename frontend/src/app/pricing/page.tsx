@@ -42,8 +42,8 @@ const plans = [
     price: 399,
     period: '/месяц',
     icon: Crown,
-    color: 'from-purple-500 to-indigo-600',
-    borderColor: 'border-purple-500/50',
+    color: 'bg-[var(--accent-soft)] border border-[var(--accent)]/30',
+    borderColor: 'border-[var(--accent)]/50',
     features: [
       { text: 'Безлимит сделок', included: true },
       { text: 'До 5 торговых счетов', included: true },
@@ -65,8 +65,8 @@ const plans = [
     price: null,
     period: 'индивидуально',
     icon: Building2,
-    color: 'from-amber-500 to-orange-600',
-    borderColor: 'border-amber-500/30',
+    color: 'bg-[var(--surface-2)] border border-[var(--border)]',
+    borderColor: 'border-[var(--border-strong)]',
     features: [
       { text: 'Безлимит сделок', included: true },
       { text: 'Безлимит счетов', included: true },
@@ -153,15 +153,16 @@ export default function PricingPage() {
   return (
     <AppShell pageTitle="Тарифы">
     <main className="p-6 md:p-8 max-w-6xl mx-auto">
-      <div className="hidden" />
-      <div className="absolute top-20 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+      {/* Decorative blur orbs удалены 2026-05-17 (ADR-0006 editorial rebrand). */}
 
       <div className="relative max-w-6xl mx-auto px-4 py-16">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            Выберите свой <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">план</span>
+          <h1
+            className="editorial-h1 mb-4"
+            style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+          >
+            Выберите свой <em>план</em>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Начните бесплатно и переходите на Pro, когда будете готовы к продвинутой аналитике
@@ -176,17 +177,17 @@ export default function PricingPage() {
           <button
             onClick={() => setBillingPeriod(bp => bp === 'monthly' ? 'yearly' : 'monthly')}
             className={`relative w-14 h-7 rounded-full transition-colors ${
-              billingPeriod === 'yearly' ? 'bg-purple-500' : 'bg-secondary'
+              billingPeriod === 'yearly' ? 'bg-[var(--accent)]' : 'bg-[var(--surface-2)]'
             }`}
           >
-            <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+            <div className={`absolute top-1 w-5 h-5 rounded-full bg-[var(--paper-base)] transition-transform ${
               billingPeriod === 'yearly' ? 'translate-x-8' : 'translate-x-1'
             }`} />
           </button>
           <span className={billingPeriod === 'yearly' ? 'text-foreground' : 'text-muted-foreground'}>
             Ежегодно
-            <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">
-              -17%
+            <span className="ml-2 text-xs bg-[var(--success-soft)] text-[var(--success)] px-2 py-0.5 rounded-[var(--radius-xs)] num">
+              −17%
             </span>
           </span>
         </div>
@@ -201,13 +202,13 @@ export default function PricingPage() {
             return (
               <div
                 key={plan.id}
-                className={`relative cyber-card p-6 transition-all duration-300 hover:scale-[1.02] ${
-                  plan.popular ? 'ring-2 ring-purple-500 shadow-lg shadow-purple-500/20' : ''
-                } ${plan.borderColor}`}
+                className={`relative cyber-card p-6 transition-colors ${
+                  plan.popular ? 'border-t-2 !border-t-[var(--accent)]' : ''
+                }`}
               >
                 {plan.popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-xs font-bold px-4 py-1 rounded-full">
+                    <span className="bg-[var(--accent)] text-[var(--paper-base)] text-[10px] font-medium tracking-[0.14em] uppercase px-3 py-1 rounded-[var(--radius-xs)]">
                       Популярный
                     </span>
                   </div>
@@ -215,8 +216,8 @@ export default function PricingPage() {
 
                 {/* Header */}
                 <div className="text-center mb-6">
-                  <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${plan.color} mb-4`}>
-                    <Icon size={24} className="text-white" />
+                  <div className={`inline-flex p-3 rounded-[var(--radius-md)] ${plan.color} mb-4`}>
+                    <Icon size={24} className="text-[var(--ink)]" />
                   </div>
                   <h3 className="text-2xl font-bold mb-1">{plan.name}</h3>
                   <p className="text-sm text-muted-foreground">{plan.description}</p>
@@ -243,12 +244,12 @@ export default function PricingPage() {
                 {/* CTA Button */}
                 <button
                   onClick={() => handleSubscribe(plan.id)}
-                  className={`w-full py-3 rounded-lg font-medium transition-all mb-6 disabled:opacity-60 ${
+                  className={`w-full py-3 rounded-[var(--radius-md)] font-medium transition-colors mb-6 disabled:opacity-60 ${
                     isCurrent
-                      ? 'bg-secondary text-muted-foreground cursor-default'
+                      ? 'bg-[var(--surface-2)] text-[var(--text-tertiary)] cursor-default'
                       : plan.popular
-                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:shadow-lg hover:shadow-purple-500/25'
-                      : 'bg-secondary hover:bg-secondary/80'
+                      ? 'bg-[var(--accent)] text-[var(--paper-base)] hover:bg-[var(--accent-hover)]'
+                      : 'bg-transparent border border-[var(--border-strong)] text-[var(--ink)] hover:bg-[var(--surface-hover)]'
                   }`}
                   disabled={isCurrent || checkoutLoading === plan.id}
                 >

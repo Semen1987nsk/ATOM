@@ -284,10 +284,18 @@ class OperationRepository:
         instrument_uid: str,
         since: Optional[datetime] = None,
     ) -> list[Operation]:
-        """Хронологически отсортированные операции по инструменту (для FIFO в PR 7)."""
+        """Хронологически отсортированные операции по инструменту (для FIFO в PR 7).
+
+        Отфильтровываем `state='canceled'`: это отменённые ордера от Tinkoff,
+        они НЕ должны влиять на позицию или PnL. До фильтра FIFO считал такие
+        операции как настоящие сделки → ошибочные Trade с неверным знаком и
+        невозможные проценты (например OZON +369% от отменённого buy с
+        положительным payment'ом).
+        """
         query = session.query(OperationORM).filter(
             OperationORM.account_id == account_id,
             OperationORM.instrument_uid == instrument_uid,
+            OperationORM.state != "canceled",
         )
         if since is not None:
             query = query.filter(OperationORM.executed_at >= since)
@@ -301,6 +309,28 @@ class OperationRepository:
             .filter(OperationORM.account_id == account_id)
             .count()
         )
+
+    def get_max_executed_at(
+        self,
+        session: Session,
+        *,
+        account_id: int,
+        broker_account_id: Optional[str] = None,
+    ) -> Optional[datetime]:
+        """Самая свежая executed_at для аккаунта — точка отсечения для cursor fallback (AU3).
+
+        Используется когда сохранённый cursor «застрял» (API отдаёт пустой
+        ответ при non-empty cursor): pipeline переключается с cursor на
+        from_dt = (max_executed_at - 24h) и тянет операции по дате.
+        """
+        from sqlalchemy import func as sa_func
+
+        query = session.query(sa_func.max(OperationORM.executed_at)).filter(
+            OperationORM.account_id == account_id,
+        )
+        if broker_account_id is not None:
+            query = query.filter(OperationORM.broker_account_id == broker_account_id)
+        return query.scalar()
 
     def list_unique_instrument_uids(
         self, session: Session, *, account_id: int

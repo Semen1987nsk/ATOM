@@ -8,6 +8,14 @@ Observability bootstrap — Sentry SDK init.
 PR 16: расширен `_before_send` — маскирует Tinkoff-токены (`t.XXXX...`)
 в строках исключений и breadcrumb messages. Это защита на случай если
 SDK или наш код случайно положит токен в exception message.
+
+AU10 Phase 4b: `t-tech-investments 0.3.x` имеет хардкоженный Sentry DSN
+(`error-hub.tbank.ru`) и инициализирует свой собственный Sentry Client
+при первом RPC. Для compliance (152-ФЗ — никакая ошибка/телеметрия не
+должна уходить на сторонний сервис без явного согласия пользователя)
+и для предотвращения конфликта Hub'ов мы блокируем их auto-init через
+`block_third_party_sentry_init()`. Наш Sentry (single Hub, наш DSN) —
+единственный получатель ошибок приложения.
 """
 from __future__ import annotations
 
@@ -147,3 +155,50 @@ def _redact(d: dict, sensitive_keys: set) -> dict:
         else:
             out[k] = v
     return out
+
+
+# ── AU10 Phase 4b: T-Bank ErrorHub isolation ─────────────────────────────
+
+
+# DSN-ы которые мы блокируем (Sentry-инициализации со стороны third-party SDK).
+# T-Bank SDK 0.3.x хардкодит DSN `https://invest-piapi-errorhub@error-hub.tbank.ru/...`
+# и инициализирует свой Client автоматически. Это конфликтует с нашим Sentry
+# (один-default-Hub паттерн SDK) и нарушает 152-ФЗ data minimization.
+_BLOCKED_SENTRY_DSN_FRAGMENTS = (
+    "error-hub.tbank.ru",
+    "error-hub.tinkoff.ru",  # на случай legacy DNS, если SDK когда-то откатится
+)
+
+
+def block_third_party_sentry_init() -> None:
+    """Подменяет `sentry_sdk.init` чтобы no-op'ить попытки third-party init.
+
+    Вызывается СРАЗУ после нашего `init_sentry()`. Наш Hub уже создан,
+    последующие вызовы `sentry_sdk.init(dsn=...)` со стороны t-tech-investments
+    отлавливаются по фрагменту DSN и игнорируются с логом.
+
+    NB: НЕ блокирует наш собственный re-init (мы используем наш SENTRY_DSN
+    из settings, который никак не пересекается с error-hub.tbank.ru).
+    """
+    try:
+        import sentry_sdk
+    except Exception:  # pragma: no cover
+        return
+
+    _real_init = sentry_sdk.init
+
+    def _filtered_init(*args, **kwargs):
+        dsn = kwargs.get("dsn") if "dsn" in kwargs else (args[0] if args else None)
+        dsn_str = str(dsn or "")
+        for fragment in _BLOCKED_SENTRY_DSN_FRAGMENTS:
+            if fragment in dsn_str:
+                log.info(
+                    "sentry.third_party_init_blocked: fragment=%s "
+                    "(t-tech-investments ErrorHub blocked for 152-ФЗ compliance)",
+                    fragment,
+                )
+                return None
+        return _real_init(*args, **kwargs)
+
+    sentry_sdk.init = _filtered_init  # type: ignore[assignment]
+    log.info("sentry.third_party_guard_installed")

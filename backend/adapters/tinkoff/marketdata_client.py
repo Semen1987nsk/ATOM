@@ -55,10 +55,14 @@ class TinkoffMarketDataClient:
         if not missing:
             return result
 
-        with wrap_sdk_errors():
-            response = await self._svc.market_data.get_last_prices(
-                instrument_id=missing,
-            )
+        # AU1: per-RPC rate-limit gate. MarketData лимит щадящий (600/min)
+        # но всё равно идём через общий per-token bucket, чтобы не выжечь
+        # лимит из-за нескольких параллельных синков на один token.
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await self._svc.market_data.get_last_prices(
+                    instrument_id=missing,
+                )
 
         items = list(getattr(response, "last_prices", []) or [])
         for item in items:

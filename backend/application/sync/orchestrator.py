@@ -188,15 +188,28 @@ class TinkoffSyncOrchestrator:
             instrument_repo=self._instrument_repo,
             session_factory=self._session_factory,
         )
-        try:
-            return await pipeline.run(full_sync=(ctx.sync_cursor is None or ctx.sync_cursor == ""))
-        except TokenInvalid:
-            # Жирный сигнал: токен отзыван. Деактивируем подключение.
-            await asyncio.to_thread(self._deactivate, ctx.connection_id, "token_invalid")
-            raise
-        except RateLimitExceeded:
-            # PR 15: открыть circuit breaker. Пока — счётчик ошибок.
-            raise
+
+        # AU-stream Phase 1+: координация с stream consumer.
+        # Stream consumer держит per-account_id asyncio.Lock на время
+        # persist каждой operation. Cursor-based sync acquire'ит тот
+        # же lock на время всего pipeline.run() — это сериализует
+        # write'ы и устраняет race conditions на одном account_id
+        # (особенно при reconnect catch-up). Если stream_manager
+        # ещё не инициализирован (тесты, или stream feature off
+        # глобально) — lock no-op.
+        from application.sync.stream_manager import stream_manager
+
+        account_lock = stream_manager.get_account_lock(ctx.account_id)
+        async with account_lock:
+            try:
+                return await pipeline.run(full_sync=(ctx.sync_cursor is None or ctx.sync_cursor == ""))
+            except TokenInvalid:
+                # Жирный сигнал: токен отзыван. Деактивируем подключение.
+                await asyncio.to_thread(self._deactivate, ctx.connection_id, "token_invalid")
+                raise
+            except RateLimitExceeded:
+                # PR 15: открыть circuit breaker. Пока — счётчик ошибок.
+                raise
 
     # ── работа с БД (синхронная) ──────────────────────────────────────
 
@@ -205,10 +218,21 @@ class TinkoffSyncOrchestrator:
         now = utc_now_naive()
         session = self._session_factory()
         try:
-            query = session.query(BrokerConnection.id).filter(
-                BrokerConnection.is_active.is_(True),
-                BrokerConnection.auto_sync_enabled.is_(True),
-                BrokerConnection.broker == BrokerType.TINKOFF,
+            # PR 26 Scenario #91: фильтруем sync только для активных юзеров.
+            # Деактивированные/удалённые юзеры не тратят Tinkoff API quota.
+            from models import Account, User
+
+            query = (
+                session.query(BrokerConnection.id)
+                .join(Account, Account.id == BrokerConnection.account_id)
+                .join(User, User.id == Account.user_id)
+                .filter(
+                    BrokerConnection.is_active.is_(True),
+                    BrokerConnection.auto_sync_enabled.is_(True),
+                    BrokerConnection.broker == BrokerType.TINKOFF,
+                    User.is_active == 1,
+                    User.deletion_requested_at.is_(None),  # 152-ФЗ pending — не синкаем
+                )
             )
             rows = query.all()
             ids: list[int] = []

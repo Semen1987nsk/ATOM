@@ -38,6 +38,7 @@
 
 ### Желательно (улучшение compliance)
 
+- **Параграф в политике про хранение API-токена на Free+ после Reverse-Trial.** При downgrade Pro→Free+ зашифрованный токен брокера остаётся в БД, но sync остановлен. Юзер может удалить токен в `/settings/integrations`. Требует Policy v2 — см. [`policy-versions.md`](policy-versions.md). Обоснование принципом минимизации: токен хранится для экономики re-upgrade, не для обработки. См. [`ADR-0005`](../tech/decisions/0005-reverse-trial-model.md).
 - **Cookie banner с категориями** — сейчас только base-согласие. По хорошему: «строго необходимые / аналитика / маркетинг».
 - ~~**Запуск scheduler'а для finalize_deletion**~~ ✅ **СДЕЛАНО 2026-05-07** — подключено к `sync_scheduler.SyncScheduler._check_pd_finalizations()` с интервалом 24 часа. Smoke-тест в `backend/scripts/_smoke_pd_finalize_scheduler.py`.
 - ~~**Endpoint экспорта ПД** (`GET /auth/me/export`)~~ ✅ **СДЕЛАНО 2026-05-07** — `services/pd_export.build_user_export()` собирает все домены данных, endpoint с rate-limit `5/hour`, кнопка «Скачать JSON» в `/profile`. Smoke в `backend/scripts/_smoke_pd_export.py`. Без `hashed_password` и `BrokerConnection.api_token`.

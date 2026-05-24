@@ -17,6 +17,10 @@ build/
 .env.local
 .env.production
 
+# Backups of env/secret files (e.g. .env.local.bak) — НИКОГДА не коммитим
+*.bak
+*.env.local.bak
+
 # Database
 *.db
 *.sqlite3

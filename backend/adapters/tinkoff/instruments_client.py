@@ -39,13 +39,15 @@ class TinkoffInstrumentsClient:
 
     async def get_instrument_by_uid(self, uid: str) -> Instrument:
         """Универсальный lookup. Достаёт raw + правильно типизирует."""
-        from tinkoff.invest.schemas import InstrumentIdType
+        from t_tech.invest.schemas import InstrumentIdType
 
-        with wrap_sdk_errors():
-            response = await self._svc.instruments.get_instrument_by(
-                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID,
-                id=uid,
-            )
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await self._svc.instruments.get_instrument_by(
+                    id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID,
+                    id=uid,
+                )
 
         raw = getattr(response, "instrument", None)
         if raw is None:
@@ -65,7 +67,7 @@ class TinkoffInstrumentsClient:
         self, uid: str, inst_type: InstrumentType, *, fallback_raw: Any
     ) -> Instrument:
         """Дотянуть type-specific поля (купоны для bond, маржа для future)."""
-        from tinkoff.invest.schemas import InstrumentIdType
+        from t_tech.invest.schemas import InstrumentIdType
 
         method_map = {
             InstrumentType.BOND: ("bond_by", InstrumentType.BOND),
@@ -84,11 +86,13 @@ class TinkoffInstrumentsClient:
             return instrument_from_proto(fallback_raw, inst_type)
 
         method = getattr(self._svc.instruments, method_name)
-        with wrap_sdk_errors():
-            response = await method(
-                id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID,
-                id=uid,
-            )
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await method(
+                    id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_UID,
+                    id=uid,
+                )
 
         instrument_raw = getattr(response, "instrument", None)
         if instrument_raw is None:
@@ -113,12 +117,14 @@ class TinkoffInstrumentsClient:
         coupon_date, pay_one_share (Decimal), coupon_period (days),
         coupon_type. Используется в PR 8 для расчёта PnL и прогноза дохода.
         """
-        with wrap_sdk_errors():
-            response = await self._svc.instruments.get_bond_coupons(
-                instrument_id=instrument_id,
-                from_=from_dt,
-                to=to_dt,
-            )
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await self._svc.instruments.get_bond_coupons(
+                    instrument_id=instrument_id,
+                    from_=from_dt,
+                    to=to_dt,
+                )
 
         events = list(getattr(response, "events", []) or [])
         result: list[dict[str, Any]] = []
@@ -146,12 +152,14 @@ class TinkoffInstrumentsClient:
         берём today.
         """
         target = on_date or datetime.now(tz=timezone.utc)
-        with wrap_sdk_errors():
-            response = await self._svc.instruments.get_accrued_interests(
-                instrument_id=instrument_id,
-                from_=target,
-                to=target,
-            )
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await self._svc.instruments.get_accrued_interests(
+                    instrument_id=instrument_id,
+                    from_=target,
+                    to=target,
+                )
 
         items = list(getattr(response, "accrued_interests", []) or [])
         if not items:
@@ -181,7 +189,9 @@ class TinkoffInstrumentsClient:
 
     async def _list_typed(self, method_name: str, inst_type: InstrumentType) -> list[Instrument]:
         method = getattr(self._svc.instruments, method_name)
-        with wrap_sdk_errors():
-            response = await method()
+        # AU1: per-RPC rate-limit gate
+        async with self._svc.limiter:
+            with wrap_sdk_errors():
+                response = await method()
         instruments = list(getattr(response, "instruments", []) or [])
         return [instrument_from_proto(raw, inst_type) for raw in instruments]

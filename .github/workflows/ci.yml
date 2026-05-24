@@ -58,7 +58,8 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.lock
+          pip install -r requirements.lock \
+            --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple
 
       - name: Run alembic migrations against test DB
         working-directory: backend
@@ -67,6 +68,9 @@ jobs:
           DEBUG: 'false'
           SECRET_KEY: ci-test-secret-key-1234567890abcdefghijklmnopqrstuvwxyz
           REFRESH_SECRET_KEY: ci-test-refresh-key-fedcba0987654321zyxwvutsrqp
+          # DEBUG=false → config fail-fast требует MASTER_KEY_B64 (INFRA-15).
+          # Throwaway 32-byte base64 ключ только для CI-миграций.
+          MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
         run: |
           alembic upgrade head
 
@@ -78,7 +82,6 @@ jobs:
           DEBUG: 'true'
           SECRET_KEY: ci-test-secret-key-1234567890abcdefghijklmnopqrstuvwxyz
           REFRESH_SECRET_KEY: ci-test-refresh-key-fedcba0987654321zyxwvutsrqp
-          AUTO_INIT_DB: 'true'
         run: |
           pytest tests/ \
             --cov=. \
@@ -117,7 +120,10 @@ jobs:
         working-directory: backend
         # Soft-fail: показываем уязвимости, но не блокируем merge
         # (заменить на --strict когда команда готова реагировать на каждое CVE).
-        run: pip-audit --requirement requirements.lock --format json --output audit.json || true
+        run: |
+          pip-audit --requirement requirements.lock \
+            --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple \
+            --format json --output audit.json || true
 
       - name: Upload audit report
         uses: actions/upload-artifact@v4
@@ -126,6 +132,27 @@ jobs:
           name: backend-audit
           path: backend/audit.json
           retention-days: 30
+
+  # ─────────────────── BACKEND LINT (non-blocking baseline) ───────────────────
+  backend-lint:
+    name: Backend (ruff + mypy — non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install linters
+        run: pip install ruff mypy
+      - name: Ruff (non-blocking)
+        working-directory: backend
+        continue-on-error: true
+        run: ruff check .
+      - name: Mypy (non-blocking)
+        working-directory: backend
+        continue-on-error: true
+        run: mypy .
 
   # ─────────────────── FRONTEND ───────────────────
   frontend:
@@ -146,10 +173,18 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Lint
+      - name: Lint (non-blocking — 13 legacy react-hooks errors, чистим в Sprint 5)
         working-directory: frontend
-        # ESLint не блокирует merge — сначала очищаем легаси, потом включаем strict
-        run: npm run lint || true
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Typecheck (hard gate)
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Test — vitest (hard gate)
+        working-directory: frontend
+        run: npm test
 
       - name: Build
         working-directory: frontend

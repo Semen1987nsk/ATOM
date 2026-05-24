@@ -5,9 +5,12 @@
     "loading": "Loading..."
   },
   "emptyState": {
-    "title": "Start Your Trading Journal",
-    "description": "Import broker report or add your first trade manually to see analytics",
-    "importButton": "Import Trades",
+    "title": "Connect your broker in 1 minute",
+    "description": "The fastest path is connecting Tinkoff via API: trades and positions sync automatically and stay up to date. Using a different broker? Upload a CSV / Excel report.",
+    "connectBrokerButton": "Connect Tinkoff",
+    "connectBrokerHint": "Read-only API · auto-sync",
+    "importButton": "Import CSV / Excel",
+    "importHint": "For other brokers",
     "addButton": "Add Manually",
     "noData": "—"
   },

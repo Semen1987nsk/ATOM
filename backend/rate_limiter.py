@@ -82,6 +82,15 @@ if settings.RATE_LIMIT_ENABLED and RATE_LIMIT_STORAGE_URI:
     )
     log.info("✅ Rate limiter using Redis backend")
 else:
+    # PR 26: в prod (DEBUG=false) запрещаем in-memory — это уязвимость
+    # brute-force через мультипроцесс/мультиинстанс. Каждый воркер имеет
+    # свой счётчик → реальный лимит = N_workers × declared_limit.
+    if settings.RATE_LIMIT_ENABLED and not settings.DEBUG:
+        raise RuntimeError(
+            "⛔ Production mode requires Redis-backed rate limiter. "
+            "Set RATE_LIMIT_STORAGE_URI=redis://... in env, or disable rate "
+            "limiting explicitly via RATE_LIMIT_ENABLED=false (NOT recommended)."
+        )
     # In-memory backend для разработки
     limiter = Limiter(
         key_func=get_rate_limit_key,

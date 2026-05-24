@@ -380,9 +380,8 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
 
   return (
     <div className="cyber-card overflow-hidden relative">
-      {/* Background gradient */}
-      <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-purple-500/10 via-emerald-500/10 to-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      
+      {/* Decorative gradient orb удалён 2026-05-17 (ADR-0006 editorial rebrand). */}
+
       {/* Header */}
       <div className="p-6 pb-4 relative z-10">
         <div className="flex items-center justify-between mb-4">
@@ -1074,9 +1073,9 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
 
               {/* Stop-Loss & Take-Profit Recommendations */}
               {selectedItemData.mae_percentiles && selectedItemData.mfe_percentiles && (
-                <div className="bg-gradient-to-r from-purple-500/10 to-cyan-500/10 border border-purple-500/20 rounded-lg p-4">
+                <div className="bg-[var(--accent-soft)] border border-[var(--border)] rounded-[var(--radius-md)] p-4">
                   <h4 className="text-sm font-bold flex items-center gap-2 mb-3">
-                    <Gauge size={16} className="text-purple-400" />
+                    <Gauge size={16} className="text-[var(--accent)]" />
                     Рекомендации по управлению позицией
                   </h4>
                   

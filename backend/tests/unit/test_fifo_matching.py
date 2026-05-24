@@ -375,3 +375,114 @@ class TestCommissions:
         assert t.net_pnl == Decimal("993.70")
         # commission_total = |sum of commissions| = 6.30.
         assert t.commission_total == Decimal("6.30")
+
+
+# ── regression tests for PR 18 (cost-basis, canceled filter) ────────────
+
+
+class TestEntryValueExitValue:
+    """
+    Гарантия от регрессии: Trade.entry_value / exit_value заполняются FIFO
+    из payment'ов. Это нужно для корректного pnl_pct (особенно у фьючерсов,
+    где цена в пунктах, а pnl в рублях).
+    """
+
+    def test_long_share_entry_value_equals_buy_payment_abs(self) -> None:
+        svc = FIFOMatchingService()
+        ops = [
+            _op("b1", OperationType.BUY, 100, Decimal("270")),
+            _op("s1", OperationType.SELL, 100, Decimal("275"),
+                executed_at=datetime(2026, 5, 9, 11, 0, tzinfo=timezone.utc)),
+        ]
+        t = svc.match(account_id=1, instrument=SHARE, operations=ops).closed_trades[0]
+        # entry_value = |sum buy payments| = 270 × 100 = 27000.
+        assert t.entry_value == Decimal("27000")
+        # exit_value = |sum sell payments| = 275 × 100 = 27500.
+        assert t.exit_value == Decimal("27500")
+        # pnl ≈ exit - entry для LONG.
+        assert t.pnl == t.exit_value - t.entry_value
+
+    def test_short_entry_value_correct_for_payment_inversion(self) -> None:
+        """
+        Для SHORT: sell payment > 0, buy_to_cover payment < 0.
+        entry_value (сумма sells) должен быть положителен (cost-basis).
+        pnl должен быть положителен если cover дешевле sell.
+        """
+        svc = FIFOMatchingService()
+        base = datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc)
+        ops = [
+            _op("s1", OperationType.SELL, 100, Decimal("100"), executed_at=base),
+            _op("b1", OperationType.BUY, 100, Decimal("90"),
+                executed_at=base + timedelta(hours=1)),
+        ]
+        t = svc.match(account_id=1, instrument=SHARE, operations=ops).closed_trades[0]
+        assert t.direction == TradeDirection.SHORT
+        # entry_value = |sell.payment| = 10000.
+        assert t.entry_value == Decimal("10000")
+        # exit_value = |buy_to_cover.payment| = 9000.
+        assert t.exit_value == Decimal("9000")
+        # Положительный pnl: продали дороже, откупили дешевле.
+        assert t.pnl == Decimal("1000")
+
+    def test_partial_close_entry_value_proportional(self) -> None:
+        """Partial close: entry_value пропорциональна matched_qty."""
+        svc = FIFOMatchingService()
+        base = datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc)
+        ops = [
+            _op("b1", OperationType.BUY, 100, Decimal("100"), executed_at=base),
+            _op("s1", OperationType.SELL, 30, Decimal("110"),
+                executed_at=base + timedelta(hours=1)),
+        ]
+        r = svc.match(account_id=1, instrument=SHARE, operations=ops)
+        t = r.closed_trades[0]
+        # Закрыли 30 из 100. entry_value = 30 × 100 = 3000 (а не 10000 всей покупки).
+        assert t.quantity == 30
+        assert t.entry_value == Decimal("3000")
+        assert t.exit_value == Decimal("3300")
+        # 70 шт остаются открытыми.
+        assert len(r.open_lots) == 1
+        assert r.open_lots[0].quantity_remaining == 70
+
+
+class TestCanceledOperationsFilter:
+    """
+    Гарантия от регрессии: операции с state=CANCELED не должны попадать в
+    FIFO. Tinkoff API иногда возвращает отменённые buy с положительным
+    payment'ом (= отмена транзакции) — без фильтра FIFO считал их как
+    реальные сделки и выдавал ошибочные Trade'ы вроде OZON +369%.
+    Фактический фильтр стоит в operation_repo.fetch_for_instrument
+    (state != 'canceled'), но FIFO тоже должен корректно работать если
+    canceled случайно попадут на вход — current behavior проверяется.
+    """
+
+    def test_canceled_operation_is_not_matched_into_trade(self) -> None:
+        svc = FIFOMatchingService()
+        base = datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc)
+        ops = [
+            # Реальная покупка.
+            _op("b1", OperationType.BUY, 100, Decimal("100"), executed_at=base),
+            # Отменённая "покупка" с PnL-инверсией (бывает у Tinkoff).
+            _op(
+                "b2_canceled",
+                OperationType.BUY,
+                50,
+                Decimal("200"),
+                executed_at=base + timedelta(hours=1),
+                state=OperationState.CANCELED,
+            ),
+            # Реальная продажа всех 100.
+            _op(
+                "s1",
+                OperationType.SELL,
+                100,
+                Decimal("110"),
+                executed_at=base + timedelta(hours=2),
+            ),
+        ]
+        r = svc.match(account_id=1, instrument=SHARE, operations=ops)
+        # Один trade на 100 шт (canceled buy не учтён).
+        assert len(r.closed_trades) == 1
+        t = r.closed_trades[0]
+        assert t.quantity == 100
+        assert t.entry_price == Decimal("100")  # без 200 от canceled.
+        assert t.pnl == Decimal("1000")  # (110-100)*100, не искажено.

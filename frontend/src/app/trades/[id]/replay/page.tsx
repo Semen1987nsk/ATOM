@@ -111,15 +111,43 @@ export default function TradeReplayPage() {
   }, [user, params?.id, interval]);
 
   // Mерж свечей в формат для recharts. Добавляем поле hl для Area band.
+  // PR 26 Phase 2 (#63): downsample при >5000 свечей. Recharts начинает
+  // freeze'иться. Берём каждую N-ю свечу по lttb-aware подходу: max/min/last
+  // в группе сохраняем форму графика.
   const chartData = useMemo(() => {
     if (!data) return [];
-    return data.candles.map((c) => ({
-      t: c.t,
-      ts: new Date(c.t).getTime(),
-      close: c.c,
-      high: c.h,
-      low: c.l,
-    }));
+    const raw = data.candles;
+    const MAX_POINTS = 5000;
+    if (raw.length <= MAX_POINTS) {
+      return raw.map((c) => ({
+        t: c.t,
+        ts: new Date(c.t).getTime(),
+        close: c.c,
+        high: c.h,
+        low: c.l,
+      }));
+    }
+    // Downsample: bucket size, в каждом bucket — open первой + high/low max + close последней.
+    const bucketSize = Math.ceil(raw.length / MAX_POINTS);
+    const result: { t: string; ts: number; close: number; high: number; low: number }[] = [];
+    for (let i = 0; i < raw.length; i += bucketSize) {
+      const slice = raw.slice(i, i + bucketSize);
+      let hi = -Infinity;
+      let lo = Infinity;
+      for (const c of slice) {
+        if (c.h > hi) hi = c.h;
+        if (c.l < lo) lo = c.l;
+      }
+      const last = slice[slice.length - 1];
+      result.push({
+        t: last.t,
+        ts: new Date(last.t).getTime(),
+        close: last.c,
+        high: hi,
+        low: lo,
+      });
+    }
+    return result;
   }, [data]);
 
   // Y-домен: расширяем чтобы все горизонтальные маркеры (SL/TP/entry/MAE/MFE)

@@ -98,10 +98,38 @@ class Trade(BaseModel):
     net_pnl: Optional[Decimal] = None  # после комиссий, налогов, varmargin
     commission_total: Decimal = Field(default=Decimal(0))
     tax_total: Decimal = Field(default=Decimal(0))
+    # Cost-basis в валюте инструмента (рубли для MOEX). Сумма абсолютных
+    # значений payment'ов входных лотов FIFO. Используется для расчёта
+    # pnl_pct корректно для всех типов инструментов (особенно фьючерсов,
+    # где entry_price в пунктах, а pnl в рублях). PR 18.
+    entry_value: Optional[Decimal] = None
+    exit_value: Optional[Decimal] = None
     currency: str = "rub"
 
     entry_operation_ids: tuple[str, ...] = ()
     exit_operation_ids: tuple[str, ...] = ()
+
+    # TR1: round-trip group ID. Все Trade rows одного position lifecycle
+    # (от open от quantity=0 до полного close) разделяют один position_id.
+    # Используется UI Journal для агрегации scaled-in добавлений.
+    position_id: Optional[int] = None
+
+    # TR1.3: per-trade attribution для account-level fees (margin_fee,
+    # service_fee, varmargin без uid, generic tax). Заполняется в pipeline
+    # после FIFO match через domain/pnl/fee_attribution.py.
+    varmargin_attributed: Optional[Decimal] = None
+    margin_fee_attributed: Optional[Decimal] = None
+    service_fee_attributed: Optional[Decimal] = None
+    other_fees_attributed: Optional[Decimal] = None
+
+    # Phase 9 (2026-05-17): point_value snapshot для futures.
+    # При FIFO match вычисляется empirically (|payment|/(qty×price)) или
+    # берётся из InstrumentORM cache. Snapshot защищает historical Trade
+    # от изменений instrument cache (Tinkoff dynamically обновляет FX-scaling
+    # для USD-denominated futures). Используется в schemas.Trade.body_from_prices
+    # для прозрачного отображения P&L в журнале.
+    point_value: Optional[Decimal] = None
+    point_value_source: Optional[str] = None  # live_api|cache|empirical_payment|manual_override
 
     # Для фьючерсов сохраняем point_value снепшотом момента сделки (PR 9).
     extra: dict[str, Any] = Field(default_factory=dict)
@@ -183,3 +211,83 @@ class Instrument(BaseModel):
     option_multiplier: Optional[int] = None  # обычно 100
 
     cached_at: Optional[datetime] = None
+
+
+# ── BrokerReport (PR 26 Phase 3) ──
+
+
+class BrokerReportTradeRow(BaseModel):
+    """Одна строка из официального брокерского отчёта T-Bank.
+
+    Это **независимый источник истины**: то самое, что Tinkoff показывает
+    в личном кабинете в разделе «Отчёты». Используется в reconciliation
+    как ground truth против наших аггрегатов из GetOperationsByCursor.
+
+    Поля соответствуют BrokerReport message из investAPI/operations.proto.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    trade_id: str
+    order_id: Optional[str] = None
+    figi: Optional[str] = None
+    ticker: Optional[str] = None
+    name: Optional[str] = None
+    class_code: Optional[str] = None
+    execute_sign: Optional[str] = None  # 'Б' (buy) / 'П' (sell) кириллицей
+    direction: Optional[str] = None  # 'buy' | 'sell' нормализованное
+    exchange: Optional[str] = None
+    trade_datetime: datetime  # UTC
+    quantity: int = Field(default=0)
+    price: Optional[Decimal] = None
+    # order_amount = quantity × price (без ACI)
+    order_amount: Optional[Decimal] = None
+    # total_order_amount = order_amount + aci_value
+    total_order_amount: Optional[Decimal] = None
+    aci_value: Optional[Decimal] = None
+    broker_commission: Optional[Decimal] = None
+    exchange_commission: Optional[Decimal] = None
+    exchange_clearing_commission: Optional[Decimal] = None
+    repo_rate: Optional[Decimal] = None
+    party: Optional[str] = None
+    currency: str = "rub"
+
+
+class BrokerReportSummary(BaseModel):
+    """Агрегированные итоги периода из broker report.
+
+    Вычисляется на стороне сервиса reconciliation_service (т.к. сам Tinkoff
+    не возвращает summary напрямую — пагинированные row-level записи).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    account_id: str
+    period_start: datetime
+    period_end: datetime
+    trade_count: int = 0
+
+    # 8 метрик которые мы сверяем с нашими расчётами (D2).
+    realized_pnl: Decimal = Field(default=Decimal(0))
+    broker_commission_total: Decimal = Field(default=Decimal(0))
+    exchange_commission_total: Decimal = Field(default=Decimal(0))
+    clearing_commission_total: Decimal = Field(default=Decimal(0))
+    dividends_gross: Decimal = Field(default=Decimal(0))
+    ndfl_withheld: Decimal = Field(default=Decimal(0))
+    net_cash_flow: Decimal = Field(default=Decimal(0))  # deposits − withdrawals
+    end_cash_balance: Optional[Decimal] = None
+
+
+class BrokerReport(BaseModel):
+    """Полный broker report за период: метаданные + список trades + summary."""
+
+    model_config = ConfigDict(frozen=True)
+
+    account_id: str
+    period_start: datetime
+    period_end: datetime
+    fetched_at: datetime
+    trades: tuple[BrokerReportTradeRow, ...] = ()
+    summary: BrokerReportSummary
+    # Опционально — сырой JSON-ответ для аудита и golden-master тестов.
+    raw: Optional[dict[str, Any]] = None

@@ -13,7 +13,7 @@ import { TradeCard } from '@/components/TradeCard';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
 import { PositionJournalView } from '@/components/PositionJournalView';
 import { useSettings } from '@/contexts/SettingsContext';
-import { api, getApiUrl } from '@/lib/apiClient';
+import { api, getApiUrl, ApiError } from '@/lib/apiClient';
 
 // TR1: view-mode toggle persistence key
 const VIEW_MODE_STORAGE_KEY = 'eqio_history_view_mode';
@@ -178,6 +178,7 @@ export default function HistoryPage() {
   const { settings, updateSettings } = useSettings();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'LONG' | 'SHORT'>('ALL');
   // PR 19: фильтр по типу актива (share/futures/option/bond/etf/currency).
@@ -291,11 +292,14 @@ export default function HistoryPage() {
   }, [updateScrollState, trades, loading]);
 
   const fetchTrades = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const data = await api.get<Trade[]>('/trades/');
       setTrades(data);
-    } catch (error) {
-      console.error('Failed to fetch trades:', error);
+    } catch (err) {
+      console.error('Failed to fetch trades:', err);
+      setError(err instanceof ApiError ? err.toUserMessage() : 'Не удалось загрузить сделки');
     } finally {
       setLoading(false);
     }
@@ -469,6 +473,28 @@ export default function HistoryPage() {
   };
 
   if (loading) return <TradeHistorySkeleton />;
+
+  // Завис/недоступен бэкенд → явная ошибка + повтор, а не вечный скелетон.
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="cyber-card max-w-md w-full p-8 text-center">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+            <X className="w-6 h-6 text-red-500" />
+          </div>
+          <h2 className="text-xl font-bold mb-2">Не удалось загрузить сделки</h2>
+          <p className="text-sm text-[var(--text-secondary)] mb-6">{error}</p>
+          <button
+            onClick={() => fetchTrades()}
+            className="btn-primary inline-flex items-center gap-2"
+          >
+            <Loader2 size={16} />
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Page-specific actions для AppShell.headerRight (column settings, theme, etc).
   // Column-settings popup стартует из той же кнопки, но теперь живёт в шапке страницы.

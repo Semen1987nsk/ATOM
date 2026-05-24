@@ -27,6 +27,8 @@
 
 import { cookies } from 'next/headers';
 
+import { fetchWithTimeout, TimeoutError } from './fetchWithTimeout';
+
 const ACCESS_COOKIE = 'atom_access_token';
 const REFRESH_COOKIE = 'atom_refresh_token';
 const CSRF_COOKIE = 'atom_csrf_token';
@@ -147,7 +149,17 @@ async function request<T>(
     init.body = options.body instanceof FormData ? options.body : JSON.stringify(options.body);
   }
 
-  const response = await fetch(url, init);
+  let response: Response;
+  try {
+    // Таймаут на SSR-fetch: зависший бэкенд не должен держать рендер страницы
+    // открытым бесконечно (иначе Server Component висит вместо ошибки).
+    response = await fetchWithTimeout(url, init);
+  } catch (e) {
+    if (e instanceof TimeoutError) {
+      throw new ServerApiError(408, 'Бэкенд не ответил вовремя');
+    }
+    throw e;
+  }
 
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;

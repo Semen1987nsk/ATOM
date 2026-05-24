@@ -2,7 +2,12 @@
 # Python 3.11+
 
 # ==================== WEB FRAMEWORK ====================
-fastapi>=0.109.0,<0.115.0
+# 2026-05-21: bumped from <0.115 to 0.136.x. Причина: в окружении стоит
+# starlette 1.0.0 (его тянет sse-starlette>=0.49.1 из MCP-тулинга), а fastapi
+# <0.115 требует starlette<0.39 → конфликт, app не импортился
+# (Router.__init__ got unexpected kwarg 'on_startup'). fastapi 0.136.1 требует
+# starlette>=0.46 без верхней границы → совместим с 1.0.0. См. ADR-0008 / blocker.
+fastapi>=0.136.1,<0.137.0
 uvicorn[standard]>=0.27.0,<0.32.0
 python-multipart>=0.0.9  # File uploads
 
@@ -44,30 +49,40 @@ email-validator>=2.0.0,<3.0.0  # для pydantic.EmailStr
 gunicorn>=21.2.0,<23.0.0  # WSGI manager + uvicorn workers (см. Dockerfile CMD)
 
 # ==================== OBSERVABILITY ====================
-sentry-sdk[fastapi]>=2.0.0,<3.0.0  # Error tracking; opt-in через SENTRY_DSN
+# Sentry: наш application monitoring (opt-in через SENTRY_DSN).
+# AU10: минимум 2.47.0 потому что t-tech-investments 0.3.5 требует ровно эту версию
+# для своего ErrorHub integration (хардкоженный DSN error-hub.tbank.ru). Если
+# понизим — SDK не установится. См. AU10 Phase 4b — Hub isolation.
+sentry-sdk[fastapi]>=2.47.0,<3.0.0
 python-json-logger>=2.0.7,<3.0.0  # JSON логи для prod-агрегаторов
 
 # ==================== BROKER INTEGRATIONS ====================
-# Tinkoff Invest API — официальный gRPC SDK (greenfield rewrite, см. PR 0..16).
+# T-Bank Invest API — официальный gRPC SDK (AU10 migration 2026-05).
 #
-# ВАЖНО: пакет 'tinkoff-investments' СНЯТ С PyPI (после архивирования репо
-# в октябре 2025). Ставим напрямую с GitHub по тегу. Последний релиз —
-# 0.2.0-beta117. Имя пакета после установки — `tinkoff-investments`,
-# импортируется как `tinkoff.invest` (PEP 420 namespace).
+# Пакет переименован: tinkoff-investments → t-tech-investments после
+# переезда репозитория на opensource.tbank.ru. Git lineage непрерывен:
+# 0.2.0-beta117 (последний legacy) → 0.2.0-beta118 → 0.3.0 (rename 2025-12-11)
+# → 0.3.5 (current, добавлен Python 3.13/3.14, proto contracts v1.48).
+# Импорт-namespace: `t_tech.invest` (был `tinkoff.invest`).
 #
-# Совместимость на 2026-05: pin в pyproject.toml SDK устарел (`protobuf<5`),
-# но runtime работает с protobuf 5/6 и Python 3.14 при принудительном
-# обновлении protobuf — см. строку ниже.
-tinkoff-investments @ git+https://github.com/RussianInvestments/invest-python.git@0.2.0-beta117
-# Зависимости SDK, явно прописаны (т.к. ставим SDK с --no-deps в production
-# не имеет смысла, но фиксируем версии для воспроизводимости):
+# Install: PyPI listing quarantined → ставим через T-Bank GitLab PyPI:
+#   pip install -r requirements.txt --extra-index-url \
+#     https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple
+#
+# Обязательно прокидывать --extra-index-url в CI/CD (см. .github/workflows/*.yml
+# или pip.conf). Без этого пакет не находится на public PyPI.
+t-tech-investments==0.3.5
+# Зависимости SDK (versions per pyproject 0.3.5):
 cachetools>=5.2.0,<6.0.0
 deprecation>=2.1.0,<3.0.0
+# Py3.11+: grpcio >=1.75; py<3.11: >=1.59.3 — берём оба сразу.
 grpcio>=1.59.3,<2.0.0
-# protobuf 4.x НЕ работает с Python 3.14 (TypeError: Metaclasses with custom
-# tp_new). Берём 5.27+ — runtime SDK с этим совместим, несмотря на устаревший
-# pin в его pyproject.
-protobuf>=5.27.0,<7.0.0
+# Py3.11+: protobuf >=6.31; py<3.11: >=4.25. У нас Python 3.14 → нужен 6.x.
+# (Старый tinkoff-investments был на 5.x — мы уже обновились до 6.x совместимости.)
+protobuf>=6.31.1,<7.0.0
+# SDK 0.3.x использует sentry-sdk для ErrorHub integration с error-hub.tbank.ru.
+# Минимум 2.47.0 по pyproject. Наш own sentry уже >=2.0.0 (см. OBSERVABILITY).
+python-dateutil>=2.8.2,<3.0.0
 
 # Resilience: retry, circuit breaker, rate limiter (in-process до Redis-PR).
 tenacity>=9.0.0,<10.0.0

@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import Protocol, Sequence
+from typing import Optional, Protocol, Sequence
 
 from domain.entities import Instrument
 from domain.enums import TradeDirection
@@ -46,6 +46,10 @@ class FifoLot:
     `payment_per_unit` — payment / quantity_original. Сохраняем уже посчитанным,
     чтобы при partial-fill брать `matched_qty * payment_per_unit` без накопления
     ошибки округления.
+
+    `position_id` (TR1) — round-trip group identifier. Лоты одного lifecycle
+    (от open от 0 до полного close) разделяют один position_id. Используется
+    UI Journal для агрегации scaled-in добавлений в одну сделку.
     """
 
     operation_id: str
@@ -57,6 +61,7 @@ class FifoLot:
     commission_per_unit: Decimal
     executed_at: datetime
     currency: str = "rub"
+    position_id: Optional[int] = None
 
     def consume(self, qty: int) -> "FifoLot":
         """Вернуть новую FifoLot с уменьшенным `quantity_remaining`."""
@@ -72,6 +77,7 @@ class FifoLot:
             commission_per_unit=self.commission_per_unit,
             executed_at=self.executed_at,
             currency=self.currency,
+            position_id=self.position_id,
         )
 
 
@@ -165,6 +171,15 @@ class MatchedTrade:
     @property
     def entry_operation_ids(self) -> tuple[str, ...]:
         return tuple(s.lot.operation_id for s in self.entry_slices)
+
+    @property
+    def position_id(self) -> Optional[int]:
+        """TR1: round-trip group ID. Все entry slices одного MatchedTrade
+        принадлежат одной позиции (FIFO консьюмит лоты по порядку из очереди
+        одного направления), поэтому берём position_id первого slice."""
+        if not self.entry_slices:
+            return None
+        return self.entry_slices[0].lot.position_id
 
 
 class PnLCalculator(Protocol):

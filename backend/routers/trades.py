@@ -534,7 +534,7 @@ async def read_trades(
 
 @router.get("/positions", response_model=list[schemas.PositionTrade])
 async def read_position_trades(
-    status: str = Query("all", regex="^(all|open|closed)$"),
+    status: str = Query("all", pattern="^(all|open|closed)$"),
     skip: int = 0,
     limit: int = 500,
     db: Session = Depends(database.get_db),

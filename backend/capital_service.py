@@ -13,6 +13,109 @@ from utils import utc_now_naive
 SYNTHETIC_INITIAL_NOTE = "Backfilled initial deposit from account balance"
 
 
+# Все типы Tinkoff-операций, чьи payment'ы меняют cash на счёте. Сумма payments
+# по этим типам = чистое изменение баланса cash. Используется в compute_balance_at.
+# PR 24: приведено в соответствие с реальным SDK enum.
+_CASH_OPERATION_TYPES: tuple[str, ...] = (
+    # Торговые
+    "buy", "sell", "buy_card", "sell_card", "buy_margin", "sell_margin",
+    # Доходы по облигациям и акциям
+    "coupon", "bond_tax", "bond_tax_progressive",
+    "bond_repayment", "bond_repayment_full",
+    "tax_correction_coupon",
+    "dividend", "dividend_transfer", "dividend_tax", "dividend_tax_progressive", "div_ext",
+    # Фьючерсы / опционы / поставка
+    "accruing_varmargin", "writing_off_varmargin",
+    "option_expiration", "future_expiration",
+    "delivery_buy", "delivery_sell",
+    # Комиссии
+    "broker_fee", "service_fee", "margin_fee", "track_mfee", "track_pfee",
+    "success_fee", "cash_fee", "out_fee", "advice_fee", "out_stamp_duty",
+    # Налоги
+    "tax", "tax_progressive", "benefit_tax", "benefit_tax_progressive",
+    "tax_correction", "tax_correction_progressive",
+    "tax_repo", "tax_repo_progressive",
+    "tax_repo_hold", "tax_repo_hold_progressive",
+    "tax_repo_refund", "tax_repo_refund_progressive",
+    # Депозиты и выводы — без них формула PR 21 была сломана.
+    "input", "output",
+    "input_swift", "output_swift",
+    "input_acquiring", "output_acquiring",
+    "inp_multi", "out_multi",
+    "output_penalty",
+    # Переводы между счетами (IIS ↔ BS, BS ↔ BS)
+    "trans_iis_bs", "trans_bs_bs",
+    # REPO / Overnight
+    "overnight", "over_placement", "over_com", "over_income",
+    # Корпоративные действия с бумагами (sec-перевод без cash — PnL нейтрален,
+    # но если payment ≠ 0 в SDK он сюда уходит).
+    "input_securities", "output_securities",
+)
+
+
+def compute_balance_at(
+    db: Session,
+    account_id: int,
+    as_of: Optional[datetime],
+) -> Optional[float]:
+    """
+    Реконструировать баланс счёта на дату `as_of`, откатываясь назад от
+    последнего известного `portfolio.total_amount`.
+
+    Формула:
+        balance_at(D) = last_portfolio_value − Σ payments(op.date > D)
+
+    Где Σ payments — все операции Tinkoff из `_CASH_OPERATION_TYPES`
+    (включая INPUT/OUTPUT/INP_MULTI — депозиты и выводы).
+
+    Логика: если сейчас портфель X, и после даты D было событий на ΣP
+    (положительных и отрицательных — pnl от сделок, депозиты, комиссии),
+    то на дату D было X − ΣP.
+
+    Корректно для broker-юзеров где `Account.last_portfolio_value`
+    обновляется при каждом sync (PR 22, `_save_portfolio_snapshot`).
+
+    Аппроксимация: игнорирует unrealized PnL drift по позициям, открытым
+    ДО as_of и закрытым ПОСЛЕ as_of, или ещё открытым сейчас. Это
+    приемлемо для broker-юзеров с активной торговлей (фьючерсы
+    settle ежедневно через varmargin → unrealized почти не накапливается).
+
+    Returns:
+        float — баланс в рублях на as_of
+        None — если нет `last_portfolio_value` (нет sync с брокером)
+               или `as_of` None
+    """
+    if as_of is None:
+        return None
+
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    if account is None:
+        return None
+
+    last_value = cast(Decimal | None, account.last_portfolio_value)
+    if last_value is None:
+        return None
+
+    from sqlalchemy import func
+
+    rows = db.query(
+        func.sum(models.OperationORM.payment_units),
+        func.sum(models.OperationORM.payment_nano),
+    ).filter(
+        models.OperationORM.account_id == account_id,
+        models.OperationORM.state == "executed",
+        models.OperationORM.operation_type.in_(_CASH_OPERATION_TYPES),
+        models.OperationORM.executed_at > as_of,
+    ).one()
+
+    sum_units = int(rows[0] or 0)
+    sum_nano = int(rows[1] or 0)
+    payments_after = Decimal(sum_units) + Decimal(sum_nano) / Decimal(1_000_000_000)
+
+    balance = Decimal(last_value) - payments_after
+    return float(balance)
+
+
 def has_broker_capital_operations(db: Session, account_id: int) -> bool:
     return db.query(models.CapitalOperation).filter(
         models.CapitalOperation.account_id == account_id,

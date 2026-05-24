@@ -26,7 +26,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -61,6 +61,7 @@ from models import (
     CapitalOperation,
     Trade,
 )
+from rate_limiter import limiter, AUTH_LIMIT
 from sync_scheduler import scheduler
 from utils.datetime_utils import utc_now_naive
 
@@ -134,10 +135,18 @@ class BrokerConnectionResponse(BaseModel):
     sync_interval_minutes: int
     last_sync_at: Optional[datetime]
     last_sync_status: Optional[str]
-    total_synced_trades: int
+    total_synced_trades: int  # legacy: кумулятивный счётчик из BrokerConnection
     created_at: datetime
     consecutive_failures: int = 0
     circuit_open_until: Optional[datetime] = None
+    # PR 26 (Phase 3): rich детали последнего sync для UI карточки.
+    last_sync_operations_count: Optional[int] = None
+    last_sync_trades_count: Optional[int] = None
+    last_sync_positions_count: Optional[int] = None
+    last_sync_duration_ms: Optional[int] = None
+    # Реальный count из таблиц (а не legacy total_synced_trades).
+    real_trades_count: int = 0
+    real_operations_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -156,14 +165,30 @@ class SyncResultResponse(BaseModel):
 
 
 def _validate_token_scope(accounts: List[TinkoffAccountInfo], broker_account_id: str) -> None:
-    """Поднимает 400, если у токена нет хотя бы READ_ONLY на выбранном счёте."""
+    """Подтверждает, что токен strictly READ_ONLY на выбранном счёте.
+
+    AU7 hardening: FULL_ACCESS токены отклоняются — Eqio это
+    журнал-аналитика, ему хватает read-only прав, а у full-access
+    blast radius существенно больше (потенциальные ордера, вывод средств).
+    Раньше мы принимали оба уровня; теперь требуем строго read-only.
+    """
     matched = next((a for a in accounts if a.id == broker_account_id), None)
     if matched is None:
         raise HTTPException(
             status_code=400,
             detail=f"Счёт {broker_account_id} не найден в списке аккаунтов токена",
         )
-    if not matched.is_read_only_or_better:
+    if matched.access_level == "ACCOUNT_ACCESS_LEVEL_FULL_ACCESS":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Токен имеет FULL_ACCESS на счёте {broker_account_id}. "
+                "Для безопасности Eqio принимает только read-only токены. "
+                "Создайте новый read-only токен в lk.tbank.ru → Инвестиции → "
+                "Настройки → API → «Доступ только на чтение»."
+            ),
+        )
+    if not matched.is_strictly_read_only:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -184,7 +209,23 @@ def _account_to_response(acc: TinkoffAccountInfo) -> BrokerAccountInfoResponse:
     )
 
 
-def _orm_to_response(conn: BrokerConnection) -> BrokerConnectionResponse:
+def _orm_to_response(conn: BrokerConnection, db: Optional[Session] = None) -> BrokerConnectionResponse:
+    # PR 26 (Phase 3): реальные counts из таблиц для информативной карточки.
+    real_trades_count = 0
+    real_operations_count = 0
+    if db is not None and conn.account_id is not None:
+        from sqlalchemy import func as sa_func
+        real_trades_count = (
+            db.query(sa_func.count(models.Trade.id))
+            .filter(models.Trade.account_id == conn.account_id)
+            .scalar()
+        ) or 0
+        real_operations_count = (
+            db.query(sa_func.count(models.OperationORM.id))
+            .filter(models.OperationORM.account_id == conn.account_id)
+            .scalar()
+        ) or 0
+
     return BrokerConnectionResponse(
         id=conn.id,
         broker=conn.broker.value if hasattr(conn.broker, "value") else str(conn.broker),
@@ -198,6 +239,12 @@ def _orm_to_response(conn: BrokerConnection) -> BrokerConnectionResponse:
         created_at=conn.created_at,
         consecutive_failures=conn.consecutive_failures or 0,
         circuit_open_until=conn.circuit_open_until,
+        last_sync_operations_count=conn.last_sync_operations_count,
+        last_sync_trades_count=conn.last_sync_trades_count,
+        last_sync_positions_count=conn.last_sync_positions_count,
+        last_sync_duration_ms=conn.last_sync_duration_ms,
+        real_trades_count=int(real_trades_count),
+        real_operations_count=int(real_operations_count),
     )
 
 
@@ -205,14 +252,24 @@ def _orm_to_response(conn: BrokerConnection) -> BrokerConnectionResponse:
 
 
 @router.post("/verify-token", response_model=TokenVerifyResponse)
-async def verify_broker_token(request: TokenVerifyRequest):
-    """Echo-валидация токена через `users.list_accounts()`."""
+@limiter.limit(AUTH_LIMIT)
+async def verify_broker_token(
+    request: Request,
+    payload: TokenVerifyRequest,
+    current_user: models.User = Depends(get_current_user),
+):
+    """Echo-валидация токена через `users.list_accounts()`.
+
+    AU6 hardening: только для авторизованных юзеров + 5/min rate-limit.
+    Раньше endpoint был открытым и работал как DoS-oracle: любой мог
+    выжигать наш ежеминутный лимит к T-Bank API на 200 запросов.
+    """
     _ensure_broker_sync_v2_enabled()
-    if request.broker.lower() != "tinkoff":
+    if payload.broker.lower() != "tinkoff":
         raise HTTPException(status_code=400, detail="Пока поддерживается только Тинькофф")
 
     try:
-        async with client_factory.async_client(request.api_token) as services:
+        async with client_factory.async_client(payload.api_token) as services:
             users = TinkoffUsersClient(services)
             accounts = await users.list_accounts()
     except TokenInvalid as exc:
@@ -263,6 +320,34 @@ async def connect_broker(
     # 2. Найти/создать наш Account.
     user_account = get_user_account(db, current_user)
 
+    # AU5: один broker_account_id per наш Account.
+    # FIFO matching и positions scope сейчас работают по account_id, не по
+    # (account_id, broker_account_id). Если бы юзер подключил БС + ИИС
+    # к одному local Account, операции смешались бы в FIFO.
+    # Решение: если для этого Account уже есть active BrokerConnection
+    # с ДРУГИМ broker_account_id — отказать с подсказкой создать второй
+    # local Account (через /accounts API).
+    existing_conn = (
+        db.query(BrokerConnection)
+        .filter(
+            BrokerConnection.account_id == user_account.id,
+            BrokerConnection.is_active.is_(True),
+            BrokerConnection.broker_account_id != request.broker_account_id,
+        )
+        .first()
+    )
+    if existing_conn is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"К вашему Account «{user_account.name}» уже подключён другой "
+                f"брокерский счёт ({existing_conn.broker_account_id}). FIFO-расчёт "
+                "не разделяет позиции между разными broker-счетами в одном local "
+                "Account, поэтому нужно создать отдельный Account (Настройки → "
+                "Счета → «+ Добавить») и подключить второй брокер туда."
+            ),
+        )
+
     # 3. Зашифровать и сохранить.
     repo = _token_repo()
     try:
@@ -293,7 +378,7 @@ async def connect_broker(
         user_account.id,
         request.broker_account_id,
     )
-    return _orm_to_response(connection)
+    return _orm_to_response(connection, db)
 
 
 @router.get("/connections", response_model=List[BrokerConnectionResponse])
@@ -307,7 +392,7 @@ async def list_connections(
         .filter(BrokerConnection.account_id == account.id, BrokerConnection.is_active.is_(True))
         .all()
     )
-    return [_orm_to_response(r) for r in rows]
+    return [_orm_to_response(r, db) for r in rows]
 
 
 @router.post("/connections/{connection_id}/sync", response_model=SyncResultResponse)
@@ -367,6 +452,41 @@ async def trigger_manual_sync(
     return await sync_now(connection_id, full=False, db=db, current_user=current_user)
 
 
+@router.post("/connections/{connection_id}/reset")
+async def reset_connection(
+    connection_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    Полная пересинхронизация: удаляет все sync-данные (trades с
+    data_source='tinkoff_v2', positions, operations) и сбрасывает cursor.
+    Следующий sync будет полным (с начала истории).
+
+    Сохраняет: legacy/manual сделки, само подключение и токен.
+    """
+    from tools.reset_broker_account import reset_account
+
+    account = get_user_account(db, current_user)
+    conn = (
+        db.query(BrokerConnection)
+        .filter(BrokerConnection.id == connection_id, BrokerConnection.account_id == account.id)
+        .first()
+    )
+    if conn is None:
+        raise HTTPException(status_code=404, detail="Подключение не найдено")
+
+    # Закрываем текущую сессию (database.get_db) перед reset_account, чтобы
+    # тот мог открыть свою собственную SessionLocal и сделать commit.
+    db.commit()
+    result = reset_account(account.id, confirmed=True)
+    return {
+        "message": "Аккаунт сброшен, готов к полной пересинхронизации",
+        "connection_id": connection_id,
+        **result,
+    }
+
+
 @router.delete("/connections/{connection_id}")
 async def disconnect_broker(
     connection_id: int,
@@ -421,7 +541,7 @@ async def update_connection(
     conn.updated_at = utc_now_naive()
     db.commit()
     db.refresh(conn)
-    return _orm_to_response(conn)
+    return _orm_to_response(conn, db)
 
 
 @router.get("/sync-status")
@@ -455,12 +575,71 @@ async def get_sync_status(
                 "consecutive_failures": c.consecutive_failures or 0,
                 "circuit_open_until": c.circuit_open_until.isoformat() if c.circuit_open_until else None,
                 "total_synced_trades": c.total_synced_trades or 0,
+                # PR 17: детали последней синхронизации для UI-индикатора.
+                "last_sync_operations_count": c.last_sync_operations_count,
+                "last_sync_trades_count": c.last_sync_trades_count,
+                "last_sync_positions_count": c.last_sync_positions_count,
+                "last_sync_duration_ms": c.last_sync_duration_ms,
             }
         )
     return {
         "has_connections": bool(items),
         "scheduler": scheduler.get_status(),
         "connections": items,
+    }
+
+
+@router.get("/health")
+async def get_sync_health(
+    history_days: int = Query(7, ge=1, le=90, description="История за N дней"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """
+    PR 20: Health-audit состояния импорта Tinkoff для текущего юзера.
+
+    Возвращает последний health check (для UI-индикатора) + историю за N дней.
+    Юзер видит свой статус: ok / warning / error + краткое описание.
+    Технические детали (sample_ids конкретных trade'ов) включены — фронт сам
+    решает что показывать пользователю, а что только админу.
+    """
+    from datetime import timedelta
+
+    from models import SyncHealthCheckORM
+
+    account = get_user_account(db, current_user)
+    latest = (
+        db.query(SyncHealthCheckORM)
+        .filter(SyncHealthCheckORM.account_id == account.id)
+        .order_by(SyncHealthCheckORM.checked_at.desc())
+        .first()
+    )
+    threshold = utc_now_naive() - timedelta(days=history_days)
+    history_rows = (
+        db.query(SyncHealthCheckORM)
+        .filter(
+            SyncHealthCheckORM.account_id == account.id,
+            SyncHealthCheckORM.checked_at >= threshold,
+        )
+        .order_by(SyncHealthCheckORM.checked_at.desc())
+        .all()
+    )
+
+    def _serialize(row: "SyncHealthCheckORM") -> dict:
+        issues = row.issues_json or []
+        return {
+            "id": row.id,
+            "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+            "status": row.status,
+            "total_trades_checked": row.total_trades_checked,
+            "trades_with_issues": row.trades_with_issues,
+            "main_issue": issues[0]["check_id"] if issues else None,
+            "issues": issues,
+        }
+
+    return {
+        "latest": _serialize(latest) if latest else None,
+        "history": [_serialize(r) for r in history_rows],
     }
 
 
@@ -617,21 +796,29 @@ async def get_balance_history(
     }
 
 
-@router.post("/set-initial-balance")
+@router.post("/set-initial-balance", deprecated=True)
 async def set_initial_balance(
     initial_balance: float,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    account = get_user_account(db, current_user)
-    sync_initial_balance(
-        db,
-        account.id,
-        initial_balance,
-        note="Initial balance set manually",
-        commit=True,
+    """
+    DEPRECATED (PR 21): ручной ввод стартового капитала отключён.
+
+    Используем автоподстановку из Tinkoff `portfolio.total_amount`
+    при первом sync (см. `pipeline._autoset_initial_balance_if_needed`).
+
+    Endpoint оставлен возвращать 410 для backward-compat — клиент должен
+    обновиться. Удаление через 1 минорный релиз.
+    """
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Ручной ввод стартового капитала отключён. "
+            "Стартовый капитал рассчитывается автоматически из Tinkoff API "
+            "при первой синхронизации."
+        ),
     )
-    return {"success": True, "initial_balance": initial_balance}
 
 
 @router.get("/net-deposit")

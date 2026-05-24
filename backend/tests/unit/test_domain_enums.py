@@ -33,9 +33,10 @@ def test_operation_type_trading_types_complete() -> None:
 def test_operation_type_commission_types() -> None:
     commissions = OperationType.commission_types()
     assert OperationType.BROKER_FEE in commissions
-    assert OperationType.EXCHANGE_FEE in commissions
     assert OperationType.SERVICE_FEE in commissions
     assert OperationType.MARGIN_FEE in commissions
+    # PR 24: EXCHANGE_FEE убран — этого типа НЕТ в SDK Tinkoff.
+    # Биржевая комиссия приходит как BROKER_FEE или SERVICE_FEE.
     assert OperationType.BUY not in commissions
 
 

@@ -32,6 +32,7 @@
   - [`01-dashboard.md`](product/feature-canon/01-dashboard.md) — эталон №1 (главный дашборд)
   - [`02-mae-mfe.md`](product/feature-canon/02-mae-mfe.md) — эталон №2 (автоанализ MOEX)
   - [`03-trade-replay.md`](product/feature-canon/03-trade-replay.md) — эталон №3 (свечи + маркеры)
+  - [`04-downgrade-experience.md`](product/feature-canon/04-downgrade-experience.md) — эталон №4 (Trial→Free+ замороженные виджеты)
 
 ### marketing/
 - [`positioning.md`](marketing/positioning.md) — «MOEX-нативный AI-журнал» (по итогам аудита)
@@ -61,6 +62,9 @@
   - [`0002-pd-consent-versioning.md`](tech/decisions/0002-pd-consent-versioning.md)
   - [`0003-server-components-strategy.md`](tech/decisions/0003-server-components-strategy.md)
   - [`0004-moex-rate-limit.md`](tech/decisions/0004-moex-rate-limit.md)
+  - [`0005-reverse-trial-model.md`](tech/decisions/0005-reverse-trial-model.md) — **Reverse-Trial 21d + Free+ + Pro 399₽**
+  - [`0006-editorial-financial-rebrand.md`](tech/decisions/0006-editorial-financial-rebrand.md) — UI ребрендинг v3 (Fraunces + ochre)
+  - [`0007-pnl-methodology-invariants.md`](tech/decisions/0007-pnl-methodology-invariants.md) — **P&L 8 инвариантов + reconcile формула. ОБЯЗАТЕЛЬНО при любой P&L работе.**
 
 ### operations/
 - [`deployment.md`](operations/deployment.md) — как и куда деплоим
@@ -79,9 +83,11 @@
 | Слово в задаче | Что Claude обязан прочитать **до** ответа |
 |---|---|
 | `152-ФЗ`, `ПД`, `согласие`, `удаление аккаунта`, `РКН` | `compliance/152-fz-status.md` + `compliance/policy-versions.md` |
+| `P&L`, `PnL`, `журнал`, `cash truth`, `reconcile`, `FIFO`, `varmargin`, `attribute_fees`, `point_value`, `phantom_sweep`, `futures`, `формула расчёта` | **`tech/decisions/0007-pnl-methodology-invariants.md`** (immutable invariants) + `docs/PNL_PLAYBOOK.md` (cheatsheet) |
 | `MOEX`, `ISS`, `свечи`, `котировки`, `MAE`, `MFE` | `tech/decisions/0004-moex-rate-limit.md` + skill `moex-iss-api-patterns` |
 | `новый виджет`, `новая страница`, `дашборд`, `вёрстка` | `product/design-system.md` + `product/feature-canon/01-dashboard.md` |
-| `тариф`, `цена`, `пейволл`, `pro-план` | `sales/pricing.md` + `sales/tariff-comparison.md` |
+| `тариф`, `цена`, `пейволл`, `pro-план`, `trial`, `freemium`, `Free+` | `sales/pricing.md` + `sales/tariff-comparison.md` + `tech/decisions/0005-reverse-trial-model.md` |
+| `downgrade`, `замороженные виджеты`, `frozen feature`, `trial expired` | `product/feature-canon/04-downgrade-experience.md` |
 | `конкурент`, `TraderMake`, `Tradary`, `TradeZella` | `strategy/competitive-landscape.md` |
 | `деплой`, `прод`, `staging` | `operations/deployment.md` |
 | `аудит`, `чек-лист готовности` | `tech/audit-report.md` |

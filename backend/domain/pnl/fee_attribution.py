@@ -99,6 +99,7 @@ SERVICE_LIKE_FEE_TYPES = frozenset({
     "out_stamp_duty",
     "output_penalty",
     "advice_fee",
+    "other_fee",      # generic catch-all fee → service column (всё остальное)
 })
 
 

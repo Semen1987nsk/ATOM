@@ -19,6 +19,28 @@
 | Object Storage | Yandex Object Storage (S3-совместимый) | Скриншоты сделок |
 | Sentry | Self-hosted в Yandex Cloud | 152-ФЗ — нельзя слать в sentry.io |
 
+## Прод-требования: БД и Redis (Sprint 1A)
+
+- **DATABASE_URL** — ОБЯЗАТЕЛЬНО PostgreSQL (`postgresql://...`). SQLite в проде
+  запрещён кодом (`database._assert_db_safe_for_env`: DEBUG=false + sqlite →
+  fail-fast). Причина: single-writer → `database is locked` под нагрузкой.
+- **Пул соединений** (env, дефолты в `database.py`): `DB_POOL_SIZE=5`,
+  `DB_MAX_OVERFLOW=10`, `DB_POOL_TIMEOUT=30`, `DB_POOL_RECYCLE=1800`, pre-ping on.
+  На 500 пользователей при N gunicorn-воркерах суммарные коннекты =
+  N × (pool_size + max_overflow). Postgres `max_connections` должен это покрывать
+  ЛИБО ставим **PgBouncer** (transaction pooling) — рекомендуется при N×15 > ~100.
+- **REDIS_URL** — ОБЯЗАТЕЛЕН в проде: rate-limiter fail-fast без Redis
+  (`rate_limiter.py`), а stats-cache без Redis деградирует в per-process
+  (¼ hit-rate под N воркерами). Один Redis обслуживает rate-limit и stats
+  (ключи stats префиксованы `stats:`).
+- **Redis-down:** старт приложения требует Redis (rate-limit fail-fast) —
+  осознанный trade-off (безопасность > доступность для brute-force). Stats-cache
+  при рантайм-сбое Redis молча пересчитывает (не падает). Старт без Redis —
+  только явный `RATE_LIMIT_ENABLED=false` (НЕ рекомендуется).
+- **Singleton-воркер:** на N>1 воркерах задать `IS_SCHEDULER_WORKER=false` на
+  всех, кроме одного (scheduler + stream-consumers + nightly P&L health —
+  синглтоны). Стартовый лог `🩺 Readiness:` печатает db/redis/scheduler_worker.
+
 ## CI/CD (план)
 
 *[добавить когда подключим: GitHub Actions / GitLab CI / Yandex Container Registry]*

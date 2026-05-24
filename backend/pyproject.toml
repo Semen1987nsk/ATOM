@@ -1,0 +1,18 @@
+# Минимальная конфигурация линтеров. Введены NON-blocking в Sprint 0
+# (INFRA-10); ужесточение до hard-fail — в поздних спринтах harden-плана.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = ["alembic/versions", "tests/sandbox"]
+
+[tool.ruff.lint]
+# Стартовый консервативный набор: pyflakes (F) + базовый pycodestyle (E/W).
+select = ["E", "F", "W"]
+ignore = ["E501"]  # длину строк подключим отдельным проходом
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
+check_untyped_defs = false
+exclude = "(alembic/|tests/)"

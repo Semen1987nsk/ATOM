@@ -38,8 +38,15 @@ from sqlalchemy.orm import Session
 
 import models
 from domain.pnl.cash_flow_classification import (
+    CASH_FLOW_MAP,
     CashFlowCategory,
     operation_types_in,
+)
+from domain.pnl.data_quality import (
+    cash_reconstruction_residual,
+    ratio_sanity,
+    trade_outliers,
+    ReconStatus,
 )
 from logger import get_logger
 from utils.datetime_utils import utc_now_naive
@@ -47,15 +54,14 @@ from utils.datetime_utils import utc_now_naive
 log = get_logger("pnl_health")
 
 
-HealthStatus = Literal["ok", "warning", "mismatch", "na", "stale"]
+HealthStatus = Literal["ok", "warning", "investigate", "na", "stale"]
 
-# Thresholds for status classification.
-# Реалистично для трейдинга с фьючерсами: post-clearing варм-маржа MOEX + сборы
-# Тинькофф (margin/service) часто создают orphan'ы 1-5% от cash_pnl, которые не
-# attribute'ятся к конкретным Trade.net_pnl. Это технический разрыв, не реальная
-# потеря — деньги уже сняты со счёта. До 1% → ✅ ok, до 5% → ⚠️ warning, выше → 🔴.
-THRESHOLD_OK_PCT = Decimal("1.0")
-THRESHOLD_WARNING_PCT = Decimal("5.0")
+# Thresholds for status classification (ADR-0008: клиринг-band = ADR-0007 5/25).
+# Post-clearing варм-маржа MOEX + сборы Тинькофф создают orphan'ы до ~5% от
+# cash_pnl — технический разрыв, не реальная потеря. До 5% → ok, 5-25% → warning,
+# ≥25% → investigate (вероятная проблема с attribution, требует разбора).
+THRESHOLD_OK_PCT = Decimal("5.0")
+THRESHOLD_WARNING_PCT = Decimal("25.0")
 # Если |cash_pnl| < этого — divide-by-zero не имеет смысла, status='na'.
 NA_CASH_TRUTH_RUB = Decimal("1.0")
 # Если health check старше этого — UI помечает как 'stale' (см. router).
@@ -144,7 +150,7 @@ def _status_from_diff_pct(diff_pct: Decimal, cash_pnl: Decimal) -> HealthStatus:
         return "ok"
     if pct < THRESHOLD_WARNING_PCT:
         return "warning"
-    return "mismatch"
+    return "investigate"
 
 
 def compute_health(session: Session, account_id: int) -> PnLHealthResult:
@@ -198,11 +204,103 @@ def compute_health(session: Session, account_id: int) -> PnLHealthResult:
         diff_pct = Decimal(0)
     status = _status_from_diff_pct(diff_pct, cash_pnl)
 
+    # ===== Data-quality layers (ADR-0008) =====
+    # Слой 1 — non-deposit cash (futures buy/sell payments исключены: notional, не cash).
+    net_deposit_types = tuple(operation_types_in(CashFlowCategory.NET_DEPOSIT))
+    fut_trade_types = ("buy", "sell", "buy_card", "sell_card", "buy_margin", "sell_margin")
+    non_dep_row = session.query(
+        func.coalesce(func.sum(models.OperationORM.payment_units), 0),
+        func.coalesce(func.sum(models.OperationORM.payment_nano), 0),
+    ).filter(
+        models.OperationORM.account_id == account_id,
+        models.OperationORM.state == "executed",
+        models.OperationORM.operation_type.notin_(net_deposit_types),
+        # Exclude futures notional buy/sell (instrument_type IS NULL → не фьючерс).
+        ~(
+            models.OperationORM.operation_type.in_(fut_trade_types)
+            & (models.OperationORM.instrument_type == "futures")
+            & models.OperationORM.instrument_type.isnot(None)
+        ),
+    ).one()
+    non_deposit_cash = (
+        Decimal(int(non_dep_row[0] or 0))
+        + Decimal(int(non_dep_row[1] or 0)) / Decimal(1_000_000_000)
+    )
+    layer1 = cash_reconstruction_residual(
+        portfolio_value=portfolio_value,
+        net_deposits=net_deposits,
+        non_deposit_cash=non_deposit_cash,
+    )
+    layer2 = ratio_sanity(journal_pnl=journal_pnl, cash_pnl=cash_pnl)
+
+    # Слой 4 — per-trade outliers (символ + net_pnl закрытых).
+    trade_rows = session.query(
+        models.Trade.symbol, models.Trade.net_pnl,
+    ).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.exit_at.isnot(None),
+    ).all()
+    outlier_symbols = trade_outliers(
+        trades=[(s, Decimal(p or 0)) for s, p in trade_rows],
+        net_deposits=net_deposits,
+    )
+
+    # Слой 6 — операции с cash-эффектом, тип которых не в CASH_FLOW_MAP.
+    known_types = tuple(CASH_FLOW_MAP.keys())
+    unknown_rows = session.query(
+        models.OperationORM.operation_type,
+        func.count(),
+    ).filter(
+        models.OperationORM.account_id == account_id,
+        models.OperationORM.state == "executed",
+        models.OperationORM.operation_type.notin_(known_types),
+    ).group_by(models.OperationORM.operation_type).all()
+    unknown_detail = {t: int(c) for t, c in unknown_rows}
+    unknown_status = "warning" if unknown_detail else "ok"
+
+    # Слой 5 — последний прогон трёхсторонней сверки (operations↔broker_report↔portfolio).
+    last_recon = (
+        session.query(models.ReconciliationRunORM)
+        .filter(models.ReconciliationRunORM.account_id == account_id)
+        .order_by(models.ReconciliationRunORM.started_at.desc())
+        .first()
+    )
+    if last_recon is None:
+        recon_status = "na"
+    elif last_recon.status == "break":
+        recon_status = "break"
+    else:
+        recon_status = last_recon.status
+
+    band_status = status  # слой 3 (diff_pct band)
+    # worst-of: RED любого слоя → 'investigate' (громкая страховка от ×1000)
+    if ReconStatus.RED in (layer1.status, layer2.status):
+        status = "investigate"
+    elif outlier_symbols and status == "ok":
+        status = "warning"
+    if unknown_detail and status == "ok":
+        status = "warning"
+    if recon_status == "break" and status == "ok":
+        status = "warning"
+
     components = {
         "total_pnl_closed": total_pnl_closed,
         "unrealized_pnl": unrealized_pnl,
         "net_deposits": net_deposits,
         "portfolio_value": portfolio_value,
+        "clearing_adjustment": cash_pnl - journal_pnl,
+        "layers": {
+            "clearing_band": band_status,
+            "cash_reconstruction": layer1.status.value,
+            "ratio_sanity": layer2.status.value,
+            "trade_outliers": "warning" if outlier_symbols else "ok",
+            "unknown_types": unknown_status,
+            "three_way_recon": recon_status,
+        },
+        "cash_reconstruction_residual": layer1.residual,
+        "ratio": layer2.residual,
+        "outlier_symbols": outlier_symbols,
+        "unknown_types_detail": unknown_detail,
     }
 
     duration_ms = int((time.perf_counter() - t_start) * 1000)

@@ -71,9 +71,8 @@ interface CommandContext {
 const ITEMS: CommandItem[] = [
   // ── Навигация ──
   { id: "nav.dashboard", label: "Дашборд", Icon: BarChart3, group: "Навигация", keywords: ["главная", "home"], onSelect: ({ router }) => router.push("/") },
-  { id: "nav.trades", label: "Сделки", Icon: ListChecks, group: "Навигация", keywords: ["журнал", "history"], onSelect: ({ router }) => router.push("/history") },
+  { id: "nav.trades", label: "Дневник сделок", Icon: ListChecks, group: "Навигация", keywords: ["сделки", "журнал", "history"], onSelect: ({ router }) => router.push("/history") },
   { id: "nav.calendar", label: "Календарь P&L", Icon: CalendarDays, group: "Навигация", keywords: ["heatmap", "месяц"], onSelect: ({ router }) => router.push("/analysis/calendar") },
-  { id: "nav.calc", label: "Калькулятор позиции", Icon: Briefcase, group: "Навигация", keywords: ["лот", "размер", "риск"], onSelect: ({ router }) => router.push("/calculator") },
   { id: "nav.insights", label: "AI-инсайты", Icon: Brain, group: "Навигация", keywords: ["ai", "рекомендации", "инсайты"], onSelect: ({ router }) => router.push("/analysis/insights") },
   { id: "nav.maemfe", label: "MAE / MFE анализ", Icon: Target, group: "Навигация", keywords: ["excursion", "стоп", "тейк"], onSelect: ({ router }) => router.push("/analysis/mae-mfe") },
   { id: "nav.postexit", label: "Post-Exit анализ", Icon: Clock, group: "Навигация", keywords: ["упущенная", "early exit"], onSelect: ({ router }) => router.push("/analysis/post-exit") },
