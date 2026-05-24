@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * CookieConsent — баннер согласия на cookies для Eqio.
+ * CookieConsent — баннер согласия на cookies для Empirik.
  *
  * Соответствует ст. 9 152-ФЗ (explicit consent) и разъяснениям РКН от 27.05.2022:
  * - категории Analytics и Marketing по умолчанию выключены;
  * - кнопки «Принять все» и «Только необходимые» равноправны визуально;
- * - согласие версионируется (eqio_consent_v1) — при смене схемы перезапрашиваем.
+ * - согласие версионируется (empirik_consent_v1) — при смене схемы перезапрашиваем.
  *
  * Использование:
  *   1. Смонтируй <CookieConsent /> в frontend/src/app/layout.tsx сразу после <body>.
@@ -17,7 +17,7 @@ import { Cookie, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'eqio_consent_v1';
+const STORAGE_KEY = 'empirik_consent_v1';
 const SCHEMA_VERSION = 1;
 
 type ConsentCategories = {
@@ -59,7 +59,7 @@ function writeConsent(categories: ConsentCategories): StoredConsent {
   };
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   // Уведомляем подписчиков (другие табы / useConsent)
-  window.dispatchEvent(new CustomEvent('eqio:consent-changed', { detail: payload }));
+  window.dispatchEvent(new CustomEvent('empirik:consent-changed', { detail: payload }));
   return payload;
 }
 
@@ -77,15 +77,15 @@ export function useConsent() {
       const detail = (e as CustomEvent<StoredConsent>).detail;
       setConsent(detail);
     };
-    window.addEventListener('eqio:consent-changed', handler);
+    window.addEventListener('empirik:consent-changed', handler);
     window.addEventListener('storage', () => setConsent(readConsent()));
     return () => {
-      window.removeEventListener('eqio:consent-changed', handler);
+      window.removeEventListener('empirik:consent-changed', handler);
     };
   }, []);
 
   const openSettings = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('eqio:open-consent-settings'));
+    window.dispatchEvent(new CustomEvent('empirik:open-consent-settings'));
   }, []);
 
   return {
@@ -115,8 +115,8 @@ export default function CookieConsent() {
       setShowSettings(true);
       setVisible(true);
     };
-    window.addEventListener('eqio:open-consent-settings', openHandler);
-    return () => window.removeEventListener('eqio:open-consent-settings', openHandler);
+    window.addEventListener('empirik:open-consent-settings', openHandler);
+    return () => window.removeEventListener('empirik:open-consent-settings', openHandler);
   }, []);
 
   const acceptAll = () => {

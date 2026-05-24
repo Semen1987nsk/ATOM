@@ -1,4 +1,4 @@
-# Карта базы знаний Eqio
+# Карта базы знаний Empirik
 
 База разбита на 9 доменов. Каждая папка — отдельный домен с собственным `CLAUDE.md` (что в папке + когда читать).
 
@@ -21,7 +21,7 @@
 ### strategy/
 - [`vision.md`](strategy/vision.md) — миссия, позиционирование, цель на 12 мес
 - [`roadmap.md`](strategy/roadmap.md) — дорожная карта по кварталам
-- [`competitive-landscape.md`](strategy/competitive-landscape.md) — TraderMake / Tradary / TradeZella + где Eqio выигрывает
+- [`competitive-landscape.md`](strategy/competitive-landscape.md) — TraderMake / Tradary / TradeZella + где Empirik выигрывает
 
 ### product/
 - [`personas.md`](product/personas.md) — кто пользуется (активный РФ-трейдер, проп-фонд)

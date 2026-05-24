@@ -13,9 +13,9 @@
 
 **Что делать**: Прочти ПЕРВЫЙ упомянутый file path в запросе user'а.
 
-- Если `C:\Users\Administrator\Eqio\ATOM\*` → это **Eqio/ATOM**, продолжай.
+- Если `C:\Users\Administrator\Empirik\ATOM\*` → это **Empirik/ATOM**, продолжай.
 - Если другой проект (например `C:\dev\digitalLab\*`, `C:\dev\Inter_OGE\*`) →
-  **STOP**. Сообщи user'у: "Это не задача Eqio. Запрос относится к
+  **STOP**. Сообщи user'у: "Это не задача Empirik. Запрос относится к
   <other project>. Активируй соответствующий agent (flutter-digitallab,
   inter-oge-experiment) или confirm что делать."
 
@@ -26,7 +26,7 @@
 
 ## Step 2 — Read Navigation Hub (30 sec)
 
-**Что делать**: `Read C:\Users\Administrator\Eqio\ATOM\.business\index.md`.
+**Что делать**: `Read C:\Users\Administrator\Empirik\ATOM\.business\index.md`.
 
 Это карта 9 доменов + триггеры. Для каждой задачи там указан конкретный
 файл который нужно открыть. Например:
@@ -48,7 +48,7 @@
 ## Step 3 — Read Recent Memories (30 sec)
 
 **Что делать**:
-1. `Read C:\Users\Administrator\.claude\projects\c--Users-Administrator-Eqio\memory\MEMORY.md`
+1. `Read C:\Users\Administrator\.claude\projects\c--Users-Administrator-Empirik\memory\MEMORY.md`
 2. Из index — 5 most-recent (или всех если меньше 5) memory files.
 
 **Особое внимание**: feedback_*.md files — там зафиксированы corrections
@@ -72,7 +72,7 @@
 | MOEX integration | `moex-iss-api-patterns` | "MOEX", "ISS API", "котировки", "свечи", "IMOEX", "MAE/MFE" |
 | Next.js 16 | `nextjs-react19-server-patterns` | "Server Component", "Server Action", "Suspense", "page.tsx" |
 | 152-ФЗ / ПД | `152-fz-compliance-checklist` | "152-ФЗ", "согласие на ОПД", "ПД", "РКН", "удаление аккаунта" |
-| Любой Eqio-context | `eqio-context-bridge` | "Eqio", "ATOM", "трейдер" (auto-activated) |
+| Любой Empirik-context | `empirik-context-bridge` | "Empirik", "ATOM", "трейдер" (auto-activated) |
 
 **Important**: Skills загружают специализированные инструкции. Если
 задача попадает в category — обязательно активируй ДО кодинга.
@@ -170,7 +170,7 @@ Get-ChildItem "C:\Users\Administrator\AppData\Local\Temp\recon_*.json" -ErrorAct
 
 После steps 1-7 ты должен иметь ответ на:
 
-- [ ] **What project?** (Eqio/ATOM или другой)
+- [ ] **What project?** (Empirik/ATOM или другой)
 - [ ] **What domain?** (compliance, product, tech, ...)
 - [ ] **What skill активирован?**
 - [ ] **Есть ли known errors** связанные с задачей?

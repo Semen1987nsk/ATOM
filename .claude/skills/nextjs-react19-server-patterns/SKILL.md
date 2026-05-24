@@ -1,13 +1,13 @@
 ---
 name: nextjs-react19-server-patterns
-description: Use when writing or refactoring Next.js 16 App Router pages, React 19 components, Server Components, Server Actions, Suspense boundaries, streaming, or data fetching in the Eqio project. Triggers on "Server Component", "Client Component", "Server Action", "Suspense", "streaming", "use client", "Next.js", "React 19", "TanStack Query", "Recharts", "page.tsx", "layout.tsx", "loading.tsx".
+description: Use when writing or refactoring Next.js 16 App Router pages, React 19 components, Server Components, Server Actions, Suspense boundaries, streaming, or data fetching in the Empirik project. Triggers on "Server Component", "Client Component", "Server Action", "Suspense", "streaming", "use client", "Next.js", "React 19", "TanStack Query", "Recharts", "page.tsx", "layout.tsx", "loading.tsx".
 ---
 
-# Next.js 16 + React 19 Server-first паттерны для Eqio
+# Next.js 16 + React 19 Server-first паттерны для Empirik
 
-Гайд для написания страниц и компонентов в `frontend/` Eqio. Цель — отойти от текущего «всё Client» и перейти на Server-first архитектуру там, где это даёт выигрыш: меньше bundle, быстрее first paint, нативный streaming.
+Гайд для написания страниц и компонентов в `frontend/` Empirik. Цель — отойти от текущего «всё Client» и перейти на Server-first архитектуру там, где это даёт выигрыш: меньше bundle, быстрее first paint, нативный streaming.
 
-## 1. Контекст: Eqio frontend сейчас
+## 1. Контекст: Empirik frontend сейчас
 
 Что зафиксировано в `frontend/package.json`:
 
@@ -78,7 +78,7 @@ export default async function Page() {
 
 Client-компоненты должны быть **листьями** дерева, а не корнями. Если `page.tsx` — Server, а внутри — Client `<TradeFilterBar>`, в котором дальше `<TradeList>` (тоже Client из-за useState), — это уже плохо. `<TradeList>` стоит сделать Server и принимать данные через props, а Client-частью оставить только сам фильтр.
 
-### Eqio антипаттерн прямо сейчас
+### Empirik антипаттерн прямо сейчас
 
 `src/app/page.tsx` — `'use client'` стоит на корне страницы. Всё, что внутри, — Client, включая `<EquityCurveCard>`, `<StatsGrid>`, `<AppShell>`. Рекомендованный рефактор:
 
@@ -92,7 +92,7 @@ Client-компоненты должны быть **листьями** дере�
 
 Функции с директивой `'use server'`, вызываемые с клиента как обычные функции, но выполняющиеся на сервере. Под капотом — POST на спец-URL, который Next.js монтирует автоматически.
 
-### Когда использовать в Eqio
+### Когда использовать в Empirik
 
 Хорошие кандидаты:
 - Toggle тега у сделки (`<form action={addTagToTradeAction}>`)
@@ -158,9 +158,9 @@ export async function addTagToTradeAction(_prev: ActionState, formData: FormData
 
 `throw` в Server Action вызывает client-side error boundary и user-friendly fallback. Хорошо для «совсем плохо» (база упала). Для пользовательских ошибок (дубликат тега, превышен лимит) — возвращайте Result-type `{ ok: false, error: string }`. Тогда `useActionState` отдаст это как `state` без перехода в error boundary.
 
-## 4. Server Actions vs прямой fetch к FastAPI в Eqio
+## 4. Server Actions vs прямой fetch к FastAPI в Empirik
 
-Архитектура Eqio: Next на 3000, FastAPI на 8003. Server Action всё равно идёт через сетевой хоп Next → FastAPI. Это не бесплатно. Когда выбирать что:
+Архитектура Empirik: Next на 3000, FastAPI на 8003. Server Action всё равно идёт через сетевой хоп Next → FastAPI. Это не бесплатно. Когда выбирать что:
 
 | Задача | Что использовать | Почему |
 |---|---|---|
@@ -170,7 +170,7 @@ export async function addTagToTradeAction(_prev: ActionState, formData: FormData
 | Импорт CSV | Прямой POST из Client | Большой FormData, прогресс upload'а |
 | Простой submit формы профиля | Server Action + `<Form action={...}>` | Работает без JS, прогрессивное улучшение |
 
-### Преимущества Server Action в Eqio
+### Преимущества Server Action в Empirik
 
 1. CSRF-токен и cookies проброс — Next делает сам
 2. После мутации `revalidateTag('trades-list')` — и Server Component на дашборде получит свежие данные при следующей навигации, без TanStack Query инвалидации
@@ -212,7 +212,7 @@ export default function Dashboard() {
 
 ### Skeleton fallback
 
-В Eqio уже есть `src/components/Skeleton.tsx` (`<DashboardSkeleton>`, `<TradeHistorySkeleton>`). Используйте их прямо как `<Suspense fallback={<DashboardSkeleton />}>`. Не делайте `null` как fallback — пользователь увидит layout-сдвиг.
+В Empirik уже есть `src/components/Skeleton.tsx` (`<DashboardSkeleton>`, `<TradeHistorySkeleton>`). Используйте их прямо как `<Suspense fallback={<DashboardSkeleton />}>`. Не делайте `null` как fallback — пользователь увидит layout-сдвиг.
 
 ## 6. Streaming через loading.tsx и Suspense
 
@@ -220,7 +220,7 @@ export default function Dashboard() {
 
 Next.js 16 стримит HTML по чанкам: shell приходит мгновенно (header, nav, sidebar), внутри — комментарий-заглушка для каждого Suspense-boundary. По мере того как async-компоненты резолвятся, сервер досылает HTML и `<script>`-инструкцию заменить заглушку.
 
-### Pattern для Eqio
+### Pattern для Empirik
 
 ```tsx
 // app/page.tsx (Server, async)
@@ -277,7 +277,7 @@ export default async function RootLayout({ children }: ...) {
 }
 ```
 
-Сейчас в Eqio `AuthContext` фетчит `/auth/me` сам в `useEffect` — это лишний flicker (сначала пустое, потом залогиненный UI). Server-side проброс убирает это.
+Сейчас в Empirik `AuthContext` фетчит `/auth/me` сам в `useEffect` — это лишний flicker (сначала пустое, потом залогиненный UI). Server-side проброс убирает это.
 
 ## 7. Кэширование Next.js 16
 
@@ -299,7 +299,7 @@ const res = await fetch(url, { cache: 'force-cache' });
 const res = await fetch(url, { cache: 'no-store' });
 ```
 
-### Eqio cookbook
+### Empirik cookbook
 
 | Endpoint | Стратегия | Почему |
 |---|---|---|
@@ -366,7 +366,7 @@ export function HistoryClient({ initialTrades }: { initialTrades: Trade[] }) {
 - Все мутации/инвалидации работают через QueryClient как обычно
 - Если `revalidateTag('trades-list')` сработал из Server Action — `initialTrades` обновится при следующем визите страницы, и `initialData` будет новый
 
-### Что в Eqio оставить на TanStack
+### Что в Empirik оставить на TanStack
 
 - Live-portfolio (`PortfolioCard`) — polling каждые 30s
 - Notifications в шапке
@@ -401,7 +401,7 @@ export default function Page() {
 
 ### `useTransition` и `startTransition`
 
-Для тяжёлых state updates без блокировки UI. В Eqio пригодится при смене периода в `<EquityCurveCard>`:
+Для тяжёлых state updates без блокировки UI. В Empirik пригодится при смене периода в `<EquityCurveCard>`:
 
 ```tsx
 const [isPending, startTransition] = useTransition();
@@ -489,7 +489,7 @@ export const tradeId = (n: number): TradeId => n as TradeId;
 
 ### Zod на границах
 
-Все Server Action inputs и все парсинги fetch-response'ов — через Zod. У Eqio уже есть `openapi-typescript` для типов из FastAPI — это чисто **типы**, не **runtime-валидация**. На бэкенд можно доверять, но Server Action input от пользователя — нет.
+Все Server Action inputs и все парсинги fetch-response'ов — через Zod. У Empirik уже есть `openapi-typescript` для типов из FastAPI — это чисто **типы**, не **runtime-валидация**. На бэкенд можно доверять, но Server Action input от пользователя — нет.
 
 ### Без `as`
 
@@ -497,7 +497,7 @@ export const tradeId = (n: number): TradeId => n as TradeId;
 
 ## 11. Recharts + Server Components
 
-Recharts ломается на сервере (нужен `window`). Eqio это уже понимает (`EquityCurveCard.tsx` помечен `'use client'`). Правильный паттерн:
+Recharts ломается на сервере (нужен `window`). Empirik это уже понимает (`EquityCurveCard.tsx` помечен `'use client'`). Правильный паттерн:
 
 ```tsx
 // app/dashboard/equity/page.tsx (Server)
@@ -528,7 +528,7 @@ const HeatmapChart = dynamic(() => import('./HeatmapChart'), {
 
 Это уберёт чарт из main-bundle и из server-render полностью.
 
-## 12. Производительность Eqio frontend
+## 12. Производительность Empirik frontend
 
 ### Bundle size
 
@@ -633,4 +633,4 @@ Next сгенерит страницы на build-time, дальше — хол�
 
 1. `server_action_example.tsx` — Server Action добавления тега к сделке (Zod, revalidateTag, useActionState, useOptimistic)
 2. `streaming_page_example.tsx` — дашборд со streaming через 4 независимых Suspense
-3. `suspense_chart_example.tsx` — Server fetches data, Client renders Recharts (паттерн для всех чартов Eqio)
+3. `suspense_chart_example.tsx` — Server fetches data, Client renders Recharts (паттерн для всех чартов Empirik)

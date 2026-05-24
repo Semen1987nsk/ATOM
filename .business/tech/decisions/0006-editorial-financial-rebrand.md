@@ -6,7 +6,7 @@
 
 ## Контекст
 
-В мае 2026 пользователь констатировал: текущий UI Eqio (лендинг + залогиненная часть) визуально неотличим от типового AI-vibecoded SaaS-аутпута. Аудит UI подтвердил наличие классических «AI-tells», описанных Anthropic в материалах по skill `frontend-design` (ноябрь 2025):
+В мае 2026 пользователь констатировал: текущий UI Empirik (лендинг + залогиненная часть) визуально неотличим от типового AI-vibecoded SaaS-аутпута. Аудит UI подтвердил наличие классических «AI-tells», описанных Anthropic в материалах по skill `frontend-design` (ноябрь 2025):
 
 - **Indigo `#6366F1`** как brand-accent — это статистический центр LLM-генерации UI (~80% всех AI-сгенерированных лендингов).
 - **Фиолетово-индиго градиенты 135°** на 6 Bento-плитках лендинга (`tile-indigo`, `tile-violet`, `tile-emerald`, `tile-rose`, `tile-amber`, `tile-sky`).
@@ -18,7 +18,7 @@
 
 Целевая персона P1 ([`personas.md`](../../product/personas.md)) — «серьёзный РФ-трейдер 28–45, технический/финансовый бэкграунд, скептичен ко всему западному и шаблонному, цена в рублях работает». Для него «выглядит как Linear» — это не плюс, а отталкивающий маркер «ещё один SaaS-сервис, который завтра закроют».
 
-**Освобождная категория:** ни один прямой конкурент в trading-журналах не использует editorial-financial эстетику. TradeZella — Linear-копия, Tradervue — устаревший дашборд-стиль, Edgewonk — корпоративный SaaS, TraderMake/Tradary — generic-крипто-стиль. Финансовая пресса (FT.com, Bloomberg.com/markets, Stripe Press, WSJ.com) — оккупирована издателями, не продуктами. Заняв эту визуальную нишу для трейдинг-журнала, Eqio получает уникальную визуальную подпись, читаемую как «настоящий профессиональный инструмент».
+**Освобождная категория:** ни один прямой конкурент в trading-журналах не использует editorial-financial эстетику. TradeZella — Linear-копия, Tradervue — устаревший дашборд-стиль, Edgewonk — корпоративный SaaS, TraderMake/Tradary — generic-крипто-стиль. Финансовая пресса (FT.com, Bloomberg.com/markets, Stripe Press, WSJ.com) — оккупирована издателями, не продуктами. Заняв эту визуальную нишу для трейдинг-журнала, Empirik получает уникальную визуальную подпись, читаемую как «настоящий профессиональный инструмент».
 
 ## Решение
 
@@ -97,7 +97,7 @@ Primary CTA — rectangle button с `--radius-md` (4px), не pill. Цвет —
 
 ### Плюсы
 
-- **Уникальная визуальная подпись.** Eqio не пересекается визуально ни с одним AI-vibecoded SaaS и ни с одним прямым конкурентом в trading-журналах. Это работает как brand-recognition даже без бюджета на performance-маркетинг.
+- **Уникальная визуальная подпись.** Empirik не пересекается визуально ни с одним AI-vibecoded SaaS и ни с одним прямым конкурентом в trading-журналах. Это работает как brand-recognition даже без бюджета на performance-маркетинг.
 - **Усиление позиционирования.** «MOEX-нативный AI-журнал» + editorial-financial эстетика = consistent message «настоящий финансовый продукт», не «крипта/forex/SaaS-template».
 - **Tone-of-voice resonance.** «Спокойный профи» из `messaging.md` визуально подкрепляется serif-headlines и hairline-композициями. Tone и visual теперь говорят одно и то же.
 - **Premium perception без премиум-бюджета.** Editorial-эстетика читается как «hand-crafted», даже когда генерируется LLM — потому что LLM по умолчанию её не выбирает.
@@ -111,7 +111,7 @@ Primary CTA — rectangle button с `--radius-md` (4px), не pill. Цвет —
 4. **Light theme drastically different** (FT pink-paper). Юзеры с light-preference увидят кардинально изменённый UI. Mitigation — `personas.md` явно говорит «трейдеры работают в темноте», dark остаётся primary.
 5. **`ux-laws.md` напряжение.** Закон «плотность важнее воздуха» для дашборда — Editorial для лендинга использует больше whitespace. Решение: законы применяются по контексту — landing допускает editorial-air, dashboard сохраняет density. `ux-laws.md` не меняется.
 6. **Связь с историей.** `history/2026-05-07-audit-and-stack-up.md` ссылается на «отказ от Bloomberg-cyberpunk → Linear» как достижение. Этот ADR явно supersede это решение, audit-сессия остаётся как historical record.
-7. **Breaking change для скриншотов.** `feature-canon/01-dashboard.md` ссылается на `eqio-final-dashboard.png` — после рефакторинга скриншоты устаревают. Митигация: Phase 5 — пересохранить скриншоты, обновить ссылки.
+7. **Breaking change для скриншотов.** `feature-canon/01-dashboard.md` ссылается на `empirik-final-dashboard.png` — после рефакторинга скриншоты устаревают. Митигация: Phase 5 — пересохранить скриншоты, обновить ссылки.
 8. **Light theme рефакторинг откладывается.** Все 16 hardcoded overrides в `globals.css:551–569` (`text-gray-400`, `bg-white/5` etc.) — legacy для старого Tailwind-кода. После Phase 4 будут визуально странные на новом cream-paper фоне. Не блокер для Phase 0–5, но требует отдельного захода (см. план §«What follows after this plan»).
 
 ## Поведенческие правила

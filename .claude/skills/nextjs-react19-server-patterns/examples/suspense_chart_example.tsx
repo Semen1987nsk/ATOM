@@ -2,7 +2,7 @@
  * Пример: страница «Кривая капитала» с правильным разделением
  * Server (data fetch) и Client (Recharts render).
  *
- * Контекст Eqio:
+ * Контекст Empirik:
  *   - src/components/dashboard/EquityCurveCard.tsx уже Client (Recharts требует window).
  *   - Получает data как props — это правильно.
  *   - Не хватает: Server-обёртки, которая фетчит данные с разными периодами,
@@ -65,7 +65,7 @@ function isValidPeriod(value: string | undefined): value is Period {
 }
 
 export const metadata = {
-  title: 'Кривая капитала · Eqio',
+  title: 'Кривая капитала · Empirik',
 };
 
 export default async function EquityPage({ searchParams }: EquityPageProps) {

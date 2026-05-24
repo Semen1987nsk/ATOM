@@ -165,7 +165,7 @@ def finalize_deletion(db: Session, user_id: int) -> None:
     Phase 2: физическая анонимизация ПД.
     Запускается планировщиком после истечения grace period.
 
-    Каскад по моделям Eqio:
+    Каскад по моделям Empirik:
       - User: email -> deleted_<id>@anon.local, name -> NULL, hashed_password -> NULL,
               oauth_provider_id -> NULL, utm_*/referrer -> NULL.
       - Trade: notes, entry_reason, exit_reason -> NULL (свободный текст пользователя).
@@ -309,7 +309,7 @@ def delete_my_account(
             status_code=400,
             detail=(
                 "Для OAuth-аккаунта удаление через этот endpoint недоступно. "
-                "Напишите на support@eqio.ru — удалим вручную в течение 30 дней."
+                "Напишите на support@empirik.io — удалим вручную в течение 30 дней."
             ),
         )
 

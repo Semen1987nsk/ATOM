@@ -252,7 +252,7 @@ Expected: 8 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd C:/Users/Administrator/Eqio/ATOM
+cd C:/Users/Administrator/Empirik/ATOM
 git add backend/domain/pnl/dashboard_pnl.py backend/tests/unit/test_dashboard_pnl_headline.py
 git commit -m "$(cat <<'EOF'
 feat(pnl): phase 6.4 — journal-style dashboard headline
@@ -461,7 +461,7 @@ Expected: 470+ passed (previous baseline).
 - [ ] **Step 9: Commit**
 
 ```bash
-cd C:/Users/Administrator/Eqio/ATOM
+cd C:/Users/Administrator/Empirik/ATOM
 git add backend/routers/stats.py backend/schemas.py backend/tests/test_api.py
 git commit -m "$(cat <<'EOF'
 feat(stats): wire journal-style headline + expose cash_truth_pnl field
@@ -615,7 +615,7 @@ Run: `cd frontend && npm run dev` (если ещё не запущен)
 - [ ] **Step 7: Commit**
 
 ```bash
-cd C:/Users/Administrator/Eqio/ATOM
+cd C:/Users/Administrator/Empirik/ATOM
 git add frontend/src/app/page.tsx frontend/src/components/dashboard/StatsGrid.tsx
 git commit -m "$(cat <<'EOF'
 feat(dashboard): live unrealized override for headline
@@ -650,7 +650,7 @@ Expected: все green.
 Run:
 
 ```bash
-cd C:/Users/Administrator/Eqio/ATOM/backend && python -X utf8 -c "
+cd C:/Users/Administrator/Empirik/ATOM/backend && python -X utf8 -c "
 import database, models
 from domain.pnl.dashboard_pnl import compute_pnl_headline
 from domain.pnl.cash_flow_classification import CashFlowCategory, operation_types_in
@@ -723,7 +723,7 @@ Start-Sleep -Seconds 2
 Then в Bash:
 
 ```bash
-cd C:/Users/Administrator/Eqio/ATOM/backend && python -X utf8 -m uvicorn main:app --host 127.0.0.1 --port 8000 > backend.out.log 2> backend.err.log &
+cd C:/Users/Administrator/Empirik/ATOM/backend && python -X utf8 -m uvicorn main:app --host 127.0.0.1 --port 8000 > backend.out.log 2> backend.err.log &
 ```
 
 Wait for backend ready:

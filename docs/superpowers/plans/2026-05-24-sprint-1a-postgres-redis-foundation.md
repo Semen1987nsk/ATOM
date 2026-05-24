@@ -63,7 +63,7 @@ def test_postgres_in_prod_ok():
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_db_env_guard.py -q
 ```
 Expected: FAIL — `ImportError: cannot import name '_assert_db_safe_for_env'`.
@@ -124,7 +124,7 @@ if IS_SQLITE:
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_db_env_guard.py -q
 DEBUG=true PYTHONUTF8=1 python -X utf8 -c "from main import app; print('IMPORT-OK', len(app.routes))"
 ```
@@ -243,7 +243,7 @@ def test_redis_failure_degrades_to_miss_not_crash():
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_redis_stats_cache.py -q
 ```
 Expected: FAIL — `ImportError: cannot import name 'RedisStatsCache'`.
@@ -339,7 +339,7 @@ stats_cache = build_stats_cache(ttl_seconds=30, max_size=100)
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_redis_stats_cache.py -q
 DEBUG=true PYTHONUTF8=1 python -X utf8 -c "from services.stats_cache import stats_cache, StatsCache; print('FALLBACK-OK', isinstance(stats_cache, StatsCache))"
 ```
@@ -349,7 +349,7 @@ Expected: 7 passed; `FALLBACK-OK True` (нет REDIS_URL → in-memory).
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit -k "stats or cache" -q
 ```
 Expected: PASS (фабрика без REDIS_URL ведёт себя как раньше).
@@ -431,7 +431,7 @@ def test_connection_kept_open_when_lock_acquired(monkeypatch):
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_scheduler_lock_no_leak.py -q
 ```
 Expected: FAIL (в текущем коде `conn.closed` остаётся False в ветке ошибки, либо тест не может подменить engine из-за локального import).
@@ -472,7 +472,7 @@ Expected: FAIL (в текущем коде `conn.closed` остаётся False 
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_scheduler_lock_no_leak.py -q
 DEBUG=true PYTHONUTF8=1 python -X utf8 -c "import sync_scheduler; print('OK')"
 ```
@@ -518,7 +518,7 @@ def test_scheduler_skips_on_non_scheduler_worker(monkeypatch):
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_scheduler_worker_gate.py -q
 ```
 Expected: PASS. (Verification-тест: фича есть, тест фиксирует поведение. Если падает — gate сломан, чинить `scheduler.start()`.)
@@ -541,7 +541,7 @@ Expected: PASS. (Verification-тест: фича есть, тест фиксир
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -c "from main import app; print('IMPORT-OK', len(app.routes))"
 ```
 Expected: IMPORT-OK <N>.
@@ -582,7 +582,7 @@ git commit -m "docs+test(infra): PERF-11 gate test, readiness log, prod DB/Redis
 
 - [ ] Полный unit-прогон зелёный:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit -q
 ```
 Expected: все passed (523 базовых + новые из 1A; 0 failed).

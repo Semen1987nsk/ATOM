@@ -1,10 +1,10 @@
-# CLAUDE.md — рабочие правила Eqio
+# CLAUDE.md — рабочие правила Empirik
 
-Базовые правила работы Claude в проекте Eqio. Читается каждой сессией.
+Базовые правила работы Claude в проекте Empirik. Читается каждой сессией.
 
 ## Что это за проект
 
-**Eqio** — SaaS-журнал торговых сделок для активных российских ритейл-трейдеров MOEX. Stack: FastAPI + Next.js 16 + SQLAlchemy 2.0 + PostgreSQL/SQLite + Tailwind v4 + Recharts.
+**Empirik** — SaaS-журнал торговых сделок для активных российских ритейл-трейдеров MOEX. Stack: FastAPI + Next.js 16 + SQLAlchemy 2.0 + PostgreSQL/SQLite + Tailwind v4 + Recharts.
 
 В корне репозитория — `backend/`, `frontend/`, `docs/`, `nginx/`, `.business/` (база знаний), `.claude/` (скиллы и конфиг), `.vscode/`.
 
@@ -25,7 +25,7 @@
 - `fastapi-sqlalchemy-patterns` — для backend
 - `moex-iss-api-patterns` — для свечей / котировок
 - `nextjs-react19-server-patterns` — для Server Components
-- `eqio-context-bridge` — мостик к базе знаний (срабатывает на широкий набор слов проекта)
+- `empirik-context-bridge` — мостик к базе знаний (срабатывает на широкий набор слов проекта)
 
 ## CRITICAL: superpowers на каждом промте
 
@@ -39,7 +39,7 @@ User rule зафиксирован 2026-05-19 в [`memory/feedback_always_invoke
 
 Краткая версия (7 шагов):
 
-1. **Identify Project** — это Eqio/ATOM? (если другой — STOP, см. [`memory/feedback_not_my_task.md`])
+1. **Identify Project** — это Empirik/ATOM? (если другой — STOP, см. [`memory/feedback_not_my_task.md`])
 2. **Read `.business/index.md`** — карта доменов + триггеры
 3. **Read recent memories** — `memory/MEMORY.md` index + 5 most-recent files
 4. **Map task → skills** — активируй соответствующий skill
@@ -66,7 +66,7 @@ User rule зафиксирован 2026-05-19 в [`memory/feedback_always_invoke
 | Pre-flight | `docs/PREFLIGHT_CHECKLIST.md` | 7 шагов на старте |
 | Coding rules | `docs/CODING_CONVENTIONS.md` | Backend + Frontend + Tests + Git |
 | External API | `docs/TINKOFF_*.md`, `docs/MOEX_*.md` | T-Bank / MOEX contracts |
-| Memory | `C:\Users\Administrator\.claude\projects\c--Users-Administrator-Eqio\memory\` | Кросс-сессионные уроки |
+| Memory | `C:\Users\Administrator\.claude\projects\c--Users-Administrator-Empirik\memory\` | Кросс-сессионные уроки |
 | Plans | `C:\Users\Administrator\.claude\plans\` | Рабочие планы прошлых сессий |
 
 ## Кто пользователь
@@ -130,7 +130,7 @@ symptom, root cause, fix command, prevention, reference.
 
 ## Auto-memory rules — что save в memory/ автоматически
 
-Memory location: `C:\Users\Administrator\.claude\projects\c--Users-Administrator-Eqio\memory\`.
+Memory location: `C:\Users\Administrator\.claude\projects\c--Users-Administrator-Empirik\memory\`.
 
 Полные правила: `memory/MEMORY.md` (rules section).
 
@@ -199,11 +199,11 @@ Memory location: `C:\Users\Administrator\.claude\projects\c--Users-Administrator
 - Чек-листы и тесты — в структурированном формате (таблица / JSON).
 - В начале сессии: посмотри текущую папку, прочитай файл прогресса, при необходимости — последние коммиты git, и только потом действуй.
 
-## Инструменты Eqio
+## Инструменты Empirik
 
 Полный реестр стека — в [docs/STACK.md](docs/STACK.md). Здесь — короткая шпаргалка.
 
-**Скиллы Eqio (в `.claude/skills/` этого репо, активируются автоматически):**
+**Скиллы Empirik (в `.claude/skills/` этого репо, активируются автоматически):**
 
 | Триггер задачи в ATOM | Skill / правило |
 |---|---|
@@ -214,13 +214,13 @@ Memory location: `C:\Users\Administrator\.claude\projects\c--Users-Administrator
 | 152-ФЗ — согласие на ОПД, политика, удаление, РКН | `152-fz-compliance-checklist` |
 | P&L работы (журнал, cash, reconcile, FIFO, varmargin, futures formula) | **ОБЯЗАТЕЛЬНО:** прочитать [ADR-0007](.business/tech/decisions/0007-pnl-methodology-invariants.md) (8 инвариантов + reconciliation формула + что НЕ ломать). Cheatsheet: [docs/PNL_PLAYBOOK.md](docs/PNL_PLAYBOOK.md). Memory: `feedback_pnl_cash_sanity_check` |
 | UI rebrand / Editorial Financial канон v3 | `.business/product/CLAUDE.md` + `design-system.md` v3 |
-| Любая Eqio задача в широком смысле | `eqio-context-bridge` (auto-triggers по словарю) |
+| Любая Empirik задача в широком смысле | `empirik-context-bridge` (auto-triggers по словарю) |
 
 **MCP-серверы (подключены):** context7, deepwiki, github, playwright. Остальные (YooKassa, Sentry, Yandex Cloud, YouTrack, Postgres) — план на ближайшие недели, см. STACK.md §3.
 
 **VS Code:** при первом открытии проекта VS Code предложит установить рекомендованные расширения из `.vscode/extensions.json`. Готовые конфигурации отладки в `.vscode/launch.json` (Backend, Frontend, Full Stack).
 
-**Не использовать:** скиллы из других проектов (`django-*`, `dart-flutter-*`, `celery-*`, `htmx-*`, `pdf`, `pptx`, `docx`, `xlsx`, и т.д. — они для методичек/Flutter/Django, не для Eqio).
+**Не использовать:** скиллы из других проектов (`django-*`, `dart-flutter-*`, `celery-*`, `htmx-*`, `pdf`, `pptx`, `docx`, `xlsx`, и т.д. — они для методичек/Flutter/Django, не для Empirik).
 
 ## Завершение каждого чата — рефлексия
 

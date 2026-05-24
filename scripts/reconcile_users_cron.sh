@@ -6,19 +6,19 @@
 # reconciliation это correctness check (P&L vs broker report).
 #
 # Cron entry:
-#   0 5 * * * /opt/eqio/scripts/reconcile_users_cron.sh
+#   0 5 * * * /opt/empirik/scripts/reconcile_users_cron.sh
 #
 # Env vars:
-#   BACKEND_DIR        — корень backend (default /opt/eqio/backend)
-#   LOG_DIR            — куда писать JSON отчёт (default /var/log/eqio)
+#   BACKEND_DIR        — корень backend (default /opt/empirik/backend)
+#   LOG_DIR            — куда писать JSON отчёт (default /var/log/empirik)
 #   PYTHON_BIN         — путь к python (default python3)
 #   SLACK_WEBHOOK      — Slack webhook URL для алертов (опционально)
 #   RECONCILE_DAYS     — окно reconciliation в днях (default 30)
 
 set -euo pipefail
 
-BACKEND_DIR="${BACKEND_DIR:-/opt/eqio/backend}"
-LOG_DIR="${LOG_DIR:-/var/log/eqio}"
+BACKEND_DIR="${BACKEND_DIR:-/opt/empirik/backend}"
+LOG_DIR="${LOG_DIR:-/var/log/empirik}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 RECONCILE_DAYS="${RECONCILE_DAYS:-30}"
 

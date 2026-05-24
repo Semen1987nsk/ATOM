@@ -41,7 +41,7 @@
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM
+cd /c/Users/Administrator/Empirik/ATOM
 git ls-files "backend/.env.local.bak" "*.bak"
 ```
 Expected: пусто (файл untracked). Если что-то вывелось — СТОП, файл уже в индексе/истории: сообщить основателю (нужен `git rm --cached` + ротация секретов), не продолжать молча.
@@ -105,7 +105,7 @@ def test_no_deprecated_query_regex():
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_no_deprecated_query_regex.py -q
 ```
 Expected: FAIL — offenders содержит `trades.py:537` и `admin.py:1471`.
@@ -136,7 +136,7 @@ Expected: FAIL — offenders содержит `trades.py:537` и `admin.py:1471`
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_no_deprecated_query_regex.py -q
 PYTHONUTF8=1 python -X utf8 -c "from main import app; print('IMPORT-OK', len(app.routes))"
 ```
@@ -195,7 +195,7 @@ def test_true_when_enabled(monkeypatch):
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_worker_role.py -q
 ```
 Expected: FAIL — `ModuleNotFoundError: No module named 'worker_role'`.
@@ -224,7 +224,7 @@ def is_scheduler_worker() -> bool:
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_worker_role.py -q
 ```
 Expected: PASS (3 passed).
@@ -263,7 +263,7 @@ Expected: PASS (3 passed).
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -c "from main import app; print('IMPORT-OK', len(app.routes))"
 ```
 Expected: `IMPORT-OK <N>` без ошибок.
@@ -319,7 +319,7 @@ def test_returns_value_when_set(monkeypatch):
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_config_master_key.py -q
 ```
 Expected: FAIL — `ImportError: cannot import name '_resolve_master_key_b64'`.
@@ -376,7 +376,7 @@ def _resolve_master_key_b64() -> str:
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONUTF8=1 python -X utf8 -m pytest tests/unit/test_config_master_key.py -q
 DEBUG=true PYTHONUTF8=1 python -X utf8 -c "from main import app; print('IMPORT-OK', len(app.routes))"
 ```
@@ -405,7 +405,7 @@ git commit -m "feat(security): fail-fast MASTER_KEY_B64 in production (INFRA-15)
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DATABASE_URL=postgresql://x AUTO_INIT_DB=true PYTHONUTF8=1 python -X utf8 -c "import config; print('NO-RAISE (unexpected)')" || echo "RAISED as expected"
 DATABASE_URL=postgresql://x PYTHONUTF8=1 python -X utf8 -c "import config; print('OK without AUTO_INIT_DB')"
 ```
@@ -423,7 +423,7 @@ Expected: первая команда → `RAISED as expected`; вторая →
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 DEBUG=true PYTHONUTF8=1 python -X utf8 -m pytest tests/unit -q --maxfail=5
 ```
 Expected: PASS (unit-тесты создают схему через `Base.metadata.create_all` в фикстуре, не зависят от `AUTO_INIT_DB`).
@@ -478,7 +478,7 @@ git commit -m "ci: drop AUTO_INIT_DB=true (crashes on Postgres guard; schema fro
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM
+cd /c/Users/Administrator/Empirik/ATOM
 grep -n "opensource.tbank.ru\|extra-index-url\|requirements" backend/Dockerfile
 ```
 - Если `pip install` в `backend/Dockerfile` НЕ содержит `--extra-index-url https://opensource.tbank.ru/...` — добавить его к соответствующей `pip install -r requirements*.` строке (тем же URL). Если уже есть — пропустить.
@@ -535,7 +535,7 @@ const fraunces = Fraunces({
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/frontend
+cd /c/Users/Administrator/Empirik/ATOM/frontend
 npx tsc --noEmit
 echo "exit: $?"
 ```
@@ -552,7 +552,7 @@ Expected: `exit: 0` (нет `error TS`).
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/frontend
+cd /c/Users/Administrator/Empirik/ATOM/frontend
 npm run lint; echo "exit: $?"
 ```
 Expected: `exit: 0` (только warnings, не errors). Если `exit: 1` (есть errors) — починить их в этом же шаге ДО снятия `|| true`; перечислить и исправить точечно.
@@ -561,7 +561,7 @@ Expected: `exit: 0` (только warnings, не errors). Если `exit: 1` (е
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/frontend
+cd /c/Users/Administrator/Empirik/ATOM/frontend
 npm test
 ```
 Expected: `Test Files 2 passed`, все тесты passed.
@@ -646,7 +646,7 @@ exclude = "(alembic/|tests/)"
 
 Run:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 pip install ruff mypy >/dev/null 2>&1 || true
 ruff check . || true
 mypy . || true

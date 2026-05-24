@@ -6,12 +6,12 @@
 # временную БД. Если restore падает — алертим (cron шлёт письмо).
 #
 # Usage (cron):
-#   0 5 * * 0 /opt/eqio/scripts/restore_test.sh >> /var/log/eqio/restore-test.log 2>&1
+#   0 5 * * 0 /opt/empirik/scripts/restore_test.sh >> /var/log/empirik/restore-test.log 2>&1
 #
 # Env:
 #   DATABASE_URL    — основной prod URL (используется для парсинга host/user/password)
-#   BACKUP_DIR      — где лежат бэкапы (default /var/lib/eqio/backups)
-#   TEST_DB_NAME    — имя временной БД (default eqio_restore_test)
+#   BACKUP_DIR      — где лежат бэкапы (default /var/lib/empirik/backups)
+#   TEST_DB_NAME    — имя временной БД (default empirik_restore_test)
 #
 # Exit codes:
 #   0 — restore OK + smoke passed
@@ -22,10 +22,10 @@
 set -euo pipefail
 
 : "${DATABASE_URL:?DATABASE_URL not set}"
-BACKUP_DIR="${BACKUP_DIR:-/var/lib/eqio/backups}"
-TEST_DB_NAME="${TEST_DB_NAME:-eqio_restore_test}"
+BACKUP_DIR="${BACKUP_DIR:-/var/lib/empirik/backups}"
+TEST_DB_NAME="${TEST_DB_NAME:-empirik_restore_test}"
 
-LATEST=$(ls -t "${BACKUP_DIR}"/eqio-*.sql.gz 2>/dev/null | head -1 || true)
+LATEST=$(ls -t "${BACKUP_DIR}"/empirik-*.sql.gz 2>/dev/null | head -1 || true)
 if [ -z "${LATEST}" ]; then
     echo "[$(date -Iseconds)] ❌ No backups found in ${BACKUP_DIR}"
     exit 1

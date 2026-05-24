@@ -68,7 +68,7 @@
 
   "sqltools.connections": [
     {
-      "name": "Eqio Local Postgres",
+      "name": "Empirik Local Postgres",
       "driver": "PostgreSQL",
       "previewLimit": 50,
       "server": "localhost",

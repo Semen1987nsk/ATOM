@@ -1,4 +1,4 @@
-# API контракты Eqio
+# API контракты Empirik
 
 > Краткий справочник по ключевым endpoint'ам. Полная OpenAPI — на `/docs` (FastAPI).
 

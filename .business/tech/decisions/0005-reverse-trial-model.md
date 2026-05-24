@@ -44,7 +44,7 @@
 - Optimal f / SQN / Monte Carlo — финальный PDF-отчёт trial доступен навсегда
 - Trade Replay — read-only для сделок trial-периода
 
-«Заморожено» = визуально присутствует с `🧊 Pro`-бейджем + inline-CTA «Возобновить → Pro 399₽». Никаких всплывающих модалок (тон Eqio, см. [`marketing/positioning.md`](../../marketing/positioning.md)).
+«Заморожено» = визуально присутствует с `🧊 Pro`-бейджем + inline-CTA «Возобновить → Pro 399₽». Никаких всплывающих модалок (тон Empirik, см. [`marketing/positioning.md`](../../marketing/positioning.md)).
 
 ### Карта не запрашивается при старте trial
 

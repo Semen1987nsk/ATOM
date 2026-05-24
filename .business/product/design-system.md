@@ -1,4 +1,4 @@
-# Дизайн-система Eqio — v3 (Editorial Financial)
+# Дизайн-система Empirik — v3 (Editorial Financial)
 
 > Источник истины. Любое новое UI-решение проверяется отсюда.
 > Реализация в коде: `frontend/src/app/globals.css`.

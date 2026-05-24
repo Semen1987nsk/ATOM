@@ -1,4 +1,4 @@
-# Eqio Coding Conventions
+# Empirik Coding Conventions
 
 > Code conventions для backend (Python 3.11+, FastAPI, SQLAlchemy 2.0)
 > и frontend (Next.js 16, React 19, TypeScript). Каждое правило с

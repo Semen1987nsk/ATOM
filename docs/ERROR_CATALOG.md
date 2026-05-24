@@ -1,4 +1,4 @@
-# Eqio Error Catalog
+# Empirik Error Catalog
 
 > Каталог известных ошибок и их фиксов. **Обращайся сюда ДО того как
 > расследовать новую ошибку** — большая часть pitfall'ов уже задокументирована.
@@ -39,7 +39,7 @@ in certificate chain
 pwsh scripts\build_grpc_ca_bundle.ps1
 # Outputs: backend\.local\combined_ca_bundle.pem
 # Затем set env-var:
-$env:TINKOFF_GRPC_CA_BUNDLE = "C:\Users\Administrator\Eqio\ATOM\backend\.local\combined_ca_bundle.pem"
+$env:TINKOFF_GRPC_CA_BUNDLE = "C:\Users\Administrator\Empirik\ATOM\backend\.local\combined_ca_bundle.pem"
 # config.py:35-43 транслирует в GRPC_DEFAULT_SSL_ROOTS_FILE_PATH до import grpc
 ```
 

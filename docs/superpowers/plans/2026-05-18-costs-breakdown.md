@@ -67,7 +67,7 @@ Expected: пусто (только определения уже переиме�
 - [ ] **Step 4: Commit**
 
 ```bash
-cd C:/Users/Administrator/Eqio/ATOM
+cd C:/Users/Administrator/Empirik/ATOM
 git add backend/domain/pnl/fee_attribution.py
 git commit -m "refactor: export MARGIN_LIKE_FEE_TYPES/SERVICE_LIKE_FEE_TYPES from fee_attribution
 

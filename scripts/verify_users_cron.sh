@@ -6,18 +6,18 @@
 #
 # Setup:
 #   crontab -e
-#   0 4 * * * /opt/eqio/scripts/verify_users_cron.sh
+#   0 4 * * * /opt/empirik/scripts/verify_users_cron.sh
 #
 # Env:
-#   EQIO_HOME           — root (default /opt/eqio)
-#   VERIFY_LOG_DIR      — куда писать JSON отчёты (default /var/log/eqio/verify)
+#   EMPIRIK_HOME           — root (default /opt/empirik)
+#   VERIFY_LOG_DIR      — куда писать JSON отчёты (default /var/log/empirik/verify)
 #   VERIFY_SLACK_WEBHOOK — Slack incoming webhook URL для алертов (optional)
 #   VERIFY_RETAIN_DAYS  — сколько дней хранить (default 30)
 
 set -euo pipefail
 
-EQIO_HOME="${EQIO_HOME:-/opt/eqio}"
-VERIFY_LOG_DIR="${VERIFY_LOG_DIR:-/var/log/eqio/verify}"
+EMPIRIK_HOME="${EMPIRIK_HOME:-/opt/empirik}"
+VERIFY_LOG_DIR="${VERIFY_LOG_DIR:-/var/log/empirik/verify}"
 RETAIN_DAYS="${VERIFY_RETAIN_DAYS:-30}"
 
 mkdir -p "${VERIFY_LOG_DIR}"
@@ -28,7 +28,7 @@ SUMMARY_FILE="${VERIFY_LOG_DIR}/verify-${TIMESTAMP}.summary.txt"
 
 echo "[$(date -Iseconds)] Starting verify_user --all-users"
 
-cd "${EQIO_HOME}/backend"
+cd "${EMPIRIK_HOME}/backend"
 
 # --no-live можно подменить env'ом для скоростного DB-only режима
 VERIFY_FLAGS="${VERIFY_FLAGS:---no-live}"
@@ -52,7 +52,7 @@ if [ ${EXIT_CODE} -eq 2 ] && [ -n "${VERIFY_SLACK_WEBHOOK:-}" ]; then
     SUMMARY=$(tail -20 "${SUMMARY_FILE}" | tr '\n' ' ' | head -c 500)
     PAYLOAD=$(cat <<EOF
 {
-  "text": "🚨 Eqio verify_user: ${ERR_COUNT} errors detected",
+  "text": "🚨 Empirik verify_user: ${ERR_COUNT} errors detected",
   "attachments": [{
     "color": "danger",
     "title": "Nightly verification failed",

@@ -13,7 +13,7 @@
 
 ## Контекст и текущее состояние
 
-Eqio/ATOM — SaaS-журнал сделок для ритейл-трейдеров MOEX. Stack: FastAPI + SQLAlchemy 2.0 + Next.js 16/React 19 + Tailwind v4; интеграции Tinkoff/T-Bank gRPC + MOEX ISS; P&L-движок (FIFO, futures varmargin, bonds, options) с cash-anchored reconciliation (ADR-0007/0008).
+Empirik/ATOM — SaaS-журнал сделок для ритейл-трейдеров MOEX. Stack: FastAPI + SQLAlchemy 2.0 + Next.js 16/React 19 + Tailwind v4; интеграции Tinkoff/T-Bank gRPC + MOEX ISS; P&L-движок (FIFO, futures varmargin, bonds, options) с cash-anchored reconciliation (ADR-0007/0008).
 
 **Прод ещё НЕ развёрнут** (SQLite локально, нет TLS, нет CD, Sentry/metrics не настроены). То есть это **pre-launch hardening**, не починка живого прода.
 
@@ -104,7 +104,7 @@ Severity: 🔴 Blocker (гейтит запуск) · 🟠 High · 🟡 Medium �
 | SEC-12 | 🟡 | Policy SHA-256 не посчитан; юрист не утвердил | `.business/compliance/policy-versions.md:7` | Легал |
 | SEC-13 | ⚪ | Ticker без allowlist в MOEX-URL | `market_service.py:385` | S2 |
 | SEC-14 | ⚪ | CSP `unsafe-inline` в script-src | `middleware.py:66` | S5 |
-| SEC-15 | 🔴 | DPO/`privacy@eqio.ru`/юрлицо отсутствуют | `.business/compliance/152-fz-status.md:10` | Легал |
+| SEC-15 | 🔴 | DPO/`privacy@empirik.io`/юрлицо отсутствуют | `.business/compliance/152-fz-status.md:10` | Легал |
 
 ### Производительность / БД / нагрузка
 | ID | Sev | Находка | Evidence | Спринт |
@@ -207,7 +207,7 @@ Severity: 🔴 Blocker (гейтит запуск) · 🟠 High · 🟡 Medium �
 
 ### ⟂ Параллельный трек — Легал/152-ФЗ (владелец: основатель)
 Идёт вдоль S1–S6, гейтит только запуск. Состав: SEC-02, SEC-03, SEC-11, SEC-12, SEC-15, INFRA-07 (Lockbox/хостинг РФ).
-- Юрлицо (ИП/ООО) → назначить DPO → `privacy@eqio.ru`.
+- Юрлицо (ИП/ООО) → назначить DPO → `privacy@empirik.io`.
 - РКН-уведомление (форма Н-152) подано.
 - Хостинг ПД в РФ (Yandex Cloud/Selectel) — стыкуется с инфрой S1/S6.
 - Юрист утверждает Privacy Policy v2; cookie-consent с категориями + server-side хранение; SHA-256 версии политики.

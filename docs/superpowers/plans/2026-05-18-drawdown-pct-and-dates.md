@@ -451,7 +451,7 @@ git commit -m "feat(stats-grid): даты пика и дна в плитке М�
 - [ ] **Step 1: Найти `<EquityCurveCard ...>` в page.tsx**
 
 ```bash
-grep -n "EquityCurveCard" /c/Users/Administrator/Eqio/ATOM/frontend/src/app/page.tsx
+grep -n "EquityCurveCard" /c/Users/Administrator/Empirik/ATOM/frontend/src/app/page.tsx
 ```
 
 - [ ] **Step 2: Добавить новые props**

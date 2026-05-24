@@ -1,6 +1,6 @@
 # Эталон №3 — Trade Replay (свечи MOEX вокруг сделки)
 
-**Скриншот:** `eqio-replay-realistic.png`
+**Скриншот:** `empirik-replay-realistic.png`
 **Код:** `frontend/src/app/replay/...` + `backend/routers/replay.py` + `backend/market_service.py:get_candles()`
 
 ## Что это и почему важно

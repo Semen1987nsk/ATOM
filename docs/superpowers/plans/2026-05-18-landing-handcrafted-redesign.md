@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Поднять guest-landing до уровня «видно ручную работу» + выполнить rebrand Eqio → МААТТ. Cream-палитра, Trader Desk характер, 3 живых момента (ticker / candle chart / Trade Replay).
+**Goal:** Поднять guest-landing до уровня «видно ручную работу» + выполнить rebrand Empirik → Эмпирик. Cream-палитра, Trader Desk характер, 3 живых момента (ticker / candle chart / Trade Replay).
 
-**Architecture:** Single-page React-лендинг в Next.js 16 App Router. Server-side rendered Landing.tsx с client-компонентами только для интерактива (ticker, candle hover, replay slider). Backend — один FastAPI router с server-cached ticker. Snapshot-скрипты для генерации статических MOEX-данных в bundle. Цветовая изоляция через `[data-theme="maatt-cream"]` — auth-зона не трогается.
+**Architecture:** Single-page React-лендинг в Next.js 16 App Router. Server-side rendered Landing.tsx с client-компонентами только для интерактива (ticker, candle hover, replay slider). Backend — один FastAPI router с server-cached ticker. Snapshot-скрипты для генерации статических MOEX-данных в bundle. Цветовая изоляция через `[data-theme="empirik-cream"]` — auth-зона не трогается.
 
 **Tech Stack:**
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind v4, `next/font` (Fraunces variable + Inter + JetBrains Mono), TanStack Query
@@ -46,7 +46,7 @@ frontend/
         │   ├── TradeReplayWidget.tsx           ← client, SVG + range slider
         │   ├── ManuscriptFeather.tsx           ← SSR, hand-tuned SVG
         │   ├── ManifestCutIn.tsx               ← SSR, pull-quote
-        │   └── MaattOrigin.tsx                 ← SSR, marginalia + ManuscriptFeather
+        │   └── EmpirikOrigin.tsx                 ← SSR, marginalia + ManuscriptFeather
         └── data/
             ├── ticker-fallback.ts              ← статические prices
             ├── hero-equity-snapshot.ts         ← cohort-anon curve
@@ -61,7 +61,7 @@ frontend/scripts/landing-assets/
 frontend/public/landing/
 ├── favicon-feather.svg                         ← одна-линия перо
 ├── favicon-feather-32.png                      ← Safari <15 fallback
-├── og-image-maatt.png                          ← 1200×630
+├── og-image-empirik.png                          ← 1200×630
 └── ai-card-sber-screenshot.png                 ← capture-screenshots output
 ```
 
@@ -71,7 +71,7 @@ frontend/public/landing/
 |---|---|
 | `frontend/package.json` | + Playwright, + dev scripts (`test:e2e`, `test:visual`, `assets:*`) |
 | `frontend/src/app/layout.tsx` | next/font Fraunces variable + Inter + JetBrains Mono |
-| `frontend/src/app/globals.css` | блок `[data-theme="maatt-cream"]` с cream tokens |
+| `frontend/src/app/globals.css` | блок `[data-theme="empirik-cream"]` с cream tokens |
 | `frontend/src/components/landing/Landing.tsx` | полная пере-разметка под IA 14 секций |
 | `backend/main.py` или `backend/app.py` | подключение нового router'a `landing.py` |
 
@@ -84,7 +84,7 @@ frontend/public/landing/
 | **0. Setup** | 1-3 | Playwright, шрифты, palette tokens |
 | **1. Backend** | 4 | Ticker endpoint + tests |
 | **2. Data snapshots** | 5-7 | Snapshot скрипты + JSON-data в bundle |
-| **3. Static components** | 8-11 | ManifestCutIn, ManuscriptFeather, MaattOrigin, HeroEquityCurve |
+| **3. Static components** | 8-11 | ManifestCutIn, ManuscriptFeather, EmpirikOrigin, HeroEquityCurve |
 | **4. Interactive components** | 12-14 | LiveTicker, InteractiveCandleChart, TradeReplayWidget |
 | **5. Landing integration** | 15-16 | Перекомпонован Landing.tsx + smoke e2e |
 | **6. Brand assets** | 17-19 | Favicon, AI-card screenshot, OG image |
@@ -255,10 +255,10 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
 В конец `frontend/src/app/globals.css`:
 
 ```css
-/* ═════════ МААТТ Editorial Cream — landing palette ═════════
+/* ═════════ Эмпирик Editorial Cream — landing palette ═════════
    Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
    См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
-[data-theme="maatt-cream"] {
+[data-theme="empirik-cream"] {
   --paper:           #FAF8F2;
   --ink:             #14110B;
   --ink-2:           rgba(20, 17, 11, 0.62);
@@ -274,7 +274,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   color: var(--ink);
 }
 
-[data-theme="maatt-cream"] .editorial-eyebrow {
+[data-theme="empirik-cream"] .editorial-eyebrow {
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -282,7 +282,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   color: var(--ink-3);
 }
 
-[data-theme="maatt-cream"] .editorial-display {
+[data-theme="empirik-cream"] .editorial-display {
   font-family: var(--font-serif), Georgia, serif;
   font-weight: 350;
   font-size: clamp(44px, 6vw, 88px);
@@ -291,7 +291,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   font-variation-settings: "opsz" 144, "SOFT" 30;
 }
 
-[data-theme="maatt-cream"] .editorial-h2 {
+[data-theme="empirik-cream"] .editorial-h2 {
   font-family: var(--font-serif), Georgia, serif;
   font-weight: 400;
   font-size: clamp(32px, 4vw, 52px);
@@ -300,7 +300,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   font-variation-settings: "opsz" 96, "SOFT" 20;
 }
 
-[data-theme="maatt-cream"] .editorial-lede {
+[data-theme="empirik-cream"] .editorial-lede {
   font-family: var(--font-serif), Georgia, serif;
   font-style: italic;
   font-weight: 300;
@@ -309,7 +309,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   color: var(--ink-2);
 }
 
-[data-theme="maatt-cream"] .editorial-pullquote {
+[data-theme="empirik-cream"] .editorial-pullquote {
   font-family: var(--font-serif), Georgia, serif;
   font-weight: 400;
   font-style: italic;
@@ -318,12 +318,12 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   font-variation-settings: "opsz" 144, "SOFT" 40, "WONK" 1;
 }
 
-[data-theme="maatt-cream"] .num {
+[data-theme="empirik-cream"] .num {
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
 }
 
-[data-theme="maatt-cream"] .btn-primary {
+[data-theme="empirik-cream"] .btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -337,17 +337,17 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   text-decoration: none;
   transition: transform 120ms ease, background 120ms ease;
 }
-[data-theme="maatt-cream"] .btn-primary:hover {
+[data-theme="empirik-cream"] .btn-primary:hover {
   background: #000;
   transform: translateY(-1px);
 }
 
-[data-theme="maatt-cream"] .editorial-table {
+[data-theme="empirik-cream"] .editorial-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }
-[data-theme="maatt-cream"] .editorial-table th {
+[data-theme="empirik-cream"] .editorial-table th {
   text-align: left;
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-size: 11px;
@@ -358,7 +358,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
   padding: 12px 8px;
   border-bottom: 1px solid var(--rule-strong);
 }
-[data-theme="maatt-cream"] .editorial-table td {
+[data-theme="empirik-cream"] .editorial-table td {
   padding: 14px 8px;
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
@@ -369,8 +369,8 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
 
 Временно в `app/page.tsx` ИЛИ в `Landing.tsx` добавить наверх:
 ```tsx
-<div data-theme="maatt-cream" style={{ padding: 20 }}>
-  <h1 className="editorial-display">МААТТ</h1>
+<div data-theme="empirik-cream" style={{ padding: 20 }}>
+  <h1 className="editorial-display">Эмпирик</h1>
   <p className="editorial-lede">Тест палитры — должно быть на сливочном.</p>
 </div>
 ```
@@ -383,7 +383,7 @@ git commit -m "feat(landing): Fraunces variable + Inter + JetBrains Mono via nex
 
 ```bash
 git add frontend/src/app/globals.css
-git commit -m "feat(landing): add maatt-cream palette tokens + editorial type classes"
+git commit -m "feat(landing): add empirik-cream palette tokens + editorial type classes"
 ```
 
 ---
@@ -908,7 +908,7 @@ export function ManifestCutIn() {
 
 В `app/preview/landing/page.tsx` (если есть) или временно в `Landing.tsx`:
 ```tsx
-<div data-theme="maatt-cream">
+<div data-theme="empirik-cream">
   <ManifestCutIn />
 </div>
 ```
@@ -983,7 +983,7 @@ export function ManuscriptFeather({ width = 120, className }: Props) {
 
 Вставить в preview:
 ```tsx
-<div data-theme="maatt-cream" style={{ padding: 40 }}>
+<div data-theme="empirik-cream" style={{ padding: 40 }}>
   <ManuscriptFeather width={140} />
 </div>
 ```
@@ -999,14 +999,14 @@ git commit -m "feat(landing): ManuscriptFeather hand-tuned SVG illustration"
 
 ---
 
-### Task 10: `MaattOrigin` — секция «История МААТТ» с marginalia
+### Task 10: `EmpirikOrigin` — секция «История Эмпирик» с marginalia
 
 **Files:**
-- Create: `frontend/src/components/landing/parts/MaattOrigin.tsx`
+- Create: `frontend/src/components/landing/parts/EmpirikOrigin.tsx`
 
 - [ ] **Step 1: Создать компонент**
 
-`frontend/src/components/landing/parts/MaattOrigin.tsx`:
+`frontend/src/components/landing/parts/EmpirikOrigin.tsx`:
 
 ```tsx
 import { ManuscriptFeather } from "./ManuscriptFeather";
@@ -1015,7 +1015,7 @@ import { ManuscriptFeather } from "./ManuscriptFeather";
  * Секция бренд-story. Перо + 3 короткие колонки + marginalia.
  * SSR, никакой интерактивности (§3 section 11).
  */
-export function MaattOrigin() {
+export function EmpirikOrigin() {
   return (
     <section className="px-6 lg:px-12 py-28 lg:py-40 border-t border-[var(--rule)]">
       <div className="max-w-[1200px] mx-auto grid grid-cols-12 gap-6 lg:gap-12 items-start">
@@ -1036,7 +1036,7 @@ export function MaattOrigin() {
               весов против сердца умершего. Сердце легче пера — душа проходит. Тяжелее — нет.
             </p>
             <p className="text-[16px] leading-[1.65] text-[var(--ink-2)]">
-              Каждая ваша сделка ложится на ту же чашу — против пера дисциплины. МААТТ — журнал,
+              Каждая ваша сделка ложится на ту же чашу — против пера дисциплины. Эмпирик — журнал,
               в котором эти весы видны.
             </p>
           </div>
@@ -1047,7 +1047,7 @@ export function MaattOrigin() {
           >
             <div className="editorial-eyebrow mb-3 text-[var(--ink-3)]" style={{ fontStyle: "normal" }}>На полях</div>
             <p className="mb-3">
-              Имя на латинице — <em>Maatt</em>, с двумя «t». Произносится так же. Двойная согласная
+              Имя на латинице — <em>Empirik</em>, с двумя «t». Произносится так же. Двойная согласная
               — инженерное решение под занятые домены, не отсылка к чему-то.
             </p>
             <p>
@@ -1069,8 +1069,8 @@ export function MaattOrigin() {
 - [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/src/components/landing/parts/MaattOrigin.tsx
-git commit -m "feat(landing): MaattOrigin brand story section with marginalia"
+git add frontend/src/components/landing/parts/EmpirikOrigin.tsx
+git commit -m "feat(landing): EmpirikOrigin brand story section with marginalia"
 ```
 
 ---
@@ -1230,7 +1230,7 @@ export function LiveTicker() {
                 className="inline-block w-[5px] h-[5px] rounded-full"
                 style={{
                   background: "var(--profit)",
-                  animation: "maatt-pulse 1.6s infinite",
+                  animation: "empirik-pulse 1.6s infinite",
                 }}
                 aria-label="live"
               />
@@ -1247,7 +1247,7 @@ export function LiveTicker() {
         </div>
       </div>
       <style jsx global>{`
-        @keyframes maatt-pulse {
+        @keyframes empirik-pulse {
           0%   { box-shadow: 0 0 0 0 rgba(31, 106, 71, 0.30); }
           70%  { box-shadow: 0 0 0 6px rgba(31, 106, 71, 0.00); }
           100% { box-shadow: 0 0 0 0 rgba(31, 106, 71, 0.00); }
@@ -1556,18 +1556,18 @@ git commit -m "feat(landing): TradeReplayWidget interactive slider component"
 
 - [ ] **Step 1: Полностью переписать `Landing.tsx`**
 
-Файл объёмный — это **rewrite**, не diff. Текущий v3 outline (10 секций, dark, Eqio wordmark) заменяется на новый (14 секций, cream, МААТТ, parts/* компоненты).
+Файл объёмный — это **rewrite**, не diff. Текущий v3 outline (10 секций, dark, Empirik wordmark) заменяется на новый (14 секций, cream, Эмпирик, parts/* компоненты).
 
 `frontend/src/components/landing/Landing.tsx`:
 
 ```tsx
 /**
- * Guest landing — МААТТ hand-crafted (Trader Desk + cream palette).
+ * Guest landing — Эмпирик hand-crafted (Trader Desk + cream palette).
  *
  * См. spec docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md
  * См. design ADR: ADR-0006 (старый) → ADR (новый, написать после merge).
  *
- * Изоляция темы: data-theme="maatt-cream" — не течёт в auth-zone.
+ * Изоляция темы: data-theme="empirik-cream" — не течёт в auth-zone.
  */
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
@@ -1576,7 +1576,7 @@ import { HeroEquityCurve } from "./parts/HeroEquityCurve";
 import { InteractiveCandleChart } from "./parts/InteractiveCandleChart";
 import { TradeReplayWidget } from "./parts/TradeReplayWidget";
 import { ManifestCutIn } from "./parts/ManifestCutIn";
-import { MaattOrigin } from "./parts/MaattOrigin";
+import { EmpirikOrigin } from "./parts/EmpirikOrigin";
 
 const NAV_LINKS = [
   { href: "/manual", label: "Возможности" },
@@ -1611,7 +1611,7 @@ const METRICS_TABLE = [
 
 export function Landing() {
   return (
-    <main data-theme="maatt-cream" className="min-h-screen">
+    <main data-theme="empirik-cream" className="min-h-screen">
       {/* 1. HEADER */}
       <header className="sticky top-0 z-30 bg-[var(--paper)] border-b border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 lg:px-12 h-16">
@@ -1620,7 +1620,7 @@ export function Landing() {
             className="text-[22px] italic no-underline text-[var(--ink)]"
             style={{ fontFamily: "var(--font-serif), Georgia, serif", fontWeight: 400, letterSpacing: "-0.015em" }}
           >
-            МААТТ
+            Эмпирик
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-[13px] text-[var(--ink-2)]">
             {NAV_LINKS.map((l) => (
@@ -1853,8 +1853,8 @@ export function Landing() {
         </div>
       </section>
 
-      {/* 11. МААТТ origin */}
-      <MaattOrigin />
+      {/* 11. Эмпирик origin */}
+      <EmpirikOrigin />
 
       {/* 12. PRICING TEASER */}
       <section className="px-6 lg:px-12 py-24 lg:py-32 border-t border-[var(--rule-strong)]">
@@ -1932,7 +1932,7 @@ export function Landing() {
                 className="text-[22px] italic no-underline text-[var(--ink)] mb-4 block"
                 style={{ fontFamily: "var(--font-serif), Georgia, serif", letterSpacing: "-0.015em" }}
               >
-                МААТТ
+                Эмпирик
               </Link>
               <p className="text-[var(--ink-3)] leading-relaxed text-[13px]">
                 Журнал торговых сделок для активных трейдеров Московской биржи.
@@ -1956,14 +1956,14 @@ export function Landing() {
             <div>
               <div className="editorial-eyebrow mb-4 text-[var(--ink-2)]">Контакты</div>
               <nav className="flex flex-col gap-2.5 text-[var(--ink-3)]">
-                <a href="mailto:hello@maatt.ru" className="hover:text-[var(--ink)] transition-colors no-underline">hello@maatt.ru</a>
-                <a href="mailto:support@maatt.ru" className="hover:text-[var(--ink)] transition-colors no-underline">support@maatt.ru</a>
+                <a href="mailto:hello@empirik.io" className="hover:text-[var(--ink)] transition-colors no-underline">hello@empirik.io</a>
+                <a href="mailto:support@empirik.io" className="hover:text-[var(--ink)] transition-colors no-underline">support@empirik.io</a>
                 <Link href="/privacy" className="hover:text-[var(--ink)] transition-colors no-underline">Политика · 152-ФЗ</Link>
               </nav>
             </div>
           </div>
           <div className="pt-8 border-t border-[var(--rule)] flex flex-wrap items-center justify-between gap-4 text-[13px] text-[var(--ink-3)]">
-            <div>© МААТТ · Точно. Чисто. Честно.</div>
+            <div>© Эмпирик · Точно. Чисто. Честно.</div>
             <div>Данные: MOEX ISS · Брокеры через API и CSV</div>
           </div>
         </div>
@@ -1980,7 +1980,7 @@ cd frontend && npm run dev
 ```
 
 В браузере на `/`:
-1. Header — МААТТ wordmark, nav, кнопки
+1. Header — Эмпирик wordmark, nav, кнопки
 2. Ticker — 5 prices (от fallback или live)
 3. Hero — H1, lede, 2 CTA, equity curve справа
 4. Numbers — 4 cards с цифрами + footnotes
@@ -1990,10 +1990,10 @@ cd frontend && npm run dev
 8. Trade Replay — slider работает
 9. Pull-quote с золотой полосой
 10. Metrics table
-11. МААТТ origin с перо
+11. Эмпирик origin с перо
 12. Pricing
 13. Final CTA
-14. Footer с МААТТ
+14. Footer с Эмпирик
 
 Все секции в cream-палитре, нет тёмного.
 
@@ -2001,7 +2001,7 @@ cd frontend && npm run dev
 
 ```bash
 git add frontend/src/components/landing/Landing.tsx
-git commit -m "feat(landing): integrate all parts into Landing.tsx — 14 sections IA + МААТТ rebrand"
+git commit -m "feat(landing): integrate all parts into Landing.tsx — 14 sections IA + Эмпирик rebrand"
 ```
 
 ---
@@ -2024,7 +2024,7 @@ test.describe("Landing — smoke", () => {
   });
 
   test("renders all 14 sections without errors", async ({ page }) => {
-    await expect(page.getByRole("link", { name: "МААТТ" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Эмпирик" }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Системная торговля/i })).toBeVisible();
     await expect(page.getByText(/Каждая сделка/i).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /AI разбирает каждое/i })).toBeVisible();
@@ -2062,9 +2062,9 @@ test.describe("Landing — smoke", () => {
     await expect(page.locator("text=MFE").first()).toBeVisible({ timeout: 2000 });
   });
 
-  test("footer has МААТТ wordmark + email", async ({ page }) => {
-    await expect(page.locator("footer >> text=МААТТ")).toBeVisible();
-    await expect(page.locator("footer >> text=hello@maatt.ru")).toBeVisible();
+  test("footer has Эмпирик wordmark + email", async ({ page }) => {
+    await expect(page.locator("footer >> text=Эмпирик")).toBeVisible();
+    await expect(page.locator("footer >> text=hello@empirik.io")).toBeVisible();
   });
 });
 ```
@@ -2123,7 +2123,7 @@ cd frontend && npx -y sharp-cli -i public/landing/favicon-feather.svg -o public/
 
 ```typescript
 export const metadata = {
-  title: "МААТТ — журнал торговых сделок | Точно. Чисто. Честно.",
+  title: "Эмпирик — журнал торговых сделок | Точно. Чисто. Честно.",
   description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка измерена. Каждое решение взвешено.",
   icons: {
     icon: [
@@ -2142,7 +2142,7 @@ export const metadata = {
 
 ```bash
 git add frontend/public/landing/favicon-feather.svg frontend/public/landing/favicon-feather-32.png frontend/src/app/layout.tsx
-git commit -m "feat(landing): МААТТ favicon (feather SVG + PNG fallback)"
+git commit -m "feat(landing): Эмпирик favicon (feather SVG + PNG fallback)"
 ```
 
 ---
@@ -2239,7 +2239,7 @@ git commit -m "feat(landing): AI card screenshot via headless playwright capture
 
 **Files:**
 - Create: `frontend/scripts/landing-assets/build-og-image.ts`
-- Create: `frontend/public/landing/og-image-maatt.png`
+- Create: `frontend/public/landing/og-image-empirik.png`
 - Modify: `frontend/src/app/layout.tsx` (Metadata.openGraph)
 
 - [ ] **Step 1: Создать build script**
@@ -2257,7 +2257,7 @@ async function main() {
   const html = `
     <!doctype html><html><body style="margin:0;font-family:Georgia,serif;background:#FAF8F2;color:#14110B;width:1200px;height:630px;display:flex;flex-direction:column;justify-content:space-between;padding:80px;box-sizing:border-box;position:relative;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div style="font-size:36px;font-style:italic;letter-spacing:-0.02em;">МААТТ</div>
+        <div style="font-size:36px;font-style:italic;letter-spacing:-0.02em;">Эмпирик</div>
         <div style="font-family:'JetBrains Mono',monospace;font-size:14px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(20,17,11,0.5);">Журнал сделок · MOEX</div>
       </div>
       <div>
@@ -2267,7 +2267,7 @@ async function main() {
       </div>
       <div style="display:flex;justify-content:space-between;align-items:flex-end;">
         <div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:rgba(20,17,11,0.5);">
-          maatt.ru · Точно. Чисто. Честно.
+          empirik.io · Точно. Чисто. Честно.
         </div>
         <svg width="64" height="160" viewBox="0 0 64 160" fill="none">
           <path d="M32 6 C 24 30, 18 60, 14 100 C 12 116, 18 130, 24 132 L 32 156 L 40 132 C 46 130, 52 116, 50 100 C 46 60, 40 30, 32 6 Z" fill="#B58A2F" opacity="0.65"/>
@@ -2278,7 +2278,7 @@ async function main() {
   `;
   await page.setContent(html);
   await page.waitForLoadState("networkidle");
-  const out = resolve("public/landing/og-image-maatt.png");
+  const out = resolve("public/landing/og-image-empirik.png");
   await page.screenshot({ path: out, omitBackground: false });
   console.log(`wrote ${out}`);
   await browser.close();
@@ -2301,19 +2301,19 @@ cd frontend && npx tsx scripts/landing-assets/build-og-image.ts
 export const metadata = {
   // ... title, description, icons как в Task 17
   openGraph: {
-    title: "МААТТ — журнал торговых сделок",
+    title: "Эмпирик — журнал торговых сделок",
     description: "Каждая сделка измерена. Каждое решение взвешено.",
-    url: "https://maatt.ru",
-    siteName: "МААТТ",
-    images: [{ url: "/landing/og-image-maatt.png", width: 1200, height: 630 }],
+    url: "https://empirik.io",
+    siteName: "Эмпирик",
+    images: [{ url: "/landing/og-image-empirik.png", width: 1200, height: 630 }],
     locale: "ru_RU",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "МААТТ — журнал сделок",
+    title: "Эмпирик — журнал сделок",
     description: "Точно. Чисто. Честно.",
-    images: ["/landing/og-image-maatt.png"],
+    images: ["/landing/og-image-empirik.png"],
   },
 };
 ```
@@ -2325,7 +2325,7 @@ export const metadata = {
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/scripts/landing-assets/build-og-image.ts frontend/public/landing/og-image-maatt.png frontend/src/app/layout.tsx
+git add frontend/scripts/landing-assets/build-og-image.ts frontend/public/landing/og-image-empirik.png frontend/src/app/layout.tsx
 git commit -m "feat(landing): OG image generation + metadata for sharing previews"
 ```
 
@@ -2369,7 +2369,7 @@ test.describe("Landing — visual regression @visual", () => {
     await expect(section).toHaveScreenshot("replay-1440.png", { maxDiffPixels: 100 });
   });
 
-  test("МААТТ origin section — desktop 1440", async ({ page }) => {
+  test("Эмпирик origin section — desktop 1440", async ({ page }) => {
     const section = page.locator("section", { has: page.getByText("Раздел 05 · Имя") });
     await expect(section).toHaveScreenshot("origin-1440.png", { maxDiffPixels: 100 });
   });
@@ -2429,10 +2429,10 @@ git commit -m "test(landing): visual regression snapshots for Hero + 3 anchor se
 - [ ] Trade Replay slider — двигается, R-multiple обновляется
 - [ ] Pull-quote — золотая полоса
 - [ ] Metrics table читабельна
-- [ ] МААТТ origin — перо слева, marginalia справа
+- [ ] Эмпирик origin — перо слева, marginalia справа
 - [ ] Pricing — Free + Pro, Pro с золотой границей
 - [ ] Final CTA — одна кнопка
-- [ ] Footer — МААТТ, hello@maatt.ru
+- [ ] Footer — Эмпирик, hello@empirik.io
 
 - [ ] **Step 2: Manual mobile walkthrough (DevTools iPhone 13)**
 
@@ -2452,7 +2452,7 @@ git commit -m "test(landing): visual regression snapshots for Hero + 3 anchor se
 - [ ] **Step 5: Стоп visual companion (cleanup)**
 
 ```bash
-bash C:/Users/Administrator/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/stop-server.sh C:/Users/Administrator/Eqio/ATOM/.superpowers/brainstorm/509748-1779122086
+bash C:/Users/Administrator/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/stop-server.sh C:/Users/Administrator/Empirik/ATOM/.superpowers/brainstorm/509748-1779122086
 ```
 
 Не критично — сервер сам выключится через 30 мин неактивности.

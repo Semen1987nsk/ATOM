@@ -1,7 +1,7 @@
 /**
  * Пример: Server Action для добавления тега к сделке.
  *
- * Контекст Eqio:
+ * Контекст Empirik:
  *   - Сейчас тег добавляется через client-side fetch к FastAPI:
  *     await api.post(`/trades/${id}/tags`, { body: { tag } });
  *   - Минусы текущего подхода: ручной loading state, нет revalidate, не работает без JS.

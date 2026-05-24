@@ -1,5 +1,5 @@
 """
-MoexClient — production-ready async-клиент MOEX ISS API для Eqio.
+MoexClient — production-ready async-клиент MOEX ISS API для Empirik.
 
 Что внутри:
   - httpx.AsyncClient с timeout=10 сек.
@@ -20,7 +20,7 @@ MoexClient — production-ready async-клиент MOEX ISS API для Eqio.
             interval=1,
         )
 
-В Eqio этот клиент заменяет sync httpx.Client из backend/moex_service.py.
+В Empirik этот клиент заменяет sync httpx.Client из backend/moex_service.py.
 Async важен для FastAPI — иначе блокируется event loop при batch-запросах.
 """
 from __future__ import annotations
@@ -171,7 +171,7 @@ class MoexClient:
         self._client = httpx.AsyncClient(
             base_url=ISS_BASE,
             timeout=self._timeout,
-            headers={"User-Agent": "Eqio/1.0 (+https://eqio.app)"},
+            headers={"User-Agent": "Empirik/1.0 (+https://empirik.app)"},
         )
         return self
 

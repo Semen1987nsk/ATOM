@@ -40,7 +40,7 @@
 
 - [ ] **Step 1: Найти fetch к `/trades/positions` в history/page.tsx**
 
-Найти строку с `api.get` и URL `/trades/positions`. В Eqio она может выглядеть как:
+Найти строку с `api.get` и URL `/trades/positions`. В Empirik она может выглядеть как:
 
 ```ts
 const data = await api.get<PositionTrade[]>('/trades/positions');
@@ -67,7 +67,7 @@ const data = await api.get<PositionTrade[]>('/trades/positions?status=closed');
 - [ ] **Step 3: TypeScript check**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsc --noEmit
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsc --noEmit
 ```
 
 Expected: 0 errors. Если новые errors появились — это означает где-то ещё ссылка на open-status branch. Зафиксируй в Step 4 (PositionJournalView cleanup).
@@ -75,7 +75,7 @@ Expected: 0 errors. Если новые errors появились — это о�
 - [ ] **Step 4: Manual smoke check**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npm run dev
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npm run dev
 ```
 
 Открой http://localhost:3000/history. Expected:
@@ -176,12 +176,12 @@ git commit -m "feat(history): фильтровать журнал только c
 
 В журнале все executions закрыты (после filter `?status=closed`), но всё ещё могут быть mid-life entry executions у round-trip позиции (entry → partial close → entry → full close → итого 4 executions, 2 типа). Чтобы не сломать аналитику scale-in, **корректнее так**: проверить тип execution по `direction` и логике entry/exit, а не по `exit_at`. Если `direction` означает «open» (LONG/SHORT entry) — это Открытие; если это close — Закрытие.
 
-Если простой `isClosed = ex.exit_at !== null` сейчас работает корректно (например, в Eqio Trade row = одна round-trip строка, не split на entry+exit) — оставить ветку как fallback. Проверь Trade модель ([backend/models.py](../../backend/models.py)) перед удалением. Если Trade row хранит entry+exit в одной строке, то после фильтра status=closed все Trade rows имеют exit_at !== null → весь conditional collapsable в hardcoded «Закрытие». Это и есть правильное упрощение.
+Если простой `isClosed = ex.exit_at !== null` сейчас работает корректно (например, в Empirik Trade row = одна round-trip строка, не split на entry+exit) — оставить ветку как fallback. Проверь Trade модель ([backend/models.py](../../backend/models.py)) перед удалением. Если Trade row хранит entry+exit в одной строке, то после фильтра status=closed все Trade rows имеют exit_at !== null → весь conditional collapsable в hardcoded «Закрытие». Это и есть правильное упрощение.
 
 - [ ] **Step 5: TypeScript check + smoke**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsc --noEmit; npm run dev
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsc --noEmit; npm run dev
 ```
 
 Открой http://localhost:3000/history. Expected:
@@ -320,7 +320,7 @@ export function joinPositionsTrades(
 - [ ] **Step 2: TypeScript check**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsc --noEmit
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsc --noEmit
 ```
 
 Expected: 0 errors.
@@ -358,7 +358,7 @@ console.log(JSON.stringify(result, null, 2));
 Run:
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsx src/app/positions/__joinPositionsTrades.smoke.ts
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsx src/app/positions/__joinPositionsTrades.smoke.ts
 ```
 
 Expected output: SBER с одной execution, GAZP с пустым массивом.
@@ -499,7 +499,7 @@ export function OpenPositionExpand({ executions, onEdit }: OpenPositionExpandPro
 - [ ] **Step 2: TypeScript check**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsc --noEmit
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsc --noEmit
 ```
 
 Expected: 0 errors.
@@ -715,7 +715,7 @@ onEdit={async (executionId) => {
 - [ ] **Step 5: TypeScript check**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsc --noEmit
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsc --noEmit
 ```
 
 Expected: 0 errors.
@@ -723,7 +723,7 @@ Expected: 0 errors.
 - [ ] **Step 6: Manual smoke check**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npm run dev
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npm run dev
 ```
 
 Открой http://localhost:3000/positions. Expected flow:
@@ -782,7 +782,7 @@ git commit -m "feat(positions): editing surface — parallel fetch + expand + Ed
 - [ ] **Step 2: Run typecheck + linter**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\frontend; npx tsc --noEmit; npm run lint
+cd c:\Users\Administrator\Empirik\ATOM\frontend; npx tsc --noEmit; npm run lint
 ```
 
 Expected: 0 errors.
@@ -790,7 +790,7 @@ Expected: 0 errors.
 - [ ] **Step 3: Run backend tests (sanity)**
 
 ```powershell
-cd c:\Users\Administrator\Eqio\ATOM\backend; pytest tests/integration/test_position_aggregation.py -q
+cd c:\Users\Administrator\Empirik\ATOM\backend; pytest tests/integration/test_position_aggregation.py -q
 ```
 
 Expected: все тесты pass (мы backend не трогали, но coverage уверенность).
@@ -836,7 +836,7 @@ git commit -m "fix(positions): <конкретная правка>"
 
 ## Execution Handoff
 
-Plan complete and saved to `c:/Users/Administrator/Eqio/ATOM/docs/superpowers/plans/2026-05-19-positions-as-editing-surface.md`.
+Plan complete and saved to `c:/Users/Administrator/Empirik/ATOM/docs/superpowers/plans/2026-05-19-positions-as-editing-surface.md`.
 
 **Two execution options:**
 

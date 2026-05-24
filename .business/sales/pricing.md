@@ -1,4 +1,4 @@
-# Тарифы Eqio
+# Тарифы Empirik
 
 > Модель: **Reverse-Trial 21 день → Free+ (навсегда) → Pro 399₽**. Обоснование решения — [`ADR-0005`](../tech/decisions/0005-reverse-trial-model.md). Реализация эталона UX — [`feature-canon/04-downgrade-experience.md`](../product/feature-canon/04-downgrade-experience.md).
 
@@ -91,7 +91,7 @@ CTA-копирайтинг — inline-кнопки рядом с заморож�
 
 ### Гипотеза A: повышение Pro до 590₽
 
-**Аргумент:** TraderMake.Money берёт 333₽/мес, Tradary 333₽/мес. Eqio даёт **больше** (MOEX-свечи, AI, Replay) — может стоить дороже. Аудит рекомендовал тестировать 590-790₽.
+**Аргумент:** TraderMake.Money берёт 333₽/мес, Tradary 333₽/мес. Empirik даёт **больше** (MOEX-свечи, AI, Replay) — может стоить дороже. Аудит рекомендовал тестировать 590-790₽.
 
 **Эксперимент:** **Отложить минимум на 6 месяцев** после запуска reverse-trial — изолировать переменные. Затем A/B 399₽ vs 590₽.
 

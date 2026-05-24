@@ -1,18 +1,18 @@
 ---
-name: eqio-context-bridge
-description: Use when working on the Eqio trading journal project (`C:\Users\Administrator\Eqio\ATOM`). Forces consultation of `.business/` knowledge base before answering. Triggers on broad project vocabulary — "Eqio", "дашборд", "трейдер", "MOEX", "Тинькофф", "152-ФЗ", "тариф", "Pro план", "MAE", "MFE", "Trade Replay", "Optimal f", "SQN", "конкурент", "TraderMake", "Tradary", "TradeZella", "feature canon", "design system", "канон", "эталон", "позиционирование", "стратегия", "compliance", "deployment", "ADR", "audit", "RKN", "YooKassa".
+name: empirik-context-bridge
+description: Use when working on the Empirik trading journal project (`C:\Users\Administrator\Empirik\ATOM`). Forces consultation of `.business/` knowledge base before answering. Triggers on broad project vocabulary — "Empirik", "дашборд", "трейдер", "MOEX", "Тинькофф", "152-ФЗ", "тариф", "Pro план", "MAE", "MFE", "Trade Replay", "Optimal f", "SQN", "конкурент", "TraderMake", "Tradary", "TradeZella", "feature canon", "design system", "канон", "эталон", "позиционирование", "стратегия", "compliance", "deployment", "ADR", "audit", "RKN", "YooKassa".
 ---
 
-# Eqio Context Bridge
+# Empirik Context Bridge
 
-Этот скилл срабатывает на широкий набор слов проекта Eqio и **перенаправляет тебя в базу знаний** до того, как начнёшь писать код или план.
+Этот скилл срабатывает на широкий набор слов проекта Empirik и **перенаправляет тебя в базу знаний** до того, как начнёшь писать код или план.
 
 ## Что делать при срабатывании
 
 ### Шаг 1 — открой карту базы знаний
 
 ```
-Read: C:\Users\Administrator\Eqio\ATOM\.business\index.md
+Read: C:\Users\Administrator\Empirik\ATOM\.business\index.md
 ```
 
 Там карта 9 доменов и таблица «Триггеры на чтение конкретных файлов».
@@ -60,7 +60,7 @@ Read: C:\Users\Administrator\Eqio\ATOM\.business\index.md
 ## Когда НЕ срабатывать (false positives)
 
 - Тривиальные правки (опечатка, переименование переменной, форматирование)
-- Вопросы про работу самого Claude Code, не про Eqio
+- Вопросы про работу самого Claude Code, не про Empirik
 - Общие программистские вопросы без проектного контекста
 
 ## Принципы

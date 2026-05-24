@@ -1,6 +1,6 @@
 # PostgreSQL Migration Guide (PR 26)
 
-Гайд по миграции Eqio с SQLite (dev) на PostgreSQL (prod). Для self-hosted
+Гайд по миграции Empirik с SQLite (dev) на PostgreSQL (prod). Для self-hosted
 deployment на Yandex Cloud / Selectel / любой RU-region провайдер.
 
 ## Цель
@@ -27,17 +27,17 @@ pip install psycopg2-binary
 
 ```sql
 -- Подключитесь как admin
-CREATE DATABASE eqio_prod ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;
-CREATE USER eqio_app WITH PASSWORD 'STRONG_PASSWORD_HERE';
-GRANT ALL PRIVILEGES ON DATABASE eqio_prod TO eqio_app;
-\c eqio_prod
-GRANT ALL ON SCHEMA public TO eqio_app;
+CREATE DATABASE empirik_prod ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;
+CREATE USER empirik_app WITH PASSWORD 'STRONG_PASSWORD_HERE';
+GRANT ALL PRIVILEGES ON DATABASE empirik_prod TO empirik_app;
+\c empirik_prod
+GRANT ALL ON SCHEMA public TO empirik_app;
 ```
 
 ### 2. Установить env в production
 
 ```bash
-DATABASE_URL=postgresql://eqio_app:STRONG_PASSWORD_HERE@your-host.ru:5432/eqio_prod
+DATABASE_URL=postgresql://empirik_app:STRONG_PASSWORD_HERE@your-host.ru:5432/empirik_prod
 DB_POOL_SIZE=10
 DB_MAX_OVERFLOW=20
 DB_POOL_TIMEOUT=30

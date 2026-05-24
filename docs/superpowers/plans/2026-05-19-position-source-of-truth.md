@@ -560,7 +560,7 @@ git commit -m "test(sync): edge cases для phantom_sweep — match Position, S
 - [ ] **Step 1: Найти `_stage_mark_to_market` в pipeline.py**
 
 ```bash
-grep -n "_stage_mark_to_market\|def execute\|def _stage" /c/Users/Administrator/Eqio/ATOM/backend/application/sync/pipeline.py | head -15
+grep -n "_stage_mark_to_market\|def execute\|def _stage" /c/Users/Administrator/Empirik/ATOM/backend/application/sync/pipeline.py | head -15
 ```
 
 - [ ] **Step 2: Добавить import + вызов после mark_to_market**
@@ -723,7 +723,7 @@ git commit -m "feat(fifo): handle late SELL для swept trades — correct valu
 - [ ] **Step 1: Найти endpoint в trades.py**
 
 ```bash
-grep -n "/unrealized-pnl\|unrealized_pnl\|per_trade_unrealized\|compute_per_trade_pnl" /c/Users/Administrator/Eqio/ATOM/backend/routers/trades.py | head -10
+grep -n "/unrealized-pnl\|unrealized_pnl\|per_trade_unrealized\|compute_per_trade_pnl" /c/Users/Administrator/Empirik/ATOM/backend/routers/trades.py | head -10
 ```
 
 - [ ] **Step 2: Удалить функцию-обработчик endpoint'а**
@@ -735,8 +735,8 @@ grep -n "/unrealized-pnl\|unrealized_pnl\|per_trade_unrealized\|compute_per_trad
 - [ ] **Step 3: Удалить module + tests**
 
 ```bash
-rm /c/Users/Administrator/Eqio/ATOM/backend/domain/pnl/per_trade_unrealized.py
-rm /c/Users/Administrator/Eqio/ATOM/backend/tests/unit/test_per_trade_unrealized.py
+rm /c/Users/Administrator/Empirik/ATOM/backend/domain/pnl/per_trade_unrealized.py
+rm /c/Users/Administrator/Empirik/ATOM/backend/tests/unit/test_per_trade_unrealized.py
 ```
 
 - [ ] **Step 4: Прогнать tests чтобы убедиться что нет references**
@@ -896,7 +896,7 @@ git commit -m "refactor(stats-grid): убрать liveUnrealizedSum prop — ч�
 - [ ] **Step 1: Найти и удалить state + fetch**
 
 ```bash
-grep -n "liveUnrealizedSum\|unrealized-pnl\|setLiveUnrealizedSum" /c/Users/Administrator/Eqio/ATOM/frontend/src/app/page.tsx | head -10
+grep -n "liveUnrealizedSum\|unrealized-pnl\|setLiveUnrealizedSum" /c/Users/Administrator/Empirik/ATOM/frontend/src/app/page.tsx | head -10
 ```
 
 Удалить:
@@ -959,7 +959,7 @@ Start-Sleep -Seconds 2
 
 Запустить заново:
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 python -X utf8 -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload > backend.out.log 2> backend.err.log &
 ```
 
@@ -973,7 +973,7 @@ sleep 5 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/health
 В UI: нажать ↻ sync кнопку для acc#4. Альтернативно через admin:
 ```bash
 # Найти sync trigger endpoint
-grep -n "sync.*trigger\|force.*sync\|@router.*sync" /c/Users/Administrator/Eqio/ATOM/backend/routers/broker.py | head -5
+grep -n "sync.*trigger\|force.*sync\|@router.*sync" /c/Users/Administrator/Empirik/ATOM/backend/routers/broker.py | head -5
 ```
 
 Запустить sync — sweeper должен закрыть 10 phantom trades. В logs ожидаем:
@@ -986,7 +986,7 @@ phantom_trade_swept extra={trade_id: ..., instrument_uid: ...}
 - [ ] **Step 3: Verify API возвращает корректное unrealized**
 
 ```bash
-cd /c/Users/Administrator/Eqio/ATOM/backend
+cd /c/Users/Administrator/Empirik/ATOM/backend
 PYTHONIOENCODING=utf-8 python -c "
 import requests
 s = requests.Session()

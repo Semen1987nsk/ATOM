@@ -11,7 +11,7 @@
   - Edge cases: пустой ответ, неполные свечи, сессия 10:00–18:50 MSK.
   - Конвертация ISS naive-MSK datetime в timezone-aware.
 
-В Eqio эта логика частично есть в backend/routers/replay.py (загрузка свечей
+В Empirik эта логика частично есть в backend/routers/replay.py (загрузка свечей
 для конкретной сделки), но там отсутствует pandas-аналитика — это
 демо-скрипт для adhoc-исследований.
 """
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 MSK = pytz.timezone("Europe/Moscow")
 
 # Праздники МOEX 2025–2026 (минимум, для определения торгового дня).
-# В Eqio полный set лежит в backend/market_service.py:MOEX_HOLIDAYS.
+# В Empirik полный set лежит в backend/market_service.py:MOEX_HOLIDAYS.
 HOLIDAYS = {
     datetime(2025, 1, 1).date(),
     datetime(2025, 1, 2).date(),

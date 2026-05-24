@@ -1,7 +1,7 @@
 """
 Пример роутера для ресурса Tags — теги, которые пользователь навешивает на сделки.
 
-Стиль соответствует конвенциям Eqio (см. backend/routers/trades.py, accounts.py):
+Стиль соответствует конвенциям Empirik (см. backend/routers/trades.py, accounts.py):
 - prefix + tags на роутере
 - response_model на каждом эндпоинте
 - dependency injection через Depends в сигнатуре

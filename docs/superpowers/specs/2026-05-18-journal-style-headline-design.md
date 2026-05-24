@@ -9,7 +9,7 @@
 
 ## 1. Цель и контекст
 
-Headline P&L на главном дашборде Eqio должен **совпадать** с тем, что трейдер видит в Дневнике сделок (`/history`). Сейчас они расходятся на ~0.2–0.5%:
+Headline P&L на главном дашборде Empirik должен **совпадать** с тем, что трейдер видит в Дневнике сделок (`/history`). Сейчас они расходятся на ~0.2–0.5%:
 
 - Дневник: `Σ closed Trade.net_pnl + Σ live unrealized_pnl` (через `/trades/unrealized-pnl`, MOEX realtime).
 - Dashboard (после Phase 6.3): `last_portfolio_value − Σ net_deposits` (broker cash truth, snapshot из sync'а).

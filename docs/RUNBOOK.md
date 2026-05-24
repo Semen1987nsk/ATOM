@@ -1,4 +1,4 @@
-# Eqio Operations Runbook (PR 26)
+# Empirik Operations Runbook (PR 26)
 
 Playbook для типичных инцидентов и операций — собран до того, как кто-то
 будет ловить 03:00 на проде без полной картины.
@@ -27,12 +27,12 @@ Playbook для типичных инцидентов и операций — с
 ```bash
 # 1. Pull новый код
 ssh prod
-cd /opt/eqio
+cd /opt/empirik
 git fetch origin
 git log HEAD..origin/main --oneline  # что прилетит
 
 # 2. Backup ДО миграции
-/opt/eqio/scripts/backup_db.sh
+/opt/empirik/scripts/backup_db.sh
 
 # 3. Применить миграции (если есть)
 cd backend
@@ -42,13 +42,13 @@ alembic upgrade head
 
 # 4. Обновить код + restart
 git pull origin main
-systemctl restart eqio-backend
-systemctl restart eqio-frontend  # если frontend меняли
+systemctl restart empirik-backend
+systemctl restart empirik-frontend  # если frontend меняли
 
 # 5. Smoke
-curl https://eqio.app/ready  # 200 ожидаем
-curl https://eqio.app/health
-tail -f /var/log/eqio/api.log  # 1 минута — ошибок быть не должно
+curl https://empirik.app/ready  # 200 ожидаем
+curl https://empirik.app/health
+tail -f /var/log/empirik/api.log  # 1 минута — ошибок быть не должно
 ```
 
 **Окно деплоя**: пн–чт, 10:00–17:00 MSK. Не деплоить в пятницу.
@@ -60,18 +60,18 @@ tail -f /var/log/eqio/api.log  # 1 минута — ошибок быть не �
 
 ```bash
 # 1. Найти предыдущий commit
-cd /opt/eqio && git log --oneline -10
+cd /opt/empirik && git log --oneline -10
 
 # 2. Revert
 git checkout <previous-sha>
-systemctl restart eqio-backend eqio-frontend
+systemctl restart empirik-backend empirik-frontend
 
 # 3. Если миграция сломала схему — откат
 cd backend
 alembic downgrade -1  # или конкретный revision
 
 # 4. Если миграция повредила данные — RESTORE
-/opt/eqio/scripts/restore_from_backup.sh /var/lib/eqio/backups/eqio-LAST.sql.gz
+/opt/empirik/scripts/restore_from_backup.sh /var/lib/empirik/backups/empirik-LAST.sql.gz
 ```
 
 ---
@@ -81,31 +81,31 @@ alembic downgrade -1  # или конкретный revision
 
 ### Manual backup
 ```bash
-/opt/eqio/scripts/backup_db.sh
-ls -la /var/lib/eqio/backups/ | tail -5
+/opt/empirik/scripts/backup_db.sh
+ls -la /var/lib/empirik/backups/ | tail -5
 ```
 
 ### Manual restore (full)
 ```bash
 # 1. Stop API
-systemctl stop eqio-backend
+systemctl stop empirik-backend
 
 # 2. Create fresh DB (или DROP existing — ОПАСНО!)
-psql "${ADMIN_URL}" -c "DROP DATABASE IF EXISTS eqio_prod;"
-psql "${ADMIN_URL}" -c "CREATE DATABASE eqio_prod;"
+psql "${ADMIN_URL}" -c "DROP DATABASE IF EXISTS empirik_prod;"
+psql "${ADMIN_URL}" -c "CREATE DATABASE empirik_prod;"
 
 # 3. Restore
-gunzip -c /var/lib/eqio/backups/eqio-YYYYMMDD-HHMMSS.sql.gz | psql "${DATABASE_URL}"
+gunzip -c /var/lib/empirik/backups/empirik-YYYYMMDD-HHMMSS.sql.gz | psql "${DATABASE_URL}"
 
 # 4. Verify
 DATABASE_URL=... python -m tools.verify_user --all-users --no-live
 
 # 5. Start API
-systemctl start eqio-backend
+systemctl start empirik-backend
 ```
 
 ### Verify backup health (weekly)
-Автоматически через cron: `/opt/eqio/scripts/restore_test.sh` (sun 05:00).
+Автоматически через cron: `/opt/empirik/scripts/restore_test.sh` (sun 05:00).
 Email-алерт если падает.
 
 ---
@@ -118,14 +118,14 @@ Email-алерт если падает.
 ```bash
 # 1. Сгенерировать новый ключ
 NEW_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-echo "BROKER_TOKEN_KEY_V3=$NEW_KEY" >> /opt/eqio/.env
+echo "BROKER_TOKEN_KEY_V3=$NEW_KEY" >> /opt/empirik/.env
 
 # 2. Двигаем активную версию в crypto_utils.py:
 #    _ACTIVE_VERSION = "v3"
 # (или сделать через env var в будущем)
 
 # 3. Restart
-systemctl restart eqio-backend
+systemctl restart empirik-backend
 
 # 4. Background migration: перешифровать все BrokerConnection.api_token
 DATABASE_URL=... python -c "
@@ -197,7 +197,7 @@ curl https://invest-public-api.tinkoff.ru/rest/tinkoff.public.invest.api.contrac
 
 # 2. Глобально отключить sync чтобы не накапливать failures
 # Можно через флаг или просто остановив scheduler:
-systemctl stop eqio-sync-scheduler
+systemctl stop empirik-sync-scheduler
 
 # 3. UI banner на dashboard через feature flag (Phase 2):
 DATABASE_URL=... python -c "
@@ -206,7 +206,7 @@ DATABASE_URL=... python -c "
 "
 
 # 4. Когда восстановится — start обратно
-systemctl start eqio-sync-scheduler
+systemctl start empirik-sync-scheduler
 ```
 
 ---
@@ -269,7 +269,7 @@ UPDATE subscriptions SET is_active=0 WHERE user_id = <UID>;
 # В env:
 BROKER_SYNC_V2_ENABLED=false
 
-systemctl restart eqio-backend
+systemctl restart empirik-backend
 # Все /broker/sync endpoints возвращают 503
 # Scheduler становится no-op
 ```
@@ -282,10 +282,10 @@ systemctl restart eqio-backend
 ```bash
 # 1. Что съело
 df -h
-du -sh /var/log/eqio/* /opt/eqio/uploads/* | sort -h
+du -sh /var/log/empirik/* /opt/empirik/uploads/* | sort -h
 
 # 2. Truncate старые логи (logrotate сделать это автоматически)
-truncate -s 0 /var/log/eqio/api.log
+truncate -s 0 /var/log/empirik/api.log
 
 # 3. Старые screenshots без trade
 DATABASE_URL=... python -c "
@@ -293,10 +293,10 @@ import database, models, os
 s = database.SessionLocal()
 referenced = set(t.screenshot_url for t in s.query(models.Trade).filter(models.Trade.screenshot_url.isnot(None)))
 referenced = {os.path.basename(u) for u in referenced}
-files = os.listdir('/opt/eqio/uploads/screenshots')
+files = os.listdir('/opt/empirik/uploads/screenshots')
 orphans = [f for f in files if f not in referenced]
 for f in orphans:
-    os.remove(f'/opt/eqio/uploads/screenshots/{f}')
+    os.remove(f'/opt/empirik/uploads/screenshots/{f}')
 print(f'removed {len(orphans)} orphan screenshots')
 "
 ```
@@ -316,7 +316,7 @@ WHERE id=<UID>;
 "
 
 # Перевыпустить ссылку (если юзер сам потерял письмо):
-curl -X POST https://eqio.app/auth/resend-verification \
+curl -X POST https://empirik.app/auth/resend-verification \
   -H "Cookie: access_token=<JWT>"
 ```
 
@@ -355,10 +355,10 @@ pip install pyotp
 #    → ввести 6-digit код → подтверждение
 
 # Через API (для админа):
-curl -X POST https://eqio.app/auth/2fa/enable -H "Cookie: access_token=..."
+curl -X POST https://empirik.app/auth/2fa/enable -H "Cookie: access_token=..."
 # Получаем secret + provisioning_uri
 # Добавляем в authenticator app
-curl -X POST https://eqio.app/auth/2fa/verify -d '{"code":"123456"}'
+curl -X POST https://empirik.app/auth/2fa/verify -d '{"code":"123456"}'
 
 # Сбросить если потерял access к authenticator:
 psql "${DATABASE_URL}" -c "
@@ -369,7 +369,7 @@ UPDATE users SET totp_enabled=0, totp_secret=NULL WHERE id=<UID>;
 ## SLA pledge (укажите в TOS / Privacy)
 
 ```
-- Response time: 24 часа на запросы через support@eqio.app
+- Response time: 24 часа на запросы через support@empirik.app
 - Uptime target: 99% по SLO (см. /status)
 - Backup retention: 7 дней (см. RUNBOOK)
 - Data deletion: 30 дней grace period (152-ФЗ ст. 21)
@@ -389,7 +389,7 @@ SELECT COUNT(*) plan, plan FROM subscriptions WHERE is_active=1 GROUP BY plan;
 "
 
 # Top errors за день
-grep ERROR /var/log/eqio/api.log | tail -50 | sort | uniq -c | sort -rn | head
+grep ERROR /var/log/empirik/api.log | tail -50 | sort | uniq -c | sort -rn | head
 
 # DB size
 psql "${DATABASE_URL}" -c "SELECT pg_size_pretty(pg_database_size(current_database()));"
@@ -405,7 +405,7 @@ psql "${DATABASE_URL}" -c "SELECT pg_size_pretty(pg_database_size(current_databa
 
 ```bash
 ssh prod
-cd /opt/eqio
+cd /opt/empirik
 
 # 1. Откат кода
 git log --oneline -10 | grep -i "AU10\|t_tech\|t-tech"  # найти commit AU10
@@ -423,8 +423,8 @@ sed -i 's|^t-tech-investments==.*|tinkoff-investments @ git+https://github.com/R
 pip install 'grpcio>=1.59.3,<1.70' 'protobuf>=5.27,<6' --force-reinstall
 
 # 4. Перезапуск
-systemctl restart eqio-api
-journalctl -fu eqio-api | head -20  # проверить старт
+systemctl restart empirik-api
+journalctl -fu empirik-api | head -20  # проверить старт
 ```
 
 Время до восстановления: ~5 мин.
@@ -453,14 +453,14 @@ certifi автоматически — нужен явный `GRPC_DEFAULT_SSL_R
 #    → backend/.local/combined_ca_bundle.pem (~290 KB, ~70 root CAs + 2 RU)
 
 # Linux вариант:
-mkdir -p /opt/eqio/backend/.local
-cat $(python -c "import certifi; print(certifi.where())") > /opt/eqio/backend/.local/combined_ca_bundle.pem
-curl -s https://gu-st.ru/content/Other/doc/russian_trusted_root_ca.cer | openssl x509 -inform DER -outform PEM >> /opt/eqio/backend/.local/combined_ca_bundle.pem
-curl -s https://gu-st.ru/content/Other/doc/russian_trusted_sub_ca.cer | openssl x509 -inform DER -outform PEM >> /opt/eqio/backend/.local/combined_ca_bundle.pem
+mkdir -p /opt/empirik/backend/.local
+cat $(python -c "import certifi; print(certifi.where())") > /opt/empirik/backend/.local/combined_ca_bundle.pem
+curl -s https://gu-st.ru/content/Other/doc/russian_trusted_root_ca.cer | openssl x509 -inform DER -outform PEM >> /opt/empirik/backend/.local/combined_ca_bundle.pem
+curl -s https://gu-st.ru/content/Other/doc/russian_trusted_sub_ca.cer | openssl x509 -inform DER -outform PEM >> /opt/empirik/backend/.local/combined_ca_bundle.pem
 
 # 2. Установить env-var в systemd unit / docker-compose / pm2:
-# Например, /etc/systemd/system/eqio-api.service:
-#   Environment="TINKOFF_GRPC_CA_BUNDLE=/opt/eqio/backend/.local/combined_ca_bundle.pem"
+# Например, /etc/systemd/system/empirik-api.service:
+#   Environment="TINKOFF_GRPC_CA_BUNDLE=/opt/empirik/backend/.local/combined_ca_bundle.pem"
 #
 # config.py:35-43 транслирует эту переменную в GRPC_DEFAULT_SSL_ROOTS_FILE_PATH
 # ДО первого импорта grpcio.
@@ -468,7 +468,7 @@ curl -s https://gu-st.ru/content/Other/doc/russian_trusted_sub_ca.cer | openssl 
 # 3. Verify (после рестарта backend):
 INVEST_TOKEN=<sandbox> python -c "
 import os
-os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = '/opt/eqio/backend/.local/combined_ca_bundle.pem'
+os.environ['GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'] = '/opt/empirik/backend/.local/combined_ca_bundle.pem'
 import asyncio
 from t_tech.invest import AsyncClient
 async def m():

@@ -1,7 +1,7 @@
 /**
- * Пример: дашборд Eqio со streaming через несколько Suspense-границ.
+ * Пример: дашборд Empirik со streaming через несколько Suspense-границ.
  *
- * Контекст Eqio:
+ * Контекст Empirik:
  *   - Сейчас src/app/page.tsx — 'use client', 1013 строк.
  *   - Делает Promise.all([api.get('/stats/'), api.get('/trades/')]) и ждёт обоих
  *     перед тем, как нарисовать <DashboardSkeleton />.
@@ -24,7 +24,7 @@
  *   - PageProps с params/searchParams как Promise (Next 16)
  *   - cache: 'no-store' для personalized stats
  *   - revalidate + tags для частично-статичного контента
- *   - <Skeleton> компоненты Eqio как fallbacks
+ *   - <Skeleton> компоненты Empirik как fallbacks
  */
 
 // ═════════════════════════════════════════════════════════════════
@@ -69,7 +69,7 @@ type DashboardPageProps = {
 };
 
 export const metadata = {
-  title: 'Дашборд · Eqio',
+  title: 'Дашборд · Empirik',
   description: 'Сводная статистика по сделкам и портфелю',
 };
 
