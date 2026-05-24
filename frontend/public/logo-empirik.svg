@@ -1,0 +1,17 @@
+<svg viewBox="0 0 240 56" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Эмпирик"
+     font-family="Manrope, 'Segoe UI', Arial, sans-serif">
+  <!-- mark -->
+  <g transform="translate(0,-4) scale(0.875)">
+    <g fill="#64748B" opacity="0.55">
+      <circle cx="10" cy="20" r="1.6"/><circle cx="16" cy="40" r="1.6"/>
+      <circle cx="13" cy="50" r="1.6"/><circle cx="22" cy="28" r="1.6"/>
+      <circle cx="28" cy="46" r="1.6"/><circle cx="34" cy="22" r="1.6"/>
+    </g>
+    <polyline points="8,52 20,44 30,34 42,24 56,12" fill="none"
+      stroke="#2563EB" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="#22D3EE"><circle cx="20" cy="44" r="2.4"/><circle cx="30" cy="34" r="2.4"/><circle cx="42" cy="24" r="2.4"/></g>
+    <circle cx="56" cy="12" r="3" fill="#2563EB"/>
+  </g>
+  <!-- wordmark (inherits theme color via currentColor) -->
+  <text x="62" y="37" font-weight="800" font-size="26" letter-spacing="1.5" fill="currentColor">ЭМПИРИК</text>
+</svg>
