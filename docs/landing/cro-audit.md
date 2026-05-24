@@ -1,7 +1,7 @@
-# CRO Audit — МААТТ landing (pre-rebuild)
+# CRO Audit — Эмпирик landing (pre-rebuild)
 *Audited: 2026-05-18*
 *Auditor: conversion-optimizer subagent (Phase 1, Task 5 deliverable)*
-*Scope: heuristic audit текущего `Landing.tsx` (16 секций) и `MaattOrigin.tsx`. Подаётся в Phase 2 (rewrite tasks 7, 11, 13).*
+*Scope: heuristic audit текущего `Landing.tsx` (16 секций) и `EmpirikOrigin.tsx`. Подаётся в Phase 2 (rewrite tasks 7, 11, 13).*
 
 ---
 
@@ -28,7 +28,7 @@ Top priority: переписать Hero (H1 + lede + CTA-trust-line), почин
 | 7 | **M** | Section 01 Trade Replay `Landing.tsx:150-152` | «В России такой автоматический замер не делает ни один журнал. У западных (TradeZella, Edgewonk) — другие биржи» — competitor-bash как 50 % контента секции. Voice rule R1 нарушение (это не утверждение факта, а сравнительный аргумент). | P1 пришёл за пониманием продукта, получает спор с конкурентами. «Что мне с того?» не отвечается. | Phase 2 Task 11: убрать competitor-сравнение в одну footnote, основной текст — «Что трейдер увидит» (5 строк: вышли рано/поздно, страх/упрямство — конкретный insight). |
 | 8 | **M** | Section 02 MAE/MFE `Landing.tsx:182-188` | Жаргон без explainer: «MAE и MFE — главные количественные метрики для оптимизации стопов и тейков». Voice rule R6 нарушение: неочевидное **не объясняется**. Что такое MAE — догадайся. | P3 и часть P1 (1-й год стажа) теряют thread секции. Conversion-блокер для warm-not-hot leads. | Phase 2 Task 11: inline-glossary в lede («MAE — насколько глубоко цена ушла против сделки; MFE — насколько далеко в сторону»). Competitor-bash убрать. |
 | 9 | **M** | Metrics table `Landing.tsx:32-51` | 13 строк, только 4 explainer'а (Optimal f, SQN, Risk of Ruin, MAE/MFE). 9 строк — голое название + 1 строка описания. Выглядит как «30+ только в маркетинге, по факту 4 рабочие». Voice rule R6 на 9 строках нарушено. | P1 сканирует таблицу и видит «недосказано». Доверие к «настоящая математика» падает. | Phase 2 Task 11: добавить explainer'ы на все 13 строк. spec § 3 IA таблица Task #10 это требует. |
-| 10 | **M** | AudienceQualifier `MaattOrigin.tsx:27-32` | 5 ✓-items — vague jobs («хочешь видеть свою альфу», «понимаешь, что 70 % — дисциплина»). Это не jobs-to-be-done, это manifesto-проверки. P1 кивает, но не идентифицирует **свою конкретную проблему**. | Раздел работает как filter, но не как conversion-уплотнение. Не закрывает объекций. | Phase 2 Task 13: переделать через 7 объекций (см. блок ниже). ✓ items должны быть конкретными use case'ами, × items — реальными антиперсонами. |
+| 10 | **M** | AudienceQualifier `EmpirikOrigin.tsx:27-32` | 5 ✓-items — vague jobs («хочешь видеть свою альфу», «понимаешь, что 70 % — дисциплина»). Это не jobs-to-be-done, это manifesto-проверки. P1 кивает, но не идентифицирует **свою конкретную проблему**. | Раздел работает как filter, но не как conversion-уплотнение. Не закрывает объекций. | Phase 2 Task 13: переделать через 7 объекций (см. блок ниже). ✓ items должны быть конкретными use case'ами, × items — реальными антиперсонами. |
 
 ### Lower-impact issues (L), отдельно
 
@@ -45,10 +45,10 @@ Top priority: переписать Hero (H1 + lede + CTA-trust-line), почин
 Для AudienceQualifier rewrite в Task 13. Каждая объекция формулируется голосом P1 (verbatim тон, как они говорят в Telegram-чатах Smart-Lab/Тинькофф Pulse), + 1-предложение-ответ, который копирайтер должен закодировать в new ✓-checklist или в FAQ-block.
 
 1. **«А я ведь и так веду Excel — зачем тратиться на подписку?»**
-   → Excel не считает MAE из свечей биржи. На 30+ сделках в месяц ручной ввод съедает 3–6 часов в неделю. Free-план — до 50 сделок, без карты: попробуйте, и если МААТТ покажет одну системную ошибку — окупится сразу.
+   → Excel не считает MAE из свечей биржи. На 30+ сделках в месяц ручной ввод съедает 3–6 часов в неделю. Free-план — до 50 сделок, без карты: попробуйте, и если Эмпирик покажет одну системную ошибку — окупится сразу.
 
 2. **«Откуда вы возьмёте мои сделки? Я не дам брокеру лишних прав.»**
-   → Тинькофф API — только read-only (исторические и текущие сделки). Никаких торговых операций МААТТ не делает. Токен генерируете сами в кабинете Тинькофф и отзываете в один клик. Для остальных брокеров — CSV/Excel-выгрузка, без API.
+   → Тинькофф API — только read-only (исторические и текущие сделки). Никаких торговых операций Эмпирик не делает. Токен генерируете сами в кабинете Тинькофф и отзываете в один клик. Для остальных брокеров — CSV/Excel-выгрузка, без API.
 
 3. **«Ещё одна SaaS-подписка. У меня уже QUIK, сигналы и курс.»**
    → Free до 50 сделок/мес — без оплаты. 399 ₽/мес Pro — меньше комиссии одной сделки с плохим стопом. Это не «ещё один сервис», это перенос журнала из Excel в фон.
@@ -243,8 +243,8 @@ Free 0 ₽ · Pro 399 ₽/мес. Нет годового toggle (несмотр
 | `Landing.tsx:293-297` Section 04 «Как устроен разбор» | То же. | То же. |
 | `Landing.tsx:333-335` Pricing Free «Открыть бесплатно» | Слабый verbal anchor (просто «открыть»), без icon. Контраст с Pro CTA (btn-primary) — Pro визуально доминирует, что **правильно**, но Free выглядит как «consolation link», не как валидный choice. | Phase 2: оставить визуальную асимметрию (это **хорошая** anchor-механика для upgrade-funnel), но убедиться, что Free CTA пробрасывает trial: `/register?plan=free` для аналитики. |
 | `Landing.tsx:375-377` Final CTA | Один CTA. Хорошо для focus. **Однако** — нет secondary для тех, кто колеблется. Не «Поговорить с командой» (B2C-неуместно), а **«Открыть демо»** или **«Посмотреть live-дашборд»** (link на public demo-account). | Phase 2: если есть demo-account — добавить secondary. Если нет — оставить single CTA. |
-| `MaattOrigin.tsx:33-38` «Для тебя» 5 items | Visual list ✓-symbol — accent color (sienna). Хорошо. **Однако:** items абстрактные («хочешь видеть свою альфу», «понимаешь, что 70 % — дисциплина»). Не jobs, manifesto-checks. | Phase 2: переписать через jobs-to-be-done (verbatim из `.agents/product-marketing.md` § Jobs to be done). |
-| `MaattOrigin.tsx:45-49` «Не для тебя» 3 items | × — серый, без accent. Хорошо. **Однако** «Хочешь быстро разбогатеть» — straw-man (никто не идентифицирует себя так). | Phase 2: заменить на реальные anti-personas: «Торгуете опционы и нужны Greeks/IV-skew» (specific), «Долгосрочный инвестор — позиции живут годами» (specific), «Алготрейдер с собственным backtest-движком» (specific). См. `.agents/product-marketing.md` § Anti-personas. |
+| `EmpirikOrigin.tsx:33-38` «Для тебя» 5 items | Visual list ✓-symbol — accent color (sienna). Хорошо. **Однако:** items абстрактные («хочешь видеть свою альфу», «понимаешь, что 70 % — дисциплина»). Не jobs, manifesto-checks. | Phase 2: переписать через jobs-to-be-done (verbatim из `.agents/product-marketing.md` § Jobs to be done). |
+| `EmpirikOrigin.tsx:45-49` «Не для тебя» 3 items | × — серый, без accent. Хорошо. **Однако** «Хочешь быстро разбогатеть» — straw-man (никто не идентифицирует себя так). | Phase 2: заменить на реальные anti-personas: «Торгуете опционы и нужны Greeks/IV-skew» (specific), «Долгосрочный инвестор — позиции живут годами» (specific), «Алготрейдер с собственным backtest-движком» (specific). См. `.agents/product-marketing.md` § Anti-personas. |
 | Sticky-CTA после scroll: **отсутствует** | На 4000+ px скролле (16 секций) пользователь не имеет постоянного CTA в viewport. | Phase 2 (optional): sticky-bottom band «Начать бесплатно · 21 день Pro · без карты →» появляющийся после прокрутки > 1.5 viewport. Editorial-стиль (без shadow, тонкий em-dash divider), `prefers-reduced-motion`-aware. Снизит «лень дочитывать до Final CTA». |
 
 ---
@@ -269,7 +269,7 @@ Free 0 ₽ · Pro 399 ₽/мес. Нет годового toggle (несмотр
 | 13. AudienceQualifier | Объекции (см. блок выше) с inline-ответами. |
 | 14. Pricing | Бейджи: «Чаще всего» (Pro), «21 день Pro в подарок» (Pro header), «152-ФЗ · ваши данные в РФ» (под всеми тремя колонками). Опционально — логотипы 6 брокеров над секцией. |
 | 15. Final CTA | Под CTA одной строкой: «Без карты · 21 день Pro · отмена в 1 клик» — финальный risk-reversal. |
-| 16. Footer | «© МААТТ · Yandex Cloud · 152-ФЗ · Бета-период» — честный legal-trust. Уже почти так, добавить «Бета-период». |
+| 16. Footer | «© Эмпирик · Yandex Cloud · 152-ФЗ · Бета-период» — честный legal-trust. Уже почти так, добавить «Бета-период». |
 
 ---
 

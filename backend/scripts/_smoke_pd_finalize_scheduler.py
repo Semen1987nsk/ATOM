@@ -8,7 +8,7 @@ deletion_requested_at > 30 дней назад.
 2. Ставим deletion_requested_at = now() - 31 day
 3. Сбрасываем _last_pd_finalize_at = None (первый запуск)
 4. Вызываем scheduler._check_pd_finalizations()
-5. Проверяем что email анонимизирован → "deleted-{id}@anon.eqio"
+5. Проверяем что email анонимизирован → "deleted-{id}@anon.empirik"
 """
 import asyncio
 import os
@@ -108,7 +108,7 @@ async def main():
         print(f"Fresh user (should be untouched): email={u_fresh.email}, name={u_fresh.name}")
         print(f"Active user (should be untouched): email={u_active.email}, name={u_active.name}")
 
-        assert u_expired.email == f"deleted-{user_id}@anon.eqio", (
+        assert u_expired.email == f"deleted-{user_id}@anon.empirik", (
             f"Expected anonymized email, got {u_expired.email!r}"
         )
         assert u_expired.name is None, "Expected name=NULL"

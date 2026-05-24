@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { X } from 'lucide-react';
 
-const STORAGE_KEY = 'eqio.cookie_consent.v1';
+const STORAGE_KEY = 'empirik.cookie_consent.v1';
 
 export function CookieConsent() {
   const [visible, setVisible] = useState(false);

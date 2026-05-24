@@ -35,7 +35,7 @@ PdConsent {
 
 **Phase 2 (`finalize_deletion`, через 30 дней, scheduler-triggered):**
 
-- `User.email = "deleted-{id}@anon.eqio"`, остальные ПД-поля → NULL
+- `User.email = "deleted-{id}@anon.empirik"`, остальные ПД-поля → NULL
 - `Trade.notes/screenshot_url/entry_reason/exit_reason/news_event/ai_analysis` → NULL (свободный текст пользователя)
 - `DailyReview.reflection/intention/trade_reflections` → NULL
 - **Не трогаем:** `Payment.card_last4/external_id` (402-ФЗ — бухучёт хранится 4 года), агрегатные числовые поля Trade (для статистики)

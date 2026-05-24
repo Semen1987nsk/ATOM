@@ -1,6 +1,6 @@
 # Эталон №1 — Главный дашборд
 
-**Скриншот:** `eqio-final-dashboard.png` + `eqio-dashboard-final.png` (empty-state)
+**Скриншот:** `empirik-final-dashboard.png` + `empirik-dashboard-final.png` (empty-state)
 **Код:** `frontend/src/app/page.tsx` (Client) + `frontend/src/app/dashboard-demo/page.tsx` (Server-вариант)
 
 ## Layout
@@ -58,7 +58,7 @@
 
 ## Empty-state
 
-См. `eqio-dashboard-final.png` — карточка с CTA «Начните вести журнал сделок» + 2 кнопки «Импортировать сделки» / «Добавить вручную». Под ней — все плитки видны, но с пустыми значениями (`—`) и приглушены.
+См. `empirik-dashboard-final.png` — карточка с CTA «Начните вести журнал сделок» + 2 кнопки «Импортировать сделки» / «Добавить вручную». Под ней — все плитки видны, но с пустыми значениями (`—`) и приглушены.
 
 ## Loading-state
 

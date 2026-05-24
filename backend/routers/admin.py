@@ -219,16 +219,16 @@ def admin_pd_deletions_status(
     now = utc_now_naive()
     threshold = now - timedelta(days=GRACE_PERIOD_DAYS)
 
-    # Уже анонимизированные: email вида deleted-{id}@anon.eqio
+    # Уже анонимизированные: email вида deleted-{id}@anon.empirik
     finalized_count = db.query(func.count(models.User.id)).filter(
-        models.User.email.like("deleted-%@anon.eqio")
+        models.User.email.like("deleted-%@anon.empirik")
     ).scalar() or 0
 
     # В очереди (deletion_requested_at IS NOT NULL и НЕ анонимизирован)
     pending_q = db.query(models.User).filter(
         and_(
             models.User.deletion_requested_at.isnot(None),
-            not_(models.User.email.like("deleted-%@anon.eqio")),
+            not_(models.User.email.like("deleted-%@anon.empirik")),
         )
     )
     pending_count = pending_q.count()

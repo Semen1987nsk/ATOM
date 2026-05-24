@@ -1,4 +1,4 @@
-# Champions Research — МААТТ landing
+# Champions Research — Эмпирик landing
 *Last updated: 2026-05-18 (v2)*
 
 > Источник истины для секции «Дисциплина чемпионов». Шесть трейдеров/инвесторов с верифицируемыми цитатами о записи сделок, дневнике и дисциплине. Каждая цитата — с привязкой к первоисточнику (книга + глава или интервью + дата) по правилу R9 `docs/brand/voice.md`. Эпитетов-славословий («легендарный», «гений», «отец чего-либо») — ноль.
@@ -162,7 +162,7 @@
 ### Линда Брэдфорд Рашке (Linda Bradford Raschke, born 1959)
 
 **Biography (60 words max):**
-Американская трейдер, родилась в 1959 в Пасадене (Калифорния). Двойной диплом Occidental College по экономике и музыкальной композиции (1980). С 1981 — market maker по опционам на equity, затем futures-трейдер. В 1992 зарегистрировалась как CTA. Основала LBRGroup, Inc. Соавтор «Street Smarts» (1995, с Лоренсом Коннорсом) и автор «Trading Sardines» (2019). Lifetime Achievement Award IFTA (2024). Единственная женщина в касте МААТТ.
+Американская трейдер, родилась в 1959 в Пасадене (Калифорния). Двойной диплом Occidental College по экономике и музыкальной композиции (1980). С 1981 — market maker по опционам на equity, затем futures-трейдер. В 1992 зарегистрировалась как CTA. Основала LBRGroup, Inc. Соавтор «Street Smarts» (1995, с Лоренсом Коннорсом) и автор «Trading Sardines» (2019). Lifetime Achievement Award IFTA (2024). Единственная женщина в касте Эмпирик.
 
 **Quote candidates:**
 
@@ -182,7 +182,7 @@
 
 **Wikipedia:** https://en.wikipedia.org/wiki/Linda_Bradford_Raschke (verified 2026-05-18, EN-статья существует, реальная — НЕ 404 и НЕ redirect; биография подробная: место рождения Пасадена, год 1959, дипломы Occidental College 1980, начало карьеры 1981 как market maker, LBRGroup, Lifetime Achievement Award IFTA 2024). Русской Wikipedia статьи **НЕТ** на 2026-05-18 — `ru.wikipedia.org/wiki/Рашке,_Линда_Брэдфорд` возвращает «нет такой статьи». Для русскоязычной аудитории на лендинге использовать EN-Wikipedia.
 
-**Portrait source:** Рашке жива (66 лет), активно ведёт `lindaraschke.net` и обучающие программы. Фотографии — copyrighted (её сайт, обложка «Trading Sardines», IFTA Lifetime Achievement Award 2024 publicity stills, YouTube-канал). Узнаваемая иконография: уверенный взгляд, тёмные волосы, графики на заднем плане — visually distinct from остальных пяти champion'ов (все мужчины). Это **важный design-affordance** для МААТТ-лендинга: единственная женщина в касте делает секцию «Дисциплина чемпионов» представительнее по гендеру. Для editorial-гравюры: использовать публичные still из IFTA 2024 ceremony либо обложку «Trading Sardines» (Bradken Publications) под fair-use commentary; альтернатива — запросить разрешение через `lindaraschke.net` contact form.
+**Portrait source:** Рашке жива (66 лет), активно ведёт `lindaraschke.net` и обучающие программы. Фотографии — copyrighted (её сайт, обложка «Trading Sardines», IFTA Lifetime Achievement Award 2024 publicity stills, YouTube-канал). Узнаваемая иконография: уверенный взгляд, тёмные волосы, графики на заднем плане — visually distinct from остальных пяти champion'ов (все мужчины). Это **важный design-affordance** для Эмпирик-лендинга: единственная женщина в касте делает секцию «Дисциплина чемпионов» представительнее по гендеру. Для editorial-гравюры: использовать публичные still из IFTA 2024 ceremony либо обложку «Trading Sardines» (Bradken Publications) под fair-use commentary; альтернатива — запросить разрешение через `lindaraschke.net` contact form.
 
 ---
 

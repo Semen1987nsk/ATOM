@@ -20,7 +20,7 @@ const EXPECTED_RHYTHM: Array<{ section: string; bg: string }> = [
 test("landing follows expected dark/light/orange rhythm in order", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForSelector('[data-theme="maatt-cream"]');
+  await page.waitForSelector('[data-theme="empirik-cream"]');
   const ys: number[] = [];
   for (const { section, bg } of EXPECTED_RHYTHM) {
     const locator = page.locator(`[data-section="${section}"]`);
@@ -41,7 +41,7 @@ test("landing follows expected dark/light/orange rhythm in order", async ({ page
 
 test("no two consecutive sections share DARK background (visual rhythm intact)", async ({ page }) => {
   await page.goto("/");
-  await page.waitForSelector('[data-theme="maatt-cream"]');
+  await page.waitForSelector('[data-theme="empirik-cream"]');
   const sections = EXPECTED_RHYTHM;
   for (let i = 1; i < sections.length; i++) {
     if (sections[i].bg === "rgb(10, 10, 10)" && sections[i - 1].bg === "rgb(10, 10, 10)") {
@@ -52,7 +52,7 @@ test("no two consecutive sections share DARK background (visual rhythm intact)",
 
 test("rhythm map covers all 14 uplift sections", async ({ page }) => {
   await page.goto("/");
-  await page.waitForSelector('[data-theme="maatt-cream"]');
+  await page.waitForSelector('[data-theme="empirik-cream"]');
   // Use document.querySelectorAll directly — locator.evaluateAll() can return empty
   // before hydration completes even when elements are present in the DOM.
   const uplift = await page.evaluate(() =>
@@ -67,7 +67,7 @@ test("rhythm map covers all 14 uplift sections", async ({ page }) => {
 
 test("page has exactly 14 uplift sections (no accidental additions or renames)", async ({ page }) => {
   await page.goto("/");
-  await page.waitForSelector('[data-theme="maatt-cream"]');
+  await page.waitForSelector('[data-theme="empirik-cream"]');
   const sections = await page.locator('[data-section]').count();
   expect(sections).toBe(14);
 });

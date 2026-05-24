@@ -1,12 +1,12 @@
 ---
 name: moex-iss-api-patterns
-description: Use when integrating with MOEX ISS API (Moscow Exchange Information & Statistical Server) for quotes, candles, securities metadata, or trading calendar in the Eqio project. Triggers on "MOEX", "ISS API", "котировки", "свечи", "candles", "тикер", "IMOEX", "торговый календарь биржи", "MAE/MFE расчёт", "iss.moex.com".
+description: Use when integrating with MOEX ISS API (Moscow Exchange Information & Statistical Server) for quotes, candles, securities metadata, or trading calendar in the Empirik project. Triggers on "MOEX", "ISS API", "котировки", "свечи", "candles", "тикер", "IMOEX", "торговый календарь биржи", "MAE/MFE расчёт", "iss.moex.com".
 ---
 
-# MOEX ISS API Patterns для Eqio
+# MOEX ISS API Patterns для Empirik
 
 Скилл описывает корректную работу с публичным API Московской биржи в проекте
-Eqio (торговый дневник РФ-инструментов на FastAPI). Eqio тянет с ISS:
+Empirik (торговый дневник РФ-инструментов на FastAPI). Empirik тянет с ISS:
 котировки для портфеля, минутные свечи для расчёта MAE/MFE, дневную историю
 индекса IMOEX (бенчмарк на equity-кривой) и спецификации фьючерсов
 (MINSTEP/STEPPRICE для PnL фьючерсов).
@@ -20,7 +20,7 @@ Eqio (торговый дневник РФ-инструментов на FastAPI
 
 ---
 
-## 1. Что такое ISS API и почему это важно для Eqio
+## 1. Что такое ISS API и почему это важно для Empirik
 
 **ISS** = Information & Statistical Server, бесплатное публичное API Московской
 биржи. Основные свойства:
@@ -33,7 +33,7 @@ Eqio (торговый дневник РФ-инструментов на FastAPI
   Для дневок и истории задержки нет.
 - **Документация:** `iss.moex.com/iss/reference/` (список endpoints + параметры).
 
-**Что Eqio тащит с ISS:**
+**Что Empirik тащит с ISS:**
 
 | Данные | Где используется | Чувствительность к задержке |
 |---|---|---|
@@ -92,7 +92,7 @@ params = {"iss.meta": "off", "iss.only": "candles", ...}
 
 ---
 
-## 3. Главные endpoints для Eqio
+## 3. Главные endpoints для Empirik
 
 | Что нужно | URL (после `/iss/`) | Возвращает |
 |---|---|---|
@@ -109,7 +109,7 @@ params = {"iss.meta": "off", "iss.only": "candles", ...}
 **Интервалы свечей (`interval`):** `1` (1 мин), `10` (10 мин), `60` (1 час),
 `24` (1 день), `7` (1 неделя), `31` (1 месяц), `4` (1 квартал).
 
-В Eqio есть готовый маппер строковых интервалов в коды MOEX:
+В Empirik есть готовый маппер строковых интервалов в коды MOEX:
 
 ```python
 # backend/moex_service.py
@@ -126,7 +126,7 @@ _INTERVAL_MAP = {"1m": 1, "10m": 10, "1h": 60, "1d": 24, "1w": 7, "1mo": 31}
 
 Все времена в ответе ISS — **MSK без TZ-маркера**. Свечи возвращают `begin`,
 `end` как `"2025-04-15 10:01:00"` без суффикса `+03:00` или `Z`.
-Это легко спутать с UTC. В Eqio это обработано в `market_service._to_msk()`:
+Это легко спутать с UTC. В Empirik это обработано в `market_service._to_msk()`:
 
 ```python
 # backend/market_service.py
@@ -156,7 +156,7 @@ def _to_msk(self, dt: datetime) -> datetime:
 engines/stock/markets/shares/boards/TQBR/securities/{secid}/candles.json
 ```
 
-Eqio в `market_service.get_candles` уже использует board в URL, в
+Empirik в `market_service.get_candles` уже использует board в URL, в
 `moex_service.get_candles` — нет. Это работает для большинства случаев, но
 изредка может вернуть пустой массив для ОФЗ или ETF.
 
@@ -169,7 +169,7 @@ ISS возвращает максимум **500 записей** за запро
 params["start"] = offset  # offset = 0, 500, 1000, ...
 ```
 
-Eqio уже пагинирует в `market_service.get_candles` (по 500) и
+Empirik уже пагинирует в `market_service.get_candles` (по 500) и
 `moex_service.get_index_history` (по 100). Сторожевой `if start_offset > 5000:
 break` — обязателен, чтобы кривой ответ ISS не привёл к бесконечному циклу.
 
@@ -180,14 +180,14 @@ ISS не отдаёт свечи в выходные/праздники. Зап�
 пустой массив. Логика «нет данных» должна это переваривать, не падать с
 HTTP 500.
 
-В Eqio есть `MOEX_HOLIDAYS` — set дат на 2025–2026, и
+В Empirik есть `MOEX_HOLIDAYS` — set дат на 2025–2026, и
 `market_service.is_trading_day(date)`. **Не вводи свою копию, переиспользуй.**
 
 ### 15-минутная задержка real-time
 
 Бесплатные `LAST`, `BID`, `ASK` идут с задержкой ~15 минут. В торговые часы
 пользователь видит «вчерашнюю» цену — это нормально. Для критичных алертов
-(например, «цена пробила стоп») это **неприемлемо**, но Eqio такие алерты
+(например, «цена пробила стоп») это **неприемлемо**, но Empirik такие алерты
 строит на исторических свечах, не на real-time.
 
 ### Rate limit
@@ -199,7 +199,7 @@ HTTP 500.
 - **>20 RPS** — блок IP на несколько минут (ответы по 503).
 
 Поэтому для batch-обновления цен (50 тикеров) — **один запрос к
-`boards/TQBR/securities.json`**, а не 50 отдельных. Eqio так и делает в
+`boards/TQBR/securities.json`**, а не 50 отдельных. Empirik так и делает в
 `get_current_prices`.
 
 ---
@@ -271,7 +271,7 @@ TTL-кэш.
 | Спецификации фьючерсов | 5–60 мин | меняются раз в квартал |
 | Метаданные (ISIN, name) | 7 дней | статика |
 
-**В Eqio** есть `_TTLCache` в `market_service.py` (in-memory dict + monotonic
+**В Empirik** есть `_TTLCache` в `market_service.py` (in-memory dict + monotonic
 time, thread-safe). Используй его, или подключи Redis через
 `services/stats_cache.py` если нужна общая память между worker'ами FastAPI.
 
@@ -433,7 +433,7 @@ def _guess_primary_board(secid: str) -> str:
 
 **Fallback-логика:** если `get_candles(secid, board="TQBR")` вернул пустоту,
 а пользователь точно знает что тикер торгуется — пробовать `RFUD`, потом
-`CETS`. Eqio это делает в `moex_service.get_candles`:
+`CETS`. Empirik это делает в `moex_service.get_candles`:
 
 ```python
 if self.is_futures_ticker(ticker):
@@ -465,7 +465,7 @@ else:
 Влияют на расчёт MAE/MFE для сделок последнего часа дня (нет данных после
 17:50, хотя ожидали бы до 18:50).
 
-В Eqio:
+В Empirik:
 
 ```python
 # backend/market_service.py
@@ -485,7 +485,7 @@ def is_trading_day(self, date) -> bool:
 **Альтернатива:** библиотека `russian_holidays` или pyworkalendar
 (`workalendar.europe.Russia`). Но в обеих **нет специфики MOEX** (например,
 МOEX закрыт 31 декабря, а в обычный рабочий календарь это рабочий день).
-Поэтому Eqio держит свой `MOEX_HOLIDAYS` set.
+Поэтому Empirik держит свой `MOEX_HOLIDAYS` set.
 
 **`next_trading_day(date)`** для post-exit analysis:
 
@@ -514,7 +514,7 @@ def next_trading_day(date):
 **Шаги расчёта:**
 
 1. Получить свечи `[entry_at, exit_at]` с интервалом, подобранным под длину
-   сделки (короткая — 1m, недельная — 1h, и т.д.). Eqio в `calculate_mae_mfe`:
+   сделки (короткая — 1m, недельная — 1h, и т.д.). Empirik в `calculate_mae_mfe`:
 
    ```python
    if duration_hours <= 2:        interval = 1
@@ -548,9 +548,9 @@ def next_trading_day(date):
 | Открытие через ночь | окно покроет несколько торговых дней, между ними gap (внеторговое время) — это OK, свечи просто отсутствуют там |
 | Сделка через выходной | свечей нет за субботу–воскресенье; не вводим warning, это норма |
 | Тикер делистнут | свечи частично есть, после делистинга `[]` — расчёт по тому что есть, `note` про неполные данные |
-| `exit_price` за пределами `[low, high]` | gap, скорректировать по `exit_price` (см. пример в Eqio) |
+| `exit_price` за пределами `[low, high]` | gap, скорректировать по `exit_price` (см. пример в Empirik) |
 
-**Текущая реализация в Eqio** (`market_service.calculate_mae_mfe`) корректна
+**Текущая реализация в Empirik** (`market_service.calculate_mae_mfe`) корректна
 по сути, но громоздка — 170 строк, несколько уровней вложенности. Кандидат
 на расщепление:
 
@@ -621,7 +621,7 @@ async def fetch_candles_chunked(client, secid, board, from_dt, till_dt, interval
     return all_candles
 ```
 
-Для Eqio предпочтительнее **paging** — меньше запросов = меньше шанс на rate
+Для Empirik предпочтительнее **paging** — меньше запросов = меньше шанс на rate
 limit.
 
 ---

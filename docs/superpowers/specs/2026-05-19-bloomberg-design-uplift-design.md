@@ -1,11 +1,11 @@
-# Дизайн-спецификация: Bloomberg-uplift лендинга МААТТ
+# Дизайн-спецификация: Bloomberg-uplift лендинга Эмпирик
 
 **Дата:** 2026-05-19
 **Автор:** Claude Code (brainstorming pair-session с sarvanidi87@gmail.com)
 **Предыдущие документы:**
 - `2026-05-18-landing-handcrafted-redesign-design.md` (v1, cream-палитра + Trader Desk)
 - `2026-05-18-landing-champions-rebuild-design.md` (v2, 16-секционная IA + Champions + копирайт)
-**Working tree:** `C:\Users\Administrator\Eqio\ATOM-landing`
+**Working tree:** `C:\Users\Administrator\Empirik\ATOM-landing`
 
 ---
 
@@ -143,7 +143,7 @@ Manrope добавляется через `next/font/google` в `layout.tsx`. Л
 
 ### 5.3. Использование
 
-- `--accent` (охра `#B58A2F`) — остаётся для **существующих** виджетов (HeroEquityCurve линия, TradeReplay decor, MaattOrigin элементы), чтобы не ломать визуальную преемственность.
+- `--accent` (охра `#B58A2F`) — остаётся для **существующих** виджетов (HeroEquityCurve линия, TradeReplay decor, EmpirikOrigin элементы), чтобы не ломать визуальную преемственность.
 - `--orange` (`#E84E1C`) — новый primary accent для **uplift-добавлений**: CTA-кнопки, H1 второй строки в Hero, Numbers band цифры, Champions rule, Ticker фон.
 - Оба сосуществуют: охра — «бумажный» детальный акцент, orange — «обложечный» большой акцент.
 
@@ -305,7 +305,7 @@ Visual regression тесты прогоняются в обоих режимах
 ### 9.1. В составе uplift'а (этой работы)
 
 1. **Шрифт Manrope** — добавление через `next/font/google` в `layout.tsx`, новая CSS-переменная `--font-display`
-2. **CSS-токены** — добавление 12 новых переменных в блок `[data-theme="maatt-cream"]` (см. §5.2)
+2. **CSS-токены** — добавление 12 новых переменных в блок `[data-theme="empirik-cream"]` (см. §5.2)
 3. **Утилитарные классы** — `.uplift-h1`, `.uplift-h2-dark`, `.uplift-h2-light`, `.uplift-numbers`, `.uplift-section-dark`, `.uplift-section-light`, `.uplift-section-tint`, `.uplift-ticker-strip`
 4. **Section refactor** — каждая из 16 секций получает корректный wrapper (DARK/LIGHT/TINT/SPLIT/STRIP) и обновлённую типографику без изменения копирайта
 5. **Hero motion** — `HeroEquityCurve` дополняется stroke-dashoffset анимацией + reduced-motion guard

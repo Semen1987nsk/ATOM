@@ -6,7 +6,7 @@ test.describe("Landing — smoke", () => {
   });
 
   test("renders all 16 sections without errors", async ({ page }) => {
-    await expect(page.getByRole("link", { name: "МААТТ" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Эмпирик" }).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Запись делает трейдера/i }).first()).toBeVisible();
     await expect(page.getByText(/Журнал — не отчётность/i).first()).toBeVisible();
     await expect(page.getByRole("heading", { name: /Двенадцать правил против/i })).toBeVisible();
@@ -69,9 +69,9 @@ test.describe("Landing — smoke", () => {
     expect(orangeColor).toBe("rgb(232, 78, 28)");
   });
 
-  test("footer has МААТТ wordmark + email", async ({ page }) => {
-    await expect(page.locator("footer >> text=МААТТ").first()).toBeVisible();
-    await expect(page.locator("footer >> text=hello@maatt.ru")).toBeVisible();
+  test("footer has Эмпирик wordmark + email", async ({ page }) => {
+    await expect(page.locator("footer >> text=Эмпирик").first()).toBeVisible();
+    await expect(page.locator("footer >> text=hello@empirik.io")).toBeVisible();
   });
 
   test("Manrope font loaded and applied to body display class", async ({ page }) => {
@@ -166,9 +166,9 @@ test.describe("Landing — smoke", () => {
   });
 
   test("uplift tokens defined on landing root", async ({ page }) => {
-    await page.waitForSelector('[data-theme="maatt-cream"]');
+    await page.waitForSelector('[data-theme="empirik-cream"]');
     const tokens = await page.evaluate(() => {
-      const root = document.querySelector('[data-theme="maatt-cream"]') ?? document.documentElement;
+      const root = document.querySelector('[data-theme="empirik-cream"]') ?? document.documentElement;
       const cs = getComputedStyle(root);
       return {
         orange: cs.getPropertyValue("--orange").trim(),

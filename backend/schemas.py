@@ -71,7 +71,7 @@ class PdDeletionsStatusResponse(BaseModel):
     """Статус очереди удалений для админа (152-ФЗ ст. 21 ч. 5)."""
     pending_count: int = Field(..., description="Сколько аккаунтов в grace period (ждут финализации)")
     overdue_count: int = Field(..., description="Сколько уже истекли (>30 дней) и должны быть анонимизированы")
-    finalized_count: int = Field(..., description="Сколько аккаунтов уже анонимизированы (email = deleted-*@anon.eqio)")
+    finalized_count: int = Field(..., description="Сколько аккаунтов уже анонимизированы (email = deleted-*@anon.empirik)")
     grace_period_days: int = Field(30, description="Текущий grace period")
     next_finalization_at: Optional[datetime] = Field(None, description="Когда финализируется ближайший аккаунт (UTC)")
     last_scheduler_run_at: Optional[datetime] = Field(None, description="Когда scheduler последний раз отрабатывал finalize")

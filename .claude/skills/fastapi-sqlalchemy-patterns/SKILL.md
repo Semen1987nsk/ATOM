@@ -1,15 +1,15 @@
 ---
 name: fastapi-sqlalchemy-patterns
-description: Use when writing or refactoring FastAPI routers, SQLAlchemy 2.0 models, Pydantic v2 schemas, or Alembic migrations in the Eqio project. Triggers on "новый роутер", "новый эндпоинт", "новая модель", "alembic", "миграция", "pydantic", "session", "dependency injection", "fastapi", "sqlalchemy", "select query", "N+1".
+description: Use when writing or refactoring FastAPI routers, SQLAlchemy 2.0 models, Pydantic v2 schemas, or Alembic migrations in the Empirik project. Triggers on "новый роутер", "новый эндпоинт", "новая модель", "alembic", "миграция", "pydantic", "session", "dependency injection", "fastapi", "sqlalchemy", "select query", "N+1".
 ---
 
-# FastAPI + SQLAlchemy 2.0 — патчи и паттерны для Eqio
+# FastAPI + SQLAlchemy 2.0 — патчи и паттерны для Empirik
 
-Skill адресован коду в `C:\Users\Administrator\Eqio\ATOM\backend\`. Все примеры опираются на реальные модули проекта; ссылки даны в формате `backend/<file>:<symbol>`.
+Skill адресован коду в `C:\Users\Administrator\Empirik\ATOM\backend\`. Все примеры опираются на реальные модули проекта; ссылки даны в формате `backend/<file>:<symbol>`.
 
-## 1. Контекст проекта Eqio
+## 1. Контекст проекта Empirik
 
-Eqio — торговый дневник для трейдеров MOEX, FastAPI-бэкенд (`backend/main.py`), SQLAlchemy 2.0 поверх sync-сессии (`backend/database.py:get_db`), Pydantic v2 (`backend/schemas.py`), Alembic с одним baseline-ревижном (`backend/alembic/versions/0001_initial_baseline.py`), PostgreSQL в проде и SQLite локально (`atom.db`). Текущие конвенции: модели в `backend/models.py` пока в legacy-стиле `Column(...)` (см. `User`, `Trade`, `Account`, `BalanceSnapshot`, `Subscription`, `Payment`); схемы в `backend/schemas.py` уже на Pydantic v2 с `ConfigDict(from_attributes=True)`; роутеры лежат в `backend/routers/*.py`, регистрируются в `main.py` через `app.include_router(...)`; auth-зависимости — в `backend/auth_service.py:get_current_user` и `get_current_user_optional`; settings — единственный источник истины через `from config import settings` (`backend/config.py`). Деньги хранятся как `Numeric(precision=18, scale=8)` для цен и `Numeric(precision=10, scale=2)` для рублёвых сумм платежей. Все datetime — naive UTC через `utils.datetime_utils.utc_now_naive` (legacy-выбор, новые поля можно делать tz-aware, см. раздел 9).
+Empirik — торговый дневник для трейдеров MOEX, FastAPI-бэкенд (`backend/main.py`), SQLAlchemy 2.0 поверх sync-сессии (`backend/database.py:get_db`), Pydantic v2 (`backend/schemas.py`), Alembic с одним baseline-ревижном (`backend/alembic/versions/0001_initial_baseline.py`), PostgreSQL в проде и SQLite локально (`atom.db`). Текущие конвенции: модели в `backend/models.py` пока в legacy-стиле `Column(...)` (см. `User`, `Trade`, `Account`, `BalanceSnapshot`, `Subscription`, `Payment`); схемы в `backend/schemas.py` уже на Pydantic v2 с `ConfigDict(from_attributes=True)`; роутеры лежат в `backend/routers/*.py`, регистрируются в `main.py` через `app.include_router(...)`; auth-зависимости — в `backend/auth_service.py:get_current_user` и `get_current_user_optional`; settings — единственный источник истины через `from config import settings` (`backend/config.py`). Деньги хранятся как `Numeric(precision=18, scale=8)` для цен и `Numeric(precision=10, scale=2)` для рублёвых сумм платежей. Все datetime — naive UTC через `utils.datetime_utils.utc_now_naive` (legacy-выбор, новые поля можно делать tz-aware, см. раздел 9).
 
 ## 2. Pydantic v2 — схемы
 
@@ -148,7 +148,7 @@ stmt = (
 )
 ```
 
-### Реальный риск N+1 в Eqio
+### Реальный риск N+1 в Empirik
 
 `backend/routers/stats.py` агрегирует сделки и часто читает `trade.setup.name`/`trade.account.currency`. Если эти атрибуты дёргаются в цикле без `joinedload`, получаем по запросу на каждую сделку — на счёте с 5000 сделками это 5000 SELECTов. Лечится одним `.options(joinedload(...))` в исходном `select()`.
 
@@ -166,7 +166,7 @@ stmt = (
 
 ## 5. Dependency Injection FastAPI
 
-### Базовые зависимости в Eqio
+### Базовые зависимости в Empirik
 
 - `database.get_db` — sync `Session`, генератор. Сделан синхронным сознательно: вся ORM-логика sync, нет смысла переходить на async-сессию без миграции всего слоя данных. CPU-блокирующие или sync-IO куски в async-эндпоинтах оборачиваем в `asyncio.to_thread(...)` — пример `_build_imoex_overlay_async` в `backend/routers/stats.py`.
 - `auth_service.get_current_user` — обязательный пользователь, кидает 401/403.
@@ -283,11 +283,11 @@ def create_trade_with_position(db: Session, ...) -> models.Trade:
         raise
 ```
 
-Для атомарных блоков можно использовать `with db.begin():` если сессия с `autocommit=False` и без активной транзакции — но в Eqio `SessionLocal` уже `autoflush=False, autocommit=False, expire_on_commit=False`, так что обычно достаточно явного `commit/rollback`.
+Для атомарных блоков можно использовать `with db.begin():` если сессия с `autocommit=False` и без активной транзакции — но в Empirik `SessionLocal` уже `autoflush=False, autocommit=False, expire_on_commit=False`, так что обычно достаточно явного `commit/rollback`.
 
 ## 8. Alembic — миграции
 
-### Текущее состояние Eqio
+### Текущее состояние Empirik
 
 В `backend/alembic/versions/` лежит **один** файл — `0001_initial_baseline.py`, делающий `Base.metadata.create_all(...)`. Это сознательная консолидация (см. docstring файла), но в долгосрочной перспективе это плохо: любая новая колонка ломает прод, потому что `create_all` не применяется к существующей БД. **Все новые изменения схемы — отдельной инкрементной миграцией с `down_revision = "0001_initial_baseline"` (или предыдущей в цепочке).**
 
@@ -317,7 +317,7 @@ def create_trade_with_position(db: Session, ...) -> models.Trade:
 
 ### Batch mode
 
-Eqio локально использует SQLite (`atom.db`). SQLite не поддерживает большинство ALTER, поэтому для совместимости — `with op.batch_alter_table("trades") as bop: bop.alter_column(...)`. На Postgres batch_mode превращается в обычный ALTER, на SQLite — в copy-and-swap. Если миграция должна работать на обеих БД (тесты идут на SQLite), пишем через batch.
+Empirik локально использует SQLite (`atom.db`). SQLite не поддерживает большинство ALTER, поэтому для совместимости — `with op.batch_alter_table("trades") as bop: bop.alter_column(...)`. На Postgres batch_mode превращается в обычный ALTER, на SQLite — в copy-and-swap. Если миграция должна работать на обеих БД (тесты идут на SQLite), пишем через batch.
 
 ### Команды
 
@@ -350,7 +350,7 @@ alembic stamp 0001_initial_baseline
 
 ### Datetime
 
-- В легаси-коде Eqio — `utc_now_naive()` из `backend/utils/datetime_utils.py` (naive UTC). Это исторический выбор; уважайте его при работе с существующими полями (иначе сравнения `entry_at < ...` сломаются).
+- В легаси-коде Empirik — `utc_now_naive()` из `backend/utils/datetime_utils.py` (naive UTC). Это исторический выбор; уважайте его при работе с существующими полями (иначе сравнения `entry_at < ...` сломаются).
 - Новые поля делайте tz-aware: `datetime.now(timezone.utc)`. Отдельные модули (новые миграции, новые модели) можно сразу строить tz-aware с `DateTime(timezone=True)` в SQLAlchemy.
 - **Никогда** `datetime.utcnow()` — deprecated с Python 3.12, удаляется.
 

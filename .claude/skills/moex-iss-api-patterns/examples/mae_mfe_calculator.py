@@ -1,5 +1,5 @@
 """
-MAE/MFE calculator для конкретной сделки в Eqio.
+MAE/MFE calculator для конкретной сделки в Empirik.
 
 Что внутри:
   - calculate_mae_mfe(trade) → MaeMfeResult.
@@ -8,7 +8,7 @@ MAE/MFE calculator для конкретной сделки в Eqio.
   - Фильтрация свечей строго внутри окна сделки.
   - Edge cases: сделка <1 минуты, через выходной, gap-открытие.
 
-В Eqio эта логика уже есть в backend/market_service.py:calculate_mae_mfe (~170 строк),
+В Empirik эта логика уже есть в backend/market_service.py:calculate_mae_mfe (~170 строк),
 но громоздкая и зависит от sync requests. Этот модуль — рефакторинг на async
 с выделением чистых функций. План замены:
 
@@ -49,7 +49,7 @@ class TradeInput:
     """
     Минимальный набор полей сделки, нужный для MAE/MFE.
 
-    entry_at, exit_at — UTC (как в БД Eqio).
+    entry_at, exit_at — UTC (как в БД Empirik).
     Если naive datetime — трактуется как MSK (для совместимости с тестами).
     """
     symbol: str
@@ -82,7 +82,7 @@ def _to_msk_naive(dt: datetime) -> datetime:
     в from/till и отдаёт их в begin/end свечей.
     """
     if dt.tzinfo is None:
-        # naive — трактуем как MSK (соглашение Eqio).
+        # naive — трактуем как MSK (соглашение Empirik).
         return dt
     return dt.astimezone(MSK).replace(tzinfo=None)
 

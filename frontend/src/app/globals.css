@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================================================
- *  ATOM / Eqio — Design System v2
+ *  ATOM / Эмпирик — Design System v2
  *  Стиль: чистый dark-product (вдохновлён kontur.ru, Linear, Vercel).
  *  Brand: Indigo #6366F1.
  *  Принципы: мягкие тени вместо неон-glow, pill-кнопки, 16px радиусы,
@@ -714,10 +714,10 @@ h1 { letter-spacing: -0.02em; }
 .kontur-curve-bl { bottom: 0; left: 0; }
 .kontur-curve-tl { top: 0; left: 0; }
 
-/* ═════════ МААТТ Editorial Cream — landing palette ═════════
+/* ═════════ Эмпирик Editorial Cream — landing palette ═════════
    Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
    См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
-[data-theme="maatt-cream"] {
+[data-theme="empirik-cream"] {
   /* Fraunces dropped for perf — Cormorant (--font-serif-cyr) is now the sole
      editorial serif; alias keeps existing var(--font-serif) stacks resolving. */
   --font-serif:      var(--font-serif-cyr);
@@ -753,7 +753,7 @@ h1 { letter-spacing: -0.02em; }
   color: var(--ink);
 }
 
-[data-theme="maatt-cream"] .editorial-eyebrow {
+[data-theme="empirik-cream"] .editorial-eyebrow {
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -761,7 +761,7 @@ h1 { letter-spacing: -0.02em; }
   color: var(--ink-3);
 }
 
-[data-theme="maatt-cream"] .editorial-display {
+[data-theme="empirik-cream"] .editorial-display {
   font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
   font-weight: 350;
   font-size: clamp(44px, 6vw, 88px);
@@ -770,7 +770,7 @@ h1 { letter-spacing: -0.02em; }
   font-variation-settings: "opsz" 144, "SOFT" 30;
 }
 
-[data-theme="maatt-cream"] .editorial-h2 {
+[data-theme="empirik-cream"] .editorial-h2 {
   font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
   font-weight: 400;
   font-size: clamp(32px, 4vw, 52px);
@@ -779,7 +779,7 @@ h1 { letter-spacing: -0.02em; }
   font-variation-settings: "opsz" 96, "SOFT" 20;
 }
 
-[data-theme="maatt-cream"] .editorial-lede {
+[data-theme="empirik-cream"] .editorial-lede {
   font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
   font-style: italic;
   font-weight: 300;
@@ -788,7 +788,7 @@ h1 { letter-spacing: -0.02em; }
   color: var(--ink-2);
 }
 
-[data-theme="maatt-cream"] .editorial-pullquote {
+[data-theme="empirik-cream"] .editorial-pullquote {
   font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
   font-weight: 400;
   font-style: italic;
@@ -797,12 +797,12 @@ h1 { letter-spacing: -0.02em; }
   font-variation-settings: "opsz" 144, "SOFT" 40, "WONK" 1;
 }
 
-[data-theme="maatt-cream"] .num {
+[data-theme="empirik-cream"] .num {
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
 }
 
-[data-theme="maatt-cream"] .btn-primary {
+[data-theme="empirik-cream"] .btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -816,17 +816,17 @@ h1 { letter-spacing: -0.02em; }
   text-decoration: none;
   transition: transform 120ms ease, background 120ms ease;
 }
-[data-theme="maatt-cream"] .btn-primary:hover {
+[data-theme="empirik-cream"] .btn-primary:hover {
   background: #000;
   transform: translateY(-1px);
 }
 
-[data-theme="maatt-cream"] .editorial-table {
+[data-theme="empirik-cream"] .editorial-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }
-[data-theme="maatt-cream"] .editorial-table th {
+[data-theme="empirik-cream"] .editorial-table th {
   text-align: left;
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   font-size: 11px;
@@ -837,7 +837,7 @@ h1 { letter-spacing: -0.02em; }
   padding: 12px 8px;
   border-bottom: 1px solid var(--rule-strong);
 }
-[data-theme="maatt-cream"] .editorial-table td {
+[data-theme="empirik-cream"] .editorial-table td {
   padding: 14px 8px;
   border-bottom: 1px solid var(--rule);
   vertical-align: top;
@@ -845,28 +845,28 @@ h1 { letter-spacing: -0.02em; }
 
 /* ═════════ Bloomberg uplift — utility classes (2026-05-19) ═════════ */
 
-[data-theme="maatt-cream"] .uplift-section-light {
+[data-theme="empirik-cream"] .uplift-section-light {
   background-color: var(--paper);
   color: var(--ink);
 }
-[data-theme="maatt-cream"] .uplift-section-tint {
+[data-theme="empirik-cream"] .uplift-section-tint {
   background-color: var(--paper-tint);
   color: var(--ink);
 }
-[data-theme="maatt-cream"] .uplift-section-dark {
+[data-theme="empirik-cream"] .uplift-section-dark {
   background-color: var(--ink-dark);
   color: var(--paper-on-dark);
 }
-[data-theme="maatt-cream"] .uplift-section-dark .uplift-eyebrow,
-[data-theme="maatt-cream"] .uplift-section-dark .editorial-eyebrow {
+[data-theme="empirik-cream"] .uplift-section-dark .uplift-eyebrow,
+[data-theme="empirik-cream"] .uplift-section-dark .editorial-eyebrow {
   color: var(--paper-on-dark-3);
 }
-[data-theme="maatt-cream"] .uplift-section-dark a {
+[data-theme="empirik-cream"] .uplift-section-dark a {
   color: var(--paper-on-dark);
 }
 
 /* Display sans (Manrope) heading family */
-[data-theme="maatt-cream"] .uplift-h1 {
+[data-theme="empirik-cream"] .uplift-h1 {
   font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
   font-weight: 800;
   font-size: clamp(48px, 7vw, 88px);
@@ -874,7 +874,7 @@ h1 { letter-spacing: -0.02em; }
   letter-spacing: -0.03em;
   text-transform: uppercase;
 }
-[data-theme="maatt-cream"] .uplift-h2 {
+[data-theme="empirik-cream"] .uplift-h2 {
   font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
   font-weight: 800;
   font-size: clamp(36px, 4.5vw, 56px);
@@ -882,7 +882,7 @@ h1 { letter-spacing: -0.02em; }
   letter-spacing: -0.025em;
   text-transform: uppercase;
 }
-[data-theme="maatt-cream"] .uplift-numbers {
+[data-theme="empirik-cream"] .uplift-numbers {
   font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
   font-weight: 800;
   font-size: clamp(56px, 7vw, 96px);
@@ -893,13 +893,13 @@ h1 { letter-spacing: -0.02em; }
 }
 
 /* Ticker strip */
-[data-theme="maatt-cream"] .uplift-ticker-strip {
+[data-theme="empirik-cream"] .uplift-ticker-strip {
   background-color: var(--orange-strip);
   color: #0a0a0a;
   border-top: 1px solid #0a0a0a;
   border-bottom: 1px solid #0a0a0a;
 }
-[data-theme="maatt-cream"] .uplift-ticker-track {
+[data-theme="empirik-cream"] .uplift-ticker-track {
   display: inline-flex;
   gap: 36px;
   white-space: nowrap;
@@ -919,24 +919,24 @@ h1 { letter-spacing: -0.02em; }
   from { stroke-dashoffset: var(--curve-length, 800); }
   to   { stroke-dashoffset: 0; }
 }
-[data-theme="maatt-cream"] .uplift-curve-animate {
+[data-theme="empirik-cream"] .uplift-curve-animate {
   animation: uplift-curve-draw 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* Champions raise on scroll */
-[data-theme="maatt-cream"] .uplift-raise {
+[data-theme="empirik-cream"] .uplift-raise {
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
               transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
-[data-theme="maatt-cream"] .uplift-raise[data-inview="true"] {
+[data-theme="empirik-cream"] .uplift-raise[data-inview="true"] {
   opacity: 1;
   transform: translateY(0);
 }
 
 /* Primary CTA button — orange bg + ink-dark text + Manrope bold uppercase */
-[data-theme="maatt-cream"] .uplift-cta-primary {
+[data-theme="empirik-cream"] .uplift-cta-primary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -949,12 +949,12 @@ h1 { letter-spacing: -0.02em; }
   text-decoration: none;
   transition: background-color 0.15s ease;
 }
-[data-theme="maatt-cream"] .uplift-cta-primary:hover {
+[data-theme="empirik-cream"] .uplift-cta-primary:hover {
   background-color: var(--orange-hover);
 }
 
 /* Focus ring for orange CTAs */
-[data-theme="maatt-cream"] .uplift-focus:focus-visible {
+[data-theme="empirik-cream"] .uplift-focus:focus-visible {
   outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
@@ -964,15 +964,15 @@ h1 { letter-spacing: -0.02em; }
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-[data-theme="maatt-cream"] .uplift-fade-in {
+[data-theme="empirik-cream"] .uplift-fade-in {
   opacity: 0;
   animation: uplift-fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* prefers-reduced-motion — disable all uplift motion */
 @media (prefers-reduced-motion: reduce) {
-  [data-theme="maatt-cream"] .uplift-ticker-track { animation: none; transform: none; }
-  [data-theme="maatt-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
-  [data-theme="maatt-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
-  [data-theme="maatt-cream"] .uplift-fade-in { animation: none; opacity: 1 !important; transform: none !important; }
+  [data-theme="empirik-cream"] .uplift-ticker-track { animation: none; transform: none; }
+  [data-theme="empirik-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
+  [data-theme="empirik-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
+  [data-theme="empirik-cream"] .uplift-fade-in { animation: none; opacity: 1 !important; transform: none !important; }
 }

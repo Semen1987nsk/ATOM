@@ -56,7 +56,7 @@
 
 ## Контакты при P0 (заполнить)
 
-- DPO: privacy@eqio.ru *[активировать]*
+- DPO: privacy@empirik.io *[активировать]*
 - Tech lead: *[имя]*
 - РКН (если утечка ПД): через pd.rkn.gov.ru
 

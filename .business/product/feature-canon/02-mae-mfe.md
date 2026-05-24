@@ -1,6 +1,6 @@
 # Эталон №2 — MAE/MFE анализ (автоматический из MOEX)
 
-**Скриншот:** `eqio-mae-mfe-page.png`
+**Скриншот:** `empirik-mae-mfe-page.png`
 **Код:** `frontend/src/app/analysis/mae-mfe/page.tsx` + `frontend/src/components/dashboard/MAEMFEAnalysisPanel.tsx`
 **Backend:** `backend/analytics/mae_mfe.py` + `backend/market_service.py`
 

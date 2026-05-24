@@ -1,9 +1,9 @@
 /**
- * Guest landing — МААТТ hand-crafted (Trader Desk + cream palette).
+ * Guest landing — Эмпирик hand-crafted (Trader Desk + cream palette).
  *
  * См. spec docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md
  *
- * Изоляция темы: data-theme="maatt-cream" — не течёт в auth-zone.
+ * Изоляция темы: data-theme="empirik-cream" — не течёт в auth-zone.
  */
 import { Fragment } from "react";
 import Link from "next/link";
@@ -74,7 +74,7 @@ const METRICS_TABLE: Array<{ metric: string; source: string; what: string; where
 
 export function Landing() {
   return (
-    <main data-theme="maatt-cream" className="min-h-screen">
+    <main data-theme="empirik-cream" className="min-h-screen">
       {/* 1. HEADER */}
       <header className="sticky top-0 z-30 bg-[var(--paper)] border-b border-[var(--rule)]">
         <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 lg:px-12 h-16">
@@ -83,7 +83,7 @@ export function Landing() {
             className="text-[22px] italic no-underline text-[var(--ink)]"
             style={{ fontFamily: "var(--font-serif), Georgia, serif", fontWeight: 400, letterSpacing: "-0.015em" }}
           >
-            МААТТ
+            Эмпирик
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-[13px] text-[var(--ink-2)]">
             {NAV_LINKS.map((l) => (
@@ -597,7 +597,7 @@ export function Landing() {
                 className="text-[22px] no-underline mb-4 block"
                 style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: 800, color: "var(--paper-on-dark)", letterSpacing: "-0.025em", textTransform: "uppercase" }}
               >
-                МААТТ
+                Эмпирик
               </Link>
               <p className="leading-relaxed text-[13px]" style={{ color: "var(--paper-on-dark-3)" }}>
                 Журнал сделок для активных трейдеров MOEX. На минутных свечах биржи. На вашем брокере через API или CSV.
@@ -621,8 +621,8 @@ export function Landing() {
             <div>
               <div className="editorial-eyebrow mb-4" style={{ color: "var(--paper-on-dark-3)" }}>Контакты</div>
               <nav className="flex flex-col gap-2.5">
-                <a href="mailto:hello@maatt.ru" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>hello@maatt.ru</a>
-                <a href="mailto:support@maatt.ru" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>support@maatt.ru</a>
+                <a href="mailto:hello@empirik.io" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>hello@empirik.io</a>
+                <a href="mailto:support@empirik.io" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>support@empirik.io</a>
                 <Link href="/privacy" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Политика · 152-ФЗ</Link>
               </nav>
             </div>
@@ -634,7 +634,7 @@ export function Landing() {
             152-ФЗ · Хостинг Yandex Cloud · Тинькофф Invest API read-only · 30 дней передумать
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4 text-[13px]" style={{ color: "var(--paper-on-dark-3)" }}>
-            <div>© МААТТ · Запись. Учёт. Свидетельство.</div>
+            <div>© Эмпирик · Запись. Учёт. Свидетельство.</div>
             <div>Данные: MOEX ISS · Брокеры через API и CSV · Бета-период · Платный запуск Q3 2026</div>
           </div>
         </div>

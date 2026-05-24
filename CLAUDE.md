@@ -1,10 +1,10 @@
-# CLAUDE.md — рабочие правила Eqio
+# CLAUDE.md — рабочие правила Empirik
 
-Базовые правила работы Claude в проекте Eqio. Читается каждой сессией.
+Базовые правила работы Claude в проекте Empirik. Читается каждой сессией.
 
 ## Что это за проект
 
-**Eqio** — SaaS-журнал торговых сделок для активных российских ритейл-трейдеров MOEX. Stack: FastAPI + Next.js 16 + SQLAlchemy 2.0 + PostgreSQL/SQLite + Tailwind v4 + Recharts.
+**Empirik** — SaaS-журнал торговых сделок для активных российских ритейл-трейдеров MOEX. Stack: FastAPI + Next.js 16 + SQLAlchemy 2.0 + PostgreSQL/SQLite + Tailwind v4 + Recharts.
 
 В корне репозитория — `backend/`, `frontend/`, `docs/`, `nginx/`, `.business/` (база знаний), `.claude/` (скиллы и конфиг), `.vscode/`.
 
@@ -25,7 +25,7 @@
 - `fastapi-sqlalchemy-patterns` — для backend
 - `moex-iss-api-patterns` — для свечей / котировок
 - `nextjs-react19-server-patterns` — для Server Components
-- `eqio-context-bridge` — мостик к базе знаний (срабатывает на широкий набор слов проекта)
+- `empirik-context-bridge` — мостик к базе знаний (срабатывает на широкий набор слов проекта)
 
 ## Кто пользователь
 
@@ -98,11 +98,11 @@
 - Чек-листы и тесты — в структурированном формате (таблица / JSON).
 - В начале сессии: посмотри текущую папку, прочитай файл прогресса, при необходимости — последние коммиты git, и только потом действуй.
 
-## Инструменты Eqio
+## Инструменты Empirik
 
 Полный реестр стека — в [docs/STACK.md](docs/STACK.md). Здесь — короткая шпаргалка.
 
-**Скиллы Eqio (в `.claude/skills/` этого репо, активируются автоматически):**
+**Скиллы Empirik (в `.claude/skills/` этого репо, активируются автоматически):**
 
 - `152-fz-compliance-checklist` — согласие на ОПД, политика, удаление аккаунта, РКН
 - `fastapi-sqlalchemy-patterns` — новый роутер/модель/миграция Alembic
@@ -113,7 +113,7 @@
 
 **VS Code:** при первом открытии проекта VS Code предложит установить рекомендованные расширения из `.vscode/extensions.json`. Готовые конфигурации отладки в `.vscode/launch.json` (Backend, Frontend, Full Stack).
 
-**Не использовать:** скиллы из других проектов (`django-*`, `dart-flutter-*`, `celery-*`, `htmx-*`, `pdf`, `pptx`, `docx`, `xlsx`, и т.д. — они для методичек/Flutter/Django, не для Eqio).
+**Не использовать:** скиллы из других проектов (`django-*`, `dart-flutter-*`, `celery-*`, `htmx-*`, `pdf`, `pptx`, `docx`, `xlsx`, и т.д. — они для методичек/Flutter/Django, не для Empirik).
 
 ## Завершение каждого чата — рефлексия
 

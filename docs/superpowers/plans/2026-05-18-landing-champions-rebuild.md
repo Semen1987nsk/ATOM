@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Перестроить лендинг МААТТ: новый Hero, два новых блока (Сам факт записи + Дисциплина чемпионов с 6 портретами), переписанные тексты всех 14 существующих секций, обновлённый дизайн и SEO.
+**Goal:** Перестроить лендинг Эмпирик: новый Hero, два новых блока (Сам факт записи + Дисциплина чемпионов с 6 портретами), переписанные тексты всех 14 существующих секций, обновлённый дизайн и SEO.
 
-**Architecture:** 4 фазы с контрольными точками. Каждая задача → отдельный коммит. Маркетинг-агенты дают артефакты в `docs/`, потом implementer переносит их в код. Worktree: `C:\Users\Administrator\Eqio\ATOM-landing`, ветка `feat/landing-handcrafted`.
+**Architecture:** 4 фазы с контрольными точками. Каждая задача → отдельный коммит. Маркетинг-агенты дают артефакты в `docs/`, потом implementer переносит их в код. Worktree: `C:\Users\Administrator\Empirik\ATOM-landing`, ветка `feat/landing-handcrafted`.
 
 **Tech Stack:** Next.js 16 App Router, React 19, Tailwind v4, TypeScript, Playwright e2e+visual, Fraunces+Cormorant+Inter+JetBrains Mono variable fonts, FastAPI backend (только Phase 4 для OG-image).
 
@@ -38,7 +38,7 @@
 | Путь | Что меняем |
 |---|---|
 | `frontend/src/components/landing/Landing.tsx` | IA реструктура (16 секций), все тексты |
-| `frontend/src/components/landing/parts/MaattOrigin.tsx` → `AudienceQualifier.tsx` | Rename + обновление копи |
+| `frontend/src/components/landing/parts/EmpirikOrigin.tsx` → `AudienceQualifier.tsx` | Rename + обновление копи |
 | `frontend/src/components/landing/parts/LiveTicker.tsx` | Pulse 1.5s → 2.0s, фон paper-tint |
 | `frontend/src/components/landing/parts/HeroEquityCurve.tsx` | Eyebrow «-1.2R» снизу, убрать grid |
 | `frontend/src/components/landing/parts/TradeReplayWidget.tsx` | Бордюр rule-strong → ink-3 |
@@ -103,12 +103,12 @@ git commit -m "docs(marketing): foundation product context for landing rebuild"
 
 ```
 Agent tool (brand-voice-designer):
-  description: "Brand voice for МААТТ landing rebuild"
+  description: "Brand voice for Эмпирик landing rebuild"
   prompt: |
-    Develop the МААТТ brand voice for the new landing page.
+    Develop the Эмпирик brand voice for the new landing page.
 
     ## Context
-    МААТТ — Russian trading journal SaaS for MOEX traders.
+    Эмпирик — Russian trading journal SaaS for MOEX traders.
     Spec: docs/superpowers/specs/2026-05-18-landing-champions-rebuild-design.md
     Foundation: .agents/product-marketing.md
     Current landing: frontend/src/components/landing/Landing.tsx (14 sections)
@@ -156,9 +156,9 @@ git commit -m "docs(brand): voice guide — Sage+Craftsman+Mentor archetype, 8 r
 
 ```
 Agent tool (messaging-architect):
-  description: "Messaging hierarchy for МААТТ landing"
+  description: "Messaging hierarchy for Эмпирик landing"
   prompt: |
-    Build strategic messaging framework for МААТТ landing rebuild.
+    Build strategic messaging framework for Эмпирик landing rebuild.
 
     ## Context
     Foundation: .agents/product-marketing.md
@@ -206,7 +206,7 @@ git commit -m "docs(brand): messaging hierarchy — 1 big idea, 3 pillars"
 Agent tool (general-purpose):
   description: "Research 6 trader champions"
   prompt: |
-    Research 6 famous traders/investors for МААТТ landing's "Дисциплина чемпионов"
+    Research 6 famous traders/investors for Эмпирик landing's "Дисциплина чемпионов"
     section. For each: verify journal-keeping habit with VERIFIABLE quotes.
 
     ## Casting (locked unless verifiable quote missing)
@@ -263,9 +263,9 @@ git commit -m "docs(landing): champions research — 6 verified quotes with sour
 
 ```
 Agent tool (conversion-optimizer):
-  description: "CRO audit of current МААТТ landing"
+  description: "CRO audit of current Эмпирик landing"
   prompt: |
-    Audit current МААТТ landing for conversion issues.
+    Audit current Эмпирик landing for conversion issues.
 
     ## Context
     Foundation: .agents/product-marketing.md
@@ -387,7 +387,7 @@ Expected: FAIL — секции «Сам факт записи» и «Дисци
 </section>
 ```
 
-Переместить `<MaattOrigin />` (он будет переименован в Task 13) так чтобы шёл как Раздел 05 — между Section 04 Heuristics и Pricing. Унифицировать eyebrow'ы: «Раздел NN · …» → «Раздел NN — …». Проверить нумерацию 01-06 в порядке.
+Переместить `<EmpirikOrigin />` (он будет переименован в Task 13) так чтобы шёл как Раздел 05 — между Section 04 Heuristics и Pricing. Унифицировать eyebrow'ы: «Раздел NN · …» → «Раздел NN — …». Проверить нумерацию 01-06 в порядке.
 
 - [ ] **Step 4: Run test, verify pass**
 
@@ -419,7 +419,7 @@ git commit -m "feat(landing): restructure IA to 16 sections with SimpleFact + Ch
 Agent tool (copywriter-specialist):
   description: "Rewrite Hero+Numbers+Manifest+Pull-quote"
   prompt: |
-    Rewrite copy for 4 sections of МААТТ landing.
+    Rewrite copy for 4 sections of Эмпирик landing.
 
     ## Sources
     Foundation: .agents/product-marketing.md
@@ -505,7 +505,7 @@ git commit -m "feat(landing): copy rewrite — Hero+Numbers+Manifest+Pull-quote 
 Agent tool (copywriter-specialist):
   description: "Copy for SimpleFact section"
   prompt: |
-    Write copy for МААТТ landing Section 4 "Сам факт записи".
+    Write copy for Эмпирик landing Section 4 "Сам факт записи".
 
     ## Sources
     Spec § 3.1, Voice docs/brand/voice.md, Messaging docs/brand/messaging.md
@@ -921,7 +921,7 @@ git commit -m "feat(landing): ChampionsSection — 3x2 grid + 6 placeholder SVGs
 Agent tool (copywriter-specialist):
   description: "Polish 6 champion bios + select final quotes"
   prompt: |
-    Polish copy for 6 trader champions on МААТТ landing.
+    Polish copy for 6 trader champions on Эмпирик landing.
 
     ## Sources
     Research: docs/landing/champions-research.md (raw facts + quote candidates)
@@ -993,7 +993,7 @@ git commit -m "feat(landing): champions final bios + quotes from research"
 Agent tool (copywriter-specialist):
   description: "Rewrite product sections 01-04"
   prompt: |
-    Rewrite copy for Раздел 01-04 of МААТТ landing.
+    Rewrite copy for Раздел 01-04 of Эмпирик landing.
 
     ## Sources
     Voice: docs/brand/voice.md
@@ -1065,7 +1065,7 @@ git commit -m "feat(landing): rewrite Sections 01-04 — less competitor-bash, m
 Agent tool (copywriter-specialist):
   description: "Explainers for 13 metrics"
   prompt: |
-    Expand metrics table on МААТТ landing.
+    Expand metrics table on Эмпирик landing.
 
     ## Current state
     Landing.tsx METRICS_TABLE has 13 metrics, 4 have explainer field
@@ -1121,7 +1121,7 @@ git commit -m "feat(landing): expand metric explainers to all 13 — 30-60 words
 ### Task 13: AudienceQualifier rename + Pricing + Final CTA + Footer
 
 **Files:**
-- Rename: `frontend/src/components/landing/parts/MaattOrigin.tsx` → `AudienceQualifier.tsx`
+- Rename: `frontend/src/components/landing/parts/EmpirikOrigin.tsx` → `AudienceQualifier.tsx`
 - Modify: `frontend/src/components/landing/Landing.tsx`
 - Create: `docs/landing/copy-sections-05-tail.md`
 
@@ -1129,10 +1129,10 @@ git commit -m "feat(landing): expand metric explainers to all 13 — 30-60 words
 
 ```bash
 cd frontend/src/components/landing/parts
-git mv MaattOrigin.tsx AudienceQualifier.tsx
+git mv EmpirikOrigin.tsx AudienceQualifier.tsx
 ```
 
-В `AudienceQualifier.tsx`: переименовать `export function MaattOrigin` → `export function AudienceQualifier`.
+В `AudienceQualifier.tsx`: переименовать `export function EmpirikOrigin` → `export function AudienceQualifier`.
 В `Landing.tsx`: обновить импорт и использование.
 
 - [ ] **Step 2: Dispatch copywriter**
@@ -1141,7 +1141,7 @@ git mv MaattOrigin.tsx AudienceQualifier.tsx
 Agent tool (copywriter-specialist):
   description: "Rewrite AudienceQualifier + Pricing + Final CTA + Footer"
   prompt: |
-    Rewrite remaining sections of МААТТ landing.
+    Rewrite remaining sections of Эмпирик landing.
 
     ## Sources
     Voice: docs/brand/voice.md
@@ -1274,10 +1274,10 @@ git commit -m "feat(landing): 6 engraved portrait SVGs for Champions section"
 
 - [ ] **Step 1: Add new palette tokens**
 
-В `globals.css` блок `[data-theme="maatt-cream"]` добавить:
+В `globals.css` блок `[data-theme="empirik-cream"]` добавить:
 
 ```css
-[data-theme="maatt-cream"] {
+[data-theme="empirik-cream"] {
   /* ... existing tokens ... */
   --ochre-deep: #5d2a14;
   --paper-tint: #f4ecdc;
@@ -1461,29 +1461,29 @@ Browser walk-through + Playwright suite green.
 
 ```typescript
 export const metadata: Metadata = {
-  title: "МААТТ · Журнал сделок MOEX — дневник трейдера с автостатистикой",
+  title: "Эмпирик · Журнал сделок MOEX — дневник трейдера с автостатистикой",
   description:
     "Автоматический журнал сделок для трейдера MOEX: 30+ метрик " +
     "(Optimal f, SQN, MAE/MFE), синхронизация с Тинькофф API, " +
     "разбор каждой сделки. Бесплатно до 50 сделок в месяц.",
   alternates: {
-    canonical: "https://maatt.ru/",
-    languages: { "x-default": "https://maatt.ru/", "ru-RU": "https://maatt.ru/" },
+    canonical: "https://empirik.io/",
+    languages: { "x-default": "https://empirik.io/", "ru-RU": "https://empirik.io/" },
   },
   openGraph: {
-    title: "МААТТ — журнал сделок MOEX",
+    title: "Эмпирик — журнал сделок MOEX",
     description:
       "Автостатистика по 30+ метрикам. MAE/MFE из биржевых свечей. " +
       "Дневник, который ведут чемпионы.",
-    url: "https://maatt.ru/",
-    siteName: "МААТТ",
+    url: "https://empirik.io/",
+    siteName: "Эмпирик",
     locale: "ru_RU",
     type: "website",
     images: [{ url: "/landing/og-image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "МААТТ — журнал сделок MOEX",
+    title: "Эмпирик — журнал сделок MOEX",
     description: "Автостатистика. Дневник чемпионов.",
     images: ["/landing/og-image.png"],
   },
@@ -1497,12 +1497,12 @@ export const metadata: Metadata = {
 // frontend/src/app/structured-data.ts
 import { CHAMPIONS } from "@/components/landing/data/champions";
 
-const SITE_URL = "https://maatt.ru";
+const SITE_URL = "https://empirik.io";
 
 export const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "МААТТ",
+  name: "Эмпирик",
   url: SITE_URL,
   logo: `${SITE_URL}/favicon.svg`,
   description: "Автоматический журнал сделок для трейдеров MOEX",
@@ -1511,7 +1511,7 @@ export const organizationSchema = {
 export const softwareApplicationSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "МААТТ",
+  name: "Эмпирик",
   applicationCategory: "FinanceApplication",
   operatingSystem: "Web",
   offers: [
@@ -1537,7 +1537,7 @@ export const faqSchema = {
     },
     {
       "@type": "Question",
-      name: "Какие метрики считает МААТТ?",
+      name: "Какие метрики считает Эмпирик?",
       acceptedAnswer: {
         "@type": "Answer",
         text:
@@ -1627,7 +1627,7 @@ git commit -m "feat(seo): metadata + JSON-LD via next/script — Org, SoftwareAp
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = "https://maatt.ru";
+  const base = "https://empirik.io";
   const lastModified = new Date();
   return [
     { url: `${base}/`,             lastModified, changeFrequency: "weekly",  priority: 1.0 },
@@ -1655,8 +1655,8 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/api/", "/admin/", "/_next/", "/dashboard/"],
       },
     ],
-    sitemap: "https://maatt.ru/sitemap.xml",
-    host: "https://maatt.ru",
+    sitemap: "https://empirik.io/sitemap.xml",
+    host: "https://empirik.io",
   };
 }
 ```
@@ -1716,26 +1716,26 @@ Target: ≥ 95 в каждой категории. Если ниже — опр�
 
 - [ ] Yandex.Webmaster:
   1. https://webmaster.yandex.ru
-  2. Property maatt.ru
+  2. Property empirik.io
   3. Submit sitemap.xml
   4. Проверка структурированных данных
 - [ ] Google Search Console:
   1. https://search.google.com/search-console
-  2. Property maatt.ru
+  2. Property empirik.io
   3. Submit sitemap.xml
 - [ ] Yandex.Metrika:
   1. Counter ID в layout.tsx — production
   2. Цели: register-cta-click, telegram-cta-click, free-cta-click
 - [ ] OG preview:
-  1. https://www.opengraph.xyz/url/maatt.ru
+  1. https://www.opengraph.xyz/url/empirik.io
   2. https://cards-dev.twitter.com/validator
   3. Telegram link preview
 - [ ] Schema.org validation:
-  1. https://validator.schema.org/ — paste maatt.ru
+  1. https://validator.schema.org/ — paste empirik.io
 - [ ] Mobile-Friendly:
   1. https://search.google.com/test/mobile-friendly
 - [ ] Core Web Vitals:
-  1. https://pagespeed.web.dev/analysis?url=https://maatt.ru
+  1. https://pagespeed.web.dev/analysis?url=https://empirik.io
 ```
 
 - [ ] **Step 3: Dispatch code-reviewer**

@@ -456,5 +456,5 @@ A: Установить `OPENAI_API_KEY` в env, использовать `ai_se
 
 ## Контакты
 
-- **Поддержка:** support@eqio.app
+- **Поддержка:** support@empirik.app
 - **Telegram:** @atom_support_bot

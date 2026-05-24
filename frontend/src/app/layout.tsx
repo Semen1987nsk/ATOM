@@ -45,28 +45,27 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "МААТТ — журнал торговых сделок | Точно. Чисто. Честно.",
-  description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка измерена. Каждое решение взвешено.",
+  title: "Эмпирик — журнал торговых сделок | Торгуй по данным, не по догадкам.",
+  description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка — гипотеза. Данные выносят вердикт.",
   icons: {
     icon: [
-      { url: "/landing/favicon-feather.svg", type: "image/svg+xml" },
-      { url: "/landing/favicon-feather-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/landing/favicon-empirik.svg", type: "image/svg+xml" },
     ],
   },
   openGraph: {
-    title: "МААТТ — журнал торговых сделок",
-    description: "Каждая сделка измерена. Каждое решение взвешено.",
-    url: "https://maatt.ru",
-    siteName: "МААТТ",
-    images: [{ url: "/landing/og-image-maatt.png", width: 1200, height: 630 }],
+    title: "Эмпирик — журнал торговых сделок",
+    description: "Каждая сделка — гипотеза. Данные выносят вердикт.",
+    url: "https://empirik.io",
+    siteName: "Эмпирик",
+    images: [{ url: "/landing/og-image-empirik.png", width: 1200, height: 630 }],
     locale: "ru_RU",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "МААТТ — журнал сделок",
-    description: "Точно. Чисто. Честно.",
-    images: ["/landing/og-image-maatt.png"],
+    title: "Эмпирик — журнал сделок",
+    description: "Сигнал из шума.",
+    images: ["/landing/og-image-empirik.png"],
   },
 };
 

@@ -413,7 +413,7 @@ export default function Manual() {
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <div className="text-xs font-mono uppercase tracking-widest opacity-50">Eqio рассчитывает</div>
+                    <div className="text-xs font-mono uppercase tracking-widest opacity-50">Эмпирик рассчитывает</div>
                     <div className="bg-accent/20 p-4 rounded-lg text-center border border-accent/30">
                       <div className="text-4xl font-black text-accent">18.7%</div>
                       <div className="text-sm opacity-70">Optimal f</div>
@@ -525,7 +525,7 @@ export default function Manual() {
                 <li>💡 Начните с <strong className="text-white">Quarter Kelly</strong> и повышайте по мере накопления статистики</li>
                 <li>📈 Пересчитывайте Optimal f каждые 50-100 сделок</li>
                 <li>🎯 Используйте разные f* для разных стратегий/инструментов</li>
-                <li>⚡ Eqio автоматически рассчитывает f* и показывает рекомендуемые фракции</li>
+                <li>⚡ Эмпирик автоматически рассчитывает f* и показывает рекомендуемые фракции</li>
               </ul>
             </div>
 
@@ -669,7 +669,7 @@ export default function Manual() {
                 </div>
               </div>
               <p className="text-xs opacity-50 text-center mt-4 italic">
-                * Eqio использует модифицированную формулу с ограничением √N до 100 для корректности
+                * Эмпирик использует модифицированную формулу с ограничением √N до 100 для корректности
               </p>
             </div>
 
@@ -791,7 +791,7 @@ export default function Manual() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Eqio рассчитывает</div>
+                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Эмпирик рассчитывает</div>
                   <div className="space-y-2">
                     <div className="flex justify-between p-2 bg-black/30 rounded">
                       <span className="opacity-70">Средняя R:</span>
@@ -857,7 +857,7 @@ export default function Manual() {
                 <li>💡 SQN &lt; 1.6 не значит, что система плохая — возможно, просто нужно торговать меньшим объёмом</li>
                 <li>📊 Сравнивайте SQN разных стратегий для выбора лучшей</li>
                 <li>⚠️ SQN зависит от количества сделок — минимум 30 для надёжной оценки</li>
-                <li>🎯 Eqio показывает SQN в реальном времени — следите за трендом!</li>
+                <li>🎯 Эмпирик показывает SQN в реальном времени — следите за трендом!</li>
               </ul>
             </div>
           </div>
@@ -986,7 +986,7 @@ export default function Manual() {
                 </div>
               </div>
               <p className="text-xs opacity-50 text-center italic">
-                * Не волнуйтесь! Eqio считает это автоматически. Вам нужно только понимать интерпретацию.
+                * Не волнуйтесь! Эмпирик считает это автоматически. Вам нужно только понимать интерпретацию.
               </p>
             </div>
 
@@ -1161,7 +1161,7 @@ export default function Manual() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Eqio рассчитывает</div>
+                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Эмпирик рассчитывает</div>
                   <div className="space-y-2">
                     <div className="flex justify-between p-2 bg-black/30 rounded">
                       <span className="opacity-70">Всего сделок (N):</span>
@@ -1186,7 +1186,7 @@ export default function Manual() {
               </div>
               
               <div className="bg-black/30 p-4 rounded">
-                <div className="font-bold text-cyan-400 mb-2">💡 Рекомендация Eqio:</div>
+                <div className="font-bold text-cyan-400 mb-2">💡 Рекомендация Эмпирик:</div>
                 <p className="text-sm opacity-80">
                   Ваша система демонстрирует статистически значимый паттерн серий. Используйте 
                   <strong className="text-white"> антимартингейл</strong>: увеличивайте риск в серии побед, снижайте при убытках.
@@ -1227,7 +1227,7 @@ export default function Manual() {
                 <li>💡 Если Z-Score близок к 0 — это НЕ плохо. Это значит, что вам не нужно усложнять риск-менеджмент</li>
                 <li>📊 Разные инструменты могут иметь разный Z-Score — анализируйте отдельно</li>
                 <li>🎯 Комбинируйте Z-Score с Optimal f для максимальной эффективности</li>
-                <li>⚡ Eqio автоматически отслеживает Z-Score и предупреждает об изменениях паттерна</li>
+                <li>⚡ Эмпирик автоматически отслеживает Z-Score и предупреждает об изменениях паттерна</li>
               </ul>
             </div>
           </div>
@@ -1402,7 +1402,7 @@ export default function Manual() {
                 <li>💡 <strong className="text-white">PF &gt; 2.0</strong> — золотой стандарт для swing-трейдинга</li>
                 <li>📊 Для скальпинга достаточно <strong className="text-white">PF 1.3-1.5</strong> из-за большого количества сделок</li>
                 <li>⚠️ Если PF падает — проверьте, не увеличились ли ваши убытки (средний лосс)</li>
-                <li>🎯 Eqio показывает PF в реальном времени — следите за трендом!</li>
+                <li>🎯 Эмпирик показывает PF в реальном времени — следите за трендом!</li>
               </ul>
             </div>
           </div>
@@ -1570,7 +1570,7 @@ export default function Manual() {
                 <li>💡 Установите <strong className="text-white">максимально допустимую просадку</strong> (например, 20%) и снижайте риск при приближении</li>
                 <li>📊 Если текущая просадка &gt; 50% от максимальной — уменьшите размер позиции</li>
                 <li>⚠️ После просадки 30% переходите на минимальный риск до восстановления</li>
-                <li>🎯 Eqio показывает текущую просадку в реальном времени</li>
+                <li>🎯 Эмпирик показывает текущую просадку в реальном времени</li>
               </ul>
             </div>
           </div>
@@ -2061,7 +2061,7 @@ export default function Manual() {
               <ul className="text-sm space-y-1 opacity-80">
                 <li>📊 Calmar &gt; 2.0 позволяет привлекать институциональные деньги</li>
                 <li>🎯 Топ-фонды оптимизируют под Calmar, а не под абсолютную доходность</li>
-                <li>⚡ Eqio автоматически рассчитывает CAGR с учётом периода торговли</li>
+                <li>⚡ Эмпирик автоматически рассчитывает CAGR с учётом периода торговли</li>
               </ul>
             </div>
           </div>
@@ -2277,7 +2277,7 @@ export default function Manual() {
                 <li>💡 Анализируйте MAE/MFE отдельно для лонгов и шортов — они могут отличаться</li>
                 <li>📊 Минимум 30 сделок для надёжного анализа</li>
                 <li>⚠️ MAE &gt; стоп-лосса = сделка была обречена. Фильтруйте такие сетапы!</li>
-                <li>🎯 Eqio строит графики MAE/MFE автоматически</li>
+                <li>🎯 Эмпирик строит графики MAE/MFE автоматически</li>
               </ul>
             </div>
           </div>
@@ -2396,7 +2396,7 @@ export default function Manual() {
             <div className="mb-8">
               <h3 className="text-white font-bold text-lg mb-4">📊 Периоды анализа</h3>
               <p className="text-sm opacity-70 mb-4">
-                Eqio анализирует движение цены в трёх временных горизонтах после закрытия:
+                Эмпирик анализирует движение цены в трёх временных горизонтах после закрытия:
               </p>
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
@@ -2670,7 +2670,7 @@ export default function Manual() {
                 <li>💡 Минимум <strong className="text-white">50 сделок</strong> для надёжной симуляции</li>
                 <li>📊 Используйте 95-й перцентиль просадки для расчёта максимального риска</li>
                 <li>⚠️ Если в 10%+ симуляций вы теряете &gt;50% — уменьшите размер позиции!</li>
-                <li>🎯 Eqio запускает 10,000 симуляций за секунды</li>
+                <li>🎯 Эмпирик запускает 10,000 симуляций за секунды</li>
               </ul>
             </div>
           </div>
@@ -2709,7 +2709,7 @@ export default function Manual() {
                   <div className="font-bold text-red-400 mb-1">Главный вопрос трейдинга</div>
                   <p className="text-sm opacity-80">
                     «Какова вероятность, что я потеряю ВСЁ?» Большинство трейдеров избегают этого вопроса. 
-                    <span className="text-white font-medium"> Eqio даёт честный ответ в процентах.</span>
+                    <span className="text-white font-medium"> Эмпирик даёт честный ответ в процентах.</span>
                   </p>
                 </div>
               </div>
@@ -2756,7 +2756,7 @@ export default function Manual() {
                 </div>
               </div>
               <p className="text-xs opacity-50 text-center italic">
-                * Eqio рассчитывает это через Monte Carlo для большей точности
+                * Эмпирик рассчитывает это через Monte Carlo для большей точности
               </p>
             </div>
 
@@ -2933,7 +2933,7 @@ export default function Manual() {
                 <li>💡 Держите Risk of Ruin <strong className="text-white">&lt;5%</strong> — это золотой стандарт</li>
                 <li>📊 Если RoR &gt;10% — уменьшайте размер позиции, пока не станет безопасно</li>
                 <li>⚠️ Высокий Win Rate НЕ защищает от руина при большом риске</li>
-                <li>🎯 Eqio рассчитывает RoR автоматически через Monte Carlo</li>
+                <li>🎯 Эмпирик рассчитывает RoR автоматически через Monte Carlo</li>
               </ul>
             </div>
           </div>
@@ -3201,7 +3201,7 @@ export default function Manual() {
             <div className="bg-gradient-to-r from-sky-500/10 via-teal-500/10 to-sky-500/10 rounded-xl p-6 mb-8 border border-sky-500/20">
               <h3 className="text-white font-bold text-lg mb-4">🔥 Тепловая карта (пример)</h3>
               <p className="text-sm opacity-70 mb-4">
-                Eqio строит тепловую карту: день недели × час = P&L. Красные ячейки — убытки, зелёные — прибыль.
+                Эмпирик строит тепловую карту: день недели × час = P&L. Красные ячейки — убытки, зелёные — прибыль.
               </p>
               
               <div className="overflow-x-auto">
@@ -3294,7 +3294,7 @@ export default function Manual() {
                 <li>💡 Торгуйте только в своё <strong className="text-white">«золотое окно»</strong> — часы с лучшей статистикой</li>
                 <li>📊 Минимум 30 сделок на каждый временной слот для надёжного анализа</li>
                 <li>⚠️ Если вечер убыточен — поставьте таймер и уходите с рынка!</li>
-                <li>🎯 Eqio строит тепловые карты автоматически</li>
+                <li>🎯 Эмпирик строит тепловые карты автоматически</li>
               </ul>
             </div>
           </div>
@@ -3467,7 +3467,7 @@ export default function Manual() {
                 <li>💡 E[R] важнее Win Rate — можно выигрывать 30% сделок и быть прибыльным</li>
                 <li>📊 Следите за средним R-multiple каждой сделки — он должен расти</li>
                 <li>⚠️ E[R] &lt; 0.2R — комиссии и проскальзывание съедят прибыль</li>
-                <li>🎯 Eqio рассчитывает R-Expectancy автоматически</li>
+                <li>🎯 Эмпирик рассчитывает R-Expectancy автоматически</li>
               </ul>
             </div>
           </div>
@@ -3579,7 +3579,7 @@ export default function Manual() {
 
             {/* Your Stats */}
             <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 rounded-xl p-6 mb-8 border border-amber-500/20">
-              <h3 className="text-white font-bold text-lg mb-4">📈 Что Eqio показывает</h3>
+              <h3 className="text-white font-bold text-lg mb-4">📈 Что Эмпирик показывает</h3>
               
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="bg-black/30 p-4 rounded-lg">
@@ -3713,7 +3713,7 @@ export default function Manual() {
                 <li>💡 После 3 убытков подряд — <strong className="text-white">уменьшите размер позиции</strong> вдвое</li>
                 <li>📊 Ведите дневник эмоций во время серий — найдёте паттерны</li>
                 <li>⚠️ Никогда не увеличивайте риск после серии убытков!</li>
-                <li>🎯 Eqio считает серии автоматически и предупреждает о рекордах</li>
+                <li>🎯 Эмпирик считает серии автоматически и предупреждает о рекордах</li>
               </ul>
             </div>
           </div>
@@ -3936,7 +3936,7 @@ export default function Manual() {
               
               <div className="bg-black/30 p-4 rounded-lg mb-4">
                 <div className="text-sm opacity-80 mb-4">
-                  Трейдер думал, что плохо торгует шорты. Eqio показал реальную картину:
+                  Трейдер думал, что плохо торгует шорты. Эмпирик показал реальную картину:
                 </div>
                 
                 <div className="space-y-2">

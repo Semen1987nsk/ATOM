@@ -1,14 +1,14 @@
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Политика конфиденциальности | Eqio',
+  title: 'Политика конфиденциальности | Эмпирик',
   description:
-    'Политика обработки персональных данных в Eqio в соответствии с 152-ФЗ.',
+    'Политика обработки персональных данных в Эмпирик в соответствии с 152-ФЗ.',
 };
 
 const POLICY_VERSION = 'v1';
 const EFFECTIVE_DATE = '07.05.2026';
-const CONTACT_EMAIL = 'privacy@eqio.ru';
+const CONTACT_EMAIL = 'privacy@empirik.io';
 
 export default function PrivacyPolicyPage() {
   return (
@@ -28,11 +28,11 @@ export default function PrivacyPolicyPage() {
           Версия {POLICY_VERSION} · действует с {EFFECTIVE_DATE}
         </p>
 
-        <article className="prose-eqio space-y-8 text-[15px] leading-relaxed">
+        <article className="prose-empirik space-y-8 text-[15px] leading-relaxed">
           <section>
             <h2 className="text-xl font-semibold mb-3">1. Кто оператор</h2>
             <p>
-              Оператором персональных данных (ПД) является сервис Eqio
+              Оператором персональных данных (ПД) является сервис Эмпирик
               (далее — «Оператор»). Контакт уполномоченного по защите ПД:{' '}
               <a
                 href={`mailto:${CONTACT_EMAIL}`}

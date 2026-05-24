@@ -163,7 +163,7 @@ const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'timeframe',  label: 'ТФ',              defaultVisible: false },
 ];
 
-const COLUMN_STORAGE_KEY = 'eqio_position_journal_columns';
+const COLUMN_STORAGE_KEY = 'empirik_position_journal_columns';
 
 function loadVisibleColumns(): Set<string> {
   if (typeof window === 'undefined') {

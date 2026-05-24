@@ -356,7 +356,7 @@ export default function CalculatorPage() {
                     // Передаём параметры в AddTradeModal через events
                     if (typeof window === "undefined") return;
                     window.dispatchEvent(
-                      new CustomEvent("eqio:add-trade", {
+                      new CustomEvent("empirik:add-trade", {
                         detail: {
                           entry_price: parseFloat(entryPrice),
                           stop_loss: parseFloat(stopPrice),

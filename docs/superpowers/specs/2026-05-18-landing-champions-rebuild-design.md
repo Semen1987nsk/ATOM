@@ -1,21 +1,21 @@
-# Дизайн-спецификация: пересборка лендинга МААТТ v2 (Champions)
+# Дизайн-спецификация: пересборка лендинга Эмпирик v2 (Champions)
 
 **Дата:** 2026-05-18
 **Автор:** Claude Code (brainstorming pair-session с sarvanidi87@gmail.com)
 **Связанные документы:** `2026-05-18-landing-handcrafted-redesign-design.md` (v1, базовая cream-палитра + Trader Desk характер)
-**Working tree:** `C:\Users\Administrator\Eqio\ATOM-landing`
+**Working tree:** `C:\Users\Administrator\Empirik\ATOM-landing`
 
 ---
 
 ## 1. Контекст и цель
 
-Лендинг МААТТ в текущем виде (16 секций после v1, см. `Landing.tsx`) технически фокусируется на «системной торговле» и продуктовых фичах (MAE/MFE, 30+ метрик, Trade Replay). Конверсия упирается в то, что новый посетитель не понимает **ценности дневника как такового** — до всякой автоматики.
+Лендинг Эмпирик в текущем виде (16 секций после v1, см. `Landing.tsx`) технически фокусируется на «системной торговле» и продуктовых фичах (MAE/MFE, 30+ метрик, Trade Replay). Конверсия упирается в то, что новый посетитель не понимает **ценности дневника как такового** — до всякой автоматики.
 
 Пересборка добавляет два новых смысловых блока ниже Hero и переписывает все 14 существующих секций через маркетинг-агентов и копирайтеров — чтобы лендинг рассказывал:
 
 1. **Что даёт сам факт ведения дневника** (до всяких метрик/ИИ).
 2. **Кто и как вёл дневник из великих** (Ливермор, Дарвас, Минервини, Дракенмиллер, Элдер, Найман).
-3. **Что МААТТ автоматизирует этот дневник** для трейдера MOEX.
+3. **Что Эмпирик автоматизирует этот дневник** для трейдера MOEX.
 
 ## 2. Большая идея
 
@@ -39,7 +39,7 @@ Tone-shift с «техническая платформа» → «спокойн
 | 10 | Раздел 03 · Метрики (все 13) | expand explainers | Сейчас 4 → раскрыть все 13 |
 | 11 | Pull-quote клиента | rewrite | Сменить цитату под big idea |
 | 12 | Раздел 04 · Эвристики | reframe | Бейдж «AI-разбор · скоро» (мелким), основной фрейм — детерминированные правила |
-| 13 | Раздел 05 · Для кого МААТТ | rewrite через CRO | Уточнение объекций |
+| 13 | Раздел 05 · Для кого Эмпирик | rewrite через CRO | Уточнение объекций |
 | 14 | Pricing teaser | rewrite | Anchor pricing проверка |
 | 15 | Final CTA | rewrite | Короткий, под big idea |
 | 16 | Footer | minimal tweak | Tagline пересмотр |
@@ -133,25 +133,25 @@ Copywriter перепишет через `mkt-copywriting` skill — текущ�
 | Long-tail | Optimal f калькулятор | Section 03 explainer |
 | Long-tail | Ливермор дневник + ... | Section 5 |
 | Long-tail | бесплатный журнал сделок | Pricing |
-| Brand | МААТТ | Везде |
+| Brand | Эмпирик | Везде |
 
 ### 5.2. Meta tags
 
 ```
-<title>МААТТ · Журнал сделок MOEX — дневник трейдера с автостатистикой</title>
+<title>Эмпирик · Журнал сделок MOEX — дневник трейдера с автостатистикой</title>
 <meta description>
    Автоматический журнал сделок для трейдера MOEX: 30+ метрик
    (Optimal f, SQN, MAE/MFE), синхронизация с Тинькофф API,
    разбор каждой сделки. Бесплатно до 50 сделок в месяц.
 </meta>
-<link rel="canonical" href="https://maatt.ru/" />
+<link rel="canonical" href="https://empirik.io/" />
 ```
 
 ### 5.3. JSON-LD структурированные данные
 
 | Schema | Зачем | Где |
 |---|---|---|
-| Organization | МААТТ как компания | global (`layout.tsx`) |
+| Organization | Эмпирик как компания | global (`layout.tsx`) |
 | SoftwareApplication | category=FinanceApplication, offers={Free, Pro 399₽} | landing |
 | FAQPage | 3 Q→A из «Сам факт» + 2–3 объекции из «Для кого» | landing |
 | Person × 6 | name, birthDate, deathDate, sameAs (Wikipedia), subjectOf (цитата) | landing |
@@ -217,7 +217,7 @@ WCAG AA контраст обязателен, AAA где можно.
 | HeroEquityCurve | Eyebrow «-1.2R» снизу, убрать grid |
 | TradeReplayWidget | Бордюр rule-strong → ink-3, тени мягче |
 | InteractiveCandleChart | Tooltip с paper-tint фоном, mono шрифт цифр |
-| MaattOrigin → AudienceQualifier | Rename символа |
+| EmpirikOrigin → AudienceQualifier | Rename символа |
 
 ### 6.5. Новые компоненты
 

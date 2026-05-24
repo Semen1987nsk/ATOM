@@ -211,7 +211,7 @@ class Settings:
     TINKOFF_API_ENV: str = os.getenv("TINKOFF_API_ENV", "prod").lower()
     # App name отправляется в gRPC metadata; Тинькофф просит указывать в формате
     # "вендор.приложение" для отслеживания grade и issue-репортов.
-    TINKOFF_APP_NAME: str = os.getenv("TINKOFF_APP_NAME", "eqio.journal")
+    TINKOFF_APP_NAME: str = os.getenv("TINKOFF_APP_NAME", "empirik.journal")
     # Per-token rate-limit cap (запас от официальных 200/min для Operations).
     TINKOFF_RATE_LIMIT_PER_MIN: int = int(os.getenv("TINKOFF_RATE_LIMIT_PER_MIN", "60"))
 

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Eqio - Stop Script
+# Empirik - Stop Script
 # Останавливает все сервисы
 
-echo "⏹️  Eqio - Остановка сервисов..."
+echo "⏹️  Empirik - Остановка сервисов..."
 echo "================================"
 
 # Останавливаем Backend

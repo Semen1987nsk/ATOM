@@ -46,8 +46,8 @@ const ALL_COLUMNS: ColumnConfig[] = [
 
 const DIARY_PROMOTED_COLUMNS = ['setup', 'timeframe'];
 
-const STORAGE_KEY = 'eqio_history_columns';
-const SORT_STORAGE_KEY = 'eqio_history_sort';
+const STORAGE_KEY = 'empirik_history_columns';
+const SORT_STORAGE_KEY = 'empirik_history_sort';
 
 interface Trade {
   id: number;

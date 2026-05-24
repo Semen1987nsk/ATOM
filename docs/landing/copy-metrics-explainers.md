@@ -161,11 +161,11 @@ Reconciled: убрал титул, оставил «Метрика Фрэнка 
 
 ## Files referenced
 
-- `C:\Users\Administrator\Eqio\ATOM-landing\frontend\src\components\landing\Landing.tsx` — METRICS_TABLE строки 34–53
-- `C:\Users\Administrator\Eqio\ATOM-landing\docs\brand\voice.md` — Rule 6, Rule 8, Rule 9, § Voice consistency checklist
-- `C:\Users\Administrator\Eqio\ATOM-landing\docs\brand\messaging.md` — § Pillar B proof points, § Channel adaptation row 10
-- `C:\Users\Administrator\Eqio\ATOM-landing\.agents\product-marketing.md` — § Customer Language Glossary
-- `C:\Users\Administrator\Eqio\ATOM-landing\docs\superpowers\specs\2026-05-18-landing-champions-rebuild-design.md` — § 3 row 10
+- `C:\Users\Administrator\Empirik\ATOM-landing\frontend\src\components\landing\Landing.tsx` — METRICS_TABLE строки 34–53
+- `C:\Users\Administrator\Empirik\ATOM-landing\docs\brand\voice.md` — Rule 6, Rule 8, Rule 9, § Voice consistency checklist
+- `C:\Users\Administrator\Empirik\ATOM-landing\docs\brand\messaging.md` — § Pillar B proof points, § Channel adaptation row 10
+- `C:\Users\Administrator\Empirik\ATOM-landing\.agents\product-marketing.md` — § Customer Language Glossary
+- `C:\Users\Administrator\Empirik\ATOM-landing\docs\superpowers\specs\2026-05-18-landing-champions-rebuild-design.md` — § 3 row 10
 
 ## Next steps
 

@@ -2,14 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Поднять визуальный уровень лендинга МААТТ до agency-grade за счёт чередующегося dark/light ритма (Bloomberg Businessweek), Manrope для bold uppercase, тёплого orange `#E84E1C` акцента и 5 точечных motion-moment'ов — не трогая копирайт, IA и product-виджеты.
+**Goal:** Поднять визуальный уровень лендинга Эмпирик до agency-grade за счёт чередующегося dark/light ритма (Bloomberg Businessweek), Manrope для bold uppercase, тёплого orange `#E84E1C` акцента и 5 точечных motion-moment'ов — не трогая копирайт, IA и product-виджеты.
 
-**Architecture:** Внедряем без рефакторинга существующих компонентов: добавляем Manrope через `next/font`, 12 новых CSS-токенов и 8 utility-классов в `[data-theme="maatt-cream"]`, затем секция за секцией оборачиваем DOM в uplift-wrapper'ы и заменяем типографику. Motion — чистый CSS + IntersectionObserver, без Framer Motion. Тесты — поэтапно: smoke (`landing-smoke.spec.ts`) + visual regression (refresh baselines в конце).
+**Architecture:** Внедряем без рефакторинга существующих компонентов: добавляем Manrope через `next/font`, 12 новых CSS-токенов и 8 utility-классов в `[data-theme="empirik-cream"]`, затем секция за секцией оборачиваем DOM в uplift-wrapper'ы и заменяем типографику. Motion — чистый CSS + IntersectionObserver, без Framer Motion. Тесты — поэтапно: smoke (`landing-smoke.spec.ts`) + visual regression (refresh baselines в конце).
 
 **Tech Stack:** Next.js 16 App Router, React 19, TypeScript strict, Tailwind v4, next/font/google (Manrope), CSS variables, IntersectionObserver API, Playwright 1.x (chromium-desktop + chromium-mobile).
 
 **Spec:** `docs/superpowers/specs/2026-05-19-bloomberg-design-uplift-design.md` (commit `b9a3c4f`)
-**Working tree:** `C:\Users\Administrator\Eqio\ATOM-landing`
+**Working tree:** `C:\Users\Administrator\Empirik\ATOM-landing`
 **Branch:** `feat/landing-handcrafted`
 
 ---
@@ -19,7 +19,7 @@
 | Файл | Ответственность | Изменение |
 |---|---|---|
 | `frontend/src/app/layout.tsx` | next/font конфиг | + Manrope import + variable |
-| `frontend/src/app/globals.css` | landing-токены и utility-классы | + 12 токенов в `[data-theme="maatt-cream"]`, + 8 uplift-классов |
+| `frontend/src/app/globals.css` | landing-токены и utility-классы | + 12 токенов в `[data-theme="empirik-cream"]`, + 8 uplift-классов |
 | `frontend/src/hooks/useInView.ts` | IntersectionObserver hook (если нет existing) | NEW |
 | `frontend/src/components/common/CountUp.tsx` | utility-компонент с RAF count-up | NEW |
 | `frontend/src/components/landing/parts/LiveTicker.tsx` | секция 2 — orange-strip | rewrite |
@@ -52,7 +52,7 @@
 
 ```powershell
 # kill dev server on port 3001, then:
-cd C:\Users\Administrator\Eqio\ATOM-landing\frontend
+cd C:\Users\Administrator\Empirik\ATOM-landing\frontend
 Remove-Item -Recurse -Force .next
 npm run dev -- -p 3001
 ```
@@ -145,7 +145,7 @@ git commit -m "feat(landing): add Manrope display font via next/font
 ## Task 2: Добавить uplift-токены и utility-классы в globals.css
 
 **Files:**
-- Modify: `frontend/src/app/globals.css:720-735` (блок `[data-theme="maatt-cream"]`)
+- Modify: `frontend/src/app/globals.css:720-735` (блок `[data-theme="empirik-cream"]`)
 - Test: `frontend/e2e/landing-smoke.spec.ts`
 
 - [ ] **Step 1: Написать падающий тест на CSS-токены**
@@ -155,7 +155,7 @@ git commit -m "feat(landing): add Manrope display font via next/font
 ```typescript
   test("uplift tokens defined on landing root", async ({ page }) => {
     const tokens = await page.evaluate(() => {
-      const root = document.querySelector('[data-theme="maatt-cream"]') ?? document.documentElement;
+      const root = document.querySelector('[data-theme="empirik-cream"]') ?? document.documentElement;
       const cs = getComputedStyle(root);
       return {
         orange: cs.getPropertyValue("--orange").trim(),
@@ -182,7 +182,7 @@ Expected: FAIL — токены не определены.
 
 - [ ] **Step 3: Добавить токены в globals.css**
 
-В `frontend/src/app/globals.css`, найти блок `[data-theme="maatt-cream"]` (строка 720) и **в конец блока** (перед закрывающей `}`) добавить:
+В `frontend/src/app/globals.css`, найти блок `[data-theme="empirik-cream"]` (строка 720) и **в конец блока** (перед закрывающей `}`) добавить:
 
 ```css
   /* ─── Bloomberg uplift tokens (2026-05-19) ─── */
@@ -213,28 +213,28 @@ Expected: PASS.
 ```css
 /* ═════════ Bloomberg uplift — utility classes (2026-05-19) ═════════ */
 
-[data-theme="maatt-cream"] .uplift-section-light {
+[data-theme="empirik-cream"] .uplift-section-light {
   background-color: var(--paper);
   color: var(--ink);
 }
-[data-theme="maatt-cream"] .uplift-section-tint {
+[data-theme="empirik-cream"] .uplift-section-tint {
   background-color: var(--paper-tint);
   color: var(--ink);
 }
-[data-theme="maatt-cream"] .uplift-section-dark {
+[data-theme="empirik-cream"] .uplift-section-dark {
   background-color: var(--ink-dark);
   color: var(--paper-on-dark);
 }
-[data-theme="maatt-cream"] .uplift-section-dark .uplift-eyebrow,
-[data-theme="maatt-cream"] .uplift-section-dark .editorial-eyebrow {
+[data-theme="empirik-cream"] .uplift-section-dark .uplift-eyebrow,
+[data-theme="empirik-cream"] .uplift-section-dark .editorial-eyebrow {
   color: var(--paper-on-dark-3);
 }
-[data-theme="maatt-cream"] .uplift-section-dark a {
+[data-theme="empirik-cream"] .uplift-section-dark a {
   color: var(--paper-on-dark);
 }
 
 /* Display sans (Manrope) heading family */
-[data-theme="maatt-cream"] .uplift-h1 {
+[data-theme="empirik-cream"] .uplift-h1 {
   font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
   font-weight: 900;
   font-size: clamp(48px, 7vw, 88px);
@@ -242,7 +242,7 @@ Expected: PASS.
   letter-spacing: -0.03em;
   text-transform: uppercase;
 }
-[data-theme="maatt-cream"] .uplift-h2 {
+[data-theme="empirik-cream"] .uplift-h2 {
   font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
   font-weight: 800;
   font-size: clamp(36px, 4.5vw, 56px);
@@ -250,7 +250,7 @@ Expected: PASS.
   letter-spacing: -0.025em;
   text-transform: uppercase;
 }
-[data-theme="maatt-cream"] .uplift-numbers {
+[data-theme="empirik-cream"] .uplift-numbers {
   font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
   font-weight: 900;
   font-size: clamp(56px, 7vw, 96px);
@@ -261,13 +261,13 @@ Expected: PASS.
 }
 
 /* Ticker strip */
-[data-theme="maatt-cream"] .uplift-ticker-strip {
+[data-theme="empirik-cream"] .uplift-ticker-strip {
   background-color: var(--orange-strip);
   color: #0a0a0a;
   border-top: 1px solid #0a0a0a;
   border-bottom: 1px solid #0a0a0a;
 }
-[data-theme="maatt-cream"] .uplift-ticker-track {
+[data-theme="empirik-cream"] .uplift-ticker-track {
   display: inline-flex;
   gap: 36px;
   white-space: nowrap;
@@ -287,33 +287,33 @@ Expected: PASS.
   from { stroke-dashoffset: var(--curve-length, 800); }
   to   { stroke-dashoffset: 0; }
 }
-[data-theme="maatt-cream"] .uplift-curve-animate {
+[data-theme="empirik-cream"] .uplift-curve-animate {
   animation: uplift-curve-draw 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* Champions raise on scroll */
-[data-theme="maatt-cream"] .uplift-raise {
+[data-theme="empirik-cream"] .uplift-raise {
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
               transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
-[data-theme="maatt-cream"] .uplift-raise[data-inview="true"] {
+[data-theme="empirik-cream"] .uplift-raise[data-inview="true"] {
   opacity: 1;
   transform: translateY(0);
 }
 
 /* Focus ring for orange CTAs */
-[data-theme="maatt-cream"] .uplift-focus:focus-visible {
+[data-theme="empirik-cream"] .uplift-focus:focus-visible {
   outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
 
 /* prefers-reduced-motion — disable all uplift motion */
 @media (prefers-reduced-motion: reduce) {
-  [data-theme="maatt-cream"] .uplift-ticker-track { animation: none; transform: none; }
-  [data-theme="maatt-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
-  [data-theme="maatt-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
+  [data-theme="empirik-cream"] .uplift-ticker-track { animation: none; transform: none; }
+  [data-theme="empirik-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
+  [data-theme="empirik-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
 }
 ```
 
@@ -335,7 +335,7 @@ git commit -m "feat(landing): add Bloomberg uplift CSS tokens + utility classes
 
 12 tokens (orange family + dark-on-cream pairs) + 8 utility classes
 (uplift-section-light/tint/dark, uplift-h1/h2/numbers, uplift-ticker-strip,
-uplift-raise) gated by [data-theme=maatt-cream]. Reduced-motion guard
+uplift-raise) gated by [data-theme=empirik-cream]. Reduced-motion guard
 zeroes all uplift animations."
 ```
 
@@ -1144,7 +1144,7 @@ export function ManifestCutIn() {
           Запись — это ремесло. Сначала фиксация. Потом измерение. Потом разбор.
         </p>
         <p className="mt-8 editorial-eyebrow" style={{ color: "var(--ink-3)" }}>
-          — Манифест МААТТ
+          — Манифест Эмпирик
         </p>
       </div>
     </section>
@@ -1523,7 +1523,7 @@ Expected: FAIL.
 
 - [ ] **Step 5: Прогнать тест — PASS**
 
-Run: `npx playwright test e2e/landing-smoke.spec.ts -g "Final CTA and Footer are both dark|footer has МААТТ" --project=chromium-desktop`
+Run: `npx playwright test e2e/landing-smoke.spec.ts -g "Final CTA and Footer are both dark|footer has Эмпирик" --project=chromium-desktop`
 Expected: оба PASS.
 
 - [ ] **Step 6: Header проверка — оставлен LIGHT**

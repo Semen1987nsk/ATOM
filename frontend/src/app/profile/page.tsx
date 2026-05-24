@@ -83,7 +83,7 @@ function ProfileContent() {
       const a = document.createElement('a');
       a.href = url;
       const stamp = new Date().toISOString().slice(0, 10);
-      a.download = `eqio-export-${stamp}.json`;
+      a.download = `empirik-export-${stamp}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();

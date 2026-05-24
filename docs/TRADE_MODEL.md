@@ -1,4 +1,4 @@
-# Eqio Trade Model Documentation
+# Empirik Trade Model Documentation
 
 ## Модель Trade — Структура данных сделки
 
@@ -97,7 +97,7 @@ net_pnl = pnl - entry_commission - exit_commission - swap
 
 ### MAE/MFE Автоматический расчёт
 
-При закрытии сделки Eqio автоматически:
+При закрытии сделки Empirik автоматически:
 1. Запрашивает исторические свечи с MOEX ISS API за период сделки
 2. Выбирает интервал свечей в зависимости от длительности:
    - < 2 часов: 1-минутные
