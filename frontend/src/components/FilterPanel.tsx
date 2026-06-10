@@ -260,9 +260,6 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       {showCustomDate && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
           <div className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
-            {/* Background glow */}
-            <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-            
             <button 
               onClick={() => setShowCustomDate(false)} 
               className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10"

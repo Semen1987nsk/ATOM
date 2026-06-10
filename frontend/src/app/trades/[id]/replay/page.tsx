@@ -23,7 +23,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-} from "recharts";
+} from "@/lib/lazy-recharts";
 import { ArrowLeft, AlertCircle } from "lucide-react";
 
 // recharts v3 — локальный shape для content-callback'а Tooltip-а.

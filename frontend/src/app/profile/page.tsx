@@ -127,11 +127,6 @@ function ProfileContent() {
   return (
     <AppShell pageTitle="Профиль">
     <main className="p-6 md:p-8 max-w-7xl mx-auto">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-accent/5" />
-      <div className="absolute top-20 right-20 w-80 h-80 bg-accent/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-20 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
-      
       <div className="relative max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">

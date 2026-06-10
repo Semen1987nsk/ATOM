@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { Plus, Lock, Upload, LogIn, BarChart3, Target, Brain, Activity, Clock, ArrowRight, Tag, Wallet, Plug } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Landing } from '@/components/landing/Landing';
 import { AddTradeModal } from '@/components/AddTradeModal';
 import CloseTradeModal from '@/components/CloseTradeModal';
@@ -32,7 +33,9 @@ import { StreakIndicator } from '@/components/dashboard/StreakIndicator';
 import { RecentTrades } from '@/components/dashboard/RecentTrades';
 import { SetupPerformance } from '@/components/dashboard/SetupPerformance';
 import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
+import { queryKeys } from '@/lib/queries';
+import { DataError } from '@/components/ui/DataError';
 
 interface Trade {
   id: number;
@@ -125,10 +128,10 @@ export default function Home() {
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
   const { user, isLoading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [stats, setStats] = useState<DashboardData | null>(null);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
+  // FE-07: state, отвечающий за UI-поведение (модалки, табы), остаётся на
+  // useState. Данные (stats/trades/advanced/benchmark) — TanStack Query.
   const [actionInProgress, setActionInProgress] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
@@ -143,14 +146,6 @@ export default function Home() {
   // Tab-state дашборда. Persist в localStorage чтобы юзер вернулся туда же.
   type DashTab = 'overview' | 'advanced' | 'benchmark';
   const [activeTab, setActiveTab] = useState<DashTab>('overview');
-  const [advancedData, setAdvancedData] = useState<unknown | null>(null);
-  const [benchmarkData, setBenchmarkData] = useState<unknown | null>(null);
-  const [advancedLoading, setAdvancedLoading] = useState(false);
-  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
-  // Раздельные «tried» флаги — без них useEffect-зависимость от *Data
-  // создаёт бесконечный fetch при ошибке (data остаётся null → triggers retry).
-  const [advancedTried, setAdvancedTried] = useState(false);
-  const [benchmarkTried, setBenchmarkTried] = useState(false);
   // Logs state — TerminalLog уехал из дашборда, но addLog продолжает копить
   // события: на Phase 5 это станет источником для notification-center в шапке.
   const [, setLogs] = useState<{msg: string, time: string}[]>([]);
@@ -163,6 +158,98 @@ export default function Home() {
     startDate: undefined,
     endDate: undefined
   });
+
+  // params для /stats/ — собираем как раньше, но теперь это вход TanStack-ключа.
+  // Запоминаем мемоизацией, чтобы queryKey оставался стабильным между рендерами.
+  const statsParams = useMemo(() => {
+    const params: Record<string, string> = {};
+    const f = filters;
+    if (settings.tradesStartTradeId) {
+      params.start_trade_id = settings.tradesStartTradeId.toString();
+    } else if (settings.tradesStartDate) {
+      params.period = 'custom';
+      params.start_date = settings.tradesStartDate;
+    } else if (f.period !== 'all') {
+      params.period = f.period;
+      if (f.period === 'custom' && f.startDate) {
+        params.start_date = f.startDate;
+        if (f.endDate) params.end_date = f.endDate;
+      }
+    }
+    if (f.tag) params.tag = f.tag;
+    if (f.limit) params.limit = f.limit.toString();
+    if (settings.maeCalculationMethod) {
+      params.mae_method = settings.maeCalculationMethod;
+    }
+    return params;
+  }, [
+    filters,
+    settings.tradesStartDate,
+    settings.tradesStartTradeId,
+    settings.maeCalculationMethod,
+  ]);
+
+  // /stats/ — useStatsQuery не подошёл (поддерживает только period/start/end),
+  // нам нужны ещё tag/limit/mae_method/start_trade_id, поэтому прямой useQuery
+  // с queryKeys.stats.summary (полный набор params в ключе → разные фильтры =
+  // разные кеши).
+  const statsQuery = useQuery<DashboardData>({
+    queryKey: queryKeys.stats.summary(statsParams),
+    queryFn: () => api.get<DashboardData>('/stats/', { params: statsParams }),
+    enabled: !!user,
+    staleTime: 60 * 1000,
+  });
+
+  // /trades/ — список без limit (фильтрация по start_trade_id/start_date
+  // на клиенте). useTradesQuery без params вызывает /trades/ — то же поведение.
+  const tradesQuery = useQuery<Trade[]>({
+    queryKey: queryKeys.trades.list(undefined),
+    queryFn: () => api.get<Trade[]>('/trades/'),
+    enabled: !!user,
+  });
+
+  // Lazy-загрузка табов — TanStack делает идемпотентным «загрузить раз» через
+  // staleTime: Infinity + enabled-флаг по activeTab. При повторном переключении
+  // на advanced data уже в кеше → мгновенно показываем без сетевого запроса.
+  const advancedQuery = useQuery<unknown>({
+    queryKey: ['stats', 'advanced'],
+    queryFn: () => api.get('/stats/advanced'),
+    enabled: !!user && activeTab === 'advanced',
+    staleTime: 5 * 60 * 1000,
+  });
+  const benchmarkQuery = useQuery<unknown>({
+    queryKey: ['stats', 'benchmark'],
+    queryFn: () => api.get('/stats/benchmark'),
+    enabled: !!user && activeTab === 'benchmark',
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Derived state — UI-фильтрация trades по tradesStartTradeId/Date.
+  const trades: Trade[] = useMemo(() => {
+    const raw = tradesQuery.data ?? [];
+    let filtered = Array.isArray(raw) ? raw.slice() : [];
+    if (settings.tradesStartTradeId) {
+      const startTrade = filtered.find((tr) => tr.id === settings.tradesStartTradeId);
+      if (startTrade) {
+        const startTime = new Date(startTrade.entry_at);
+        filtered = filtered.filter((tr) => new Date(tr.entry_at) >= startTime);
+      }
+    } else if (settings.tradesStartDate) {
+      const startDate = new Date(settings.tradesStartDate);
+      filtered = filtered.filter((tr) => new Date(tr.entry_at) >= startDate);
+    }
+    return filtered.reverse();
+  }, [tradesQuery.data, settings.tradesStartDate, settings.tradesStartTradeId]);
+
+  const stats = statsQuery.data ?? null;
+  const loading = statsQuery.isLoading || tradesQuery.isLoading;
+  const error = (statsQuery.error ?? tradesQuery.error) as ApiError | Error | null;
+  const advancedData = advancedQuery.data ?? null;
+  const benchmarkData = benchmarkQuery.data ?? null;
+  const advancedLoading = advancedQuery.isLoading && activeTab === 'advanced';
+  const benchmarkLoading = benchmarkQuery.isLoading && activeTab === 'benchmark';
+  const advancedError = advancedQuery.error as ApiError | Error | null;
+  const benchmarkError = benchmarkQuery.error as ApiError | Error | null;
 
   const effectiveInitialDeposit = stats?.period_start_balance_reliable !== false && stats?.period_start_balance && stats.period_start_balance > 0
     ? stats.period_start_balance
@@ -191,106 +278,49 @@ export default function Home() {
 
   const hasData = trades.length > 0;
 
-  const addLog = (msg: string) => {
+  const addLog = useCallback((msg: string) => {
     const time = new Date().toLocaleTimeString();
     setLogs(prev => [{msg, time}, ...prev].slice(0, 5));
-  };
+  }, []);
 
-  const fetchData = useCallback(async () => {
-    // Если пользователь не авторизован - не загружаем данные
-    if (!user) {
-      setStats(null);
-      setTrades([]);
-      setLoading(false);
-      return;
-    }
+  // FE-07: refetch — централизованный «обновить всё», который дёргают
+  // SyncStatusIndicator, modals onSuccess, retry-кнопка ошибки.
+  // Инвалидируем queryKeys.trades/stats (включая открытые в этот момент
+  // advanced/benchmark подзапросы) — TanStack сам решит, что перезапросить.
+  const refetchAll = useCallback(() => {
+    void statsQuery.refetch();
+    void tradesQuery.refetch();
+  }, [statsQuery, tradesQuery]);
 
-    setLoading(true);
-    try {
-      let statsUrl = '/stats/';
-      const params = new URLSearchParams();
-      const f = filters;
-
-      // Применяем глобальную настройку tradesStartDate/tradesStartTradeId
-      if (settings.tradesStartTradeId) {
-        params.append('start_trade_id', settings.tradesStartTradeId.toString());
-      } else if (settings.tradesStartDate) {
-        params.append('period', 'custom');
-        params.append('start_date', settings.tradesStartDate);
-      } else if (f.period !== 'all') {
-        params.append('period', f.period);
-        if (f.period === 'custom' && f.startDate) {
-          params.append('start_date', f.startDate);
-          if (f.endDate) params.append('end_date', f.endDate);
-        }
-      }
-      if (f.tag) params.append('tag', f.tag);
-      if (f.limit) params.append('limit', f.limit.toString());
-      if (settings.maeCalculationMethod) {
-        params.append('mae_method', settings.maeCalculationMethod);
-      }
-      if (params.toString()) statsUrl += '?' + params.toString();
-
-      const [statsData, tradesData] = await Promise.all([
-        api.get<DashboardData>(statsUrl),
-        api.get<Trade[]>('/trades/'),
-      ]);
-      setStats(statsData);
-      // Фильтруем сделки по дате/сделке начала из настроек
-      let filteredTrades = Array.isArray(tradesData) ? tradesData : [];
-      if (settings.tradesStartTradeId) {
-        // Находим сделку и фильтруем по её времени
-        const startTrade = filteredTrades.find((t: Trade) => t.id === settings.tradesStartTradeId);
-        if (startTrade) {
-          const startTime = new Date(startTrade.entry_at);
-          filteredTrades = filteredTrades.filter((t: Trade) => new Date(t.entry_at) >= startTime);
-        }
-      } else if (settings.tradesStartDate) {
-        const startDate = new Date(settings.tradesStartDate);
-        filteredTrades = filteredTrades.filter((t: Trade) => new Date(t.entry_at) >= startDate);
-      }
-      setTrades(filteredTrades.reverse());
+  // Лог об успешной/упавшей загрузке для будущего notification-center.
+  useEffect(() => {
+    if (statsQuery.isSuccess && tradesQuery.isSuccess) {
       addLog(t.logs.synchronized);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-      addLog(t.logs.syncFailed);
-    } finally {
-      setLoading(false);
     }
-  }, [user, filters, settings.maeCalculationMethod, settings.tradesStartDate, settings.tradesStartTradeId, t.logs.synchronized, t.logs.syncFailed]);
+  }, [statsQuery.isSuccess, tradesQuery.isSuccess, t.logs.synchronized, addLog]);
+  useEffect(() => {
+    if (statsQuery.isError || tradesQuery.isError) {
+      addLog(t.logs.syncFailed);
+    }
+  }, [statsQuery.isError, tradesQuery.isError, t.logs.syncFailed, addLog]);
 
   useEffect(() => {
     setMounted(true);
-    fetchData();
-  }, [fetchData]);
+  }, []);
 
-  // Lazy-fetch продвинутых табов. При переключении на «advanced» / «benchmark»
-  // догружаем именно их payload — не трогаем основной /stats/ запрос.
-  // Идемпотентно: tried-флаги предотвращают retry при ошибке.
-  useEffect(() => {
-    if (!user) return;
-    if (activeTab === 'advanced' && !advancedTried) {
-      setAdvancedTried(true);
-      setAdvancedLoading(true);
-      api.get('/stats/advanced')
-        .then(setAdvancedData)
-        .catch((e) => { console.error('advanced fetch failed', e); setAdvancedData(null); })
-        .finally(() => setAdvancedLoading(false));
-    }
-    if (activeTab === 'benchmark' && !benchmarkTried) {
-      setBenchmarkTried(true);
-      setBenchmarkLoading(true);
-      api.get('/stats/benchmark')
-        .then(setBenchmarkData)
-        .catch((e) => { console.error('benchmark fetch failed', e); setBenchmarkData(null); })
-        .finally(() => setBenchmarkLoading(false));
-    }
-  }, [activeTab, user, advancedTried, benchmarkTried]);
+  // FE-01: retry-обёртки для табов advanced/benchmark. TanStack refetch
+  // самостоятельно сбрасывает error → перезапрос → ok-ответ.
+  const retryAdvanced = useCallback(() => {
+    void advancedQuery.refetch();
+  }, [advancedQuery]);
+  const retryBenchmark = useCallback(() => {
+    void benchmarkQuery.refetch();
+  }, [benchmarkQuery]);
 
   const handleFiltersChange = (newFilters: Filters) => {
     setFilters(newFilters);
-    // fetchData will be triggered automatically via useEffect when filters state changes
-    // (fetchData depends on filters via useCallback deps) — no need to call it here
+    // statsQuery автоматически отреагирует через изменение statsParams → queryKey;
+    // TanStack сам подхватит изменение, явный refetch не нужен.
   };
 
   const openCloseModal = (trade: Trade) => {
@@ -309,7 +339,9 @@ export default function Home() {
           exit_reason: exitReason
         }
       });
-      fetchData();
+      // Инвалидируем trades + stats — оба зависят от закрытия позиции.
+      queryClient.invalidateQueries({ queryKey: queryKeys.trades.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.all });
       addLog(`${t.logs.positionClosed}: ${selectedTradeToClose.id}`);
     } catch (error) {
       console.error('Failed to close trade:', error);
@@ -325,7 +357,8 @@ export default function Home() {
     setActionInProgress(true);
     try {
       await api.delete(`/trades/${tradeId}`);
-      fetchData();
+      queryClient.invalidateQueries({ queryKey: queryKeys.trades.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.all });
       addLog(`${t.logs.tradePurged}: ${tradeId}`);
     } catch (error) {
       console.error('Delete failed:', error);
@@ -357,7 +390,7 @@ export default function Home() {
   const headerActions = (
     <div className="hidden lg:flex items-center gap-1.5">
       <SyncStatusIndicator
-        onTradesUpdated={fetchData}
+        onTradesUpdated={refetchAll}
         onOpenBrokerModal={() => setIsBrokerModalOpen(true)}
       />
       <button
@@ -493,7 +526,7 @@ export default function Home() {
       <AddTradeModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={() => { fetchData(); addLog('Новая позиция создана'); }}
+        onSuccess={() => { refetchAll(); addLog('Новая позиция создана'); }}
       />
       <CloseTradeModal
         isOpen={isCloseModalOpen}
@@ -506,12 +539,12 @@ export default function Home() {
       <ImportPreviewModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onSuccess={() => { fetchData(); addLog('Импорт завершён'); }}
+        onSuccess={() => { refetchAll(); addLog('Импорт завершён'); }}
       />
       <DepositManagerModal
         isOpen={isDepositModalOpen}
         onClose={() => setIsDepositModalOpen(false)}
-        onUpdate={() => { fetchData(); addLog('Депозит обновлён'); }}
+        onUpdate={() => { refetchAll(); addLog('Депозит обновлён'); }}
       />
       <SetupManagerModal
         isOpen={isSetupModalOpen}
@@ -520,7 +553,7 @@ export default function Home() {
       <BrokerConnectModal
         isOpen={isBrokerModalOpen}
         onClose={() => setIsBrokerModalOpen(false)}
-        onConnectionChange={() => { fetchData(); addLog('Синхронизация с брокером завершена'); }}
+        onConnectionChange={() => { refetchAll(); addLog('Синхронизация с брокером завершена'); }}
       />
 
       {/* Auth Required Modal */}
@@ -617,8 +650,12 @@ export default function Home() {
         />
       )}
 
+      {/* FE-01: error-баннер главного дашборда. Показывается только когда
+          /stats/ или /trades/ упали — даёт юзеру кнопку retry с request_id. */}
+      {error && <DataError error={error} onRetry={refetchAll} />}
+
       {/* ===== TAB CONTENT ===== */}
-      {activeTab === 'overview' && (
+      {!error && activeTab === 'overview' && (
         <>
           {/* PR 25: новый порядок дашборда — сверху вниз daily-flow:
               1. Equity Curve (hero) — кривая, на которой держится взгляд
@@ -682,23 +719,31 @@ export default function Home() {
         </>
       )}
 
-      {activeTab === 'advanced' && (
-        <AdvancedMetricsGrid
-          data={advancedData as React.ComponentProps<typeof AdvancedMetricsGrid>['data']}
-          loading={advancedLoading}
-        />
+      {!error && activeTab === 'advanced' && (
+        advancedError ? (
+          <DataError error={advancedError} onRetry={retryAdvanced} />
+        ) : (
+          <AdvancedMetricsGrid
+            data={advancedData as React.ComponentProps<typeof AdvancedMetricsGrid>['data']}
+            loading={advancedLoading}
+          />
+        )
       )}
 
-      {activeTab === 'benchmark' && (
-        <BenchmarkingView
-          data={benchmarkData as React.ComponentProps<typeof BenchmarkingView>['data']}
-          loading={benchmarkLoading}
-        />
+      {!error && activeTab === 'benchmark' && (
+        benchmarkError ? (
+          <DataError error={benchmarkError} onRetry={retryBenchmark} />
+        ) : (
+          <BenchmarkingView
+            data={benchmarkData as React.ComponentProps<typeof BenchmarkingView>['data']}
+            loading={benchmarkLoading}
+          />
+        )
       )}
 
       {/* Глубокий анализ — teaser-row.
           Только в Overview — на других табах дублирование избыточно. */}
-      {activeTab === 'overview' && hasData && (
+      {!error && activeTab === 'overview' && hasData && (
         <div className="mt-10">
           <div className="mb-4 flex items-end justify-between gap-3">
             <div>

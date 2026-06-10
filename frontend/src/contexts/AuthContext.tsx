@@ -1,8 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, ApiError, clearAuthTokens } from '@/lib/apiClient';
+import { useQueryClient } from '@tanstack/react-query';
+import { api, clearAuthTokens } from '@/lib/apiClient';
+import { useCurrentUserQuery, queryKeys } from '@/lib/queries';
 
 // ==================== TYPES ====================
 
@@ -36,63 +38,77 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Загрузка пользователя
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const userData = await api.get<User>('/auth/me');
-      setUser(userData);
-      setToken('cookie-session');
-    } catch (error) {
-      if (!(error instanceof ApiError && error.status === 401)) {
-        console.error('[Auth] Failed to fetch user:', error);
-      }
-      clearAuthTokens();
-      setToken(null);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-  
-  // При загрузке проверяем токен
-  useEffect(() => {
-    void fetchCurrentUser();
-  }, [fetchCurrentUser]);
-  
-  const login = async (email: string, password: string) => {
-    await api.post('/auth/login', {
-      body: { email, password },
-      noAuth: true,
-    });
-    await fetchCurrentUser();
-  };
-  
-  const register = async (
-    email: string,
-    password: string,
-    name: string | undefined,
-    pdConsent: boolean,
-  ) => {
-    // 152-ФЗ: pd_consent обязателен — backend отклонит запрос без него.
-    await api.post('/auth/register', {
-      body: { email, password, name, pd_consent: pdConsent },
-      noAuth: true,
-    });
-    await fetchCurrentUser();
-  };
-  
+  // FE-07 (Sprint 5, Batch 4): user живёт в TanStack кеше через useCurrentUserQuery.
+  // Все мутации (login/register/logout/updateProfile) инвалидируют queryKeys.auth.me
+  // или явно прописывают свежие данные в кеш — это даёт single-source-of-truth
+  // и дедупликацию запросов /auth/me между компонентами.
+  const queryClient = useQueryClient();
+  const userQuery = useCurrentUserQuery({
+    // 401 = просто не авторизован, не retry (это норма для гостя).
+    retry: false,
+  });
+
+  // `token` — legacy-поле для совместимости с компонентами, которые проверяют
+  // его наличие как «есть сессия». Реальная сессия — httpOnly cookie.
+  // Локальный User-тип шире, чем UserResponse (codegen), поэтому каст.
+  const user = (userQuery.data as User | undefined) ?? null;
+  const token = user ? 'cookie-session' : null;
+  // Различаем «ещё не успели спросить» (loading) и «спросили, 401» (not authed).
+  // isPending = первый запрос ещё в полёте; после первого ответа (success/error)
+  // pending=false, и UI безопасно решает по user.
+  const isLoading = userQuery.isPending;
+
+  // Logout-mutation как функция (не useMutation — нет инвалидации UI-плана,
+  // и сам по себе logout это «сброс кеша»; tanstack-мутация тут избыточна).
   const logout = useCallback(() => {
     void api.post('/auth/logout', { noAuth: true }).catch(() => undefined).finally(() => {
       clearAuthTokens();
-      setToken(null);
-      setUser(null);
-      setIsLoading(false);
+      // Явно ставим user=null в кеш — компоненты, которые подписаны на
+      // useCurrentUserQuery, мгновенно увидят гостевое состояние без сетевого
+      // round-trip. Дальше invalidateQueries даст refetch при следующем mount.
+      queryClient.setQueryData(queryKeys.auth.me(), null);
+      queryClient.removeQueries({ queryKey: ['trades'] });
+      queryClient.removeQueries({ queryKey: ['stats'] });
     });
-  }, []);
+  }, [queryClient]);
+
+  const refetchCurrentUser = useCallback(async () => {
+    await userQuery.refetch();
+  }, [userQuery]);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      await api.post('/auth/login', {
+        body: { email, password },
+        noAuth: true,
+      });
+      // После логина — обновить user в кеше; trades/stats должны быть свежими
+      // под новым пользователем, поэтому invalidate всего.
+      await refetchCurrentUser();
+      queryClient.invalidateQueries({ queryKey: ['trades'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+    [refetchCurrentUser, queryClient],
+  );
+
+  const register = useCallback(
+    async (
+      email: string,
+      password: string,
+      name: string | undefined,
+      pdConsent: boolean,
+    ) => {
+      // 152-ФЗ: pd_consent обязателен — backend отклонит запрос без него.
+      await api.post('/auth/register', {
+        body: { email, password, name, pd_consent: pdConsent },
+        noAuth: true,
+      });
+      await refetchCurrentUser();
+      queryClient.invalidateQueries({ queryKey: ['trades'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+    [refetchCurrentUser, queryClient],
+  );
 
   useEffect(() => {
     const handleAuthLogout = () => {
@@ -102,17 +118,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('auth:logout', handleAuthLogout);
     return () => window.removeEventListener('auth:logout', handleAuthLogout);
   }, [logout]);
-  
-  const updateProfile = async (data: { name?: string; settings?: Record<string, unknown> }) => {
-    const updatedUser = await api.put<User>('/auth/me', { body: data });
-    
-    setUser(updatedUser);
-  };
-  
-  // Обновить данные пользователя (для OAuth callback)
+
+  const updateProfile = useCallback(
+    async (data: { name?: string; settings?: Record<string, unknown> }) => {
+      const updatedUser = await api.put<User>('/auth/me', { body: data });
+      // Прямо записываем ответ в кеш — useCurrentUserQuery увидит обновление
+      // без лишнего GET /auth/me.
+      queryClient.setQueryData(queryKeys.auth.me(), updatedUser);
+    },
+    [queryClient],
+  );
+
+  // refreshUser остаётся в API как именованный метод (OAuth callback дёргает).
   const refreshUser = useCallback(async () => {
-    await fetchCurrentUser();
-  }, [fetchCurrentUser]);
+    await refetchCurrentUser();
+  }, [refetchCurrentUser]);
 
   useEffect(() => {
     const handleAuthLogin = () => {
@@ -122,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('auth:login', handleAuthLogin);
     return () => window.removeEventListener('auth:login', handleAuthLogin);
   }, [refreshUser]);
-  
+
   const value: AuthContextType = {
     user,
     token,
@@ -134,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateProfile,
     refreshUser,
   };
-  
+
   return (
     <AuthContext.Provider value={value}>
       {children}
@@ -161,7 +181,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       router.replace('/login');
     }
   }, [isAuthenticated, isLoading, router]);
-  
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -169,10 +189,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  
+
   if (!isAuthenticated) {
     return null;
   }
-  
+
   return <>{children}</>;
 }
+

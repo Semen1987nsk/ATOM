@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
 import { api } from '@/lib/apiClient';
+import { Modal } from '@/components/ui/Modal';
 
 interface EditTradeModalProps {
   isOpen: boolean;
@@ -135,19 +135,8 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative max-h-[90vh] overflow-y-auto animate-scaleIn">
-        {/* Background glow */}
-        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-accent-secondary/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
-          <X size={20} />
-        </button>
-        
-        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">РЕДАКТИРОВАНИЕ #{trade.id}</h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal open onClose={onClose} title={`Редактирование #${trade.id}`} size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Тикер</label>
@@ -368,7 +357,6 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

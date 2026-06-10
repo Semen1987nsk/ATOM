@@ -13,6 +13,11 @@
 # testing
 /coverage
 
+# playwright artefacts — html-отчёт и trace-файлы, не для коммита
+/playwright-report/
+/test-results/
+/playwright/.cache/
+
 # next.js
 /.next/
 /out/

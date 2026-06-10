@@ -12,9 +12,8 @@
  * - серый    — нет подключений
  */
 
-import { useEffect, useState } from 'react';
 import { Link2, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { useSyncStatusQuery } from '@/lib/useSyncStatusQuery';
 
 interface SyncStatusConnection {
   id: number;
@@ -158,28 +157,12 @@ export default function BrokerStatusBadge({
   refreshIntervalMs = 30000,
   onClick,
 }: Props) {
-  const [data, setData] = useState<SyncStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchOnce = async () => {
-      try {
-        const res = await api.get<SyncStatusResponse>('/broker/sync-status');
-        if (!cancelled) setData(res);
-      } catch {
-        // Не падаем — оставим прежнее состояние или null.
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    fetchOnce();
-    const interval = setInterval(fetchOnce, refreshIntervalMs);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [refreshIntervalMs]);
+  // FE-10: общий TanStack-хук дедупит polling с SyncStatusIndicator
+  // (раньше каждый компонент держал свой setInterval(30s)).
+  const { data, isPending } = useSyncStatusQuery<SyncStatusResponse>({
+    refetchInterval: refreshIntervalMs,
+  });
+  const loading = isPending;
 
   if (loading && !data) {
     return (
@@ -190,7 +173,7 @@ export default function BrokerStatusBadge({
     );
   }
 
-  const state = deriveState(data);
+  const state = deriveState(data ?? null);
   const Icon =
     state.icon === 'check'
       ? CheckCircle2

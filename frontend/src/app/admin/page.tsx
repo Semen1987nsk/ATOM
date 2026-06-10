@@ -18,7 +18,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart as RechartsPie, Pie, Cell,
   BarChart, Bar
-} from 'recharts';
+} from '@/lib/lazy-recharts';
 import { PnLHealthTab } from './PnLHealthTab';
 
 // Цвета для графиков
@@ -1338,6 +1338,7 @@ function AdminDashboard() {
                                     alt={article.title}
                                     width={64}
                                     height={40}
+                                    // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
                                     unoptimized
                                     className="w-16 h-10 object-cover rounded"
                                   />

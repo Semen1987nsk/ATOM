@@ -205,8 +205,6 @@ export function MAEMFECard({ analysis, onRecalculate, getApiUrl }: MAEMFECardPro
 
   return (
     <div className="cyber-card p-6 border-l-cyan-500/30 relative overflow-hidden group">
-      <div className="absolute -top-20 -left-20 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
       <h2 className="text-sm font-mono uppercase mb-6 flex items-center gap-2 relative z-10">
         <Gauge size={16} className="text-cyan-400" />
         <Link 

@@ -11,9 +11,10 @@ import { Image as ImageIcon, TrendingUp, TrendingDown, ExternalLink } from "luci
 import { AppShell } from "@/components/AppShell";
 import { AnalysisPageHeader } from "@/components/analysis/AnalysisPageHeader";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import { api, getApiUrl } from "@/lib/apiClient";
+import { api, getApiUrl, ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import { DataError } from "@/components/ui/DataError";
 
 interface TradeWithScreenshot {
   id: number;
@@ -39,15 +40,22 @@ export default function ScreenshotsPage() {
   const [sort, setSort] = useState<SortMode>("best");
   const [filter, setFilter] = useState<FilterMode>("all");
   const [lightbox, setLightbox] = useState<TradeWithScreenshot | null>(null);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [refetchKey, setRefetchKey] = useState(0);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     setLoading(true);
+    setError(null);
+    let cancelled = false;
     api.get<TradeWithScreenshot[]>("/trades/")
-      .then((data) => setTrades((data || []).filter((t) => t.screenshot_url)))
-      .catch(() => setTrades([]))
-      .finally(() => setLoading(false));
-  }, [user]);
+      .then((data) => { if (!cancelled) setTrades((data || []).filter((t) => t.screenshot_url)); })
+      .catch((e) => { if (!cancelled) { setTrades([]); setError(e as ApiError | Error); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, refetchKey]);
+
+  const retry = () => setRefetchKey((k) => k + 1);
 
   const filteredSorted = useMemo(() => {
     const pnlOf = (t: TradeWithScreenshot) => (t.net_pnl ?? t.pnl ?? 0);
@@ -75,6 +83,8 @@ export default function ScreenshotsPage() {
 
         {!user ? (
           <Empty text="Войдите, чтобы увидеть свои скриншоты." />
+        ) : error ? (
+          <DataError error={error} onRetry={retry} />
         ) : loading ? (
           <DashboardSkeleton />
         ) : trades.length === 0 ? (

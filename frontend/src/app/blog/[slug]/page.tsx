@@ -118,6 +118,7 @@ function RelatedArticleCard({ article }: { article: Article }) {
               alt={article.title}
               fill
               sizes="(max-width: 768px) 100vw, 33vw"
+              // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
               unoptimized
               className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -334,6 +335,7 @@ export default function ArticlePage() {
                 alt={article.title}
                 fill
                 sizes="(max-width: 1024px) 100vw, 896px"
+                // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
                 unoptimized
                 className="object-cover"
               />

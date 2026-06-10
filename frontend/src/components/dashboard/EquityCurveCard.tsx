@@ -21,7 +21,7 @@ import {
   ReferenceLine,
   ReferenceArea,
   ReferenceDot,
-} from "recharts";
+} from "@/lib/lazy-recharts";
 
 // recharts v3 убрал стабильный экспорт TooltipProps — используем локальный shape
 // под content-callback'а, чтобы не пытаться угадать generic параметры.

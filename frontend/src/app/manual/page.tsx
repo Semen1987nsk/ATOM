@@ -1,5 +1,3 @@
-'use client';
-
 import Link from 'next/link';
 import { Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge, CheckCircle } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
@@ -15,9 +13,6 @@ export default function Manual() {
 
       {/* Hero Section */}
       <header className="mb-16 relative">
-        <div className="absolute -top-10 -left-10 w-40 h-40 bg-accent/10 rounded-full blur-3xl" />
-        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
-        
         <div className="relative">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-accent/20 rounded-lg">
@@ -163,7 +158,6 @@ export default function Manual() {
       <div className="space-y-16">
         {/* Total PnL */}
         <section id="total-pnl" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-green-500/20 rounded-xl">
@@ -198,7 +192,6 @@ export default function Manual() {
 
         {/* Win Rate */}
         <section id="win-rate" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-blue-500/20 rounded-xl">
@@ -256,10 +249,6 @@ export default function Manual() {
 
         {/* Optimal f */}
         <section id="optimal-f" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background Effects */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-accent/20 to-transparent rounded-full blur-3xl" />
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -552,9 +541,6 @@ export default function Manual() {
 
         {/* SQN */}
         <section id="sqn" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -865,10 +851,6 @@ export default function Manual() {
 
         {/* Z-Score */}
         <section id="z-score" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -left-20 w-60 h-60 bg-cyan-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -1235,9 +1217,6 @@ export default function Manual() {
 
         {/* Profit Factor */}
         <section id="profit-factor" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-60 h-60 bg-green-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -1410,9 +1389,6 @@ export default function Manual() {
 
         {/* Recovery Factor & Drawdown */}
         <section id="drawdown" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-red-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -1578,7 +1554,6 @@ export default function Manual() {
 
         {/* Recovery Factor */}
         <section id="recovery-factor" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-cyan-500/20 rounded-xl">
@@ -1622,7 +1597,6 @@ export default function Manual() {
 
         {/* ROI */}
         <section id="roi" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-emerald-500/20 rounded-xl">
@@ -1657,7 +1631,6 @@ export default function Manual() {
 
         {/* GHPR */}
         <section id="ghpr" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-violet-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-violet-500/20 rounded-xl">
@@ -1698,7 +1671,6 @@ export default function Manual() {
 
         {/* Sortino Ratio */}
         <section id="sortino" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-indigo-500/20 rounded-xl">
@@ -1750,7 +1722,6 @@ export default function Manual() {
 
         {/* Tail Ratio */}
         <section id="tail-ratio" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-orange-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-orange-500/20 rounded-xl">
@@ -1785,10 +1756,6 @@ export default function Manual() {
 
         {/* Calmar Ratio */}
         <section id="calmar-ratio" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-teal-500/20 to-transparent rounded-full blur-3xl" />
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-teal-500/10 rounded-full blur-2xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2069,9 +2036,6 @@ export default function Manual() {
 
         {/* MAE/MFE */}
         <section id="mae-mfe" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-yellow-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2285,9 +2249,6 @@ export default function Manual() {
 
         {/* Post-Exit Analysis */}
         <section id="post-exit" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2460,10 +2421,6 @@ export default function Manual() {
 
         {/* Monte Carlo Simulation */}
         <section id="monte-carlo" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-60 h-60 bg-violet-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2678,10 +2635,6 @@ export default function Manual() {
 
         {/* Risk of Ruin */}
         <section id="risk-of-ruin" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-80 h-80 bg-rose-500/15 rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-red-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2941,10 +2894,6 @@ export default function Manual() {
 
         {/* Time Patterns */}
         <section id="time-patterns" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 left-0 w-80 h-80 bg-sky-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-60 h-60 bg-teal-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3302,10 +3251,6 @@ export default function Manual() {
 
         {/* R-Expectancy */}
         <section id="r-expectancy" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 left-0 w-80 h-80 bg-emerald-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3475,10 +3420,6 @@ export default function Manual() {
 
         {/* Win/Loss Streaks */}
         <section id="streaks" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-80 h-80 bg-amber-500/15 rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 left-0 w-60 h-60 bg-orange-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3721,7 +3662,6 @@ export default function Manual() {
 
         {/* Avg Win/Loss */}
         <section id="avg-win-loss" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-pink-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-pink-500/20 rounded-xl">
@@ -3776,9 +3716,6 @@ export default function Manual() {
 
         {/* Tags System - add id */}
         <section id="tags" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-60 h-60 bg-pink-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">

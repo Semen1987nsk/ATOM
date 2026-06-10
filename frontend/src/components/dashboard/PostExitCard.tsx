@@ -184,8 +184,6 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
 
   return (
     <div className="cyber-card p-6 border-l-purple-500/30 relative overflow-hidden group">
-      <div className="absolute -top-20 -left-20 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
       <h2 className="text-sm font-mono uppercase mb-4 flex items-center gap-2 relative z-10">
         <Clock size={16} className="text-purple-400" />
         <Link 

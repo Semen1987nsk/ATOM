@@ -127,11 +127,6 @@ export default function HelpPage() {
   return (
     <AppShell pageTitle="Помощь">
     <main className="p-6 md:p-8 max-w-5xl mx-auto">
-      {/* Background blur orbs убраны — теперь чистый surface из AppShell */}
-      <div className="hidden" />
-      <div className="absolute top-40 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-1/4 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
-
       <div className="relative max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">

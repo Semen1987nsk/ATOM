@@ -6,6 +6,7 @@ import {
   Zap, ChevronDown, ChevronUp, Link2, ShieldCheck, ShieldAlert
 } from 'lucide-react';
 import { api } from '@/lib/apiClient';
+import { useSyncStatusQuery } from '@/lib/useSyncStatusQuery';
 
 // PR 20: Health-audit response shape.
 interface HealthIssue {
@@ -66,29 +67,26 @@ interface SyncStatusIndicatorProps {
   onOpenBrokerModal?: () => void;
 }
 
-export default function SyncStatusIndicator({ 
-  onTradesUpdated, 
-  onOpenBrokerModal 
+export default function SyncStatusIndicator({
+  onTradesUpdated,
+  onOpenBrokerModal
 }: SyncStatusIndicatorProps) {
-  const [status, setStatus] = useState<SyncStatus | null>(null);
+  // FE-10: shared TanStack-хук дедупит /broker/sync-status с BrokerStatusBadge.
+  // refetch() даёт ручной форс-рефреш после triggerSync.
+  const {
+    data: status,
+    isPending: statusLoading,
+    refetch: refetchStatus,
+  } = useSyncStatusQuery<SyncStatus>({ refetchInterval: 30000 });
+
   const [health, setHealth] = useState<HealthCheck | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [healthLoading, setHealthLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [syncing, setSyncing] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<string>('');
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const data = await api.get<SyncStatus>('/broker/sync-status');
-      setStatus(data);
-    } catch (error) {
-      console.error('Failed to fetch sync status:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   // PR 20: подтягиваем последний health-audit для индикатора.
+  // (Отдельный poll — другая responsibility, не дедуплится с sync-status.)
   const fetchHealth = useCallback(async () => {
     try {
       const data = await api.get<HealthResponse>('/broker/health');
@@ -96,19 +94,19 @@ export default function SyncStatusIndicator({
     } catch {
       // Health не критичен для основного UI — молча.
       setHealth(null);
+    } finally {
+      setHealthLoading(false);
     }
   }, []);
 
-  // Обновляем статус каждые 30 секунд
   useEffect(() => {
-    fetchStatus();
     fetchHealth();
-    const interval = setInterval(() => {
-      fetchStatus();
-      fetchHealth();
-    }, 30000);
+    const interval = setInterval(fetchHealth, 30000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchHealth]);
+  }, [fetchHealth]);
+
+  // Composite loading: до первой загрузки обоих источников.
+  const loading = statusLoading || healthLoading;
 
   // Обновляем countdown каждую секунду
   useEffect(() => {
@@ -151,7 +149,7 @@ export default function SyncStatusIndicator({
       await api.post(`/broker/trigger-sync/${connectionId}`);
       // Ждём немного и обновляем статус
       setTimeout(() => {
-        fetchStatus();
+        refetchStatus();
         onTradesUpdated?.();
       }, 2000);
     } catch (error) {
