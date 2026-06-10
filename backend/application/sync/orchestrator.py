@@ -32,6 +32,7 @@ from adapters.security.token_encryption import (
     TokenEncryptionError,
     TokenEncryptionService,
 )
+from application.sync.ip_cooldown_gate import IpCooldownGate, build_ip_cooldown_gate
 from application.sync.pipeline import SyncPipeline, SyncReport
 from config import settings
 from database import SessionLocal
@@ -76,6 +77,7 @@ class TinkoffSyncOrchestrator:
         instrument_repo: Optional[InstrumentRepository] = None,
         session_factory: Callable[[], Session] = SessionLocal,
         max_concurrent: int = 20,
+        cooldown_gate: Optional[IpCooldownGate] = None,
     ) -> None:
         self._token_repo = token_repo or TokenRepository(
             encryption=TokenEncryptionService()
@@ -87,6 +89,11 @@ class TinkoffSyncOrchestrator:
         # bulkhead per-connection: одну sync-задачу на одно подключение
         # не запускаем дважды параллельно.
         self._in_flight: set[int] = set()
+        # SYNC-05: глобальный IP-cooldown gate.
+        self._cooldown_gate = cooldown_gate or build_ip_cooldown_gate()
+        self._min_distinct = settings.TINKOFF_IP_COOLDOWN_MIN_DISTINCT_CONNECTIONS
+        # per-run набор коннекшнов, словивших RateLimitExceeded.
+        self._rate_limited_connections: set[int] = set()
 
     # ── публичные методы ──────────────────────────────────────────────
 
@@ -97,16 +104,39 @@ class TinkoffSyncOrchestrator:
         с лимитом по семафору.
         """
         report = OrchestratorRunReport(started_at=utc_now_naive())
+
+        # SYNC-05: глобальный IP-cooldown — пропускаем весь прогон (storm-stopper).
+        if await self._cooldown_gate.is_open():
+            log.warning("orchestrator.run_due_accounts: skipped — IP cooldown gate open")
+            report.finished_at = utc_now_naive()
+            return report
+
+        # per-run набор коннекшнов, словивших RateLimitExceeded (кросс-коннекшн
+        # корреляция для IP-уровневого сигнала).
+        self._rate_limited_connections = set()
+
         connection_ids = await asyncio.to_thread(self._select_due_connection_ids)
         report.accounts_considered = len(connection_ids)
 
         if not connection_ids:
             report.finished_at = utc_now_naive()
+            await self._cooldown_gate.clear()
             return report
 
         # Запускаем параллельно с ограничением через семафор.
         tasks = [self._guard_one(cid, report) for cid in connection_ids]
         await asyncio.gather(*tasks, return_exceptions=False)
+
+        # SYNC-05: ≥ threshold различных коннекшнов словили rate-limit → IP-уровень.
+        if len(self._rate_limited_connections) >= self._min_distinct:
+            secs = await self._cooldown_gate.open()
+            log.warning(
+                "orchestrator: IP cooldown gate opened (%d connections rate-limited), backoff=%ss",
+                len(self._rate_limited_connections),
+                secs,
+            )
+        else:
+            await self._cooldown_gate.clear()
 
         report.finished_at = utc_now_naive()
         log.info(
@@ -149,6 +179,12 @@ class TinkoffSyncOrchestrator:
                     report.accounts_synced += 1
                 except CircuitBreakerOpen:
                     report.accounts_skipped += 1
+                except RateLimitExceeded:
+                    # SYNC-05: сигнал для кросс-коннекшн корреляции. НЕ пишем
+                    # per-connection circuit во время потенциального IP-cooldown.
+                    report.accounts_failed += 1
+                    self._rate_limited_connections.add(connection_id)
+                    log.warning("sync rate-limited for connection_id=%s", connection_id)
                 except BrokerError as exc:
                     report.accounts_failed += 1
                     log.warning(
@@ -214,7 +250,14 @@ class TinkoffSyncOrchestrator:
     # ── работа с БД (синхронная) ──────────────────────────────────────
 
     def _select_due_connection_ids(self) -> list[int]:
-        """SELECT connection_id где пора синкать."""
+        """SELECT connection_id где пора синкать.
+
+        SYNC-10: один SELECT с нужными колонками (id, circuit_open_until,
+        last_sync_at, sync_interval_minutes), фильтрация due-условий —
+        в Python. Раньше делал 1 + N запросов (отдельный fetch на каждый id).
+        """
+        from datetime import timedelta
+
         now = utc_now_naive()
         session = self._session_factory()
         try:
@@ -222,8 +265,13 @@ class TinkoffSyncOrchestrator:
             # Деактивированные/удалённые юзеры не тратят Tinkoff API quota.
             from models import Account, User
 
-            query = (
-                session.query(BrokerConnection.id)
+            rows = (
+                session.query(
+                    BrokerConnection.id,
+                    BrokerConnection.circuit_open_until,
+                    BrokerConnection.last_sync_at,
+                    BrokerConnection.sync_interval_minutes,
+                )
                 .join(Account, Account.id == BrokerConnection.account_id)
                 .join(User, User.id == Account.user_id)
                 .filter(
@@ -233,30 +281,22 @@ class TinkoffSyncOrchestrator:
                     User.is_active == 1,
                     User.deletion_requested_at.is_(None),  # 152-ФЗ pending — не синкаем
                 )
+                .all()
             )
-            rows = query.all()
-            ids: list[int] = []
-            for (cid,) in rows:
-                # Проверим circuit breaker отдельно для читаемости.
-                conn = session.query(BrokerConnection).filter_by(id=cid).first()
-                if conn is None:
-                    continue
-                if conn.circuit_open_until and conn.circuit_open_until > now:
-                    continue
-                if conn.last_sync_at is None:
-                    ids.append(cid)
-                    continue
-                # last_sync_at + sync_interval_minutes <= now → пора
-                from datetime import timedelta
-
-                next_due = conn.last_sync_at + timedelta(
-                    minutes=conn.sync_interval_minutes or 60
-                )
-                if next_due <= now:
-                    ids.append(cid)
-            return ids
         finally:
             session.close()
+
+        ids: list[int] = []
+        for cid, circuit_open_until, last_sync_at, interval_minutes in rows:
+            if circuit_open_until is not None and circuit_open_until > now:
+                continue
+            if last_sync_at is None:
+                ids.append(cid)
+                continue
+            next_due = last_sync_at + timedelta(minutes=interval_minutes or 60)
+            if next_due <= now:
+                ids.append(cid)
+        return ids
 
     def _load_connection(self, connection_id: int) -> Optional["_ConnectionCtx"]:
         """Снять snapshot нужных полей: после этого session закроется."""

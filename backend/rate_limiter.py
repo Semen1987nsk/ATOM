@@ -79,6 +79,7 @@ if settings.RATE_LIMIT_ENABLED and RATE_LIMIT_STORAGE_URI:
         key_func=get_rate_limit_key,
         storage_uri=RATE_LIMIT_STORAGE_URI,
         strategy=settings.RATE_LIMIT_STRATEGY,
+        default_limits=[settings.READ_RATE_LIMIT],
     )
     log.info("✅ Rate limiter using Redis backend")
 else:
@@ -96,6 +97,7 @@ else:
         key_func=get_rate_limit_key,
         strategy=settings.RATE_LIMIT_STRATEGY,
         enabled=settings.RATE_LIMIT_ENABLED,
+        default_limits=[settings.READ_RATE_LIMIT],
     )
     if settings.RATE_LIMIT_ENABLED:
         log.warning("⚠️ Rate limiter using in-memory storage (not suitable for production)")
@@ -156,3 +158,7 @@ IMPORT_LIMIT = "10/minute"  # 10 импортов в минуту
 
 # Для AI запросов (дорогие операции)
 AI_LIMIT = "5/minute"  # 5 AI анализов в минуту
+
+# Sprint 2A-2 CONFIG: read-эндпоинты и market-прокси.
+READ_LIMIT = settings.READ_RATE_LIMIT
+MARKET_LIMIT = settings.MARKET_RATE_LIMIT

@@ -191,10 +191,15 @@ class SyncPipeline:
             resolved = await self._stage_enrich(fetched_operations)
             report.instruments_resolved = resolved
 
-            # PR 4: upsert operations + save cursor (раньше). Сейчас сначала
-            # сохраняем операции в БД, чтобы FIFO мог комбинировать новые
-            # с уже хранящимися (для incremental sync).
-            inserted = await self._stage_upsert(fetched_operations, last_cursor)
+            # PR 4 + SYNC-08 (2026-05-26): upsert operations БЕЗ сдвига курсора.
+            # Сначала сохраняем операции в БД, чтобы FIFO мог комбинировать
+            # новые с уже хранящимися (для incremental sync). Курсор сдвигается
+            # в самом конце через _stage_commit_cursor — только после того как
+            # FIFO+positions+health прошли успешно. Иначе при падении на FIFO
+            # стадии операции уже сохранены и cursor сдвинут, а trades/positions
+            # не построены — следующий sync не сможет довосстановить с прежней
+            # точки.
+            inserted = await self._stage_upsert(fetched_operations)
             report.operations_new_or_updated = inserted
 
             # PR 7: FIFO matching по каждому инструменту, сохранение Trade/Position.
@@ -244,6 +249,16 @@ class SyncPipeline:
 
             # PR 8 — emit OperationsSyncedEvent. Сейчас no-op.
             await self._stage_emit_events(report)
+
+            # SYNC-08 (2026-05-26): сдвигаем cursor ТОЛЬКО после успешного
+            # прохождения всех post-upsert стадий (fifo_match, attribute_fees,
+            # mark_to_market, phantom_sweep, health_audit, pnl_health_check).
+            # Если любая из них упала — мы попадаем в except-блок ниже,
+            # `_save_error_state` фиксирует last_sync_status="error",
+            # а sync_cursor остаётся прежним. На следующем sync с тем же
+            # курсором перетянем те же операции (upsert идемпотентен) и заново
+            # построим trades/positions.
+            await self._stage_commit_cursor(last_cursor)
 
             report.success = True
         except BrokerError as exc:
@@ -668,10 +683,24 @@ class SyncPipeline:
         )
         return total_trades, total_positions
 
-    async def _stage_upsert(
-        self, operations: Sequence[Operation], cursor: str
-    ) -> int:
-        """Шаг 4: одна транзакция — операции + cursor."""
+    async def _stage_upsert(self, operations: Sequence[Operation]) -> int:
+        """Шаг 4 (SYNC-08 split): upsert операций БЕЗ сдвига курсора.
+
+        Раньше этот метод коммитил cursor + last_sync_status='success' в той
+        же транзакции что и upsert. При падении на FIFO стадии операции были
+        сохранены, курсор сдвинут — но trades/positions не построены. На
+        следующем sync с уже сдвинутого курсора Tinkoff не отдавал те же ops,
+        и FIFO больше никогда не восстанавливался для этого окна.
+
+        Теперь:
+        * `_stage_upsert` — атомарный upsert только операций.
+        * `_stage_commit_cursor` — отдельный метод, вызывается в конце
+          `run()` после всех success-стадий.
+
+        Upsert операций сам по себе идемпотентен (ON CONFLICT DO UPDATE),
+        поэтому если курсор не сдвинется и Tinkoff повторно отдаст эти ops —
+        ничего не сломается, просто будет no-op UPDATE.
+        """
 
         def _commit() -> int:
             session = self._session_factory()
@@ -682,14 +711,6 @@ class SyncPipeline:
                     broker_account_id=self._broker_account_id,
                     operations=operations,
                 )
-                self._operation_repo.save_cursor(
-                    session,
-                    account_id=self._account_id,
-                    broker_account_id=self._broker_account_id,
-                    cursor=cursor,
-                    last_sync_status="success",
-                    last_sync_error=None,
-                )
                 session.commit()
                 return inserted
             except Exception:
@@ -699,6 +720,39 @@ class SyncPipeline:
                 session.close()
 
         return await asyncio.to_thread(_commit)
+
+    async def _stage_commit_cursor(self, cursor: str) -> None:
+        """SYNC-08: сдвиг cursor + last_sync_status='success'.
+
+        Вызывается ТОЛЬКО после успешного выполнения всех пост-upsert стадий
+        (fifo_match, attribute_fees, mark_to_market, phantom_sweep,
+        health_audit, pnl_health_check, emit_events). Если любая из них
+        бросила исключение — этот метод не вызывается, `_save_error_state`
+        фиксирует ошибочный статус, sync_cursor остаётся на предыдущей точке.
+
+        Гарантия: cursor сдвигается только когда trades/positions/health
+        соответствуют новому состоянию operations.
+        """
+
+        def _save() -> None:
+            session = self._session_factory()
+            try:
+                self._operation_repo.save_cursor(
+                    session,
+                    account_id=self._account_id,
+                    broker_account_id=self._broker_account_id,
+                    cursor=cursor,
+                    last_sync_status="success",
+                    last_sync_error=None,
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        await asyncio.to_thread(_save)
 
     async def _stage_emit_events(self, report: SyncReport) -> None:
         """Шаг 5 — заглушка для PR 5. PR 8 поднимет in-process event bus."""
@@ -1072,6 +1126,12 @@ class SyncPipeline:
         """
         Заменить все PositionORM строки аккаунта тем, что вернул Tinkoff
         portfolio API. Это даёт точный snapshot реальных открытых позиций.
+
+        SYNC-09 (2026-05-26): атомарность DELETE+INSERT гарантируется единым
+        commit() в конце и rollback() в except — обе фазы в одной session,
+        одна транзакция. Savepoint не нужен. Инвариант покрыт
+        tests/integration/test_replace_positions_atomic.py::
+        test_replace_positions_atomic_on_mid_insert_failure.
         """
         from models import PositionORM
 

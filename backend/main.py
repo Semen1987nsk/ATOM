@@ -3,17 +3,16 @@ ATOM API — Главный файл приложения
 
 Рефакторинг: endpoints перенесены в routers/
 """
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import text
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 import traceback
 
 import database
@@ -93,11 +92,21 @@ def _check_alembic_head() -> None:
         log.exception("alembic head check failed (non-blocking in dev)")
 
 
+def _warn_if_debug() -> None:
+    """API-12: предупреждаем на старте если DEBUG=true (НЕ для продакшна)."""
+    if settings.DEBUG:
+        log.warning(
+            "⚠️ DEBUG=true — НЕ для продакшна (traceback'и gated на DEBUG, "
+            "но проверь окружение перед деплоем)"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
     log.info("🚀 ATOM API v0.2.0 Starting...")
     log.info("📦 Routers: auth, trades, deposits, setups, broker, admin, blog, stats, market, real_pnl, positions")
+    _warn_if_debug()
 
     # Sentry — раньше всего, чтобы стартовые ошибки тоже доезжали.
     init_sentry()
@@ -158,6 +167,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("Failed to stop stream_manager (non-blocking)")
     await scheduler.stop()
+    # PERF-04: закрываем общий httpx.AsyncClient для MOEX (services/moex_async).
+    # Идемпотентно: если ни одного запроса не было, no-op.
+    try:
+        from services import moex_async
+        await moex_async.close_client()
+    except Exception:
+        log.exception("Failed to close moex_async client (non-blocking)")
     log.info("✅ Cleanup complete")
 
 
@@ -174,6 +190,45 @@ app = FastAPI(
 # Rate limiter state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# ==================== OBSERVABILITY: PROMETHEUS /metrics ====================
+# INFRA-02: prometheus-fastapi-instrumentator оборачивает app, регистрирует
+# `/metrics` (text/plain exposition) для Grafana stack scraping.
+#
+# Регистрация ДО `SlowAPIMiddleware` — чтобы:
+#   1) Сам endpoint попадал в маршрутизатор раньше middleware-стека;
+#   2) Мы могли пометить роут exempt в `limiter._exempt_routes` ДО того, как
+#      slowapi начнёт читать default_limits на первый запрос.
+#
+# /metrics exempt-фактоид: Prometheus scrape (15s интервал = 4 req/min) сам по
+# себе под default_limit=120/min не падает, НО за minute-окно слетают здоровья
+# по health-check'ам Grafana, ServiceMonitor recheck'ам и т.п. Лучше exempt'нуть
+# явно, чтобы scraper жил независимо от user-RPS.
+from prometheus_fastapi_instrumentator import Instrumentator
+
+_instrumentator = Instrumentator(
+    excluded_handlers=["/metrics", "/health", "/ready"],
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+)
+_instrumentator.instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False,
+    tags=["observability"],
+)
+# Exempt из slowapi rate-limit: имя callable, которое expose() регистрирует
+# на роуте /metrics, — `<module>.<func>` = "prometheus_fastapi_instrumentator
+# .instrumentation.metrics". Добавляем напрямую в `_exempt_routes` (set),
+# т.к. сам декоратор limiter.exempt применять некуда (endpoint регистрируется
+# внутри библиотеки императивно).
+for _route in app.routes:
+    if getattr(_route, "path", None) == "/metrics":
+        _endpoint = getattr(_route, "endpoint", None)
+        if _endpoint is not None:
+            _exempt_key = f"{_endpoint.__module__}.{_endpoint.__name__}"
+            limiter._exempt_routes.add(_exempt_key)
+        break
 
 
 # ==================== ГЛОБАЛЬНЫЕ ОБРАБОТЧИКИ ОШИБОК ====================
@@ -266,6 +321,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ==================== MIDDLEWARE ====================
+
+# API-03: SlowAPIMiddleware применяет default_limits (READ_RATE_LIMIT) ко ВСЕМ
+# роутам без явного @limiter.limit. Добавлен ПЕРВЫМ → innermost, чтобы 429
+# проходил обратно через CORS + SecurityHeaders (получает их заголовки).
+# Probe-роуты (/health, /ready, /) помечены @limiter.exempt, чтобы оркестратор
+# не упирался в лимит. В Starlette первым добавленный middleware = outermost
+# в списке, но build_middleware_stack оборачивает reversed → innermost.
+app.add_middleware(SlowAPIMiddleware)
 
 # PR 26: security headers — outermost, чтобы покрыть ВСЕ ответы (включая
 # 4xx/5xx от CSRF/Auth middleware ниже). В Starlette первым добавленный
@@ -382,6 +445,7 @@ app.openapi = _gated_openapi
 # ==================== КОРНЕВЫЕ ENDPOINTS ====================
 
 @app.get("/")
+@limiter.exempt
 async def read_root():
     """Корневой endpoint"""
     return {
@@ -396,6 +460,7 @@ import schemas
 
 
 @app.get("/health", response_model=schemas.HealthResponse)
+@limiter.exempt
 async def health_check():
     """
     Liveness probe: процесс жив? Не делает дорогих проверок.
@@ -408,6 +473,7 @@ async def health_check():
 
 
 @app.get("/ready", response_model=schemas.ReadinessResponse, responses={503: {"model": schemas.ReadinessResponse}})
+@limiter.exempt
 async def readiness_check():
     """
     Readiness probe: готов ли сервис принимать трафик?
@@ -427,16 +493,15 @@ async def readiness_check():
     # ── Redis (если используется) ──
     if settings.REDIS_URL:
         redis_ok = False
-        redis_err = None
         try:
             import redis as redis_lib  # local import — opt-out если пакета нет
             client = redis_lib.from_url(settings.REDIS_URL, socket_connect_timeout=2, socket_timeout=2)
             redis_ok = bool(client.ping())
         except Exception as exc:
-            redis_err = str(exc)
+            # Деталь (внутренний host:port) — только в серверный лог, НЕ в тело
+            # ответа: /ready неаутентифицирован, str(exc) даёт recon-подсказку.
+            log.warning("readiness redis check failed: %s", exc)
         checks["redis"] = {"ok": redis_ok}
-        if redis_err:
-            checks["redis"]["error"] = redis_err
         overall_ok = overall_ok and redis_ok
     else:
         checks["redis"] = {"ok": True, "note": "not configured"}
@@ -451,23 +516,3 @@ async def readiness_check():
             "checks": checks,
         },
     )
-
-
-@app.get("/db-check")
-def check_db(db: Session = Depends(database.get_db)):
-    """Проверка подключения к БД"""
-    try:
-        db.execute(text("SELECT 1"))
-        return {
-            "status": "Database is connected",
-            "connected": True,
-        }
-    except SQLAlchemyError as exc:
-        log.warning(f"Database check failed: {exc}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "Database connection failed",
-                "connected": False,
-            }
-        )

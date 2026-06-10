@@ -88,7 +88,7 @@ async def onboarding_reconcile(
             runs.append({
                 "account_id": acc.id,
                 "status": "error",
-                "error": str(exc),
+                "error": "reconciliation_failed",
             })
 
     return {

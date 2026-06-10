@@ -62,6 +62,17 @@ def _parse_cors_origins() -> List[str]:
     ]
 
 
+def _parse_oauth_redirect_uris() -> List[str]:
+    """Парсинг разрешённых OAuth redirect_uri из переменной окружения (comma-separated).
+
+    Default — пустой список: OAuth-редирект отключён, пока URI не заданы явно
+    (безопасный default против open-redirect)."""
+    uris_env = os.getenv("OAUTH_ALLOWED_REDIRECT_URIS", "")
+    if uris_env:
+        return [uri.strip() for uri in uris_env.split(",") if uri.strip()]
+    return []
+
+
 def _resolve_secret_key() -> str:
     """
     Единственная точка загрузки SECRET_KEY.
@@ -225,6 +236,9 @@ class Settings:
     # bcrypt cost factor: 14 даёт ~250ms на современном CPU и защищает от GPU-bruteforce.
     # 12 (default) уже неприемлемо для финансового SaaS в 2026.
     BCRYPT_ROUNDS: int = int(os.getenv("BCRYPT_ROUNDS", "14"))
+    # API-11 account-lockout: после N неудачных входов аккаунт блокируется на M минут.
+    LOGIN_MAX_FAILED_ATTEMPTS: int = int(os.getenv("LOGIN_MAX_FAILED_ATTEMPTS", "10"))
+    LOGIN_LOCKOUT_MINUTES: int = int(os.getenv("LOGIN_LOCKOUT_MINUTES", "15"))
     # Лимит размера файла на импорт сделок (защита от xlsx-bomb / DoS).
     MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
     ACCESS_TOKEN_COOKIE_NAME: str = os.getenv("ACCESS_TOKEN_COOKIE_NAME", "atom_access_token")
@@ -246,11 +260,39 @@ class Settings:
     RATE_LIMIT_STORAGE_URI: str = os.getenv("RATE_LIMIT_STORAGE_URI", os.getenv("REDIS_URL", ""))
     RATE_LIMIT_STRATEGY: str = os.getenv("RATE_LIMIT_STRATEGY", "fixed-window")
     
+    # ==================== API SURFACE LIMITS (Sprint 2A-2) ====================
+    MAX_TRADES_LIMIT: int = int(os.getenv("MAX_TRADES_LIMIT", "1000"))
+    MAX_IMPORT_ROWS: int = int(os.getenv("MAX_IMPORT_ROWS", "20000"))
+    READ_RATE_LIMIT: str = os.getenv("READ_RATE_LIMIT", "120/minute")
+    MARKET_RATE_LIMIT: str = os.getenv("MARKET_RATE_LIMIT", "30/minute")
+    # PERF-10 (Sprint 3): cap для equity_curve в /stats/. ~5000 трейдов → 5000+
+    # точек JSON ломает фронт-чарт; LTTB downsample даёт визуально неотличимое
+    # представление при 500 точках. Сохраняются первая и последняя точки.
+    EQUITY_CURVE_MAX_POINTS: int = int(os.getenv("EQUITY_CURVE_MAX_POINTS", "500"))
+
+    # PERF-09 (Sprint 3): retention для безграничных таблиц. Cleanup-loop
+    # запускается раз в RETENTION_CLEANUP_INTERVAL_HOURS только в
+    # scheduler-воркере (см. sync_scheduler._check_retention_cleanup).
+    ACCESS_LOG_RETENTION_DAYS: int = int(os.getenv("ACCESS_LOG_RETENTION_DAYS", "30"))
+    SYNC_EVENTS_RETENTION_DAYS: int = int(os.getenv("SYNC_EVENTS_RETENTION_DAYS", "90"))
+    RETENTION_CLEANUP_INTERVAL_HOURS: int = int(os.getenv("RETENTION_CLEANUP_INTERVAL_HOURS", "24"))
+
+    # MATH-03 (Sprint 4): nightly MAE/MFE backfill для трейдов с NULL mae_price.
+    # Дополняет inline-расчёт в routers/trades.py и import-hook — safety-net
+    # на случай сбоя MOEX или ручного INSERT. Лимит batch'а защищает от долгого
+    # цикла на свежеподключённом аккаунте с большой историей.
+    MAE_MFE_BACKFILL_INTERVAL_HOURS: int = int(os.getenv("MAE_MFE_BACKFILL_INTERVAL_HOURS", "24"))
+    MAE_MFE_BACKFILL_MAX_AGE_DAYS: int = int(os.getenv("MAE_MFE_BACKFILL_MAX_AGE_DAYS", "30"))
+    MAE_MFE_BACKFILL_BATCH_LIMIT: int = int(os.getenv("MAE_MFE_BACKFILL_BATCH_LIMIT", "100"))
+
     # ==================== CORS ====================
     # Разделённый запятыми список origins, или * для разрешения всех
     CORS_ORIGINS: List[str] = _parse_cors_origins()
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ORIGIN_REGEX: str = os.getenv("CORS_ORIGIN_REGEX", r"https://.*\.app\.github\.dev")
+    # API-02: codespaces-regex разрешён ТОЛЬКО в DEBUG. В prod default — пусто
+    # (без явного CORS_ORIGIN_REGEX никакой regex-origin не пропускается).
+    _cors_regex_default = r"https://.*\.app\.github\.dev" if DEBUG else ""
+    CORS_ORIGIN_REGEX: str = os.getenv("CORS_ORIGIN_REGEX", _cors_regex_default)
     
     # ==================== LOGGING ====================
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -281,6 +323,9 @@ class Settings:
 
     # ==================== INTEGRATIONS ====================
     OAUTH_HTTP_TIMEOUT_SECONDS: float = float(os.getenv("OAUTH_HTTP_TIMEOUT_SECONDS", "15"))
+    # API-08: серверный allowlist для OAuth redirect_uri (exact-match, защита от
+    # open-redirect). Default [] = OAuth-редирект отключён, пока не сконфигурён.
+    OAUTH_ALLOWED_REDIRECT_URIS: List[str] = _parse_oauth_redirect_uris()
     OPEN_POSITION_SYNC_LOOKBACK_DAYS: int = int(os.getenv("OPEN_POSITION_SYNC_LOOKBACK_DAYS", "30"))
 
     # ==================== BROKER SYNC V2 (greenfield Tinkoff rewrite) ====================

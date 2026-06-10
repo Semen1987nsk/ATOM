@@ -32,6 +32,7 @@ from tenacity import (
     wait_random,
 )
 
+from config import settings
 from logger import get_logger
 
 from adapters.tinkoff.error_mapper import wrap_sdk_errors
@@ -75,6 +76,19 @@ class TinkoffOperationsClient:
     def __init__(self, services: Any) -> None:
         self._svc = services
 
+    async def _guarded(self, limiter, coro):
+        """SYNC-01 (limiter) + SYNC-03 (call deadline) обёртка одного RPC.
+
+        Лимитер-токен берётся на КАЖДЫЙ RPC; сам вызов ограничен по времени
+        (зависший RPC иначе держит токен/семафор бесконечно). asyncio.TimeoutError
+        == TimeoutError на 3.11+; wrap_sdk_errors маппит его → BrokerUnavailable.
+        """
+        async with limiter:
+            with wrap_sdk_errors():
+                return await asyncio.wait_for(
+                    coro, settings.TINKOFF_GRPC_CALL_TIMEOUT_SECONDS
+                )
+
     async def fetch_operations_cursor(
         self,
         account_id: str,
@@ -107,12 +121,10 @@ class TinkoffOperationsClient:
         )
 
         async def _call():
-            # AU1: per-RPC rate-limit gate (раньше limiter оборачивал только
-            # открытие AsyncClient; теперь каждый RPC внутри сессии берёт
-            # отдельный token из leaky-bucket).
-            async with self._svc.limiter:
-                with wrap_sdk_errors():
-                    return await self._svc.operations.get_operations_by_cursor(request)
+            return await self._guarded(
+                self._svc.limiter,
+                self._svc.operations.get_operations_by_cursor(request),
+            )
 
         response = None
         async for attempt in _retry_policy():
@@ -171,10 +183,10 @@ class TinkoffOperationsClient:
         Сырой PortfolioResponse с retry (PR 15).
         """
         async def _call():
-            # AU1: per-RPC rate-limit gate
-            async with self._svc.limiter:
-                with wrap_sdk_errors():
-                    return await self._svc.operations.get_portfolio(account_id=account_id)
+            return await self._guarded(
+                self._svc.limiter,
+                self._svc.operations.get_portfolio(account_id=account_id),
+            )
 
         async for attempt in _retry_policy():
             with attempt:
@@ -183,10 +195,10 @@ class TinkoffOperationsClient:
     async def get_positions_raw(self, account_id: str) -> Any:
         """Сырой PositionsResponse с retry (PR 15)."""
         async def _call():
-            # AU1: per-RPC rate-limit gate
-            async with self._svc.limiter:
-                with wrap_sdk_errors():
-                    return await self._svc.operations.get_positions(account_id=account_id)
+            return await self._guarded(
+                self._svc.limiter,
+                self._svc.operations.get_positions(account_id=account_id),
+            )
 
         async for attempt in _retry_policy():
             with attempt:
@@ -232,12 +244,12 @@ class TinkoffOperationsClient:
         )
 
         async def _call():
-            # AU2: separate broker-report sub-limiter (5/min vs основной 150/min).
-            async with self._svc.broker_report_limiter:
-                with wrap_sdk_errors():
-                    return await self._svc.operations.get_broker_report(
-                        generate_broker_report_request=request,
-                    )
+            return await self._guarded(
+                self._svc.broker_report_limiter,
+                self._svc.operations.get_broker_report(
+                    generate_broker_report_request=request,
+                ),
+            )
 
         async for attempt in _retry_policy():
             with attempt:
@@ -290,12 +302,12 @@ class TinkoffOperationsClient:
         request = GetBrokerReportRequest(task_id=task_id, page=page)
 
         async def _call():
-            # AU2: separate broker-report sub-limiter (5/min vs основной 150/min).
-            async with self._svc.broker_report_limiter:
-                with wrap_sdk_errors():
-                    return await self._svc.operations.get_broker_report(
-                        get_broker_report_request=request,
-                    )
+            return await self._guarded(
+                self._svc.broker_report_limiter,
+                self._svc.operations.get_broker_report(
+                    get_broker_report_request=request,
+                ),
+            )
 
         async for attempt in _retry_policy():
             with attempt:
@@ -461,10 +473,10 @@ class TinkoffOperationsClient:
         )
 
         async def _call():
-            # AU1: per-RPC rate-limit gate
-            async with self._svc.limiter:
-                with wrap_sdk_errors():
-                    return await self._svc.operations.get_dividends_foreign_issuer(request)
+            return await self._guarded(
+                self._svc.limiter,
+                self._svc.operations.get_dividends_foreign_issuer(request),
+            )
 
         async for attempt in _retry_policy():
             with attempt:

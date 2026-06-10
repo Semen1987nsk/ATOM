@@ -511,6 +511,28 @@ async def disconnect_broker(
         reason="user_request",
     )
     db.commit()
+
+    # SYNC-11 (Sprint 3, Task 4.3): cleanup stream-task и per-account lock,
+    # чтобы они не утекали навсегда после soft-delete. Lock привязан к
+    # account_id, поэтому освобождаем его только если у аккаунта не
+    # осталось других активных BrokerConnection'ов (иначе соседний
+    # connection или cursor-sync orchestrator продолжают пользоваться
+    # тем же lock'ом).
+    from application.sync.stream_manager import stream_manager
+
+    await stream_manager.stop_task(connection_id)
+
+    remaining_active = (
+        db.query(BrokerConnection.id)
+        .filter(
+            BrokerConnection.account_id == account.id,
+            BrokerConnection.is_active.is_(True),
+        )
+        .count()
+    )
+    if remaining_active == 0:
+        stream_manager.release_account_lock(account.id)
+
     return {"message": "Брокер отключён", "id": connection_id}
 
 

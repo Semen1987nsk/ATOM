@@ -335,9 +335,11 @@ class TestPasswordReset:
         assert r1.json() == r2.json()
 
     def test_reset_confirm_invalid_token(self, test_app):
+        # пароль 12+ символов (API-06), чтобы дойти до ветки invalid-token (400),
+        # а не отсечься валидатором длины (422)
         r = test_app["client"].post(
             "/auth/password-reset/confirm",
-            json={"token": "invalid", "new_password": "newpass123"},
+            json={"token": "invalid", "new_password": "newpassword123"},
         )
         assert r.status_code == 400
 

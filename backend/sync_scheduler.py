@@ -50,6 +50,15 @@ class SyncScheduler:
         # без активного sync (manual, paused, etc).
         self._last_pnl_health_at: Optional[datetime] = None
         self._pnl_health_interval = timedelta(hours=24)
+        # PERF-09 (Sprint 3, 2026-05-26): retention/cleanup для безграничных
+        # таблиц (access_log, sync_events, revoked_tokens). Интервал задаётся
+        # через settings.RETENTION_CLEANUP_INTERVAL_HOURS (default 24h).
+        self._last_retention_run: Optional[datetime] = None
+        # MATH-03 (Sprint 4, Task 5.1): nightly safety-net MAE/MFE backfill
+        # для трейдов с NULL mae_price. Дополняет inline-расчёт в routers и
+        # import-hook — на случай если оба пути пропустили (сбой MOEX, ручной
+        # INSERT, etc). Интервал через settings.MAE_MFE_BACKFILL_INTERVAL_HOURS.
+        self._last_mae_mfe_backfill_run: Optional[datetime] = None
 
     async def start(self) -> None:
         """
@@ -106,6 +115,8 @@ class SyncScheduler:
                     await self._check_broker_sync()
                     await self._check_instruments_refresh()
                     await self._check_pnl_health_nightly()
+                    await self._check_retention_cleanup()
+                    await self._check_mae_mfe_backfill()
                     self._last_check = utc_now_naive()
                 finally:
                     _release_scheduler_lock()
@@ -283,6 +294,101 @@ class SyncScheduler:
             f"pnl_health_nightly done: ok={ok_count} warn={warn_count} "
             f"mismatch={mismatch_count} na={na_count} errors={error_count}"
         )
+
+    async def _check_retention_cleanup(self) -> None:
+        """PERF-09 (Sprint 3, 2026-05-26): cleanup безграничных таблиц.
+
+        Раз в settings.RETENTION_CLEANUP_INTERVAL_HOURS чистим:
+          * access_log → старше ACCESS_LOG_RETENTION_DAYS (default 30);
+          * sync_events → старше SYNC_EVENTS_RETENTION_DAYS (default 90);
+          * revoked_tokens → с expires_at < now (TTL самого токена истёк).
+
+        Defensive: гард is_scheduler_worker() — на случай ручного вызова
+        снаружи `_run_loop` (внутри loop уже отсечено start()-гардом).
+        Non-fatal: исключения логируются, _last_retention_run сдвигается
+        в любом случае, чтобы не зацикливаться при системной ошибке БД.
+        """
+        from worker_role import is_scheduler_worker
+
+        if not is_scheduler_worker():
+            return
+
+        now = utc_now_naive()
+        interval = timedelta(hours=settings.RETENTION_CLEANUP_INTERVAL_HOURS)
+        if self._last_retention_run is not None:
+            if now - self._last_retention_run < interval:
+                return
+
+        from jobs import retention as _retention
+
+        try:
+            db = SessionLocal()
+            try:
+                acc = await asyncio.to_thread(
+                    _retention.cleanup_access_log,
+                    db,
+                    retention_days=settings.ACCESS_LOG_RETENTION_DAYS,
+                )
+                ev = await asyncio.to_thread(
+                    _retention.cleanup_sync_events,
+                    db,
+                    retention_days=settings.SYNC_EVENTS_RETENTION_DAYS,
+                )
+                tok = await asyncio.to_thread(_retention.cleanup_revoked_tokens, db)
+                log.info(
+                    "retention cleanup: access_log=%d sync_events=%d revoked_tokens=%d",
+                    acc, ev, tok,
+                )
+            finally:
+                db.close()
+        except Exception:
+            log.exception("retention cleanup failed")
+        finally:
+            self._last_retention_run = now
+
+    async def _check_mae_mfe_backfill(self) -> None:
+        """MATH-03 (Sprint 4, Task 5.1): nightly safety-net для NULL MAE/MFE.
+
+        Раз в settings.MAE_MFE_BACKFILL_INTERVAL_HOURS (default 24h) подметает
+        recent (entry_at >= now - MAE_MFE_BACKFILL_MAX_AGE_DAYS) трейды с
+        mae_price IS NULL — для случаев когда inline-расчёт в routers/trades.py
+        и import-hook оба пропустили (MOEX timeout, ручной INSERT, race).
+
+        Гард is_scheduler_worker() — на multi-worker деплое крутится только
+        на одном воркере. Non-fatal: исключения логируются, _last_*_run
+        сдвигается в любом случае (иначе hot-loop при системной ошибке БД).
+        """
+        from worker_role import is_scheduler_worker
+
+        if not is_scheduler_worker():
+            return
+
+        now = utc_now_naive()
+        interval = timedelta(hours=settings.MAE_MFE_BACKFILL_INTERVAL_HOURS)
+        if self._last_mae_mfe_backfill_run is not None:
+            if now - self._last_mae_mfe_backfill_run < interval:
+                return
+
+        try:
+            from jobs.mae_mfe_backfill import backfill_missing_mae_mfe
+
+            db = SessionLocal()
+            try:
+                report = await backfill_missing_mae_mfe(
+                    db,
+                    limit=settings.MAE_MFE_BACKFILL_BATCH_LIMIT,
+                    max_age_days=settings.MAE_MFE_BACKFILL_MAX_AGE_DAYS,
+                )
+                log.info(
+                    "mae_mfe nightly backfill: processed=%d succeeded=%d failed=%d",
+                    report["processed"], report["succeeded"], report["failed"],
+                )
+            finally:
+                db.close()
+        except Exception:
+            log.exception("mae_mfe nightly backfill failed")
+        finally:
+            self._last_mae_mfe_backfill_run = now
 
     async def _check_pd_finalizations(self) -> None:
         """152-ФЗ ст. 21 ч. 5: анонимизация аккаунтов через 30 дней."""

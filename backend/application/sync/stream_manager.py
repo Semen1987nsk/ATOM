@@ -66,8 +66,19 @@ class StreamTaskManager:
         )
         self._tasks[connection_id] = task
 
-        # Cleanup on done — log unexpected errors
+        # Cleanup on done — log unexpected errors + удалить task из реестра
+        # (SYNC-11 Sprint 3, Task 4.3 — иначе `_tasks` растёт навсегда после
+        # crash/exit consumer'ов; `active_task_count` фильтровал по `not done()`,
+        # но dict не освобождал память).
         def _on_done(t: asyncio.Task) -> None:
+            # SYNC-11: убираем завершённый task из реестра. Pop условный
+            # (`is t`), чтобы не съесть NEW task если start_task был вызван
+            # повторно после crash — `_tasks[connection_id]` уже указывает
+            # на новый task.
+            current = self._tasks.get(connection_id)
+            if current is t:
+                self._tasks.pop(connection_id, None)
+
             if t.cancelled():
                 log.info("stream_consumer.cancelled", extra={"connection_id": connection_id})
                 return
@@ -163,6 +174,22 @@ class StreamTaskManager:
             lock = asyncio.Lock()
             self._account_locks[account_id] = lock
         return lock
+
+    def release_account_lock(self, account_id: int) -> None:
+        """SYNC-11 (Sprint 3, Task 4.3): явный cleanup lock'а на disable/delete
+        account/BrokerConnection.
+
+        Идемпотентен — повторный вызов / вызов на несуществующий id не падает.
+        Вызывать после того, как:
+          * stream_task для всех connection'ов аккаунта остановлен
+            (`stop_task(connection_id)` — иначе stream_consumer может
+            попытаться acquire уже удалённого lock'а и создать новый);
+          * cursor-sync orchestrator не имеет в очереди работ для аккаунта.
+
+        Безопасно для idle account: если на lock сейчас никто не ждёт,
+        pop'нем — следующий `get_account_lock(account_id)` создаст новый.
+        """
+        self._account_locks.pop(account_id, None)
 
     # ── observability ────────────────────────────────────────────────────
 

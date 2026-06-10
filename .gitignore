@@ -69,3 +69,6 @@ htmlcov/
 .claude/*
 !.claude/skills/
 .claude/skills/**/.local/
+
+# Generated OpenAPI dump — write-only артефакт scripts/dump_openapi.py
+backend/openapi.json

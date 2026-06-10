@@ -13,7 +13,8 @@ from hmac import compare_digest
 import secrets
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -190,6 +191,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
     to_encode.update({
         "exp": expire,
+        "iat": utc_now_naive(),  # API-07: маркер для tokens_valid_after-инвалидации
         "type": "access",
         "jti": secrets.token_urlsafe(16),  # PR 26: revocation support
     })
@@ -214,6 +216,7 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     # Добавляем уникальный идентификатор для возможности отзыва
     to_encode.update({
         "exp": expire,
+        "iat": utc_now_naive(),  # API-07: маркер для tokens_valid_after-инвалидации
         "type": "refresh",
         "jti": secrets.token_urlsafe(16),  # JWT ID для отзыва
     })
@@ -263,8 +266,9 @@ def decode_access_token(token: str) -> Optional[schemas.TokenData]:
             email=email,
             jti=payload.get("jti"),
             exp_ts=payload.get("exp"),
+            iat_ts=payload.get("iat"),
         )
-    except JWTError:
+    except InvalidTokenError:
         return None
 
 
@@ -298,8 +302,9 @@ def decode_refresh_token(token: str) -> Optional[schemas.TokenData]:
             email=email,
             jti=payload.get("jti"),
             exp_ts=payload.get("exp"),
+            iat_ts=payload.get("iat"),
         )
-    except JWTError:
+    except InvalidTokenError:
         return None
 
 
@@ -319,7 +324,24 @@ def refresh_tokens(refresh_token: str, db: Session) -> Optional[Tuple[str, str]]
     user = get_user_by_id(db, token_data.user_id)
     if user is None or user.is_active != 1:
         return None
-    
+
+    # API-07: refresh-токен, выпущенный до reset/change-password, инвалидирован.
+    if is_token_stale(user, token_data.iat_ts):
+        return None
+
+    # API-05 reuse-detection: уже ротированный (отозванный) refresh — replay-атака.
+    if is_token_revoked(db, token_data.jti):
+        return None
+
+    # API-05 строгая ротация: отзываем предъявленный refresh ДО выпуска новой пары.
+    revoke_token(
+        db,
+        jti=token_data.jti,
+        user_id=token_data.user_id,
+        exp_ts=token_data.exp_ts,
+        reason="rotated",
+    )
+
     # Создаём новую пару токенов
     return create_token_pair(user.id, user.email)
 
@@ -382,26 +404,41 @@ def create_user(db: Session, user_data: schemas.UserCreate, utm_data: dict = Non
 def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
     """Аутентификация пользователя"""
     user = get_user_by_email(db, email)
-    
+
     if not user:
         # Dummy bcrypt check to prevent timing attacks (email enumeration)
         bcrypt.checkpw(b"dummy", bcrypt.hashpw(b"dummy", bcrypt.gensalt()))
         return None
-    
+
     # OAuth-only users don't have a password — can't authenticate with password
     if not user.hashed_password:
         return None
-    
-    if not verify_password(password, user.hashed_password):
+
+    # API-11 account-lockout: заблокированный аккаунт отвергаем даже с верным
+    # паролем (generic 401 — lock-state клиенту не раскрываем).
+    if user.locked_until and user.locked_until > utc_now_naive():
         return None
-    
+
+    if not verify_password(password, user.hashed_password):
+        # API-11: счётчик неудач; при достижении порога — лок на N минут.
+        user.failed_login_count = (user.failed_login_count or 0) + 1
+        if user.failed_login_count >= settings.LOGIN_MAX_FAILED_ATTEMPTS:
+            user.locked_until = utc_now_naive() + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
+            user.failed_login_count = 0
+        db.commit()
+        return None
+
+    # API-11: успешный вход сбрасывает счётчик и снимает блокировку.
+    user.failed_login_count = 0
+    user.locked_until = None
+
     # Обновляем last_login
     try:
         user.last_login = utc_now_naive()
         db.commit()
     except Exception:
         db.rollback()  # Don't fail login if timestamp update fails
-    
+
     return user
 
 
@@ -438,6 +475,21 @@ def is_token_revoked(db: Session, jti: Optional[str]) -> bool:
     return db.query(models.RevokedTokenORM).filter(
         models.RevokedTokenORM.jti == jti
     ).first() is not None
+
+
+def is_token_stale(user: models.User, iat_ts: Optional[int]) -> bool:
+    """API-07: токен устарел, если выпущен ДО/в ту же секунду что reset/change-password.
+
+    `user.tokens_valid_after` ставится в момент сброса/смены пароля. Любой токен с
+    `iat <= tokens_valid_after` инвалидируется (секундное разрешение + 1s leeway на
+    маркере — токен, выпущенный в ту же секунду, не должен пережить сброс).
+    Пользователь без маркера (NULL) → ничего не инвалидируется.
+    """
+    if user.tokens_valid_after is None or iat_ts is None:
+        return False
+    from datetime import timezone as _tz
+    token_issued_at = datetime.fromtimestamp(iat_ts, tz=_tz.utc).replace(tzinfo=None)
+    return token_issued_at < user.tokens_valid_after + timedelta(seconds=1)
 
 
 def revoke_token(
@@ -516,6 +568,10 @@ async def get_current_user(
     user = get_user_by_id(db, token_data.user_id)
 
     if user is None:
+        raise credentials_exception
+
+    # API-07: токен, выпущенный до reset/change-password, инвалидирован.
+    if is_token_stale(user, token_data.iat_ts):
         raise credentials_exception
 
     if user.is_active != 1:

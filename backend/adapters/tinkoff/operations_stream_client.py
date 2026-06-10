@@ -121,20 +121,22 @@ class TinkoffOperationsStreamClient:
     async def _stream_once(
         self, broker_account_id: str
     ) -> AsyncIterator[Operation]:
-        """Один открывающий-закрывающий цикл стрима. При разрыве yields stop."""
+        """Один открывающий-закрывающий цикл стрима. SYNC-07: лимитер-токен
+        берётся ТОЛЬКО на открытие стрима; долгоживущий read-loop идёт вне
+        лимитер-контекста (иначе на shared/Redis лимитере держали бы токен весь
+        lifetime стрима)."""
         from t_tech.invest.schemas import OperationsStreamRequest
 
         request = OperationsStreamRequest(accounts=[broker_account_id])
-        # AU1: per-RPC rate-limit gate (limiter token берётся 1 раз на открытие
-        # стрима; долгоживущий канал внутри лимитера не вычитывает).
-        async with self._svc.limiter:
-            with wrap_sdk_errors():
+        with wrap_sdk_errors():
+            # 1 токен на открытие стрима — контекст закрывается сразу.
+            async with self._svc.limiter:
                 stream = self._svc.operations_stream.operations_stream(request)
-                async for response in stream:
-                    op_proto = self._extract_operation_proto(response)
-                    if op_proto is None:
-                        continue
-                    yield operation_from_proto(op_proto, account_id=broker_account_id)
+            async for response in stream:
+                op_proto = self._extract_operation_proto(response)
+                if op_proto is None:
+                    continue
+                yield operation_from_proto(op_proto, account_id=broker_account_id)
 
     @staticmethod
     def _extract_operation_proto(response: Any) -> Optional[Any]:

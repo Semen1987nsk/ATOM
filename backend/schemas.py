@@ -154,6 +154,17 @@ class TokenPair(BaseModel):
     expires_in: int = 1800  # Время жизни access токена в секундах (30 мин)
 
 
+class AuthSuccess(BaseModel):
+    """SEC-08: успешная авторизация без токенов в теле.
+
+    Токены ставятся только в httpOnly cookies (set_auth_cookies). Тело
+    несёт лишь метаданные сессии — frontend читает токены исключительно из кук.
+    """
+    token_type: str = "bearer"
+    expires_in: int
+    authenticated: bool = True
+
+
 class TokenRefreshRequest(BaseModel):
     """Запрос на обновление токенов"""
     refresh_token: Optional[str] = None
@@ -170,6 +181,9 @@ class TokenData(BaseModel):
     # Unix timestamp срока действия — нужен при записи в revoked_tokens,
     # чтобы знать когда строку можно удалить (cleanup cron).
     exp_ts: Optional[int] = None
+    # API-07: Unix timestamp выпуска (iat) — сверяется с User.tokens_valid_after
+    # для инвалидации сессий при reset/change-password.
+    iat_ts: Optional[int] = None
 
 
 class TotpEnableResponse(BaseModel):
@@ -190,13 +204,13 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     """PR 26: установить новый пароль по one-time token."""
     token: str
-    new_password: str
+    new_password: str = Field(..., min_length=12, max_length=128)
 
 
 class ChangePasswordRequest(BaseModel):
     """Запрос на смену пароля"""
     old_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=12, max_length=128)
 
 
 # ==================== DEPOSIT SCHEMAS ====================

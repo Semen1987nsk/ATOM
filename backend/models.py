@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum, Numeric, Index, Boolean, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 import enum
 from utils.datetime_utils import utc_now_naive
@@ -51,6 +52,14 @@ class User(Base):
     email_verified = Column(Boolean, default=False, server_default="0")
     email_verification_token = Column(String(64), nullable=True, index=True)
     email_verification_sent_at = Column(DateTime, nullable=True)
+
+    # Sprint 2A-1 (API-07/API-11): account-lockout + session invalidation.
+    # failed_login_count/locked_until — счётчик неудачных входов и блокировка.
+    # tokens_valid_after — маркер инвалидации JWT при reset/change-password
+    # (токены с iat < этого момента отвергаются).
+    failed_login_count = Column(Integer, nullable=False, server_default="0")
+    locked_until = Column(DateTime, nullable=True)
+    tokens_valid_after = Column(DateTime, nullable=True)
 
     accounts = relationship("Account", back_populates="owner", cascade="all, delete-orphan")
     subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
@@ -342,7 +351,14 @@ class Trade(Base):
     
     # Сетап/Стратегия
     setup_id = Column(Integer, ForeignKey("setups.id", ondelete="SET NULL"), nullable=True)
-    tags = Column(JSON, default=list) # Теги сделки (напр. ["FOMO", "Trend"])
+    # PERF-08b (2026-05-26): dialect-aware Trade.tags. На Postgres хранится как
+    # JSONB с GIN-индексом (`ix_trades_tags_gin`, миграция 0028) — это даёт
+    # быстрый `tags @> '["FOMO"]'` SQL-фильтр в /stats. На SQLite (dev/tests)
+    # остаётся обычный JSON, фильтр работает Python-loop'ом после `.all()`.
+    tags = Column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        default=list,
+    ) # Теги сделки (напр. ["FOMO", "Trend"])
     ai_analysis = Column(JSON) # Результат анализа от AI
     
     # Новые поля для группировки и аналитики

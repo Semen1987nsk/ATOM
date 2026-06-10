@@ -23,7 +23,7 @@ from sqlalchemy.orm import sessionmaker
 
 from adapters.persistence.token_repo import TokenRepository
 from adapters.security.token_encryption import TokenEncryptionService
-from application.sync.orchestrator import TinkoffSyncOrchestrator
+from application.sync.orchestrator import TinkoffSyncOrchestrator, _ConnectionCtx
 from application.sync.pipeline import SyncReport
 from domain.exceptions import RateLimitExceeded, TokenInvalid
 from models import Account, Base, BrokerConnection, User
@@ -332,3 +332,104 @@ def test_sync_one_account_missing_id_raises(db_session_factory, token_repo) -> N
     )
     with pytest.raises(ValueError, match="not found"):
         asyncio.run(orchestrator.sync_one_account(999_999))
+
+
+# ── SYNC-05: IP cooldown gate wiring ─────────────────────────────────
+
+
+def _ctx(connection_id: int) -> _ConnectionCtx:
+    return _ConnectionCtx(
+        connection_id=connection_id,
+        account_id=connection_id,
+        broker_account_id=f"acc-{connection_id}",
+        api_token_ciphertext="cipher",
+        sync_cursor=None,
+        sync_interval_minutes=60,
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_skips_entirely_when_gate_open(monkeypatch) -> None:
+    class _OpenGate:
+        async def is_open(self):
+            return True
+
+        async def open(self):
+            return 60
+
+        async def clear(self):
+            return None
+
+    orch = TinkoffSyncOrchestrator(cooldown_gate=_OpenGate())
+    # _select_due_connection_ids НЕ должен вызываться при открытом gate
+    called = {"select": False}
+    monkeypatch.setattr(
+        orch,
+        "_select_due_connection_ids",
+        lambda: called.__setitem__("select", True) or [],
+    )
+    report = await orch.run_due_accounts()
+    assert called["select"] is False
+    assert report.accounts_considered == 0
+
+
+@pytest.mark.asyncio
+async def test_gate_opens_when_distinct_connections_rate_limited(monkeypatch) -> None:
+    opened = {"n": 0}
+
+    class _Gate:
+        async def is_open(self):
+            return False
+
+        async def open(self):
+            opened["n"] += 1
+            return 60
+
+        async def clear(self):
+            return None
+
+    orch = TinkoffSyncOrchestrator(cooldown_gate=_Gate())
+    monkeypatch.setattr(orch, "_select_due_connection_ids", lambda: [1, 2])
+    monkeypatch.setattr(orch, "_load_connection", lambda cid: _ctx(cid))
+
+    async def _boom(ctx):
+        raise RateLimitExceeded(message="ip cooldown", code="RESOURCE_EXHAUSTED")
+
+    monkeypatch.setattr(orch, "_sync", _boom)
+
+    report = await orch.run_due_accounts()
+    assert opened["n"] == 1  # 2 различных коннекшна ≥ threshold(2) → gate открыт
+    assert report.accounts_failed == 2
+
+
+@pytest.mark.asyncio
+async def test_gate_not_opened_below_threshold(monkeypatch) -> None:
+    """Один rate-limited коннекшн (< threshold) НЕ открывает global gate —
+    для одиночного throttle есть per-connection circuit, не IP-cooldown."""
+    counts = {"open": 0, "clear": 0}
+
+    class _Gate:
+        async def is_open(self):
+            return False
+
+        async def open(self):
+            counts["open"] += 1
+            return 60
+
+        async def clear(self):
+            counts["clear"] += 1
+            return None
+
+    orch = TinkoffSyncOrchestrator(cooldown_gate=_Gate())
+    monkeypatch.setattr(orch, "_select_due_connection_ids", lambda: [1])
+    monkeypatch.setattr(orch, "_load_connection", lambda cid: _ctx(cid))
+
+    async def _boom(ctx):
+        raise RateLimitExceeded(message="single throttle", code="RESOURCE_EXHAUSTED")
+
+    monkeypatch.setattr(orch, "_sync", _boom)
+
+    report = await orch.run_due_accounts()
+    assert counts["open"] == 0  # 1 < threshold(2) → gate НЕ открыт
+    assert counts["clear"] == 1  # чистый IP-сигнал → сброс эскалации
+    assert report.accounts_failed == 1

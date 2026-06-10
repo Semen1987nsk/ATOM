@@ -15,6 +15,7 @@ import oauth_service
 from oauth_state_store import get_state_store
 from rate_limiter import limiter, AUTH_LIMIT, REGISTER_LIMIT, EXPORT_LIMIT
 from utils.datetime_utils import utc_now_naive
+from utils.log_redaction import mask_email
 from logger import get_logger
 
 log = get_logger("auth")
@@ -27,7 +28,7 @@ oauth_store = get_state_store()
 
 # ==================== AUTH ENDPOINTS ====================
 
-@router.post("/register", response_model=schemas.TokenPair)
+@router.post("/register", response_model=schemas.AuthSuccess)
 @limiter.limit(REGISTER_LIMIT)
 def register(request: Request, response: Response, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
     """
@@ -54,7 +55,7 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
     # confirmation flow (TODO Phase 3). Логируем подозрительный паттерн.
     existing_user = auth_service.get_user_by_email(db, user_data.email)
     if existing_user:
-        log.info("register: email already exists email=%s", user_data.email)
+        log.info("register: email already exists email=%s", mask_email(user_data.email))
         raise HTTPException(
             status_code=400,
             detail="Email уже зарегистрирован"
@@ -94,17 +95,17 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     auth_service.set_auth_cookies(response, request, access_token, refresh_token)
 
-    log.info(f"✅ Зарегистрирован новый пользователь: {user.email} (consent v1)")
+    log.info("✅ Зарегистрирован новый пользователь: user_id=%s (consent v1)", user.id)
 
+    # SEC-08: токены отдаём только в httpOnly cookies, не в теле ответа.
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "authenticated": True,
     }
 
 
-@router.post("/login", response_model=schemas.TokenPair)
+@router.post("/login", response_model=schemas.AuthSuccess)
 @limiter.limit(AUTH_LIMIT)
 def login(request: Request, response: Response, user_data: schemas.UserLogin, db: Session = Depends(database.get_db)):
     """
@@ -129,18 +130,18 @@ def login(request: Request, response: Response, user_data: schemas.UserLogin, db
     # Создаём пару токенов
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     auth_service.set_auth_cookies(response, request, access_token, refresh_token)
-    
-    log.info(f"🔑 Вход пользователя: {user.email}")
-    
+
+    log.info("🔑 Вход пользователя: user_id=%s", user.id)
+
+    # SEC-08: токены отдаём только в httpOnly cookies, не в теле ответа.
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "authenticated": True,
     }
 
 
-@router.post("/refresh", response_model=schemas.TokenPair)
+@router.post("/refresh", response_model=schemas.AuthSuccess)
 @limiter.limit(AUTH_LIMIT)
 def refresh_tokens(
     request: Request,
@@ -175,14 +176,14 @@ def refresh_tokens(
     
     access_token, refresh_token = result
     auth_service.set_auth_cookies(response, request, access_token, refresh_token)
-    
+
     log.debug("🔄 Токены обновлены")
-    
+
+    # SEC-08: токены отдаём только в httpOnly cookies, не в теле ответа.
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "authenticated": True,
     }
 
 
@@ -271,7 +272,7 @@ def update_current_user(
     Обновить профиль текущего пользователя.
     """
     updated_user = auth_service.update_user(db, current_user, user_data)
-    log.info(f"✏️ Обновлён профиль пользователя: {updated_user.email}")
+    log.info("✏️ Обновлён профиль пользователя: user_id=%s", updated_user.id)
     return updated_user
 
 
@@ -381,16 +382,18 @@ def change_password(
             detail="Новый пароль должен отличаться от текущего"
         )
 
-    if len(password_data.new_password) < 6:
+    if len(password_data.new_password) < 12:
         raise HTTPException(
             status_code=400,
-            detail="Новый пароль должен быть минимум 6 символов"
+            detail="Новый пароль должен быть минимум 12 символов"
         )
     
     current_user.hashed_password = auth_service.get_password_hash(password_data.new_password)
+    # API-07: смена пароля инвалидирует все активные JWT (decision (d) = yes).
+    current_user.tokens_valid_after = utc_now_naive()
     db.commit()
 
-    log.info(f"🔒 Пароль изменён для пользователя: {current_user.email}")
+    log.info("🔒 Пароль изменён для пользователя: user_id=%s", current_user.id)
 
     return {"message": "Пароль успешно изменён"}
 
@@ -557,12 +560,12 @@ def password_reset_request(
     response_payload = {"message": "Если такой email зарегистрирован, мы выслали ссылку."}
 
     if user is None or user.is_active != 1:
-        log.info("password_reset_request: ignored email=%s (user not found or inactive)", email)
+        log.info("password_reset_request: ignored email=%s (user not found or inactive)", mask_email(email))
         return response_payload
 
     # OAuth-only users без пароля не могут его сбрасывать.
     if not user.hashed_password:
-        log.info("password_reset_request: ignored email=%s (OAuth-only)", email)
+        log.info("password_reset_request: ignored email=%s (OAuth-only)", mask_email(email))
         return response_payload
 
     # Инвалидируем все pending токены этого юзера.
@@ -619,7 +622,7 @@ def password_reset_confirm(
     Защита:
     - Token used_at != NULL → 400 (одноразовый).
     - expires_at < now → 400.
-    - Минимальная длина 6 символов.
+    - Минимальная длина 12 символов.
     - После успеха — отзываем все активные JWT юзера (force re-login).
     """
     token_row = db.query(models.PasswordResetTokenORM).filter(
@@ -632,8 +635,8 @@ def password_reset_confirm(
     if token_row.expires_at < utc_now_naive():
         raise HTTPException(status_code=400, detail="Ссылка истекла. Запросите новую.")
 
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Пароль должен быть минимум 6 символов")
+    if len(payload.new_password) < 12:
+        raise HTTPException(status_code=400, detail="Пароль должен быть минимум 12 символов")
 
     user = db.query(models.User).filter(models.User.id == token_row.user_id).first()
     if user is None or user.is_active != 1:
@@ -641,18 +644,26 @@ def password_reset_confirm(
 
     user.hashed_password = auth_service.get_password_hash(payload.new_password)
     token_row.used_at = utc_now_naive()
+    # API-07: инвалидируем все активные JWT (выпущенные до этого момента).
+    user.tokens_valid_after = utc_now_naive()
     db.commit()
 
     log.info("password_reset_confirm: password changed user_id=%s", user.id)
-
-    # NB: текущие JWT остаются валидными до estественного expiry. Если хотим
-    # принудительный logout всех сессий — нужна revocation по user_id, а не
-    # по jti. Для launch это OK; в Phase 2 добавим session-level revocation.
 
     return {"message": "Пароль успешно изменён. Войдите с новым паролем."}
 
 
 # ==================== OAuth ENDPOINTS ====================
+
+def _assert_allowed_redirect(uri: str) -> None:
+    """API-08: серверный allowlist redirect_uri (exact-match, anti open-redirect).
+
+    Default-allowlist пуст → любой redirect_uri отклоняется, пока не сконфигурён.
+    Exact-match намеренно: prefix/startswith открывали бы open-redirect."""
+    from config import settings
+    if uri not in settings.OAUTH_ALLOWED_REDIRECT_URIS:
+        raise HTTPException(status_code=400, detail="redirect_uri не разрешён")
+
 
 @router.get("/oauth/providers")
 def get_oauth_providers():
@@ -669,6 +680,8 @@ def oauth_authorize(request: Request, provider: str, redirect_uri: str):
     Получить URL для авторизации через OAuth провайдера.
     Rate limit: 5 запросов в минуту.
     """
+    _assert_allowed_redirect(redirect_uri)
+
     oauth_provider = oauth_service.get_provider(provider)
     if not oauth_provider:
         raise HTTPException(status_code=400, detail=f"Провайдер {provider} не поддерживается или не настроен")
@@ -703,6 +716,8 @@ async def oauth_callback(
     Использует PKCE: code_verifier забирается из стора по state и передаётся
     в exchange — защита от перехвата authorization code.
     """
+    _assert_allowed_redirect(redirect_uri)
+
     state_record = oauth_store.consume(state, provider)
     if state_record is None:
         raise HTTPException(status_code=400, detail="Неверный state параметр")
@@ -765,19 +780,20 @@ async def oauth_callback(
                 db.add(default_account)
                 db.commit()
 
-            log.info(f"👤 Создан OAuth пользователь: {email} через {provider}")
-        
+            log.info("👤 Создан OAuth пользователь: user_id=%s через %s", user.id, provider)
+
         # Создаём пару токенов
         access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
         auth_service.set_auth_cookies(response, request, access_token, refresh_token)
-        
-        log.info(f"🔐 OAuth вход: {email} через {provider}")
-        
+
+        log.info("🔐 OAuth вход: user_id=%s через %s", user.id, provider)
+
+        # SEC-08: токены отдаём только в httpOnly cookies; в теле — лишь
+        # non-secret user-блок + метаданные сессии.
         return {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
             "token_type": "bearer",
             "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "authenticated": True,
             "user": {
                 "id": user.id,
                 "email": user.email,

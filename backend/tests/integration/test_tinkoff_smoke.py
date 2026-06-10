@@ -100,22 +100,24 @@ def test_factory_singleton_importable():
     assert isinstance(client_factory, TinkoffClientFactory)
 
 
-def test_factory_get_limiter_does_not_use_weakref():
+def test_factory_limiters_share_one_backend_keyed_by_token():
     """
-    Regression: aiolimiter.AsyncLimiter использует __slots__ без __weakref__.
-    Хранить лимитеры в WeakValueDictionary даёт TypeError при первом
-    обращении (нашли через live_smoke). Проверяем что хранилище принимает
-    AsyncLimiter без ошибок и переиспользует bucket по токену.
+    SYNC-02 regression: per-token aiolimiter dict удалён. Лимитеры теперь —
+    stateless `SharedRateLimiter`-обёртки над ОДНИМ общим backend (состояние
+    в Redis/in-process bucket, общее для всех воркеров). Проверяем:
+    разные токены → разные bucket-ключи; тот же токен+kind → тот же ключ
+    (общий бакет); все лимитеры делят один backend (а не per-process dict).
     """
     from adapters.tinkoff.client_factory import TinkoffClientFactory
 
     factory = TinkoffClientFactory()
-    limiter_a = factory._get_limiter("t.TOKEN_A")
-    limiter_b = factory._get_limiter("t.TOKEN_B")
-    limiter_a_again = factory._get_limiter("t.TOKEN_A")
+    lim_a = factory._limiter_for("t.TOKEN_A", kind="ops")
+    lim_b = factory._limiter_for("t.TOKEN_B", kind="ops")
+    lim_a_again = factory._limiter_for("t.TOKEN_A", kind="ops")
 
-    # Разные токены → разные лимитеры.
-    assert limiter_a is not limiter_b
-    # Тот же токен → переиспользуется тот же лимитер (важно для honest
-    # rate-limiting между двумя последовательными вызовами).
-    assert limiter_a is limiter_a_again
+    # Разные токены → разные bucket-ключи.
+    assert lim_a._key != lim_b._key
+    # Тот же токен+kind → тот же ключ (общий leaky-bucket в backend).
+    assert lim_a._key == lim_a_again._key
+    # Все лимитеры делят ОДИН backend (cross-worker через Redis, не per-token dict).
+    assert lim_a._backend is lim_b._backend is factory._backend

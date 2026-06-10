@@ -57,7 +57,7 @@ def test_app():
 def test_user(test_app):
     """Create a test user with account"""
     db = test_app["db"]
-    hashed_password = auth_service.get_password_hash("testpass123")
+    hashed_password = auth_service.get_password_hash("testpassword123")
     user = User(
         email="test@example.com",
         name="Test User",
@@ -129,14 +129,11 @@ class TestRoot:
         assert body["status"] == "ready"
         assert body["checks"]["database"]["ok"] is True
     
-    def test_db_check(self, test_app):
-        """Should confirm database connection"""
+    def test_db_check_removed(self, test_app):
+        """API-14: /db-check удалён; используйте /ready."""
         client = test_app["client"]
         response = client.get("/db-check")
-        assert response.status_code == 200
-        data = response.json()
-        assert "connected" in data["status"].lower()
-        assert data["connected"] is True
+        assert response.status_code == 404
 
 
 # ==================== AUTH TESTS ====================
@@ -161,8 +158,11 @@ class TestAuth:
         })
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
+        # SEC-08: токены теперь только в httpOnly cookies, не в теле ответа.
+        assert "access_token" not in data and "refresh_token" not in data
+        assert data["authenticated"] is True
         assert data["token_type"] == "bearer"
+        assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME)
 
     def test_register_duplicate_email(self, test_app, test_user):
         """Should reject duplicate email"""
@@ -217,11 +217,13 @@ class TestAuth:
         client = test_app["client"]
         response = client.post("/auth/login", json={
             "email": "test@example.com",
-            "password": "testpass123"
+            "password": "testpassword123"
         })
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
+        # SEC-08: токены теперь только в httpOnly cookies, не в теле ответа.
+        assert "access_token" not in data and "refresh_token" not in data
+        assert data["authenticated"] is True
         assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME)
         assert response.cookies.get(auth_service.REFRESH_TOKEN_COOKIE_NAME)
         assert response.cookies.get(auth_service.CSRF_COOKIE_NAME)
@@ -284,7 +286,7 @@ class TestAuth:
         client = test_app["client"]
         login_response = client.post("/auth/login", json={
             "email": "test@example.com",
-            "password": "testpass123"
+            "password": "testpassword123"
         })
         assert login_response.status_code == 200
 
@@ -297,7 +299,7 @@ class TestAuth:
         client = test_app["client"]
         login_response = client.post("/auth/login", json={
             "email": "test@example.com",
-            "password": "testpass123"
+            "password": "testpassword123"
         })
         assert login_response.status_code == 200
 
@@ -316,8 +318,8 @@ class TestAuth:
             "/auth/change-password",
             headers=auth_headers,
             json={
-                "old_password": "testpass123",
-                "new_password": "newpass456"
+                "old_password": "testpassword123",
+                "new_password": "newpassword456"
             }
         )
         assert response.status_code == 200
@@ -330,8 +332,8 @@ class TestAuth:
             "/auth/change-password",
             headers=auth_headers,
             json={
-                "old_password": "testpass123",
-                "new_password": "testpass123"
+                "old_password": "testpassword123",
+                "new_password": "testpassword123"
             }
         )
         assert response.status_code == 400
@@ -1231,10 +1233,19 @@ class TestAdmin:
 class TestMarket:
     """Tests for market data endpoints"""
     
-    def test_get_prices(self, test_app):
-        """Should return prices (may be empty if MOEX unavailable)"""
+    def test_get_prices(self, test_app, auth_headers, monkeypatch):
+        """API-01: requires auth; service mocked to avoid live MOEX."""
+        import market_service
+        # PERF-04: get_current_prices теперь async — мок тоже async.
+        async def fake_prices(self, t):
+            return {"SBER": 100.0, "GAZP": 150.0}
+        monkeypatch.setattr(
+            market_service.MarketService,
+            "get_current_prices",
+            fake_prices,
+        )
         client = test_app["client"]
-        response = client.get("/market/prices?tickers=SBER,GAZP")
+        response = client.get("/market/prices?tickers=SBER,GAZP", headers=auth_headers)
         assert response.status_code == 200
         assert "prices" in response.json()
 

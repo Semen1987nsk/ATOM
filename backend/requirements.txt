@@ -20,7 +20,7 @@ alembic>=1.13.0,<2.0.0
 psycopg2-binary>=2.9.9,<3.0.0  # или asyncpg для async
 
 # ==================== AUTHENTICATION ====================
-python-jose[cryptography]>=3.3.0,<4.0.0  # JWT
+PyJWT>=2.10,<3.0  # JWT
 bcrypt>=4.1.0,<5.0.0  # Password hashing
 passlib[bcrypt]>=1.7.4,<2.0.0  # Password utilities
 
@@ -55,6 +55,14 @@ gunicorn>=21.2.0,<23.0.0  # WSGI manager + uvicorn workers (см. Dockerfile CMD
 # понизим — SDK не установится. См. AU10 Phase 4b — Hub isolation.
 sentry-sdk[fastapi]>=2.47.0,<3.0.0
 python-json-logger>=2.0.7,<3.0.0  # JSON логи для prod-агрегаторов
+
+# INFRA-02: Prometheus /metrics endpoint для скрейпинга Grafana stack.
+# `prometheus-fastapi-instrumentator` оборачивает ASGI app, регистрирует
+# `/metrics` (text/plain exposition) и собирает http_requests_total /
+# http_request_duration_seconds. Внутри тянет prometheus-client.
+# /metrics эксемптится из slowapi rate-limit через post-registration
+# fixup в main.py (см. setup _instrumentator).
+prometheus-fastapi-instrumentator>=7.0,<8
 
 # ==================== BROKER INTEGRATIONS ====================
 # T-Bank Invest API — официальный gRPC SDK (AU10 migration 2026-05).
@@ -99,6 +107,10 @@ pytest>=8.0.0,<9.0.0
 pytest-asyncio>=0.23.0,<0.24.0
 pytest-cov>=4.1.0,<5.0.0
 httpx>=0.26.0  # For TestClient
+# pytest-httpx>=0.30  # Опционально — для тестов moex_async/sync_service.
+# Сейчас тесты PERF-04 используют monkeypatch на httpx.AsyncClient.get
+# (см. tests/unit/test_market_service_async.py). Установи если соберёшься
+# писать pytest-httpx-style фикстуры с httpx_mock.
 
 # ==================== DEVELOPMENT ====================
 # ruff>=0.2.0  # Linting
