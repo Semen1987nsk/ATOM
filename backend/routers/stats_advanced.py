@@ -76,19 +76,21 @@ async def get_advanced_stats(
     trades_for_period = [{"entry_at": t.entry_at, "pnl": _net_or_gross(t)} for t in trades]
     trades_with_tags = [{"tags": t.tags or [], "pnl": _net_or_gross(t)} for t in trades]
 
+    # MATH-07 / PNL-02: baseline = Σ NET_DEPOSITS (cash truth), а НЕ equity[0]
+    # (PnL первой сделки — кумулятив от 0, это не капитал) и не
+    # account.initial_balance (user-provided, часто врёт). Тот же baseline,
+    # что и на главной вкладке /stats/.
+    baseline = float(get_net_deposits_baseline_from_db(db, account_id))
+
     # Drawdown статистика — нужна для Sterling/MAR
-    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
+    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=baseline)
     dd_episodes = analytics.collect_drawdown_episodes(equity)
 
     # CAGR требует достаточной истории (3+ месяца) и реального стартового баланса.
     # На короткой выборке аннуализированная доходность взрывается математически и
     # становится бессмысленной (например, +20% за 30 дней → CAGR > 700%/год).
     #
-    # MATH-07: baseline = Σ NET_DEPOSITS (cash truth), а НЕ account.initial_balance.
-    # Initial_balance — user-provided и часто врёт. Раньше /stats/ и /stats/advanced
-    # использовали разные baseline → один CAGR в Calmar-карточке и другой в advanced.
     cagr_pct = None
-    baseline = float(get_net_deposits_baseline_from_db(db, account_id))
     if entry_dates and len(entry_dates) >= 2 and equity and baseline > 0:
         days = max((entry_dates[-1] - entry_dates[0]).days, 1)
         if days >= 90:  # минимум 3 месяца, иначе CAGR не показываем
@@ -183,18 +185,20 @@ async def get_benchmark(
     risks = [float(t.risk_amount) if t.risk_amount else 0 for t in trades]
     equity = build_equity_curve(trades)
 
+    # MATH-07 / PNL-02: baseline = Σ NET_DEPOSITS (cash truth), не equity[0]
+    # (PnL первой сделки) и не account.initial_balance. Тот же helper что в
+    # /stats/advanced и /stats/ — три эндпойнта согласованы.
+    baseline = float(get_net_deposits_baseline_from_db(db, account_id))
+
     # Считаем те метрики, по которым у нас есть baseline
     win_loss = analytics.calculate_win_loss_stats(pnls)
     opt_f = analytics.calculate_optimal_f(pnls, risks)
     sqn = analytics.calculate_sqn(pnls, risks)
-    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
+    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=baseline)
     sharpe_sortino = analytics.calculate_sharpe_sortino(pnls)
 
-    # MATH-07: baseline = Σ NET_DEPOSITS (cash truth), не account.initial_balance.
-    # Тот же helper что в /stats/advanced и /stats/ — три эндпойнта согласованы.
     cagr_pct = None
     entry_dates = [t.entry_at for t in trades if t.entry_at]
-    baseline = float(get_net_deposits_baseline_from_db(db, account_id))
     if entry_dates and len(entry_dates) >= 2 and equity and baseline > 0:
         days = max((entry_dates[-1] - entry_dates[0]).days, 1)
         if days >= 90:
@@ -202,7 +206,10 @@ async def get_benchmark(
             final_balance = baseline + equity[-1]
             if final_balance > 0:
                 cagr_pct = (pow(final_balance / baseline, 1 / years) - 1) * 100
-    calmar = analytics.calculate_calmar_ratio(cagr_pct or 0, dd_stats.get("max_drawdown_pct") or 0)
+    # PNL-01: calculate_calmar_ratio ждёт List[float] pnls — передача (cagr, dd)
+    # давала len(float) → TypeError → 500. Для уже посчитанных процентов есть
+    # calculate_mar_ratio(cagr_pct, max_dd_pct) — MAR == Calmar de facto.
+    calmar = analytics.calculate_mar_ratio(cagr_pct, dd_stats.get("max_drawdown_pct"))
     freq = analytics.calculate_trade_frequency(entry_dates)
 
     user_metrics = {
@@ -212,7 +219,7 @@ async def get_benchmark(
         "optimal_f": opt_f.get("optimal_f") if isinstance(opt_f, dict) else None,
         "sqn": sqn.get("sqn") if isinstance(sqn, dict) else None,
         "sortino": sharpe_sortino.get("sortino_ratio") if isinstance(sharpe_sortino, dict) else None,
-        "calmar": calmar.get("calmar_ratio") if isinstance(calmar, dict) else None,
+        "calmar": calmar if isinstance(calmar, (int, float)) else None,
         "max_drawdown_pct": dd_stats.get("max_drawdown_pct"),
         "ulcer_index": analytics.calculate_ulcer_index(equity),
         "k_ratio": analytics.calculate_k_ratio(equity),
