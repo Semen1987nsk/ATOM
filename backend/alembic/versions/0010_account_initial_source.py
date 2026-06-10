@@ -27,6 +27,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import has_column
+
+    if has_column(op.get_bind(), "accounts", "initial_balance_source"):
+        return
     with op.batch_alter_table("accounts", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column("initial_balance_source", sa.String(32), nullable=True)
@@ -34,5 +38,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    from _guards import has_column
+
+    if not has_column(op.get_bind(), "accounts", "initial_balance_source"):
+        return
     with op.batch_alter_table("accounts", schema=None) as batch_op:
         batch_op.drop_column("initial_balance_source")

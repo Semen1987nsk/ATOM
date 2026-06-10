@@ -64,18 +64,24 @@ def upgrade() -> None:
                 "ON access_log (status_code, created_at)"
             )
     else:
-        op.create_index(
-            _INDEX_OPERATIONS,
-            "operations",
-            ["state", "operation_type", "executed_at"],
-            unique=False,
-        )
-        op.create_index(
-            _INDEX_ACCESS_LOG,
-            "access_log",
-            ["status_code", "created_at"],
-            unique=False,
-        )
+        from _guards import has_index
+
+        # DATA-01: на чистой БД индексы уже мог создать 0001 (create_all).
+        bind = op.get_bind()
+        if not has_index(bind, "operations", _INDEX_OPERATIONS):
+            op.create_index(
+                _INDEX_OPERATIONS,
+                "operations",
+                ["state", "operation_type", "executed_at"],
+                unique=False,
+            )
+        if not has_index(bind, "access_log", _INDEX_ACCESS_LOG):
+            op.create_index(
+                _INDEX_ACCESS_LOG,
+                "access_log",
+                ["status_code", "created_at"],
+                unique=False,
+            )
 
 
 def downgrade() -> None:
@@ -88,5 +94,10 @@ def downgrade() -> None:
                 f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_OPERATIONS}"
             )
     else:
-        op.drop_index(_INDEX_ACCESS_LOG, table_name="access_log")
-        op.drop_index(_INDEX_OPERATIONS, table_name="operations")
+        from _guards import has_index
+
+        bind = op.get_bind()
+        if has_index(bind, "access_log", _INDEX_ACCESS_LOG):
+            op.drop_index(_INDEX_ACCESS_LOG, table_name="access_log")
+        if has_index(bind, "operations", _INDEX_OPERATIONS):
+            op.drop_index(_INDEX_OPERATIONS, table_name="operations")

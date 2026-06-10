@@ -28,11 +28,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("users", schema=None) as batch:
-        batch.add_column(sa.Column("email_verified", sa.Boolean(), nullable=True, server_default="0"))
-        batch.add_column(sa.Column("email_verification_token", sa.String(length=64), nullable=True))
-        batch.add_column(sa.Column("email_verification_sent_at", sa.DateTime(), nullable=True))
-        batch.create_index("ix_users_email_verification_token", ["email_verification_token"])
+    from _guards import has_column, has_table
+
+    bind = op.get_bind()
+
+    # DATA-01: на чистой БД объекты уже создал 0001 (create_all из models).
+    if not has_column(bind, "users", "email_verified"):
+        with op.batch_alter_table("users", schema=None) as batch:
+            batch.add_column(sa.Column("email_verified", sa.Boolean(), nullable=True, server_default="0"))
+            batch.add_column(sa.Column("email_verification_token", sa.String(length=64), nullable=True))
+            batch.add_column(sa.Column("email_verification_sent_at", sa.DateTime(), nullable=True))
+            batch.create_index("ix_users_email_verification_token", ["email_verification_token"])
+
+    if has_table(bind, "backup_runs"):
+        return
 
     op.create_table(
         "backup_runs",
@@ -51,12 +60,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_backup_runs_kind", table_name="backup_runs")
-    op.drop_index("ix_backup_runs_started", table_name="backup_runs")
-    op.drop_table("backup_runs")
+    from _guards import has_column, has_table
 
-    with op.batch_alter_table("users", schema=None) as batch:
-        batch.drop_index("ix_users_email_verification_token")
-        batch.drop_column("email_verification_sent_at")
-        batch.drop_column("email_verification_token")
-        batch.drop_column("email_verified")
+    bind = op.get_bind()
+
+    if has_table(bind, "backup_runs"):
+        op.drop_index("ix_backup_runs_kind", table_name="backup_runs")
+        op.drop_index("ix_backup_runs_started", table_name="backup_runs")
+        op.drop_table("backup_runs")
+
+    if has_column(bind, "users", "email_verified"):
+        with op.batch_alter_table("users", schema=None) as batch:
+            batch.drop_index("ix_users_email_verification_token")
+            batch.drop_column("email_verification_sent_at")
+            batch.drop_column("email_verification_token")
+            batch.drop_column("email_verified")

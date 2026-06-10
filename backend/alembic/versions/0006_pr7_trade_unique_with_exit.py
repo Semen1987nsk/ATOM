@@ -35,26 +35,42 @@ _OLD_NAME = "uq_trades_dedup"
 
 
 def upgrade() -> None:
-    """SQLite/PG-friendly: пересоздаём constraint через batch_alter_table."""
+    """SQLite/PG-friendly: пересоздаём constraint через batch_alter_table.
+
+    Inspect-гарды (DATA-01): try/except вокруг batch-операций не работает —
+    они выполняются при выходе из with-блока. На чистой БД (0001=create_all)
+    v2-constraint уже существует, а старого нет — обе операции скипаются.
+    """
+    from _guards import has_unique_constraint
+
+    bind = op.get_bind()
+    drop_old = has_unique_constraint(bind, "trades", _OLD_NAME)
+    create_new = not has_unique_constraint(bind, "trades", _NEW_NAME)
+    if not drop_old and not create_new:
+        return
     with op.batch_alter_table("trades", schema=None) as batch_op:
-        # Не все БД хранят constraint под именем, попытка drop'а в try-блоке.
-        try:
+        if drop_old:
             batch_op.drop_constraint(_OLD_NAME, type_="unique")
-        except Exception:
-            pass
-        batch_op.create_unique_constraint(
-            _NEW_NAME,
-            ["account_id", "symbol", "entry_at", "exit_at", "direction", "data_source"],
-        )
+        if create_new:
+            batch_op.create_unique_constraint(
+                _NEW_NAME,
+                ["account_id", "symbol", "entry_at", "exit_at", "direction", "data_source"],
+            )
 
 
 def downgrade() -> None:
+    from _guards import has_unique_constraint
+
+    bind = op.get_bind()
+    drop_new = has_unique_constraint(bind, "trades", _NEW_NAME)
+    create_old = not has_unique_constraint(bind, "trades", _OLD_NAME)
+    if not drop_new and not create_old:
+        return
     with op.batch_alter_table("trades", schema=None) as batch_op:
-        try:
+        if drop_new:
             batch_op.drop_constraint(_NEW_NAME, type_="unique")
-        except Exception:
-            pass
-        batch_op.create_unique_constraint(
-            _OLD_NAME,
-            ["account_id", "symbol", "entry_at", "direction"],
-        )
+        if create_old:
+            batch_op.create_unique_constraint(
+                _OLD_NAME,
+                ["account_id", "symbol", "entry_at", "direction"],
+            )

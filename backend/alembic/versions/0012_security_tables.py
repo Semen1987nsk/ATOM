@@ -30,6 +30,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import has_table
+
+    bind = op.get_bind()
+
+    if not has_table(bind, "admin_audit_log"):
+        _create_admin_audit_log()
+    if not has_table(bind, "revoked_tokens"):
+        _create_revoked_tokens()
+    if not has_table(bind, "password_reset_tokens"):
+        _create_password_reset_tokens()
+
+
+def _create_admin_audit_log() -> None:
     op.create_table(
         "admin_audit_log",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -55,6 +68,8 @@ def upgrade() -> None:
         "ix_admin_audit_target", "admin_audit_log", ["target_user_id"]
     )
 
+
+def _create_revoked_tokens() -> None:
     op.create_table(
         "revoked_tokens",
         sa.Column("jti", sa.String(length=64), primary_key=True),
@@ -70,6 +85,8 @@ def upgrade() -> None:
         "ix_revoked_tokens_expires", "revoked_tokens", ["expires_at"]
     )
 
+
+def _create_password_reset_tokens() -> None:
     op.create_table(
         "password_reset_tokens",
         sa.Column("token", sa.String(length=64), primary_key=True),
@@ -86,16 +103,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_pwd_reset_expires", table_name="password_reset_tokens")
-    op.drop_index("ix_pwd_reset_user", table_name="password_reset_tokens")
-    op.drop_table("password_reset_tokens")
+    from _guards import has_table
 
-    op.drop_index("ix_revoked_tokens_expires", table_name="revoked_tokens")
-    op.drop_index("ix_revoked_tokens_user_id", table_name="revoked_tokens")
-    op.drop_table("revoked_tokens")
+    bind = op.get_bind()
 
-    op.drop_index("ix_admin_audit_target", table_name="admin_audit_log")
-    op.drop_index("ix_admin_audit_action", table_name="admin_audit_log")
-    op.drop_index("ix_admin_audit_actor_time", table_name="admin_audit_log")
-    op.drop_index("ix_admin_audit_log_created_at", table_name="admin_audit_log")
-    op.drop_table("admin_audit_log")
+    if has_table(bind, "password_reset_tokens"):
+        op.drop_index("ix_pwd_reset_expires", table_name="password_reset_tokens")
+        op.drop_index("ix_pwd_reset_user", table_name="password_reset_tokens")
+        op.drop_table("password_reset_tokens")
+
+    if has_table(bind, "revoked_tokens"):
+        op.drop_index("ix_revoked_tokens_expires", table_name="revoked_tokens")
+        op.drop_index("ix_revoked_tokens_user_id", table_name="revoked_tokens")
+        op.drop_table("revoked_tokens")
+
+    if has_table(bind, "admin_audit_log"):
+        op.drop_index("ix_admin_audit_target", table_name="admin_audit_log")
+        op.drop_index("ix_admin_audit_action", table_name="admin_audit_log")
+        op.drop_index("ix_admin_audit_actor_time", table_name="admin_audit_log")
+        op.drop_index("ix_admin_audit_log_created_at", table_name="admin_audit_log")
+        op.drop_table("admin_audit_log")

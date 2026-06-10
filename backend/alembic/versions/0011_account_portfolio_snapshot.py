@@ -31,16 +31,39 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import missing_columns
+
+    bind = op.get_bind()
+    to_add = missing_columns(
+        bind,
+        "accounts",
+        {
+            "last_portfolio_value": sa.Column(
+                "last_portfolio_value", sa.Numeric(precision=18, scale=8), nullable=True
+            ),
+            "last_portfolio_at": sa.Column(
+                "last_portfolio_at", sa.DateTime(), nullable=True
+            ),
+        },
+    )
+    if not to_add:
+        return
     with op.batch_alter_table("accounts", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("last_portfolio_value", sa.Numeric(precision=18, scale=8), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("last_portfolio_at", sa.DateTime(), nullable=True)
-        )
+        for col in to_add.values():
+            batch_op.add_column(col)
 
 
 def downgrade() -> None:
+    from _guards import has_column
+
+    bind = op.get_bind()
+    to_drop = [
+        c
+        for c in ("last_portfolio_at", "last_portfolio_value")
+        if has_column(bind, "accounts", c)
+    ]
+    if not to_drop:
+        return
     with op.batch_alter_table("accounts", schema=None) as batch_op:
-        batch_op.drop_column("last_portfolio_at")
-        batch_op.drop_column("last_portfolio_value")
+        for name in to_drop:
+            batch_op.drop_column(name)

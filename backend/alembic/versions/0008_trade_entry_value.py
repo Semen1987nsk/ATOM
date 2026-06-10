@@ -27,16 +27,31 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import missing_columns
+
+    bind = op.get_bind()
+    to_add = missing_columns(
+        bind,
+        "trades",
+        {
+            name: sa.Column(name, sa.Numeric(precision=18, scale=8), nullable=True)
+            for name in ("entry_value", "exit_value")
+        },
+    )
+    if not to_add:
+        return
     with op.batch_alter_table("trades", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("entry_value", sa.Numeric(precision=18, scale=8), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("exit_value", sa.Numeric(precision=18, scale=8), nullable=True)
-        )
+        for col in to_add.values():
+            batch_op.add_column(col)
 
 
 def downgrade() -> None:
+    from _guards import has_column
+
+    bind = op.get_bind()
+    to_drop = [c for c in ("exit_value", "entry_value") if has_column(bind, "trades", c)]
+    if not to_drop:
+        return
     with op.batch_alter_table("trades", schema=None) as batch_op:
-        batch_op.drop_column("exit_value")
-        batch_op.drop_column("entry_value")
+        for name in to_drop:
+            batch_op.drop_column(name)

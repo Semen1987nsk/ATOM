@@ -24,6 +24,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import has_table
+
+    bind = op.get_bind()
+    # DATA-01: на чистой БД таблицу уже создал 0001 (create_all из models).
+    if has_table(bind, "sync_events"):
+        return
+
     op.create_table(
         "sync_events",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -50,6 +57,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    from _guards import has_table
+
+    bind = op.get_bind()
+    if not has_table(bind, "sync_events"):
+        return
+
     op.drop_index("ix_sync_events_status", table_name="sync_events")
     op.drop_index("ix_sync_events_account_started", table_name="sync_events")
     op.drop_index("ix_sync_events_account_id", table_name="sync_events")

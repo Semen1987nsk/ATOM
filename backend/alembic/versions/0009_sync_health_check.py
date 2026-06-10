@@ -22,6 +22,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import has_table
+
+    if has_table(op.get_bind(), "sync_health_checks"):
+        return
+
     op.create_table(
         "sync_health_checks",
         sa.Column("id", sa.Integer(), primary_key=True, index=True),
@@ -58,6 +63,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    from _guards import has_table
+
+    if not has_table(op.get_bind(), "sync_health_checks"):
+        return
+
     op.drop_index("ix_health_status", table_name="sync_health_checks")
     op.drop_index("ix_health_account_time", table_name="sync_health_checks")
     op.drop_table("sync_health_checks")

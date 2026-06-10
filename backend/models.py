@@ -91,12 +91,25 @@ class Subscription(Base):
     started_at = Column(DateTime, default=utc_now_naive)
     expires_at = Column(DateTime, nullable=True)
     auto_renew = Column(Integer, default=1)  # 1 = auto-renew, 0 = cancel at expiry
-    
+
     # Лимиты по плану
     max_trades = Column(Integer, nullable=True)  # None = unlimited
     max_accounts = Column(Integer, default=1)
     ai_analysis_enabled = Column(Integer, default=0)
-    
+
+    # Reverse-trial (ADR-0005, миграция 0019). status — ортогональная plan'у ось:
+    # trial_active | trial_expired | free_plus | pro_active | corporate_active | none.
+    # Константы STATUS_* — в services/subscription_service.py.
+    status = Column(String(32), nullable=False, default="none", server_default="none")
+    trial_started_at = Column(DateTime, nullable=True)
+    trial_ended_at = Column(DateTime, nullable=True)
+    trial_summary_shown = Column(Boolean, nullable=False, default=False, server_default="0")
+    frozen_at = Column(DateTime, nullable=True)  # момент downgrade на Free+
+
+    __table_args__ = (
+        Index("ix_subscriptions_status_trial_ended", "status", "trial_ended_at"),
+    )
+
     user = relationship("User", back_populates="subscriptions")
 
 
@@ -125,6 +138,27 @@ class Payment(Base):
     completed_at = Column(DateTime, nullable=True)
     
     user = relationship("User", back_populates="payments")
+
+
+class AiRequestLog(Base):
+    """Лог AI-запросов — cap 30 запросов за trial (ADR-0005, миграция 0019).
+
+    Пишется из services/subscription_service.check_and_log_ai_request.
+    """
+    __tablename__ = "ai_request_log"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    requested_at = Column(DateTime, nullable=False)
+    kind = Column(String(64), nullable=False)
+    plan_at_request = Column(String(32), nullable=False)
+    tokens_in = Column(Integer, nullable=True)
+    tokens_out = Column(Integer, nullable=True)
+    cost_rub = Column(Numeric(precision=10, scale=4), nullable=True)
+
+    __table_args__ = (
+        Index("ix_ai_request_log_user_requested", "user_id", "requested_at"),
+    )
 
 
 class DepositOperationType(enum.Enum):
@@ -410,6 +444,10 @@ class Trade(Base):
     # point_value_source: live_api | cache | empirical_payment | manual_override.
     point_value = Column(Numeric(precision=18, scale=8), nullable=True)
     point_value_source = Column(String(32), nullable=True)
+
+    # Reverse-trial (ADR-0005, миграция 0019): сделка создана в trial-период —
+    # на Free+ остаётся read-only доступ к её Replay/MAE-MFE.
+    created_during_trial = Column(Boolean, nullable=False, default=False, server_default="0")
 
     account = relationship("Account", back_populates="trades")
     setup = relationship("Setup", back_populates="trades")

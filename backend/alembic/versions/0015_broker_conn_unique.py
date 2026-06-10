@@ -22,6 +22,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import has_unique_constraint
+
+    bind = op.get_bind()
+    # DATA-01: на чистой БД constraint уже создал 0001 (create_all из models).
+    if has_unique_constraint(
+        bind, "broker_connections", "uq_broker_conn_account_broker_brokeracct"
+    ):
+        return
+
     with op.batch_alter_table("broker_connections", schema=None) as batch:
         batch.create_unique_constraint(
             "uq_broker_conn_account_broker_brokeracct",
@@ -30,6 +39,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    from _guards import has_unique_constraint
+
+    bind = op.get_bind()
+    if not has_unique_constraint(
+        bind, "broker_connections", "uq_broker_conn_account_broker_brokeracct"
+    ):
+        return
+
     with op.batch_alter_table("broker_connections", schema=None) as batch:
         batch.drop_constraint(
             "uq_broker_conn_account_broker_brokeracct", type_="unique"

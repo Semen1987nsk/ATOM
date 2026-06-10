@@ -34,6 +34,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from _guards import has_column
+
+    bind = op.get_bind()
+    # DATA-01: на чистой БД колонки уже создал 0001 (create_all из models).
+    if has_column(bind, "accounts", "last_pnl_health_at"):
+        return
+
     with op.batch_alter_table("accounts", schema=None) as batch:
         batch.add_column(
             sa.Column(
@@ -78,6 +85,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    from _guards import has_column
+
+    bind = op.get_bind()
+    if not has_column(bind, "accounts", "last_pnl_health_at"):
+        return
+
     with op.batch_alter_table("accounts", schema=None) as batch:
         batch.drop_column("last_pnl_health_breakdown")
         batch.drop_column("last_pnl_health_diff_rub")
