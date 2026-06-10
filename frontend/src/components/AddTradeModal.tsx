@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import NextImage from 'next/image';
 import { Brain, Target, Smile, CheckCircle, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
 import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/contexts/ToastContext';
 
 interface AddTradeModalProps {
   isOpen: boolean;
@@ -46,6 +47,8 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
     color: string;
   }
   const [setups, setSetups] = useState<Setup[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const toast = useToast();
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -62,6 +65,8 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const createdTrade = await api.post<{ id: number }>('/trades/', {
         body: {
@@ -90,12 +95,15 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
         await api.upload(`/trades/${createdTrade.id}/screenshot`, formDataUpload);
       }
       
+      toast.success('Сделка добавлена');
       onSuccess();
       onClose();
       // Сбрасываем скриншот
       clearScreenshot();
     } catch (error) {
-      console.error('Failed to add trade:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось сохранить сделку');
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -441,9 +449,10 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
 
           <button
             type="submit"
-            className="btn-primary w-full py-3 text-center justify-center"
+            disabled={isSubmitting}
+            className="btn-primary w-full py-3 text-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Открыть позицию
+            {isSubmitting ? 'Сохраняем…' : 'Открыть позицию'}
           </button>
         </form>
     </Modal>

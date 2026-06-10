@@ -5,6 +5,7 @@ import "./globals.css";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryProvider } from "@/lib/QueryProvider";
 import { CookieConsent } from "@/components/CookieConsent";
@@ -60,8 +61,10 @@ export default async function RootLayout({
             <AuthProvider>
               <LanguageProvider>
                 <SettingsProvider>
-                  {children}
-                  <CookieConsent />
+                  <ToastProvider>
+                    {children}
+                    <CookieConsent />
+                  </ToastProvider>
                 </SettingsProvider>
               </LanguageProvider>
             </AuthProvider>

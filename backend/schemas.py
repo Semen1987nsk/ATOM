@@ -308,7 +308,9 @@ class TradeBase(BaseModel):
     operations: Optional[list] = []  # Детали операций для аккордеона
 
 class TradeCreate(TradeBase):
-    account_id: int
+    # Сервер резолвит активный счёт (auth_service.get_account_id);
+    # поле опционально для обратной совместимости со старыми клиентами.
+    account_id: Optional[int] = None
 
 class TradeClose(BaseModel):
     exit_price: float

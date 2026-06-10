@@ -402,6 +402,25 @@ class TestTrades:
         assert data["symbol"] == "SBER"
         assert data["direction"] == "long"
     
+    def test_create_trade_without_account_id(self, test_app, test_user, auth_headers):
+        """Should create trade without account_id: server resolves active account"""
+        client = test_app["client"]
+
+        response = client.post("/trades/",
+            headers=auth_headers,
+            json={
+                "symbol": "GAZP",
+                "direction": "long",
+                "entry_price": 130.0,
+                "quantity": 5,
+                "entry_at": "2025-01-02T10:00:00"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "GAZP"
+        assert data["account_id"] is not None
+
     def test_get_trades(self, test_app, test_user, auth_headers):
         """Should return trades list"""
         client = test_app["client"]
@@ -437,6 +456,57 @@ class TestTrades:
         client = test_app["client"]
         response = client.delete("/trades/99999", headers=auth_headers)
         assert response.status_code == 404
+
+    def test_delete_sync_trade_returns_409(self, test_app, test_user, auth_headers):
+        """DATA-11: sync-сделку (tinkoff_v2) удалять нельзя — следующая
+        синхронизация пересоберёт её из operations («воскресает»)."""
+        client = test_app["client"]
+        db = test_app["db"]
+        account = db.query(Account).filter(Account.user_id == test_user.id).first()
+
+        from datetime import datetime
+        trade = Trade(
+            account_id=account.id,
+            symbol="SBER",
+            direction=TradeDirection.LONG,
+            entry_price=250.0,
+            quantity=10,
+            entry_at=datetime(2025, 1, 1, 10, 0),
+            data_source="tinkoff_v2",
+        )
+        db.add(trade)
+        db.commit()
+        db.refresh(trade)
+
+        response = client.delete(f"/trades/{trade.id}", headers=auth_headers)
+        assert response.status_code == 409
+        assert "восстановится" in response.json()["detail"]
+        # Сделка осталась в БД.
+        db.expire_all()
+        assert db.query(Trade).filter(Trade.id == trade.id).first() is not None
+
+    def test_delete_manual_trade_still_works(self, test_app, test_user, auth_headers):
+        """Manual-сделки удаляются как раньше."""
+        client = test_app["client"]
+        db = test_app["db"]
+        account = db.query(Account).filter(Account.user_id == test_user.id).first()
+
+        from datetime import datetime
+        trade = Trade(
+            account_id=account.id,
+            symbol="GAZP",
+            direction=TradeDirection.LONG,
+            entry_price=130.0,
+            quantity=5,
+            entry_at=datetime(2025, 1, 2, 10, 0),
+            data_source="manual",
+        )
+        db.add(trade)
+        db.commit()
+        db.refresh(trade)
+
+        response = client.delete(f"/trades/{trade.id}", headers=auth_headers)
+        assert response.status_code == 200
 
 
 # ==================== STATS TESTS ====================

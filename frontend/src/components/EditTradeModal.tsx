@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
 import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/contexts/ToastContext';
 
 interface EditTradeModalProps {
   isOpen: boolean;
@@ -108,9 +109,13 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
 
 const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, onSuccess, trade }) => {
   const [formData, setFormData] = useState<EditTradeFormState>(() => buildInitialFormData(trade));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const toast = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       await api.patch(`/trades/${trade.id}`, {
         body: {
@@ -127,10 +132,13 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
           tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== '')
         }
       });
+      toast.success('Сделка обновлена');
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('Failed to update trade:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось сохранить сделку');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -351,9 +359,10 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             </button>
             <button
               type="submit"
-              className="btn-primary flex-1 py-3 text-center justify-center"
+              disabled={isSubmitting}
+              className="btn-primary flex-1 py-3 text-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Обновить сделку
+              {isSubmitting ? 'Сохраняем…' : 'Обновить сделку'}
             </button>
           </div>
         </form>
