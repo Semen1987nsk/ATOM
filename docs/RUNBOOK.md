@@ -18,6 +18,7 @@ Playbook для типичных инцидентов и операций — с
 8. [Payment dispute / refund](#refund)
 9. [Disable broker sync globally](#disable-sync)
 10. [Disk fill (logs / uploads)](#disk-fill)
+11. [Secret management (Yandex Lockbox)](#secret-management)
 
 ---
 
@@ -107,6 +108,66 @@ systemctl start empirik-backend
 ### Verify backup health (weekly)
 Автоматически через cron: `/opt/empirik/scripts/restore_test.sh` (sun 05:00).
 Email-алерт если падает.
+
+### Point-in-Time Recovery (PITR) — INFRA-09 Sprint 6
+
+**Setup на проде:**
+
+1. Создать S3-bucket `empirik-backups` в Yandex Object Storage (RU-локация для 152-ФЗ).
+2. Сгенерировать libsodium key:
+   ```bash
+   openssl rand -base64 32 > /opt/empirik/walg.key
+   chmod 600 /opt/empirik/walg.key
+   ```
+3. Добавить в `.env` (или Lockbox):
+   ```
+   WALG_S3_PREFIX=s3://empirik-backups/walg
+   WALG_LIBSODIUM_KEY=<base64 from walg.key>
+   AWS_REGION=ru-central1
+   AWS_ENDPOINT=https://storage.yandexcloud.net
+   ```
+4. Установить wal-g в postgres-контейнер (custom Dockerfile или через volume mount бинаря). Текущий `postgres:16-alpine` НЕ содержит wal-g — нужен custom image `empirik-postgres-walg`.
+5. Перезапустить postgres с `postgresql.prod.conf` (включает `archive_command = 'wal-g wal-push %p'`).
+
+**Daily base-backup (cron на хосте):**
+
+```cron
+0 3 * * * docker exec postgres bash -c '. /etc/postgresql/walg.env && wal-g backup-push /var/lib/postgresql/data'
+```
+
+**Восстановление до точки T:**
+
+1. Остановить backend (compose stop backend).
+2. Создать новый postgres-instance:
+   ```bash
+   docker compose -f docker-compose.prod.yml stop postgres
+   docker volume rm empirik_postgres_data
+   docker compose -f docker-compose.prod.yml up -d postgres
+   ```
+3. Восстановить из last base-backup:
+   ```bash
+   docker exec postgres wal-g backup-fetch /var/lib/postgresql/data LATEST
+   ```
+4. Configure PITR target:
+   ```bash
+   docker exec postgres bash -c "cat >> /var/lib/postgresql/data/postgresql.auto.conf <<EOF
+   restore_command = 'wal-g wal-fetch %f %p'
+   recovery_target_time = '2026-05-27T12:00:00+03:00'
+   recovery_target_action = 'promote'
+   EOF"
+   docker exec postgres touch /var/lib/postgresql/data/recovery.signal
+   ```
+5. Restart postgres:
+   ```bash
+   docker compose -f docker-compose.prod.yml restart postgres
+   ```
+6. Verify: `psql -c "SELECT pg_is_in_recovery();"` → false (after replay).
+7. Resume backend:
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d backend
+   ```
+
+**Restore-тест:** `scripts/restore_test.sh` запускается еженедельно (Sun 05:00) и проверяет PITR-flow на staging.
 
 ---
 
@@ -522,3 +583,97 @@ backend банит IP при burst ≥30 RPC за секунду.
 ```
 
 (Для российских акционных фьючерсов point_value=1 — 1 пип = 1 RUB.)
+
+---
+
+<a id="secret-management"></a>
+## 11. Secret management (Yandex Lockbox)
+
+Production secrets хранятся в Yandex Lockbox. На сервере `/opt/empirik/.env`
+никогда не редактируется руками — он перегенерируется из Lockbox через
+`scripts/load_secrets.sh` (см. INFRA-07).
+
+### Bootstrap (первый запуск или после rebuild VM)
+
+```bash
+# 1. Установить yc CLI + аутентифицироваться:
+curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+yc init  # OAuth-token + cloud + folder
+
+# 2. Поставить jq (нужен скрипту для парсинга payload).
+apt-get install -y jq
+
+# 3. Узнать ID секрета в console.yandex.cloud → Lockbox → empirik-prod
+export LOCKBOX_SECRET_ID=e6q12345abcdef...
+
+# 4. Выгрузить secrets в /opt/empirik/.env (атомарно, mode 600).
+/opt/empirik/scripts/load_secrets.sh
+
+# 5. Поднять стек:
+cd /opt/empirik
+export SHA=$(git rev-parse HEAD)
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Required keys (минимум для старта backend в prod)
+
+| Ключ | Назначение |
+|---|---|
+| `SECRET_KEY` | JWT access-token signing (HS256). |
+| `REFRESH_SECRET_KEY` | JWT refresh-token signing (separate secret). |
+| `MASTER_KEY_B64` | AES-256-GCM ключ (base64) для шифровки T-Bank токенов. |
+| `DATABASE_URL` | `postgresql://user:pass@postgres:5432/empirik` |
+| `REDIS_URL` | `redis://:pass@redis:6379/0` |
+| `POSTGRES_PASSWORD` | используется compose-файлом для init postgres-сервиса. |
+| `REDIS_PASSWORD` | requirepass для redis-сервиса. |
+
+Если кого-то нет — `load_secrets.sh` выведет WARNING и backend упадёт при
+старте (FastAPI fail-fast на отсутствии конфига).
+
+### Optional keys (фичи активируются если ENV выставлен)
+
+| Ключ | Что включает |
+|---|---|
+| `SENTRY_DSN` | Backend Sentry — ошибки + perf. |
+| `NEXT_PUBLIC_SENTRY_DSN` | Frontend Sentry (NEXT_PUBLIC = bundled в клиент). |
+| `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` | source-map upload в CD-пайплайне. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` | email notifications. |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Google sign-in. |
+| `YANDEX_OAUTH_CLIENT_ID`, `YANDEX_OAUTH_CLIENT_SECRET` | Yandex sign-in. |
+| `BACKUP_S3_BUCKET`, `WALG_S3_PREFIX`, `WALG_LIBSODIUM_KEY` | PITR-backup через WAL-G. |
+| `BROKER_TOKEN_KEY_V2`, `BROKER_TOKEN_KEY_V3` | legacy + active версии ключа T-Bank токенов (см. §4 token leak). |
+
+### Ротация секрета (любая причина — leak, scheduled, новый сервис)
+
+```bash
+# 1. В console.yandex.cloud → Lockbox → empirik-prod → Edit → новый entry
+#    или поменять text_value у существующего. ID секрета остаётся прежним;
+#    Lockbox создаёт новую версию payload автоматически (старые versions —
+#    rollback-fallback на 1 год).
+
+# 2. На прод-сервере перегенерировать .env:
+ssh prod
+sudo -u empirik /opt/empirik/scripts/load_secrets.sh
+
+# 3. Restart затронутых сервисов (graceful, replicas: 2 → 0 downtime):
+cd /opt/empirik
+docker compose -f docker-compose.prod.yml restart backend frontend
+
+# 4. Smoke:
+curl -fsSL https://empirik.app/ready
+```
+
+### Что НЕ кладётся в Lockbox
+
+- `GITHUB_REPOSITORY_OWNER` — публичен, в compose env.
+- `SHA` — git commit hash, ставится через export перед deploy.
+- `LOG_LEVEL`, `FORWARDED_ALLOW_IPS` — не secrets, в compose или env_file
+  можно положить literal, но не в Lockbox (audit-noise).
+
+### Disaster recovery
+
+Если Lockbox сам недоступен (Yandex Cloud outage) — у каждого on-call инженера
+должен быть offline-копия .env в bitwarden-сейфе организации
+(plaintext, encrypted at-rest браузерным расширением). Только для break-glass
+сценария — обычная работа через Lockbox.

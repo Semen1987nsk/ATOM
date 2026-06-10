@@ -1,0 +1,191 @@
+name: CD
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Continuous Deployment pipeline для Empirik (INFRA-03).
+#  - Триггер: push в main (auto-deploy) + workflow_dispatch (manual env-select).
+#  - Build backend + frontend образов → push в ghcr.io/<owner>/<repo>-{backend,frontend}.
+#  - Trivy сканит каждый образ; HIGH/CRITICAL CVE = fail.
+#  - Deploy job через SSH: pull новых тэгов + docker compose up -d.
+#  - Health-gate: curl /ready после старта (если не отвечает — фейл, no rollback).
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - staging
+          - production
+
+# Кенселим предыдущий run на той же ветке (как в CI).
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false  # CD дожать до конца, не прерывать deploy в середине
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # ghcr.io/<owner>/empirik-backend и empirik-frontend
+  IMAGE_BACKEND: ${{ github.repository_owner }}/empirik-backend
+  IMAGE_FRONTEND: ${{ github.repository_owner }}/empirik-frontend
+
+jobs:
+
+  # ─────────────────── BUILD BACKEND ───────────────────
+  build-backend:
+    name: Build & scan backend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}
+          # Тэги: <sha> (immutable, для compose pull через SHA env) + latest (для отладки)
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push backend image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Trivy vulnerability scan (HIGH/CRITICAL = fail)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_BACKEND }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          vuln-type: 'os,library'
+
+  # ─────────────────── BUILD FRONTEND ───────────────────
+  build-frontend:
+    name: Build & scan frontend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push frontend image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Trivy vulnerability scan (HIGH/CRITICAL = fail)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          vuln-type: 'os,library'
+
+  # ─────────────────── DEPLOY ───────────────────
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment || 'production' }}
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # PR-builds не деплоятся: только push в main или ручной workflow_dispatch
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - name: Deploy via SSH (pull + compose up + health-gate)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          # Жёсткие таймауты — никаких бесконечных висящих SSH-сессий
+          timeout: 60s
+          command_timeout: 10m
+          envs: SHA
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/empirik
+            export SHA=${SHA}
+            echo "[deploy] Pulling backend/frontend images for SHA=${SHA}"
+            docker compose -f docker-compose.prod.yml pull
+            echo "[deploy] Recreating services (no-deps, remove orphans)"
+            docker compose -f docker-compose.prod.yml up -d --no-deps --remove-orphans
+            echo "[deploy] Health-gate: waiting for /ready"
+            # До 30 попыток × 2с = 60с на старт
+            for i in $(seq 1 30); do
+              if curl -fsSL https://empirik.app/ready > /dev/null 2>&1; then
+                echo "[deploy] OK — /ready responded on attempt $i"
+                exit 0
+              fi
+              echo "[deploy] /ready not ready (attempt $i/30), sleeping 2s..."
+              sleep 2
+            done
+            echo "[deploy] FAIL — /ready never returned 2xx after 60s"
+            exit 1
+        env:
+          SHA: ${{ github.sha }}

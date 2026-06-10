@@ -45,14 +45,29 @@ fi
 SIZE=$(stat -c%s "${FILEPATH}" 2>/dev/null || stat -f%z "${FILEPATH}")
 echo "[$(date -Iseconds)] ✅ dump complete: ${SIZE} bytes"
 
-# S3 upload (optional)
+# INFRA-09: S3 upload mandatory для production (PITR/DR requirement).
+# Если запускается локально для dev — установи BACKUP_S3_OPTIONAL=1.
+if [ -z "${BACKUP_S3_BUCKET:-}" ] && [ -z "${BACKUP_S3_OPTIONAL:-}" ]; then
+    echo "[$(date -Iseconds)] ERROR: BACKUP_S3_BUCKET env required for production backup."
+    echo "[$(date -Iseconds)] Set BACKUP_S3_OPTIONAL=1 for local-only dev backups."
+    exit 1
+fi
+
 if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
     echo "[$(date -Iseconds)] Uploading to s3://${BACKUP_S3_BUCKET}/${FILENAME}"
-    if ! aws s3 cp "${FILEPATH}" "s3://${BACKUP_S3_BUCKET}/${FILENAME}"; then
-        echo "[$(date -Iseconds)] ❌ S3 upload failed"
-        exit 2
-    fi
-    echo "[$(date -Iseconds)] ✅ uploaded"
+    MAX_RETRIES=3
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        if aws s3 cp "${FILEPATH}" "s3://${BACKUP_S3_BUCKET}/${FILENAME}"; then
+            echo "[$(date -Iseconds)] ✅ S3 upload OK (attempt ${attempt})"
+            break
+        elif [ $attempt -eq $MAX_RETRIES ]; then
+            echo "[$(date -Iseconds)] ❌ S3 upload failed after ${MAX_RETRIES} attempts"
+            exit 2
+        else
+            echo "[$(date -Iseconds)] S3 upload failed (attempt ${attempt}), retrying in 5s..."
+            sleep 5
+        fi
+    done
 fi
 
 # Cleanup: удаляем старые дампы (>RETENTION_DAYS дней)
