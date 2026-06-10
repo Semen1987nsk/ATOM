@@ -1068,6 +1068,7 @@ async def get_mae_mfe_analysis(
                 result["group_by"] = "tag"
                 result["filter_value"] = filter_value
                 result["recommendations"] = _generate_strategy_recommendations(result)
+                result["trades"] = _trades_brief(groups[filter_value])
                 return result
             return {"group_by": "tag", "filter_value": filter_value, "items": [], "total_trades": 0}
 
@@ -1106,6 +1107,7 @@ async def get_mae_mfe_analysis(
                 result["asset_name"] = sample.asset_name
                 result["asset_type"] = sample.asset_type
                 result["recommendations"] = _generate_strategy_recommendations(result)
+                result["trades"] = _trades_brief(groups[filter_value])
                 return result
             return {"group_by": "symbol", "filter_value": filter_value, "items": [], "total_trades": 0}
 
@@ -1148,6 +1150,7 @@ async def get_mae_mfe_analysis(
                 result["group_by"] = "setup"
                 result["filter_value"] = filter_value
                 result["recommendations"] = _generate_strategy_recommendations(result)
+                result["trades"] = _trades_brief(groups[filter_value])
                 return result
             return {"group_by": "setup", "filter_value": filter_value, "items": [], "total_trades": 0}
 
@@ -1171,6 +1174,37 @@ async def get_mae_mfe_analysis(
         }
 
     return {"error": "Invalid group_by parameter"}
+
+
+def _trades_brief(trades, cap: int = 100) -> list[dict]:
+    """Пер-сделочный список для drill-down в MAE/MFE панели.
+
+    Даёт юзеру путь от агрегата группы к конкретной сделке и её Trade Replay
+    (аудит 2026-06-10: строка таблицы выглядела кликабельной, но вела в никуда).
+    Cap 100 — защита payload'а; сортировка по exit_at desc.
+    """
+    rows = sorted(trades, key=lambda t: t.exit_at or t.entry_at, reverse=True)[:cap]
+    out = []
+    for t in rows:
+        entry = float(t.entry_price) if t.entry_price is not None else None
+
+        def _pct(price):
+            if price is None or not entry:
+                return None
+            return round(abs((float(price) - entry) / entry) * 100, 2)
+
+        direction = t.direction.value if hasattr(t.direction, "value") else str(t.direction)
+        out.append({
+            "id": t.id,
+            "symbol": t.symbol,
+            "direction": direction,
+            "entry_at": t.entry_at.isoformat() if t.entry_at else None,
+            "exit_at": t.exit_at.isoformat() if t.exit_at else None,
+            "pnl": float(t.pnl) if t.pnl is not None else None,
+            "mae_pct": _pct(t.mae_price),
+            "mfe_pct": _pct(t.mfe_price),
+        })
+    return out
 
 
 def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dict:

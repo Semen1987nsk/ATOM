@@ -2,15 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Gauge, Search, ChevronDown, ChevronUp, Filter, 
-  Star, AlertTriangle, 
+import Link from 'next/link';
+import {
+  Gauge, Search, ChevronDown, ChevronUp, Filter,
+  Star, AlertTriangle,
   X, ArrowUpDown, Hash,
   Layers, RefreshCw, Calendar, List, Zap,
-  Edit3
+  Edit3, PlayCircle
 } from 'lucide-react';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { api } from '@/lib/apiClient';
 
 interface GroupItem {
@@ -47,9 +49,22 @@ interface GroupItem {
 
 type LimitPreset = typeof LIMIT_PRESETS[number];
 
+/** Краткая сделка для drill-down (бэкенд: _trades_brief в stats.py). */
+interface TradeBrief {
+  id: number;
+  symbol: string;
+  direction: string;
+  entry_at: string | null;
+  exit_at: string | null;
+  pnl: number | null;
+  mae_pct: number | null;
+  mfe_pct: number | null;
+}
+
 interface AnalysisResponse {
   group_by: string;
   items?: GroupItem[];
+  trades?: TradeBrief[];
   total_trades: number;
   trades_count?: number;
   total_groups?: number;
@@ -114,6 +129,7 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
   // Get global filter settings
   const { settings } = useSettings();
   const { user } = useAuth();
+  const toast = useToast();
   const { tradesStartDate, tradesStartTradeId, tradesStartTradeSymbol, maeCalculationMethod } = settings;
   
   const [groupBy, setGroupBy] = useState<GroupByType>('tag');
@@ -245,8 +261,11 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
       setSelectedItemData(res);
     } catch (e) {
       console.error('Failed to fetch item details:', e);
+      // Без фидбека клик по строке выглядел «мёртвым» (аудит 2026-06-10)
+      toast.error('Не удалось загрузить детали группы — попробуйте ещё раз');
+      setSelectedItem(null);
     }
-  }, [groupBy, maeCalculationMethod, tradesLimit, period, tradesStartTradeId]);
+  }, [groupBy, maeCalculationMethod, tradesLimit, period, tradesStartTradeId, toast]);
 
   useEffect(() => {
     if (!user) return;
@@ -716,25 +735,28 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
                       {getGroupIcon()}
                       <span className="ml-2">{getGroupLabel()}</span>
                     </th>
-                    <th 
+                    <th
                       className="text-right py-2 px-2 font-medium text-slate-400 cursor-pointer hover:text-white"
                       onClick={() => handleSort('edge_ratio')}
+                      title="Edge = ср. MFE / ср. MAE. Во сколько раз ход цены в вашу пользу больше хода против вас. >1.5 — стратегия даёт запас, <1 — рынок ходит против вас сильнее"
                     >
                       <span className="flex items-center justify-end gap-1">
                         Edge <ArrowUpDown size={12} className={sortField === 'edge_ratio' ? 'text-purple-400' : ''} />
                       </span>
                     </th>
-                    <th 
+                    <th
                       className="text-right py-2 px-2 font-medium text-slate-400 cursor-pointer hover:text-white"
                       onClick={() => handleSort('avg_mae')}
+                      title="Средний максимальный ход цены ПРОТИВ позиции, % от входа — показывает насколько глубоко сделки уходят в минус до разворота"
                     >
                       <span className="flex items-center justify-end gap-1">
                         MAE <ArrowUpDown size={12} className={sortField === 'avg_mae' ? 'text-purple-400' : ''} />
                       </span>
                     </th>
-                    <th 
+                    <th
                       className="text-right py-2 px-2 font-medium text-slate-400 cursor-pointer hover:text-white"
                       onClick={() => handleSort('avg_mfe')}
+                      title="Средний максимальный ход цены В ПОЛЬЗУ позиции, % от входа — сколько прибыли рынок предлагал в лучшей точке"
                     >
                       <span className="flex items-center justify-end gap-1">
                         MFE <ArrowUpDown size={12} className={sortField === 'avg_mfe' ? 'text-purple-400' : ''} />
@@ -756,9 +778,10 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
                         PnL <ArrowUpDown size={12} className={sortField === 'total_pnl' ? 'text-purple-400' : ''} />
                       </span>
                     </th>
-                    <th 
+                    <th
                       className="text-right py-2 px-2 font-medium text-slate-400 cursor-pointer hover:text-white"
                       onClick={() => handleSort('quality_score')}
+                      title="Композитная оценка качества группы 0-100: Edge + винрейт + PnL. ≥70 — сильная стратегия, <30 — пересмотреть"
                     >
                       <span className="flex items-center justify-end gap-1">
                         Score <ArrowUpDown size={12} className={sortField === 'quality_score' ? 'text-purple-400' : ''} />
@@ -960,6 +983,63 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
                   <div className="mt-2 text-[10px] opacity-60">
                     Мин. винрейт для безубытка: {(selectedItemData.required_winrate || 0).toFixed(0)}% | Ваш: {selectedItemData.win_rate || 0}%
                     {(selectedItemData.win_rate || 0) >= (selectedItemData.required_winrate || 100) ? ' ✅' : ' ⚠️'}
+                  </div>
+                </div>
+              )}
+
+              {/* Per-trade drill-down: от агрегата к конкретной сделке и её Replay */}
+              {selectedItemData.trades && selectedItemData.trades.length > 0 && (
+                <div className="bg-white/5 rounded-lg p-4">
+                  <div className="text-xs font-bold text-slate-300 mb-3">
+                    Сделки группы ({selectedItemData.trades.length}
+                    {selectedItemData.trades.length === 100 ? ', показаны последние 100' : ''})
+                  </div>
+                  <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-slate-500 border-b border-slate-700">
+                          <th className="py-1.5 pr-2 font-medium">Дата</th>
+                          <th className="py-1.5 pr-2 font-medium">Тикер</th>
+                          <th className="py-1.5 pr-2 font-medium text-right">PnL</th>
+                          <th className="py-1.5 pr-2 font-medium text-right" title="Максимальный ход цены против позиции, % от входа">MAE</th>
+                          <th className="py-1.5 pr-2 font-medium text-right" title="Максимальный ход цены в пользу позиции, % от входа">MFE</th>
+                          <th className="py-1.5 font-medium" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedItemData.trades.map((t) => (
+                          <tr key={t.id} className="border-b border-slate-800 last:border-0">
+                            <td className="py-1.5 pr-2 text-slate-400 whitespace-nowrap">
+                              {t.exit_at ? new Date(t.exit_at).toLocaleDateString('ru-RU') : '—'}
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <span className="font-medium">{t.symbol}</span>{' '}
+                              <span className={`text-[10px] ${t.direction.toLowerCase() === 'long' ? 'text-green-400' : 'text-red-400'}`}>
+                                {t.direction.toLowerCase() === 'long' ? 'LONG' : 'SHORT'}
+                              </span>
+                            </td>
+                            <td className={`py-1.5 pr-2 text-right font-medium ${(t.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {t.pnl != null ? formatPnl(t.pnl) : '—'}
+                            </td>
+                            <td className="py-1.5 pr-2 text-right text-red-400">
+                              {t.mae_pct != null ? `${t.mae_pct.toFixed(1)}%` : '—'}
+                            </td>
+                            <td className="py-1.5 pr-2 text-right text-green-400">
+                              {t.mfe_pct != null ? `${t.mfe_pct.toFixed(1)}%` : '—'}
+                            </td>
+                            <td className="py-1.5 text-right">
+                              <a
+                                href={`/trades/${t.id}/replay`}
+                                className="text-cyan-400 hover:text-cyan-300 whitespace-nowrap"
+                                title="Открыть Trade Replay: свечи MOEX с маркерами входа/выхода/MAE/MFE"
+                              >
+                                Replay →
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
