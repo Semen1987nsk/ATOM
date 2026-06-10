@@ -22,10 +22,22 @@ import analytics
 import auth_service
 import database
 import models
+from analytics._common_baseline import get_net_deposits_baseline_from_db
 from rate_limiter import limiter, API_LIMIT
 from services.stats_filtering import build_equity_curve, load_filtered_trades
 
 router = APIRouter(prefix="/stats", tags=["stats:advanced"])
+
+
+def _net_or_gross(t) -> float:
+    """MATH-01: канонический pnl-доступ.
+
+    NET (после комиссий и swap) приоритетнее GROSS. GROSS-fallback нужен
+    только для legacy / manual трейдов, у которых `net_pnl` ещё не посчитан.
+    Все analytics-агрегаты в этом роутере обязаны идти через этот helper —
+    иначе они дают завышенные суммы (без учёта commissions).
+    """
+    return float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
 
 
 @router.get("/advanced")
@@ -60,8 +72,9 @@ async def get_advanced_stats(
     entry_dates = [t.entry_at for t in trades if t.entry_at]
     disciplines = [t.discipline for t in trades]
 
-    trades_for_period = [{"entry_at": t.entry_at, "pnl": float(t.pnl or 0)} for t in trades]
-    trades_with_tags = [{"tags": t.tags or [], "pnl": float(t.pnl or 0)} for t in trades]
+    # MATH-01: все аналитические агрегаты — NET (после комиссий), не GROSS.
+    trades_for_period = [{"entry_at": t.entry_at, "pnl": _net_or_gross(t)} for t in trades]
+    trades_with_tags = [{"tags": t.tags or [], "pnl": _net_or_gross(t)} for t in trades]
 
     # Drawdown статистика — нужна для Sterling/MAR
     dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
@@ -70,16 +83,19 @@ async def get_advanced_stats(
     # CAGR требует достаточной истории (3+ месяца) и реального стартового баланса.
     # На короткой выборке аннуализированная доходность взрывается математически и
     # становится бессмысленной (например, +20% за 30 дней → CAGR > 700%/год).
+    #
+    # MATH-07: baseline = Σ NET_DEPOSITS (cash truth), а НЕ account.initial_balance.
+    # Initial_balance — user-provided и часто врёт. Раньше /stats/ и /stats/advanced
+    # использовали разные baseline → один CAGR в Calmar-карточке и другой в advanced.
     cagr_pct = None
-    account = db.query(models.Account).filter(models.Account.id == account_id).first()
-    initial_balance = float(account.initial_balance or 0) if account else 0
-    if entry_dates and len(entry_dates) >= 2 and equity and initial_balance > 0:
+    baseline = float(get_net_deposits_baseline_from_db(db, account_id))
+    if entry_dates and len(entry_dates) >= 2 and equity and baseline > 0:
         days = max((entry_dates[-1] - entry_dates[0]).days, 1)
         if days >= 90:  # минимум 3 месяца, иначе CAGR не показываем
             years = days / 365.0
-            final_balance = initial_balance + equity[-1]
+            final_balance = baseline + equity[-1]
             if final_balance > 0:
-                cagr_pct = round((pow(final_balance / initial_balance, 1 / years) - 1) * 100, 2)
+                cagr_pct = round((pow(final_balance / baseline, 1 / years) - 1) * 100, 2)
 
     return {
         "total_trades": len(trades),
@@ -104,33 +120,33 @@ async def get_advanced_stats(
                     "take_profit": t.take_profit,
                     "direction": t.direction,
                     "risk_amount": t.risk_amount,
-                    "pnl": t.pnl,
+                    "pnl": _net_or_gross(t),
                 }
                 for t in trades
             ]),
             "psycho_correlations": analytics.calculate_psycho_correlations([
-                {"mood": t.mood, "confidence": t.confidence, "discipline": t.discipline, "pnl": t.pnl}
+                {"mood": t.mood, "confidence": t.confidence, "discipline": t.discipline, "pnl": _net_or_gross(t)}
                 for t in trades
             ]),
             "news_event_stats": analytics.calculate_news_event_stats([
-                {"news_event": t.news_event, "pnl": t.pnl}
+                {"news_event": t.news_event, "pnl": _net_or_gross(t)}
                 for t in trades
             ]),
             "exit_breakdown": analytics.calculate_exit_reason_breakdown([
                 {
                     "exit_reason": t.exit_reason,
-                    "pnl": t.pnl,
+                    "pnl": _net_or_gross(t),
                     "stop_loss": t.stop_loss,
                     "take_profit": t.take_profit,
                 }
                 for t in trades
             ]),
             "r_distribution": analytics.calculate_r_distribution_histogram([
-                {"r_multiple": t.r_multiple, "pnl": t.pnl}
+                {"r_multiple": t.r_multiple, "pnl": _net_or_gross(t)}
                 for t in trades
             ]),
             "tax_visibility": analytics.calculate_tax_visibility([
-                {"pnl": t.pnl, "exit_at": t.exit_at}
+                {"pnl": _net_or_gross(t), "exit_at": t.exit_at}
                 for t in trades
             ]),
             "cagr_pct": round(cagr_pct, 2) if cagr_pct is not None else None,
@@ -174,17 +190,18 @@ async def get_benchmark(
     dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
     sharpe_sortino = analytics.calculate_sharpe_sortino(pnls)
 
+    # MATH-07: baseline = Σ NET_DEPOSITS (cash truth), не account.initial_balance.
+    # Тот же helper что в /stats/advanced и /stats/ — три эндпойнта согласованы.
     cagr_pct = None
     entry_dates = [t.entry_at for t in trades if t.entry_at]
-    account = db.query(models.Account).filter(models.Account.id == account_id).first()
-    initial_balance = float(account.initial_balance or 0) if account else 0
-    if entry_dates and len(entry_dates) >= 2 and equity and initial_balance > 0:
+    baseline = float(get_net_deposits_baseline_from_db(db, account_id))
+    if entry_dates and len(entry_dates) >= 2 and equity and baseline > 0:
         days = max((entry_dates[-1] - entry_dates[0]).days, 1)
         if days >= 90:
             years = days / 365.0
-            final_balance = initial_balance + equity[-1]
+            final_balance = baseline + equity[-1]
             if final_balance > 0:
-                cagr_pct = (pow(final_balance / initial_balance, 1 / years) - 1) * 100
+                cagr_pct = (pow(final_balance / baseline, 1 / years) - 1) * 100
     calmar = analytics.calculate_calmar_ratio(cagr_pct or 0, dd_stats.get("max_drawdown_pct") or 0)
     freq = analytics.calculate_trade_frequency(entry_dates)
 

@@ -387,6 +387,10 @@ def _compute_broker_fifo_realized_pnl(trades: list[BrokerReportTradeRow]) -> Dec
                 + abs(r.exchange_clearing_commission or Decimal(0))
             )
             comm_per_unit = total_comm / qty if qty else Decimal(0)
+            # AU13-fix: ACI/НКД per unit. Для облигаций НКД — реальная часть
+            # реализованного результата (на продаже получаем, на покупке платим);
+            # для акций/фьючерсов aci_value=None → 0, поведение не меняется.
+            aci_per_unit = (r.aci_value or Decimal(0)) / qty if qty else Decimal(0)
             direction = r.direction
 
             remaining = qty
@@ -397,9 +401,13 @@ def _compute_broker_fifo_realized_pnl(trades: list[BrokerReportTradeRow]) -> Dec
                 if lot["direction"] == "buy" and direction == "sell":
                     # Closing long: pnl = (exit_price - entry_price) × qty
                     total_realized += (price - lot["price"]) * Decimal(close_qty)
+                    # net НКД: продажа (текущая) даёт ACI, покупка (lot) его стоила
+                    total_realized += (aci_per_unit - lot["aci_per_unit"]) * Decimal(close_qty)
                 elif lot["direction"] == "sell" and direction == "buy":
                     # Closing short: pnl = (entry_price - exit_price) × qty
                     total_realized += (lot["price"] - price) * Decimal(close_qty)
+                    # net НКД: продажа (lot) дала ACI, покупка (текущая) его стоила
+                    total_realized += (lot["aci_per_unit"] - aci_per_unit) * Decimal(close_qty)
                 # subtract entry + exit commissions
                 total_realized -= lot["comm_per_unit"] * Decimal(close_qty)
                 total_realized -= comm_per_unit * Decimal(close_qty)
@@ -413,6 +421,7 @@ def _compute_broker_fifo_realized_pnl(trades: list[BrokerReportTradeRow]) -> Dec
                     "qty": remaining,
                     "price": price,
                     "comm_per_unit": comm_per_unit,
+                    "aci_per_unit": aci_per_unit,
                     "direction": direction,
                 })
 

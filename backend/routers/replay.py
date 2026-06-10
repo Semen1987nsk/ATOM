@@ -63,13 +63,14 @@ def _to_float(value) -> Optional[float]:
 
 
 @router.get("/{trade_id}/replay", response_model=ReplayResponse)
-def get_trade_replay(
+async def get_trade_replay(
     trade_id: int,
     interval: Optional[str] = Query(None, description="1m/10m/1h/1d/1w/1mo. Пусто = авто."),
     pad_minutes: int = Query(60, ge=0, le=1440, description="Сколько минут до/после сделки добавить в окно."),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user),
 ):
+    # SYNC-04 (Task 1.3): handler async, потому что moex.get_candles теперь async.
     account_id = auth_service.get_account_id(db, current_user)
     trade = (
         db.query(models.Trade)
@@ -95,7 +96,7 @@ def get_trade_replay(
     interval_auto = interval is None
     chosen = interval or moex.auto_interval(span)
 
-    candles_raw = moex.get_candles(
+    candles_raw = await moex.get_candles(
         ticker=trade.symbol,
         interval=chosen,
         start=range_start,

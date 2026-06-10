@@ -55,7 +55,7 @@
     "clearing_commission_total": "2.30",
     "dividends_gross": "0",
     "ndfl_withheld": "0",
-    "realized_pnl_approximate": "-5730.70",
-    "_realized_pnl_note": "26000 sell - 31550 all buys - 180.70 commissions = -5730.70. Это broker-report 'financial result периода': открытая позиция GAZP вычитается как closed minus inflows."
+    "realized_pnl_approximate": "789.71",
+    "_realized_pnl_note": "AU13 FIFO (closed-only, like-for-like с нашей стороной): SBER (260.00-250.50)x100 = 950.00, минус entry comm 78.65 минус exit comm 81.64 = 789.71. Открытая позиция GAZP (buy без sell) НЕ даёт realized P&L. (Прежнее -5730.70 — старая cash-flow формула sell-allBuys-comm, включавшая открытую покупку; устарело после AU13.)"
   }
 }

@@ -113,7 +113,7 @@ async def create_trade(
                 
                 # Рассчитываем MAE/MFE
                 try:
-                    mae, mfe = market_data_service.calculate_mae_mfe(
+                    mae, mfe = await market_data_service.calculate_mae_mfe(
                         ticker=open_trade.symbol,
                         direction=open_trade.direction.value,
                         entry_price=float(open_trade.entry_price),
@@ -172,7 +172,7 @@ async def create_trade(
                 )
                 
                 try:
-                    mae, mfe = market_data_service.calculate_mae_mfe(
+                    mae, mfe = await market_data_service.calculate_mae_mfe(
                         ticker=closed_trade.symbol,
                         direction=closed_trade.direction.value,
                         entry_price=float(closed_trade.entry_price),
@@ -375,6 +375,9 @@ async def import_trades(
     skipped_count = 0
     duplicate_count = 0
     balance_saved = False
+    # MATH-03: ORM-объекты вновь созданных трейдов — после commit'а их id
+    # уйдут в фоновый MAE/MFE backfill (см. import_service.schedule_mae_mfe_backfill).
+    new_trades_in_batch: list[models.Trade] = []
 
     # Кеш колонок Trade — чтобы не пересчитывать на каждой итерации.
     valid_columns = {c.name for c in models.Trade.__table__.columns}
@@ -422,6 +425,7 @@ async def import_trades(
             clean_dict = {k: v for k, v in trade_dict.items() if k in valid_columns}
             db_trade = models.Trade(**clean_dict)
             db.add(db_trade)
+            new_trades_in_batch.append(db_trade)
             # Записываем в индекс, чтобы дубликаты в ОДНОМ батче ловились тоже.
             existing_index[dedup_key] = -1
             imported_count += 1
@@ -430,7 +434,7 @@ async def import_trades(
         log.error(f"Import batch failed, rolled back {imported_count} pending inserts: {exc}")
         raise HTTPException(
             status_code=500,
-            detail=f"Импорт прерван из-за ошибки: {exc}. Изменения откачены — повторите попытку.",
+            detail="Импорт прерван из-за ошибки. Изменения откачены — повторите попытку.",
         )
     
     # Сохраняем снимки баланса если переданы
@@ -498,8 +502,17 @@ async def import_trades(
         log.error(f"Import commit failed, rolled back: {exc}")
         raise HTTPException(
             status_code=500,
-            detail=f"Не удалось сохранить импорт: {exc}. Изменения откачены — повторите попытку.",
+            detail="Не удалось сохранить импорт, повторите попытку.",
         )
+
+    # MATH-03 (Sprint 4, Task 5.1): после успешного commit'а — fire-and-forget
+    # MAE/MFE backfill для новых трейдов. Не блокирует HTTP-ответ; ошибки
+    # внутри глотаются per-trade. Open трейды (exit_at IS NULL) hook сам
+    # отфильтрует — им MAE/MFE не нужен.
+    new_trade_ids = [t.id for t in new_trades_in_batch if t.id is not None]
+    if new_trade_ids:
+        import_service.schedule_mae_mfe_backfill(new_trade_ids)
+
     return {
         "message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}" + (", баланс сохранён" if balance_saved else ""),
         "imported": imported_count,
@@ -517,8 +530,8 @@ async def import_trades(
 
 @router.get("/", response_model=list[schemas.Trade])
 async def read_trades(
-    skip: int = 0,
-    limit: int = 500,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=settings.MAX_TRADES_LIMIT),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
@@ -535,8 +548,8 @@ async def read_trades(
 @router.get("/positions", response_model=list[schemas.PositionTrade])
 async def read_position_trades(
     status: str = Query("all", pattern="^(all|open|closed)$"),
-    skip: int = 0,
-    limit: int = 500,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=settings.MAX_TRADES_LIMIT),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user),
 ):
@@ -571,15 +584,69 @@ async def read_position_trades(
             key = ("legacy", t.id)
         groups[key].append(t)
 
+    # PERF-10: фильтрация по status и реальная пагинация ДО построения
+    # PositionTrade-схем и префетча PositionORM. Раньше slice[skip:skip+limit]
+    # делался в самом конце над уже построенным списком из 5000 объектов —
+    # это перемалывало все группы впустую. Теперь:
+    #   1) Сразу отбрасываем группы не подходящие по `status`.
+    #   2) Сортируем по last-activity desc (newest first; matches финальный sort).
+    #   3) Slice по `skip`/`limit` — строим схемы только для нужных.
+    #   4) Префетч PositionORM только для UID'ов попавших в страницу.
+    def _group_status(group_trades: list[models.Trade]) -> str:
+        return "open" if any(t.exit_at is None for t in group_trades) else "closed"
+
+    def _group_last_activity(group_trades: list[models.Trade]) -> datetime:
+        # Для сортировки берём максимум exit_at (для closed) или entry_at —
+        # это аналог `first_entry_at`-сортировки в финале, но без построения
+        # схемы. Использовать `first_entry_at` (= min(entry_at)) было бы
+        # неточным для пагинации: open scaled-in группы с поздним добавлением
+        # должны быть свежее в выдаче. Берём last activity per round-trip.
+        return max((t.exit_at or t.entry_at) for t in group_trades)
+
+    filtered_groups = [
+        (key, group_trades)
+        for key, group_trades in groups.items()
+        if status == "all" or _group_status(group_trades) == status
+    ]
+    filtered_groups.sort(key=lambda kv: _group_last_activity(kv[1]), reverse=True)
+    paginated_groups = filtered_groups[skip : skip + limit]
+
+    # PERF-06: префетч PositionORM одним IN-SELECT вместо N+1.
+    # Раньше для каждой открытой группы делался отдельный query().first() —
+    # при 30 открытых позициях это 30 round-trip'ов вместо одного IN-запроса.
+    # PERF-10: префетчим только для paginated_groups, не для всех filtered.
+    open_uids: list[str] = []
+    seen_uids: set[str] = set()
+    for _, group_trades in paginated_groups:
+        if not any(t.exit_at is None for t in group_trades):
+            continue
+        uid = group_trades[0].instrument_uid
+        if uid and uid not in seen_uids:
+            seen_uids.add(uid)
+            open_uids.append(uid)
+
+    positions_by_uid: dict[str, models.PositionORM] = {}
+    if open_uids:
+        pos_rows = (
+            db.query(models.PositionORM)
+            .filter(
+                models.PositionORM.account_id == account_id,
+                models.PositionORM.instrument_uid.in_(open_uids),
+            )
+            .all()
+        )
+        positions_by_uid = {r.instrument_uid: r for r in pos_rows}
+
     positions: list[schemas.PositionTrade] = []
-    for key, group in groups.items():
+    for key, group in paginated_groups:
         first = group[0]  # earliest entry (sorted asc)
         # Detect status: any row with exit_at=None → position still open
         any_open = any(t.exit_at is None for t in group)
         position_status = "open" if any_open else "closed"
 
-        if status != "all" and status != position_status:
-            continue
+        # status-фильтр уже применён выше при формировании filtered_groups —
+        # повторная проверка не нужна. Оставляем переменные для downstream
+        # логики (any_open / position_status).
 
         # Aggregations
         total_qty = sum(float(t.quantity or 0) for t in group)
@@ -613,14 +680,7 @@ async def read_position_trades(
         # MTM считается на текущей живой позиции независимо от round-trip group.
         unrealized_pnl: Optional[float] = None
         if any_open and first.instrument_uid:
-            pos_row = (
-                db.query(models.PositionORM)
-                .filter(
-                    models.PositionORM.account_id == account_id,
-                    models.PositionORM.instrument_uid == first.instrument_uid,
-                )
-                .first()
-            )
+            pos_row = positions_by_uid.get(first.instrument_uid)
             if pos_row and pos_row.unrealized_pnl is not None:
                 unrealized_pnl = float(pos_row.unrealized_pnl)
 
@@ -801,9 +861,12 @@ async def read_position_trades(
             )
         )
 
-    # Sort: newest first by first_entry_at
+    # PERF-10: пагинация уже выполнена выше через paginated_groups; здесь
+    # лишь стабилизируем порядок по first_entry_at desc (как было исторически
+    # для UI Journal). Slice больше не нужен — paginated_groups содержит
+    # ровно `limit` страничных групп.
     positions.sort(key=lambda p: p.first_entry_at, reverse=True)
-    return positions[skip : skip + limit]
+    return positions
 
 
 import os
@@ -1060,7 +1123,7 @@ async def close_trade(
     
     if db_trade.mae_price is None or db_trade.mfe_price is None:
         try:
-            mae, mfe = market_data_service.calculate_mae_mfe(
+            mae, mfe = await market_data_service.calculate_mae_mfe(
                 ticker=db_trade.symbol,
                 direction=db_trade.direction.value,
                 entry_price=float(db_trade.entry_price),
@@ -1264,7 +1327,7 @@ async def calculate_mae_mfe_bulk(
             if operations:
                 entry_count = len([op for op in operations if op.get('type') == 'entry'])
             
-            mae, mfe = market_data_service.calculate_mae_mfe(
+            mae, mfe = await market_data_service.calculate_mae_mfe(
                 ticker=trade.symbol,
                 direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
                 entry_price=float(trade.entry_price),  # Уже средневзвешенная при усреднении
@@ -1374,7 +1437,7 @@ async def calculate_post_exit_bulk(
             if not trade.exit_at or not trade.exit_price:
                 continue
             
-            analysis = market_data_service.calculate_post_exit_analysis(
+            analysis = await market_data_service.calculate_post_exit_analysis(
                 ticker=trade.symbol,
                 direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
                 exit_price=float(trade.exit_price),
@@ -1594,7 +1657,7 @@ async def get_trade_post_exit(
         return trade.post_exit_analysis
     
     # Иначе рассчитываем
-    analysis = market_data_service.calculate_post_exit_analysis(
+    analysis = await market_data_service.calculate_post_exit_analysis(
         ticker=trade.symbol,
         direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
         exit_price=float(trade.exit_price),

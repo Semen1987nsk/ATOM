@@ -177,6 +177,47 @@ class TestAggregateBrokerReport:
         assert result["realized_pnl"] == Decimal("937")
         assert result["broker_commission_total"] == Decimal("63")
 
+    def _aci_row(self, direction, price, aci, when):
+        return BrokerReportTradeRow(
+            trade_id=f"b-{direction}-{when.isoformat()}",
+            direction=direction,
+            ticker="SU26238RMFS4",
+            trade_datetime=when,
+            quantity=1,
+            price=Decimal(price),
+            aci_value=Decimal(aci),
+        )
+
+    def test_aci_included_closing_long(self):
+        """AU13-fix: НКД учитывается при закрытии лонга по облигации.
+        buy 100 (НКД 5) → sell 110 (НКД 8): realized = (110-100) + (8-5) = 13."""
+        rows = [
+            self._aci_row("buy", "100", "5", datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            self._aci_row("sell", "110", "8", datetime(2026, 1, 20, tzinfo=timezone.utc)),
+        ]
+        result = aggregate_broker_report(rows, [])
+        assert result["realized_pnl"] == Decimal("13")
+
+    def test_aci_included_closing_short(self):
+        """Симметрия для шорта (не покрыто golden-фикстурами).
+        sell 110 (НКД 8) открыл шорт → buy 100 (НКД 5) закрыл:
+        realized = (110-100) + (8-5) = 13."""
+        rows = [
+            self._aci_row("sell", "110", "8", datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            self._aci_row("buy", "100", "5", datetime(2026, 1, 20, tzinfo=timezone.utc)),
+        ]
+        result = aggregate_broker_report(rows, [])
+        assert result["realized_pnl"] == Decimal("13")
+
+    def test_no_aci_unchanged(self):
+        """aci_value=None (акции/фьючерсы) → поведение прежнее, НКД не влияет."""
+        rows = [
+            _row("buy", "100", when=datetime(2026, 1, 5, tzinfo=timezone.utc)),
+            _row("sell", "110", when=datetime(2026, 1, 20, tzinfo=timezone.utc)),
+        ]
+        result = aggregate_broker_report(rows, [])
+        assert result["realized_pnl"] == Decimal("10")
+
     def test_multiple_commission_types(self):
         rows = [_row("buy", "10000", broker_c="30", exch_c="5", clear_c="2")]
         result = aggregate_broker_report(rows, [])

@@ -81,21 +81,47 @@ def calculate_advanced_stats(trades_pnl: List[float], trades_risk: List[float]) 
         "max_drawdown": round(max_drawdown, 2)
     }
 
-def calculate_sharpe_sortino(trades_pnl: List[float], risk_free_rate: float = 0.0) -> Dict:
+def calculate_sharpe_sortino(
+    trades_pnl: List[float],
+    risk_free_rate: float = 0.0,
+    trades_per_year: Optional[int] = None,
+) -> Dict:
     """
-    Расчет Sharpe Ratio и Sortino Ratio.
+    Расчет Sharpe Ratio и Sortino Ratio — per-trade и annualized.
+
     Sharpe = (Mean Return - Rf) / StdDev(Returns)
     Sortino = (Mean Return - Rf) / Downside Deviation
+    Annualized = per_trade × sqrt(trades_per_year).
+
+    Возвращает:
+        {
+            "sharpe":  {"per_trade": float|None, "annualized": float|None, "trades_per_year": int|None},
+            "sortino": {"per_trade": float|None, "annualized": float|None, "trades_per_year": int|None},
+            # backwards-compat top-level aliases (per_trade):
+            "sharpe_ratio":  float|None,
+            "sortino_ratio": float|None,
+        }
     """
+    empty_metric = {
+        "per_trade": 0.0,
+        "annualized": None,
+        "trades_per_year": trades_per_year,
+    }
     if not trades_pnl or len(trades_pnl) < 2:
-        return {"sharpe_ratio": 0, "sortino_ratio": 0, "message": "Недостаточно данных"}
+        return {
+            "sharpe": dict(empty_metric),
+            "sortino": dict(empty_metric),
+            "sharpe_ratio": 0,
+            "sortino_ratio": 0,
+            "message": "Недостаточно данных",
+        }
 
     returns = np.array(trades_pnl, dtype=np.float64)
     mean_return = float(np.mean(returns))
     std_dev = float(np.std(returns, ddof=1))
 
-    # Sharpe Ratio
-    sharpe = (mean_return - risk_free_rate) / std_dev if std_dev > 0 else 0.0
+    # Sharpe Ratio (per-trade)
+    sharpe_pt = (mean_return - risk_free_rate) / std_dev if std_dev > 0 else 0.0
 
     # Sortino Ratio = (Mean Return - Rf) / Downside Deviation
     # Используем стандартную downside deviation по всем периодам:
@@ -103,16 +129,46 @@ def calculate_sharpe_sortino(trades_pnl: List[float], risk_free_rate: float = 0.
     downside_diff = np.minimum(returns - risk_free_rate, 0.0)
     downside_dev = float(np.sqrt(np.mean(np.square(downside_diff))))
     if downside_dev > 0:
-        sortino = (mean_return - risk_free_rate) / downside_dev
+        sortino_pt = (mean_return - risk_free_rate) / downside_dev
     elif mean_return - risk_free_rate > 0:
-        # Все сделки выше risk-free → downside = 0, Sortino математически бесконечен.
-        sortino = UNDEFINED
+        # Все сделки выше risk-free → downside = 0, Sortino математически не определён.
+        sortino_pt = UNDEFINED
     else:
-        sortino = 0.0
+        sortino_pt = 0.0
+
+    sharpe_pt_clean = _sanitize(sharpe_pt)
+    sortino_pt_clean = _sanitize(sortino_pt) if sortino_pt is not None else None
+
+    sqrt_n = math.sqrt(trades_per_year) if trades_per_year and trades_per_year > 0 else None
+
+    sharpe_pt_rounded = round(sharpe_pt_clean or 0.0, 4)
+    sortino_pt_rounded = (
+        round(sortino_pt_clean, 4) if sortino_pt_clean is not None else None
+    )
+
+    sharpe_block = {
+        "per_trade": sharpe_pt_rounded,
+        "annualized": round(sharpe_pt_rounded * sqrt_n, 4) if sqrt_n else None,
+        "trades_per_year": trades_per_year,
+    }
+    sortino_block = {
+        "per_trade": sortino_pt_rounded,
+        "annualized": (
+            round(sortino_pt_rounded * sqrt_n, 4)
+            if (sortino_pt_rounded is not None and sqrt_n)
+            else None
+        ),
+        "trades_per_year": trades_per_year,
+    }
 
     return {
-        "sharpe_ratio": round(_sanitize(sharpe) or 0.0, 2),
-        "sortino_ratio": round(_sanitize(sortino), 2) if sortino is not None else None,
+        "sharpe": sharpe_block,
+        "sortino": sortino_block,
+        # backwards-compat aliases (per-trade, 2-знаков как раньше)
+        "sharpe_ratio": round(sharpe_pt_clean or 0.0, 2),
+        "sortino_ratio": (
+            round(sortino_pt_clean, 2) if sortino_pt_clean is not None else None
+        ),
     }
 
 def calculate_calmar_ratio(trades_pnl: List[float], initial_balance: float = 100000, period_years: float = 1.0) -> Dict:
@@ -300,63 +356,67 @@ def calculate_drawdown_stats(
 
 def calculate_risk_of_ruin(win_rate: float, payoff_ratio: float, risk_per_trade: float = 0.02) -> Dict:
     """
-    Расчет Risk of Ruin — вероятность потерять определённый % капитала.
-    Формула: RoR = ((1 - Edge) / (1 + Edge)) ^ Capital_Units
-    где Edge = (Win_Rate * Payoff_Ratio) - (1 - Win_Rate)
+    Risk of Ruin — каноническая формула Vince (gambler's ruin).
+
+    RoR = ((1 - edge) / (1 + edge)) ^ N
+    где
+        edge = win_rate × payoff_ratio − (1 − win_rate)
+        N    = capital_units = target_loss_pct / risk_per_trade
+
+    Возвращает вероятность (%) потерять 20% / 50% капитала.
+
+    edge ≤ 0  → разорение гарантировано (100%).
+    Невалидные входы (win_rate ∉ (0,1), payoff ≤ 0, risk ≤ 0) → None.
     """
-    if win_rate <= 0 or win_rate >= 1 or payoff_ratio <= 0:
+    if not (0 < win_rate < 1) or payoff_ratio <= 0 or risk_per_trade <= 0:
         return {
-            "ror_20pct": 0,
-            "ror_50pct": 0,
-            "message": "Недостаточно данных"
+            "ror_20pct": None,
+            "ror_50pct": None,
+            "risk_of_ruin_pct": None,
+            "edge": None,
+            "message": "Недостаточно данных",
         }
 
-    # Edge = Expected value per unit risked
-    edge = (win_rate * payoff_ratio) - (1 - win_rate)
+    loss_rate = 1.0 - win_rate
+    edge = win_rate * payoff_ratio - loss_rate
 
     if edge <= 0:
-        # Отрицательное мат. ожидание — разорение неизбежно
-        return {
-            "ror_20pct": 100.0,
-            "ror_50pct": 100.0,
-            "message": "Отрицательное мат. ожидание! Разорение неизбежно."
-        }
-
-    # Формула Risk of Ruin
-    # RoR = ((1 - p) / p) ^ n, где p = win_rate, n = capital units
-    # Но с учётом payoff:
-    # RoR = ((q/p) * (1/payoff))^n где q = 1 - win_rate
-
-    q = 1 - win_rate
-
-    # Упрощённая формула с учётом edge
-    # edge = win_rate * payoff - (1 - win_rate)
-    # p_effective = 0.5 + edge/2 (нормированная вероятность)
-    p_effective = 0.5 + edge / 2
-    p_effective = max(0.01, min(0.99, p_effective))  # Ограничиваем
-
-    if p_effective <= 0.5:
+        # Нулевое или отрицательное мат. ожидание — ruin неизбежен.
         return {
             "ror_20pct": 100.0,
             "ror_50pct": 100.0,
             "risk_of_ruin_pct": 100.0,
-            "message": "Высокий риск разорения"
+            "edge": round(edge, 4),
+            "message": "Отрицательное мат. ожидание! Разорение неизбежно.",
         }
 
-    # Capital units для разных уровней просадки
-    units_20pct = 0.20 / risk_per_trade  # Сколько ставок в 20% капитала
+    # При edge ≥ 1 формула вырождается (ratio ≤ 0): такой эдж = условный
+    # «невозможный» — payoff и winrate настолько хороши, что классический
+    # gambler's ruin математически = 0%. Это всё ещё аппроксимация (Vince
+    # предполагает дискретный +/- payoff), на практике для edge ≥ 1
+    # возвращаем 0% (безопасный нижний bound).
+    if edge >= 1:
+        return {
+            "ror_20pct": 0.0,
+            "ror_50pct": 0.0,
+            "risk_of_ruin_pct": 0.0,
+            "edge": round(edge, 4),
+            "message": "OK",
+        }
+
+    ratio = (1 - edge) / (1 + edge)
+    units_20pct = 0.20 / risk_per_trade
     units_50pct = 0.50 / risk_per_trade
 
-    ratio = (1 - p_effective) / p_effective
     ror_20 = min(100.0, (ratio ** units_20pct) * 100)
     ror_50 = min(100.0, (ratio ** units_50pct) * 100)
 
     return {
-        "ror_20pct": round(ror_20, 2),
-        "ror_50pct": round(ror_50, 2),
-        "risk_of_ruin_pct": round(ror_50, 2),  # Для совместимости
+        "ror_20pct": round(ror_20, 4),
+        "ror_50pct": round(ror_50, 4),
+        "risk_of_ruin_pct": round(ror_50, 4),  # backwards-compat alias
         "edge": round(edge, 4),
-        "message": "OK" if ror_50 < 5 else "Внимание: высокий риск"
+        "message": "OK" if ror_50 < 5 else "Внимание: высокий риск",
     }
 
 def calculate_kelly_criterion(trades_pnl: List[float]) -> Dict:

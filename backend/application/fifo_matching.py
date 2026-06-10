@@ -75,7 +75,15 @@ DEFAULT_CALCULATORS: dict[InstrumentType, PnLCalculator] = {
 # ── helpers ─────────────────────────────────────────────────────────
 
 
-_BUY_TYPES = {OperationType.BUY, OperationType.BUY_CARD, OperationType.BUY_MARGIN}
+_BUY_TYPES = {
+    OperationType.BUY,
+    OperationType.BUY_CARD,
+    OperationType.BUY_MARGIN,
+    # MATH-10: первичное размещение (IPO/SPO) = покупка (LONG, payment<0).
+    # Без этого PRIMARY_ORDER учитывался в journal-side cash-flow как TRADE,
+    # но FIFO не строил лот → orphan-расхождение в cash-anchored reconcile.
+    OperationType.PRIMARY_ORDER,
+}
 _SELL_TYPES = {OperationType.SELL, OperationType.SELL_CARD, OperationType.SELL_MARGIN}
 
 # AU11: OPTION_EXPIRATION закрывает открытую позицию принудительно — раньше

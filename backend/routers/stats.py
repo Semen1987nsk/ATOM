@@ -22,9 +22,24 @@ from moex_service import get_moex_service
 from services.stats_cache import (
     stats_cache,
     build_request_key as _get_cache_key,
-    build_trades_state_fingerprint as _get_trades_state_fingerprint,
 )
-import asyncio
+from config import settings
+from utils.downsample import lttb
+
+
+def _downsample_equity_curve(curve: list[dict], max_points: int) -> list[dict]:
+    """PERF-10: LTTB-сжатие equity_curve к max_points точкам.
+
+    Сохраняет первую и последнюю точку (важно для UI: стартовый и текущий
+    баланс). Работает по индексу события, чтобы вернуть оригинальные dict'ы
+    (а не интерполированные значения), включая поле `date`.
+    """
+    if len(curve) <= max_points or max_points < 3:
+        return curve
+    indexed = [(float(i), float(p.get("balance", 0))) for i, p in enumerate(curve)]
+    kept_indices = {int(p[0]) for p in lttb(indexed, max_points)}
+    return [p for i, p in enumerate(curve) if i in kept_indices]
+
 
 log = get_logger("stats")
 
@@ -42,6 +57,29 @@ def _set_cached(key, value):
     stats_cache.set(key, value)
 
 
+def _get_trades_state_fingerprint(db: Session, account_id: int) -> str:
+    """PERF-07: дешёвый fingerprint без загрузки всех Trade-rows.
+
+    Один aggregate-SQL: `max(id) || count(id)`. Меняется при любом
+    INSERT/DELETE сделок аккаунта. UPDATE-only без изменения id/count
+    fingerprint не ловит — но это редкий путь (re-attribution делает
+    update в рамках того же sync, где также происходят inserts/deletes),
+    а TTL stats_cache (30с) даёт страховку.
+
+    Поднимается ДО загрузки трейдов в `get_stats`: при cache hit роутер
+    не делает heavy `query.all()` (5k+ rows).
+
+    Note: модель Trade не имеет `updated_at` — используем `max(id)` как
+    proxy для «последний INSERT'нутый trade». `count(id)` детектит DELETE.
+    """
+    row = db.query(
+        func.coalesce(func.max(models.Trade.id), 0),
+        func.count(models.Trade.id),
+    ).filter(models.Trade.account_id == account_id).one()
+    max_id, total = row
+    return f"{int(max_id or 0)}|{int(total or 0)}"
+
+
 def _count_open_positions(db: Session, account_id: int) -> int:
     """Сколько открытых позиций в `positions` ORM (после mark-to-market)."""
     return (
@@ -56,14 +94,6 @@ def _count_open_positions(db: Session, account_id: int) -> int:
 
 async def _build_imoex_overlay_async(equity_curve: list) -> list:
     """
-    Async-обёртка вокруг sync `MoexService.get_index_history`. Без неё блокирует
-    event loop на ~0.3-2 сек на холодном кэше — для async-handler это убийственно.
-    """
-    return await asyncio.to_thread(_build_imoex_overlay, equity_curve)
-
-
-def _build_imoex_overlay(equity_curve: list) -> list:
-    """
     IMOEX overlay для сравнения equity счёта с индексом MOEX.
 
     Берёт диапазон дат из equity_curve, тянет дневные значения IMOEX
@@ -72,6 +102,9 @@ def _build_imoex_overlay(equity_curve: list) -> list:
     под точки equity_curve, чтобы фронт мог матчить по дате.
 
     Если кривая пуста или MOEX недоступен — пустой список (фронт скрывает overlay).
+
+    SYNC-04 (Task 1.3): `MoexService.get_index_history` стал async — to_thread
+    обёртка больше не нужна, await напрямую.
     """
     if not equity_curve:
         return []
@@ -84,7 +117,7 @@ def _build_imoex_overlay(equity_curve: list) -> list:
     # Расширяем окно на день в каждую сторону, чтобы поймать ближайшую
     # торговую сессию в случае выходных на границах.
     try:
-        return get_moex_service().get_index_history(
+        return await get_moex_service().get_index_history(
             "IMOEX",
             start=first_date - timedelta(days=2),
             end=last_date + timedelta(days=2),
@@ -179,7 +212,24 @@ async def get_stats(
         except ValueError:
             pass
 
-    # Query trades with filter
+    # PERF-07: fingerprint считаем ДО загрузки trades. Aggregate-SQL
+    # (max(id)+count(id)) — дешевле, чем грузить все Trade-rows. На cache hit
+    # тяжёлый `query.all()` ниже вообще не выполняется. Сам fingerprint
+    # покрывает все трейды аккаунта; tag/period/limit участвуют в cache_key
+    # как отдельные параметры — разный фильтр → разный ключ → раздельный кэш.
+    trades_fingerprint = _get_trades_state_fingerprint(db, account_id)
+    cache_key = _get_cache_key(account_id, period=period, start_date=start_date,
+                               end_date=end_date, start_trade_id=start_trade_id,
+                               tag=tag, limit=limit, mae_method=mae_method,
+                               initial_deposit=initial_deposit,
+                               account_initial_balance=account_initial_balance,
+                               trades_fingerprint=trades_fingerprint)
+    cached = _get_cached(cache_key)
+    if cached:
+        log.debug(f"Stats cache hit for key {cache_key[:8]}")
+        return cached
+
+    # Query trades with filter (выполняется только при cache miss)
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.pnl != None
@@ -201,10 +251,20 @@ async def get_stats(
         except ValueError:
             pass
 
+    # PERF-08b (2026-05-26): tag-фильтр dialect-aware.
+    # Postgres: `tags @> '["FOMO"]'` через JSONB + GIN-индекс
+    #   (миграция 0028) — фильтрует в БД, не тянет лишние строки.
+    # SQLite (dev/tests): JSON `contains`-оператора нет → оставляем
+    #   Python-loop fallback после `.all()`. Также fallback сохраняет
+    #   case-insensitive семантику (legacy-поведение).
+    is_postgres = db.bind.dialect.name == "postgresql"
+    if tag and is_postgres:
+        query = query.filter(models.Trade.tags.contains([tag]))
+
     all_trades = query.order_by(models.Trade.exit_at.desc()).all()
 
-    # Filter by tag if specified
-    if tag:
+    # SQLite-fallback: фильтр в Python (case-insensitive, legacy).
+    if tag and not is_postgres:
         tag_lower = tag.lower()
         all_trades = [t for t in all_trades if t.tags and any(tg.lower() == tag_lower for tg in t.tags)]
 
@@ -213,18 +273,6 @@ async def get_stats(
         all_trades = all_trades[:limit]
 
     trades = all_trades
-
-    trades_fingerprint = _get_trades_state_fingerprint(trades)
-    cache_key = _get_cache_key(account_id, period=period, start_date=start_date,
-                               end_date=end_date, start_trade_id=start_trade_id,
-                               tag=tag, limit=limit, mae_method=mae_method,
-                               initial_deposit=initial_deposit,
-                               account_initial_balance=account_initial_balance,
-                               trades_fingerprint=trades_fingerprint)
-    cached = _get_cached(cache_key)
-    if cached:
-        log.debug(f"Stats cache hit for key {cache_key[:8]}")
-        return cached
 
     total_trades = len(trades)
     if total_trades == 0:
@@ -694,6 +742,14 @@ async def get_stats(
             }
         ]
 
+    # PERF-10: LTTB-downsample equity_curve / equity_curve_gross.
+    # ~5000 трейдов → 5000+ JSON-точек ломали фронт-чарт; LTTB даёт
+    # визуально неотличимую кривую при N≤EQUITY_CURVE_MAX_POINTS точках.
+    # Сохраняются первая и последняя точки (стартовый и текущий баланс).
+    _max_points = settings.EQUITY_CURVE_MAX_POINTS
+    equity_curve = _downsample_equity_curve(equity_curve, _max_points)
+    equity_curve_gross = _downsample_equity_curve(equity_curve_gross, _max_points)
+
     result = {
         "total_pnl": total_pnl,
         "unrealized_pnl": unrealized_pnl,
@@ -888,8 +944,9 @@ async def get_calendar_pnl(
     account_id = auth_service.get_account_id(db, current_user)
     trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
                                    None, None, None)
+    # MATH-01: дневной P&L для календарной heatmap — NET (после комиссий).
     trades_for_calendar = [
-        {"entry_at": t.entry_at, "pnl": float(t.pnl or 0)}
+        {"entry_at": t.entry_at, "pnl": float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))}
         for t in trades
     ]
     return {
@@ -1150,7 +1207,9 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
             continue
 
         is_long = t.direction.value == 'long' if hasattr(t.direction, 'value') else t.direction == 'long'
-        pnl = float(t.pnl) if t.pnl else 0
+        # MATH-01: NET-pnl (после комиссий) приоритетнее GROSS. GROSS-fallback
+        # только если net_pnl ещё не посчитан (legacy / manual ввод без fees).
+        pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
         pnl_sum += pnl
         if pnl > 0:
             wins += 1
@@ -1197,7 +1256,11 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
     avg_win = float(np.mean(win_pnls)) if win_pnls else 0
     avg_loss = float(np.mean(loss_pnls)) if loss_pnls else 0
     real_rr = avg_win / avg_loss if avg_loss > 0 else 0
-    profit_factor = sum(win_pnls) / sum(loss_pnls) if loss_pnls and sum(loss_pnls) > 0 else 0
+    # MATH-05: profit_factor = None (UNDEFINED) при отсутствии лузеров.
+    # Семантически 0 = "плохой PF"; all-winners = ∞, представляется как UNDEFINED
+    # (так же, как в analytics.calculate_advanced_stats).
+    total_losses = sum(loss_pnls)
+    profit_factor = (sum(win_pnls) / total_losses) if total_losses > 0 else None
     required_winrate = 1 / (1 + real_rr) * 100 if real_rr > 0 else 100
 
     return {
@@ -1214,7 +1277,7 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
         "avg_win": round(avg_win, 2),
         "avg_loss": round(avg_loss, 2),
         "real_rr": round(real_rr, 2),
-        "profit_factor": round(profit_factor, 2),
+        "profit_factor": round(profit_factor, 2) if profit_factor is not None else None,
         "required_winrate": round(required_winrate, 1),
         "mae_percentiles": {
             "p25": round(float(np.percentile(mae_arr, 25)), 2),
@@ -1559,7 +1622,8 @@ async def get_mae_mfe_by_symbol(
             continue
 
         is_long = t.direction.value == 'long' if hasattr(t.direction, 'value') else t.direction == 'long'
-        pnl = float(t.pnl) if t.pnl else 0
+        # MATH-01: NET-pnl (после комиссий) приоритетнее GROSS.
+        pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
 
         # Рассчитываем MAE/MFE в процентах
         mae_price = float(t.mae_price) if t.mae_price else entry_price
@@ -1654,9 +1718,22 @@ async def get_mae_mfe_by_symbol(
         short_trades = [t for t in symbol_data[symbol]["trades"]
                         if (t.direction.value if hasattr(t.direction, 'value') else t.direction) == 'short']
 
+        # MATH-01: NET-pnl суммы в by-direction breakdown.
         sym_data["by_direction"] = {
-            "long": {"count": len(long_trades), "pnl": sum(float(t.pnl or 0) for t in long_trades)},
-            "short": {"count": len(short_trades), "pnl": sum(float(t.pnl or 0) for t in short_trades)}
+            "long": {
+                "count": len(long_trades),
+                "pnl": sum(
+                    float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
+                    for t in long_trades
+                ),
+            },
+            "short": {
+                "count": len(short_trades),
+                "pnl": sum(
+                    float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
+                    for t in short_trades
+                ),
+            },
         }
 
     # Добавляем общую статистику

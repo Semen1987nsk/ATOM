@@ -75,15 +75,16 @@ class TestCalculateMaeMfe:
     def setup_method(self):
         self.service = MarketService()
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_long_trade_bullish_market(self, mock_get_candles):
+    async def test_long_trade_bullish_market(self, mock_get_candles):
         """LONG в растущем рынке: MFE > entry, MAE близок к entry."""
         # Свечи с восходящим трендом
         mock_get_candles.return_value = generate_candles(
             base_price=100, num_candles=10, volatility=0.01, trend="up"
         )
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -96,14 +97,15 @@ class TestCalculateMaeMfe:
         assert mfe > mae, "MFE должен быть больше MAE для LONG в растущем рынке"
         # Для LONG: MAE = min price, MFE = max price
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_long_trade_bearish_market(self, mock_get_candles):
+    async def test_long_trade_bearish_market(self, mock_get_candles):
         """LONG в падающем рынке: MAE значительно ниже entry."""
         mock_get_candles.return_value = generate_candles(
             base_price=100, num_candles=10, volatility=0.02, trend="down"
         )
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -115,14 +117,15 @@ class TestCalculateMaeMfe:
         assert mfe is not None
         assert mae < 100, "MAE должен быть ниже entry для LONG в падающем рынке"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_short_trade_bearish_market(self, mock_get_candles):
+    async def test_short_trade_bearish_market(self, mock_get_candles):
         """SHORT в падающем рынке: MFE ниже entry (хорошо для шорта)."""
         mock_get_candles.return_value = generate_candles(
             base_price=100, num_candles=10, volatility=0.02, trend="down"
         )
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="SHORT",
             entry_price=100.0,
@@ -135,14 +138,15 @@ class TestCalculateMaeMfe:
         # Для SHORT: MAE = max price (против нас), MFE = min price (в нашу пользу)
         assert mfe < mae, "MFE должен быть меньше MAE для SHORT в падающем рынке"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_short_trade_bullish_market(self, mock_get_candles):
+    async def test_short_trade_bullish_market(self, mock_get_candles):
         """SHORT в растущем рынке: MAE высоко (убыток)."""
         mock_get_candles.return_value = generate_candles(
             base_price=100, num_candles=10, volatility=0.02, trend="up"
         )
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="SHORT",
             entry_price=100.0,
@@ -154,14 +158,15 @@ class TestCalculateMaeMfe:
         assert mfe is not None
         assert mae > 100, "MAE должен быть выше entry для SHORT в растущем рынке"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_volatile_market(self, mock_get_candles):
+    async def test_volatile_market(self, mock_get_candles):
         """Волатильный рынок: большой разброс MAE/MFE."""
         mock_get_candles.return_value = generate_candles(
             base_price=100, num_candles=20, volatility=0.05, trend="volatile"
         )
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -174,12 +179,13 @@ class TestCalculateMaeMfe:
         spread = mfe - mae
         assert spread > 5, f"В волатильном рынке разброс должен быть большим, получено: {spread}"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_no_candles_returns_none(self, mock_get_candles):
+    async def test_no_candles_returns_none(self, mock_get_candles):
         """Нет данных — возвращаем None."""
         mock_get_candles.return_value = []
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="UNKNOWN",
             direction="LONG",
             entry_price=100.0,
@@ -190,8 +196,9 @@ class TestCalculateMaeMfe:
         assert mae is None
         assert mfe is None
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_single_candle(self, mock_get_candles):
+    async def test_single_candle(self, mock_get_candles):
         """Одна свеча — MAE и MFE из high/low этой свечи."""
         mock_get_candles.return_value = [{
             'open': 100,
@@ -203,7 +210,7 @@ class TestCalculateMaeMfe:
             'end': '2025-12-01 11:00:00'
         }]
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -214,8 +221,9 @@ class TestCalculateMaeMfe:
         assert mae == 95, "MAE для LONG должен быть low"
         assert mfe == 105, "MFE для LONG должен быть high"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_single_candle_short(self, mock_get_candles):
+    async def test_single_candle_short(self, mock_get_candles):
         """Одна свеча для SHORT — логика инвертирована."""
         mock_get_candles.return_value = [{
             'open': 100,
@@ -227,7 +235,7 @@ class TestCalculateMaeMfe:
             'end': '2025-12-01 11:00:00'
         }]
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="SHORT",
             entry_price=100.0,
@@ -238,15 +246,16 @@ class TestCalculateMaeMfe:
         assert mae == 105, "MAE для SHORT должен быть high (против нас)"
         assert mfe == 95, "MFE для SHORT должен быть low (в нашу пользу)"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_candles_with_none_values(self, mock_get_candles):
+    async def test_candles_with_none_values(self, mock_get_candles):
         """Свечи с None значениями — пропускаем их."""
         mock_get_candles.return_value = [
             {'open': None, 'high': None, 'low': None, 'close': None, 'volume': 0, 'begin': '2025-12-01 10:00:00', 'end': '2025-12-01 11:00:00'},
             {'open': 100, 'high': 105, 'low': 95, 'close': 102, 'volume': 1000, 'begin': '2025-12-01 11:00:00', 'end': '2025-12-01 12:00:00'},
         ]
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -258,15 +267,16 @@ class TestCalculateMaeMfe:
         assert mae == 95
         assert mfe == 105
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_all_none_candles(self, mock_get_candles):
+    async def test_all_none_candles(self, mock_get_candles):
         """Все свечи с None — возвращаем None."""
         mock_get_candles.return_value = [
             {'open': None, 'high': None, 'low': None, 'close': None, 'volume': 0, 'begin': '2025-12-01 10:00:00', 'end': '2025-12-01 11:00:00'},
             {'open': None, 'high': None, 'low': None, 'close': None, 'volume': 0, 'begin': '2025-12-01 11:00:00', 'end': '2025-12-01 12:00:00'},
         ]
         
-        mae, mfe = self.service.calculate_mae_mfe(
+        mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -288,12 +298,13 @@ class TestCandleIntervalSelection:
     def setup_method(self):
         self.service = MarketService()
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_short_trade_uses_1min_candles(self, mock_get_candles):
+    async def test_short_trade_uses_1min_candles(self, mock_get_candles):
         """Короткая сделка (< 2 часов) использует 1-минутные свечи."""
         mock_get_candles.return_value = []
         
-        self.service.calculate_mae_mfe(
+        await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -308,12 +319,13 @@ class TestCandleIntervalSelection:
         interval = call_args[0][3] if len(call_args[0]) > 3 else call_args[1].get('interval', 60)
         assert interval == 1, f"Для короткой сделки должен быть interval=1, получено {interval}"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_intraday_trade_uses_10min_candles(self, mock_get_candles):
+    async def test_intraday_trade_uses_10min_candles(self, mock_get_candles):
         """Внутридневная сделка (2-24 часа) использует 10-минутные свечи."""
         mock_get_candles.return_value = []
         
-        self.service.calculate_mae_mfe(
+        await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -325,12 +337,13 @@ class TestCandleIntervalSelection:
         interval = call_args[0][3] if len(call_args[0]) > 3 else call_args[1].get('interval', 60)
         assert interval == 10, f"Для внутридневной сделки должен быть interval=10, получено {interval}"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_multiday_trade_uses_hourly_candles(self, mock_get_candles):
+    async def test_multiday_trade_uses_hourly_candles(self, mock_get_candles):
         """Многодневная сделка (1-7 дней) использует часовые свечи."""
         mock_get_candles.return_value = []
         
-        self.service.calculate_mae_mfe(
+        await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -342,12 +355,13 @@ class TestCandleIntervalSelection:
         interval = call_args[0][3] if len(call_args[0]) > 3 else call_args[1].get('interval', 60)
         assert interval == 60, f"Для многодневной сделки должен быть interval=60, получено {interval}"
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_long_term_trade_uses_daily_candles(self, mock_get_candles):
+    async def test_long_term_trade_uses_daily_candles(self, mock_get_candles):
         """Долгосрочная сделка (> 7 дней) использует дневные свечи."""
         mock_get_candles.return_value = []
         
-        self.service.calculate_mae_mfe(
+        await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
@@ -370,8 +384,9 @@ class TestMaeMfeSimulation:
     def setup_method(self):
         self.service = MarketService()
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_1000_random_scenarios(self, mock_get_candles):
+    async def test_1000_random_scenarios(self, mock_get_candles):
         """Тест 1000 случайных сценариев — нет падений."""
         import random
         random.seed(42)
@@ -391,7 +406,7 @@ class TestMaeMfeSimulation:
             mock_get_candles.return_value = candles
             
             try:
-                mae, mfe = self.service.calculate_mae_mfe(
+                mae, mfe = await self.service.calculate_mae_mfe(
                     ticker="TEST",
                     direction=direction,
                     entry_price=base_price,
@@ -419,8 +434,9 @@ class TestMaeMfeSimulation:
         assert len(crashes) == 0, f"Найдено {len(crashes)} падений:\n" + "\n".join(crashes[:10])
         assert len(invalid_results) == 0, f"Найдено {len(invalid_results)} невалидных результатов:\n" + "\n".join(invalid_results[:10])
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
-    def test_edge_cases(self, mock_get_candles):
+    async def test_edge_cases(self, mock_get_candles):
         """Тест граничных случаев."""
         
         test_cases = [
@@ -439,7 +455,7 @@ class TestMaeMfeSimulation:
             mock_get_candles.return_value = candles
             
             try:
-                mae, mfe = self.service.calculate_mae_mfe(
+                mae, mfe = await self.service.calculate_mae_mfe(
                     ticker="TEST",
                     direction="LONG",
                     entry_price=100.0,
@@ -473,10 +489,11 @@ class TestMoexApiIntegration:
         self.service = MarketService()
     
     @pytest.mark.integration
-    def test_real_sber_candles(self):
+    @pytest.mark.asyncio
+    async def test_real_sber_candles(self):
         """Тест получения реальных свечей SBER (пропускается без интернета)."""
         try:
-            candles = self.service.get_candles(
+            candles = await self.service.get_candles(
                 ticker="SBER",
                 start_date=datetime(2025, 12, 1),
                 end_date=datetime(2025, 12, 10),
@@ -493,10 +510,11 @@ class TestMoexApiIntegration:
             pytest.skip(f"MOEX API недоступен: {e}")
     
     @pytest.mark.integration
-    def test_real_futures_candles(self):
+    @pytest.mark.asyncio
+    async def test_real_futures_candles(self):
         """Тест получения реальных свечей фьючерса Si."""
         try:
-            candles = self.service.get_candles(
+            candles = await self.service.get_candles(
                 ticker="SiH6",  # Фьючерс на доллар
                 start_date=datetime(2025, 12, 1),
                 end_date=datetime(2025, 12, 10),

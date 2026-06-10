@@ -16,6 +16,7 @@ Reconciliation для финансовых метрик.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -153,11 +154,16 @@ def _check_price(moex, instrument, position) -> MoexCheckResult:
     if last_priced is None:
         last_priced = datetime.utcnow()
 
-    # Запрашиваем daily candle на дату последней цены
+    # Запрашиваем daily candle на дату последней цены.
+    # SYNC-04 (Task 1.3): moex.get_candles стал async. cross_check_account
+    # — sync nightly admin task (вне FastAPI event loop), оборачиваем в
+    # asyncio.run чтобы не делать каскад async по всему cross-check стеку.
     start = last_priced - timedelta(days=2)
     end = last_priced + timedelta(days=1)
     try:
-        candles = moex.get_candles(ticker, interval="1d", start=start, end=end)
+        candles = asyncio.run(
+            moex.get_candles(ticker, interval="1d", start=start, end=end)
+        )
     except Exception as exc:
         return MoexCheckResult(
             instrument_uid=position.instrument_uid,

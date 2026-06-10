@@ -209,13 +209,26 @@ class FuturesPnLCalculator(SharesPnLCalculator):
         truth от наблюдаемых transactions.
         """
         cached_pv = _point_value(instrument)
+        # MATH-11: weighted-avg PV по всем entry_slices (а не first-slice).
+        # Scaled-in трейды (несколько входов разного размера) делают
+        # first-slice репрезентативно слабым: 1 lot @ price1 → pv1, потом
+        # 9 lots @ price2 → pv2. Раньше брали только pv1, теперь — взвешенно
+        # по matched_qty: Σ (pv_i × qty_i) / Σ qty_i. Для одного slice'а
+        # результат идентичен старой формуле.
         empirical_pv: Decimal | None = None
-        if matched.entry_slices and matched.entry_avg_price > 0:
-            first_slice = matched.entry_slices[0]
-            pay_per_unit = abs(first_slice.lot.payment_per_unit)
-            price = first_slice.lot.price_per_unit
-            if price > 0:
-                empirical_pv = pay_per_unit / price
+        if matched.entry_slices:
+            total_pv_weighted = Decimal(0)
+            total_qty = Decimal(0)
+            for slc in matched.entry_slices:
+                price = slc.lot.price_per_unit
+                qty = Decimal(slc.matched_qty)
+                if price > 0 and qty > 0:
+                    pay_per_unit = abs(slc.lot.payment_per_unit)
+                    slice_pv = pay_per_unit / price
+                    total_pv_weighted += slice_pv * qty
+                    total_qty += qty
+            if total_qty > 0:
+                empirical_pv = total_pv_weighted / total_qty
         if empirical_pv is None:
             return cached_pv
         if cached_pv == 0:

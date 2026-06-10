@@ -130,9 +130,10 @@ class TestPostExitValidation:
     def setup_method(self):
         self.service = MarketService()
     
-    def test_invalid_exit_price_zero(self):
+    @pytest.mark.asyncio
+    async def test_invalid_exit_price_zero(self):
         """exit_price = 0 должен вернуть ошибку"""
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=0,
@@ -141,9 +142,10 @@ class TestPostExitValidation:
         assert "error" in result
         assert result["error"] == "Invalid exit_price"
     
-    def test_invalid_exit_price_negative(self):
+    @pytest.mark.asyncio
+    async def test_invalid_exit_price_negative(self):
         """exit_price < 0 должен вернуть ошибку"""
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=-100,
@@ -151,9 +153,10 @@ class TestPostExitValidation:
         )
         assert "error" in result
     
-    def test_missing_exit_time(self):
+    @pytest.mark.asyncio
+    async def test_missing_exit_time(self):
         """exit_time = None должен вернуть ошибку"""
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=100,
@@ -162,9 +165,10 @@ class TestPostExitValidation:
         assert "error" in result
         assert result["error"] == "Missing exit_time"
     
-    def test_invalid_direction(self):
+    @pytest.mark.asyncio
+    async def test_invalid_direction(self):
         """Невалидный direction должен вернуть ошибку"""
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="INVALID",
             exit_price=100,
@@ -173,9 +177,10 @@ class TestPostExitValidation:
         assert "error" in result
         assert result["error"] == "Invalid direction"
     
-    def test_empty_direction(self):
+    @pytest.mark.asyncio
+    async def test_empty_direction(self):
         """Пустой direction должен вернуть ошибку"""
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="",
             exit_price=100,
@@ -190,14 +195,15 @@ class TestPostExitWithMockedAPI:
     def setup_method(self):
         self.service = MarketService()
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
     @patch.object(MarketService, 'count_trading_hours')
-    def test_no_candles_returns_unavailable(self, mock_trading_hours, mock_candles):
+    async def test_no_candles_returns_unavailable(self, mock_trading_hours, mock_candles):
         """Пустые данные с API — период недоступен"""
         mock_candles.return_value = []
         mock_trading_hours.return_value = 10  # Достаточно торговых часов
         
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=100,
@@ -209,9 +215,10 @@ class TestPostExitWithMockedAPI:
         for period_data in result["periods"].values():
             assert period_data["available"] == False
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
     @patch.object(MarketService, 'count_trading_hours')
-    def test_weekend_period_shows_warning(self, mock_trading_hours, mock_candles):
+    async def test_weekend_period_shows_warning(self, mock_trading_hours, mock_candles):
         """Период на выходные показывает предупреждение"""
         mock_trading_hours.return_value = 2  # Мало торговых часов (попали на выходные)
         mock_candles.return_value = []
@@ -219,7 +226,7 @@ class TestPostExitWithMockedAPI:
         # Выход в пятницу вечером
         friday_evening = datetime(2026, 1, 9, 18, 0)
         
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=100,
@@ -232,9 +239,10 @@ class TestPostExitWithMockedAPI:
         assert period_24h.get("available") == False
         assert "нерабочие" in period_24h.get("message", "").lower()
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
     @patch.object(MarketService, 'count_trading_hours')
-    def test_long_early_exit_detected(self, mock_trading_hours, mock_candles):
+    async def test_long_early_exit_detected(self, mock_trading_hours, mock_candles):
         """LONG: рост цены после выхода = ранний выход"""
         mock_trading_hours.return_value = 10
         
@@ -244,7 +252,7 @@ class TestPostExitWithMockedAPI:
             {'open': 110, 'high': 120, 'low': 108, 'close': 118, 'begin': '2026-01-12 17:00'},
         ]
         
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=100,  # Вышли по 100
@@ -257,9 +265,10 @@ class TestPostExitWithMockedAPI:
         assert period_4h.get("exit_quality") == "early"
         assert period_4h.get("continuation_move_pct") > 0  # Цена выросла
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
     @patch.object(MarketService, 'count_trading_hours')
-    def test_short_early_exit_detected(self, mock_trading_hours, mock_candles):
+    async def test_short_early_exit_detected(self, mock_trading_hours, mock_candles):
         """SHORT: падение цены после выхода = ранний выход"""
         mock_trading_hours.return_value = 10
         
@@ -269,7 +278,7 @@ class TestPostExitWithMockedAPI:
             {'open': 90, 'high': 92, 'low': 80, 'close': 82, 'begin': '2026-01-12 17:00'},
         ]
         
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="SHORT",
             exit_price=100,  # Закрыли шорт по 100
@@ -282,9 +291,10 @@ class TestPostExitWithMockedAPI:
         assert period_4h.get("exit_quality") == "early"
         assert period_4h.get("continuation_move_pct") > 0  # Цена продолжила падение
     
+    @pytest.mark.asyncio
     @patch.object(MarketService, 'get_candles')
     @patch.object(MarketService, 'count_trading_hours')
-    def test_good_exit_detected(self, mock_trading_hours, mock_candles):
+    async def test_good_exit_detected(self, mock_trading_hours, mock_candles):
         """Правильный выход: цена развернулась"""
         mock_trading_hours.return_value = 10
         
@@ -294,7 +304,7 @@ class TestPostExitWithMockedAPI:
             {'open': 93, 'high': 94, 'low': 88, 'close': 89, 'begin': '2026-01-12 17:00'},
         ]
         
-        result = self.service.calculate_post_exit_analysis(
+        result = await self.service.calculate_post_exit_analysis(
             ticker="SBER",
             direction="LONG",
             exit_price=100,
@@ -352,7 +362,8 @@ class TestEdgeCases:
     def setup_method(self):
         self.service = MarketService()
     
-    def test_very_small_price_movement(self):
+    @pytest.mark.asyncio
+    async def test_very_small_price_movement(self):
         """Очень маленькое движение цены — neutral"""
         with patch.object(MarketService, 'get_candles') as mock_candles, \
              patch.object(MarketService, 'count_trading_hours') as mock_hours:
@@ -363,7 +374,7 @@ class TestEdgeCases:
                 {'open': 100, 'high': 100.3, 'low': 99.7, 'close': 100.1, 'begin': '2026-01-12 16:00'},
             ]
             
-            result = self.service.calculate_post_exit_analysis(
+            result = await self.service.calculate_post_exit_analysis(
                 ticker="SBER",
                 direction="LONG",
                 exit_price=100,
@@ -374,7 +385,8 @@ class TestEdgeCases:
             period_4h = result["periods"].get("4h", {})
             assert period_4h.get("exit_quality") == "neutral"
     
-    def test_extreme_price_movement(self):
+    @pytest.mark.asyncio
+    async def test_extreme_price_movement(self):
         """Экстремальное движение цены"""
         with patch.object(MarketService, 'get_candles') as mock_candles, \
              patch.object(MarketService, 'count_trading_hours') as mock_hours:
@@ -385,7 +397,7 @@ class TestEdgeCases:
                 {'open': 100, 'high': 150, 'low': 100, 'close': 145, 'begin': '2026-01-12 16:00'},
             ]
             
-            result = self.service.calculate_post_exit_analysis(
+            result = await self.service.calculate_post_exit_analysis(
                 ticker="SBER",
                 direction="LONG",
                 exit_price=100,

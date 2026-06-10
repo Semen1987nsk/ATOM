@@ -1,16 +1,21 @@
-import random
-import requests
+import re
 import threading
 import time as _time
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta, time
 from logger import get_logger
+from services import moex_async
 import pytz
 
 log = get_logger("market")
 
 # Московская временная зона
 MSK_TZ = pytz.timezone('Europe/Moscow')
+
+# SEC-13: allowlist тикера перед подстановкой в MOEX URL.
+# Допустимы буквы/цифры/.-_, длина ≤20 — покрывает акции (SBER), фьючерсы
+# (SiH6, BRZ5), облигации (RU000A...), валюты (USD000UTSTOM). Отсекает path-injection.
+_TICKER_RE = re.compile(r"^[A-Za-z0-9._-]{1,20}$")
 
 
 # ═══════════════════════════════════════════════════
@@ -52,46 +57,27 @@ _price_cache = _TTLCache(default_ttl=30.0)
 _specs_cache = _TTLCache(default_ttl=300.0)
 
 # ═══════════════════════════════════════════════════
-#  HTTP GET with retry + exponential backoff + jitter
+#  MOEX HTTP — делегируется services/moex_async (PERF-04)
 # ═══════════════════════════════════════════════════
 
-_MOEX_MAX_RETRIES = 2
-_MOEX_BACKOFF = (1.0, 3.0)
+# Прежде здесь жил sync requests.get + _backoff_with_jitter + _MOEX_MAX_RETRIES.
+# После PERF-04 retry/backoff/jitter сосредоточены в services/moex_async.fetch_json
+# (exponential + jitter), а старая sync-обвязка удалена.
 
 
-def _backoff_with_jitter(base: float) -> float:
+async def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
+    """GET MOEX ISS через общий httpx.AsyncClient (PERF-04).
+
+    Прежде здесь была sync requests.get с собственным retry+jitter. Теперь
+    делегируем общему async-singleton services/moex_async.fetch_json, который
+    несёт shared connection pool и async retry — это разблокирует event-loop
+    под /market/* эндпойнтами.
+
+    `timeout` параметр оставлен для обратной совместимости сигнатуры (старые
+    вызовы передавали 5/10), но игнорируется: timeout задаётся глобально на
+    AsyncClient в moex_async._DEFAULT_TIMEOUT.
     """
-    Backoff с jitter ±20% — критично при многопоточном клиенте.
-
-    Без jitter все gunicorn workers, получив 429, спят ровно `base` секунд
-    и одновременно ретрят → thundering herd, ещё один 429.
-    Случайность размазывает повторные запросы во времени.
-    """
-    return base * (0.8 + random.random() * 0.4)
-
-
-def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
-    """GET with retry+jitter for MOEX ISS. Returns parsed JSON or None."""
-    for attempt in range(_MOEX_MAX_RETRIES + 1):
-        try:
-            resp = requests.get(url, timeout=timeout)
-            if resp.status_code == 200:
-                return resp.json()
-            if resp.status_code in (429, 500, 502, 503) and attempt < _MOEX_MAX_RETRIES:
-                _time.sleep(_backoff_with_jitter(_MOEX_BACKOFF[attempt]))
-                continue
-            log.warning(f"MOEX API {resp.status_code} for {url}")
-            return None
-        except (requests.Timeout, requests.ConnectionError) as e:
-            if attempt < _MOEX_MAX_RETRIES:
-                _time.sleep(_backoff_with_jitter(_MOEX_BACKOFF[attempt]))
-                continue
-            log.warning(f"MOEX API error after retries for {url}: {e}")
-            return None
-        except Exception as e:
-            log.warning(f"MOEX API unexpected error for {url}: {e}")
-            return None
-    return None
+    return await moex_async.fetch_json(url)
 
 
 # ═══════════════════════════════════════════════════
@@ -181,11 +167,14 @@ class MarketService:
             return MSK_TZ.localize(dt)
         return dt.astimezone(MSK_TZ)
 
-    def get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
+    async def get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
         """
         Fetches current prices from MOEX ISS (Stocks, Futures, Currencies).
         Returns a dictionary {ticker: price}.
         Uses a 30-second TTL cache to avoid hammering MOEX on every request.
+
+        PERF-04: метод async; sync TTL-кэш сохраняется как был (thread-safe
+        Lock — он не тормозит event-loop, операции O(1)).
         """
         if not tickers:
             return {}
@@ -208,7 +197,7 @@ class MarketService:
 
         for url in self.sources:
             try:
-                data = _moex_get(url)
+                data = await _moex_get(url)
                 for entry in _normalize_iss_block(data, "marketdata"):
                     ticker = entry.get("SECID")
                     price = entry.get("LAST")
@@ -220,15 +209,17 @@ class MarketService:
             except Exception as e:
                 log.warning(f"Error fetching MOEX data from {url}: {e}")
                 continue
-        
+
         log.debug(f"Retrieved {len(prices)} prices")
         return prices
 
-    def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
+    async def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
         """
         Fetches futures specifications (MINSTEP, STEPPRICE) from MOEX.
         Returns a dictionary {ticker: {minstep: float, stepprice: float}}.
         Uses a 5-minute TTL cache (specs change rarely).
+
+        PERF-04: метод async — вызывается из async /market/futures-specs.
         """
         if not tickers:
             return {}
@@ -245,11 +236,11 @@ class MarketService:
 
         if not missing:
             return specs
-        
+
         url = "https://iss.moex.com/iss/engines/futures/markets/forts/boards/RFUD/securities.json"
-        
+
         try:
-            data = _moex_get(url)
+            data = await _moex_get(url)
             for entry in _normalize_iss_block(data, "securities"):
                 ticker = entry.get("SECID")
                 if ticker not in missing:
@@ -263,10 +254,10 @@ class MarketService:
                     }
                     specs[ticker] = spec
                     _specs_cache.set(f"spec:{ticker}", spec)
-        
+
         except Exception as e:
             log.warning(f"Error fetching MOEX futures specs: {e}")
-        
+
         log.debug(f"Retrieved specs for {len(specs)} futures")
         return specs
     
@@ -353,27 +344,38 @@ class MarketService:
         
         return trading_hours
     
-    def get_candles(
-        self, 
-        ticker: str, 
-        start_date: datetime, 
+    async def get_candles(
+        self,
+        ticker: str,
+        start_date: datetime,
         end_date: datetime,
         interval: int = 60  # 1 = 1min, 10 = 10min, 60 = 1hour, 24 = 1day
     ) -> List[Dict]:
         """
         Получает исторические свечи с MOEX ISS API.
-        
+
+        PERF-04: async — вызывается из async-роутов /trades/* через
+        calculate_mae_mfe / calculate_post_exit_analysis. Под массовыми bulk
+        пересчётами (50-500 сделок) sync requests.get блокировал event-loop
+        под FastAPI worker'ом; теперь все HTTP идут через общий
+        services/moex_async.fetch_json (httpx.AsyncClient + exponential
+        retry/backoff с jitter).
+
         Args:
             ticker: Тикер инструмента (например, SBER, SiH6)
             start_date: Начало периода
             end_date: Конец периода
             interval: Интервал свечей (1, 10, 60, 24)
-        
+
         Returns:
             Список словарей с данными свечей: {open, high, low, close, volume, begin, end}
         """
+        if not _TICKER_RE.match(ticker or ""):
+            log.warning("get_candles: invalid ticker rejected")
+            return []
+
         candles = []
-        
+
         # Определяем тип инструмента и соответствующий endpoint.
         # Формат: /iss/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles.json
         #
@@ -394,28 +396,30 @@ class MarketService:
             # Валюты selt CETS
             f"https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/{ticker}/candles.json",
         ]
-        
+
         # Форматируем даты для API
         from_date = start_date.strftime("%Y-%m-%d")
         to_date = end_date.strftime("%Y-%m-%d")
-        
+
         for url in endpoints:
             try:
-                # MOEX API поддерживает пагинацию, собираем все данные
+                # MOEX API поддерживает пагинацию, собираем все данные.
+                # Ретраи/таймауты/backoff — внутри moex_async.fetch_json.
                 start = 0
                 while True:
                     params = {
                         "from": from_date,
                         "till": to_date,
                         "interval": interval,
-                        "start": start
+                        "start": start,
                     }
-                    
-                    response = requests.get(url, params=params, timeout=10)
-                    if response.status_code != 200:
+
+                    data = await moex_async.fetch_json(url, params=params)
+                    if data is None:
+                        # Сеть/HTTP-ошибка после retry'ев — пробуем следующий endpoint
                         break
 
-                    rows = _normalize_iss_block(response.json(), "candles")
+                    rows = _normalize_iss_block(data, "candles")
                     if not rows:
                         break
 
@@ -435,19 +439,19 @@ class MarketService:
                     if len(rows) < 500:  # MOEX возвращает макс 500 записей
                         break
                     start += 500
-                
+
                 # Если нашли свечи, выходим из цикла
                 if candles:
                     log.debug(f"Retrieved {len(candles)} candles for {ticker} from {url}")
                     break
-                    
+
             except Exception as e:
                 log.warning(f"Error fetching candles for {ticker} from {url}: {e}")
                 continue
-        
+
         return candles
 
-    def calculate_mae_mfe(
+    async def calculate_mae_mfe(
         self,
         ticker: str,
         direction: str,  # "LONG" or "SHORT"
@@ -520,7 +524,7 @@ class MarketService:
             interval = 24  # Дневные для длинных
         
         # Получаем свечи (даты уже в MSK)
-        candles = self.get_candles(ticker, start_date, end_date, interval)
+        candles = await self.get_candles(ticker, start_date, end_date, interval)
         
         if not candles:
             log.warning(f"No candles found for {ticker} from {start_date} to {end_date}")
@@ -556,7 +560,7 @@ class MarketService:
         if not relevant_candles and interval > 1:
             # Если нет свечей в точном диапазоне, пробуем с 1-минутными для точности
             log.debug(f"No candles in exact range with interval={interval}, trying 1-minute candles")
-            candles_1m = self.get_candles(ticker, start_date, end_date, interval=1)
+            candles_1m = await self.get_candles(ticker, start_date, end_date, interval=1)
             
             for candle in candles_1m:
                 candle_begin = candle.get('begin', '')
@@ -650,7 +654,7 @@ class MarketService:
             log.debug(f"Failed to parse operation datetime: {op}, error: {e}")
             return None
 
-    def calculate_post_exit_analysis(
+    async def calculate_post_exit_analysis(
         self,
         ticker: str,
         direction: str,
@@ -743,7 +747,7 @@ class MarketService:
                 interval = 24  # Дневные
             
             # Используем MSK время для запроса и фильтрации свечей
-            candles = self.get_candles(ticker, exit_msk, period_end_msk, interval)
+            candles = await self.get_candles(ticker, exit_msk, period_end_msk, interval)
             
             if not candles:
                 result["periods"][f"{hours}h"] = {

@@ -4,14 +4,27 @@ MOEX ISS API Service
 
 Бесплатный API без авторизации!
 Документация: https://iss.moex.com/iss/reference/
+
+SYNC-04 (Task 1.3): два HTTP-метода переехали на async через
+services.moex_async.fetch_json:
+  - get_candles            → async (используется в /trades/{id}/replay)
+  - get_index_history      → async (используется в /stats/ под IMOEX overlay)
+
+get_futures_spec намеренно остаётся sync — его callers (pnl_service.get_point_value,
+import_service, application.sync.pipeline._get_point_value, moex_cross_check,
+tools/refresh_missing_instrument_specs) сами sync и не сидят на async event-loop
+горячего пути. Перевод его в async дал бы каскад переделки всего PnL-стека
+без выгоды по latency.
 """
 
-import httpx
+import httpx  # для sync get_futures_spec (PnL-cascade оставлен sync)
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from functools import lru_cache
+
+from services import moex_async
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +257,7 @@ class MoexService:
             return "1d"
         return "1w"
 
-    def get_candles(
+    async def get_candles(
         self,
         ticker: str,
         interval: str = "1h",
@@ -256,6 +269,9 @@ class MoexService:
 
         Returns: list of {t (ISO), o, h, l, c, v}.
         Возвращает [] если данных нет (тикер не найден / нерабочие дни / выходной).
+
+        SYNC-04: async — вызывается из /trades/{id}/replay (async handler).
+        Через moex_async.fetch_json: shared AsyncClient + retry/backoff.
         """
         interval_code = self.normalize_interval(interval)
 
@@ -285,36 +301,35 @@ class MoexService:
                 f"{MOEX_ISS_BASE}/engines/futures/markets/forts/securities/{ticker}/candles.json",
             ]
 
-        try:
-            with httpx.Client(timeout=15.0) as client:
-                for url in urls:
-                    try:
-                        resp = client.get(url, params=params)
-                        if resp.status_code != 200:
-                            continue
-                        data = resp.json().get("candles", {})
-                        cols = data.get("columns", [])
-                        rows = data.get("data", [])
-                        if not rows:
-                            continue
-                        # MOEX columns: ['open','close','high','low','value','volume','begin','end']
-                        idx = {name: cols.index(name) for name in cols}
-                        candles = []
-                        for r in rows:
-                            candles.append({
-                                "t": r[idx["begin"]],
-                                "o": r[idx["open"]],
-                                "h": r[idx["high"]],
-                                "l": r[idx["low"]],
-                                "c": r[idx["close"]],
-                                "v": r[idx["volume"]],
-                            })
-                        return candles
-                    except httpx.RequestError as exc:
-                        logger.warning(f"MOEX candles request failed for {ticker} via {url}: {exc}")
-                        continue
-        except Exception as exc:
-            logger.error(f"Unexpected error fetching candles for {ticker}: {exc}")
+        for url in urls:
+            try:
+                payload = await moex_async.fetch_json(url, params=params)
+            except Exception as exc:
+                # moex_async.fetch_json уже логирует и возвращает None;
+                # но если bubble-up — не дадим упасть всему хендлеру.
+                logger.error(f"Unexpected error fetching candles for {ticker} via {url}: {exc}")
+                continue
+            if not payload:
+                # 404 / network / json-decode — пробуем следующий url.
+                continue
+            data = payload.get("candles", {}) or {}
+            cols = data.get("columns", [])
+            rows = data.get("data", [])
+            if not rows:
+                continue
+            # MOEX columns: ['open','close','high','low','value','volume','begin','end']
+            idx = {name: cols.index(name) for name in cols}
+            candles = []
+            for r in rows:
+                candles.append({
+                    "t": r[idx["begin"]],
+                    "o": r[idx["open"]],
+                    "h": r[idx["high"]],
+                    "l": r[idx["low"]],
+                    "c": r[idx["close"]],
+                    "v": r[idx["volume"]],
+                })
+            return candles
 
         return []
 
@@ -322,7 +337,7 @@ class MoexService:
     #  Index history (для overlay IMOEX на equity curve)
     # ────────────────────────────────────────────────
 
-    def get_index_history(
+    async def get_index_history(
         self,
         ticker: str = "IMOEX",
         start: Optional[datetime] = None,
@@ -336,6 +351,9 @@ class MoexService:
 
         Кэширует на 1 час по ключу (ticker, start, end). Без кэша каждый
         вызов /stats/ ходил бы в MOEX и тормозил dashboard.
+
+        SYNC-04: async — вызывается из /stats/ через _build_imoex_overlay.
+        Через moex_async.fetch_json: shared AsyncClient + retry/backoff.
         """
         if end is None:
             end = datetime.utcnow()
@@ -356,41 +374,41 @@ class MoexService:
         # ISS пагинирует по 100 записей. Тянем чанками.
         all_rows: List[Dict] = []
         start_offset = 0
-        try:
-            with httpx.Client(timeout=15.0) as client:
-                while True:
-                    params = {
-                        "iss.meta": "off",
-                        "iss.only": "history",
-                        "history.columns": "TRADEDATE,CLOSE",
-                        "from": start_iso,
-                        "till": end_iso,
-                        "start": start_offset,
-                    }
-                    resp = client.get(url, params=params)
-                    if resp.status_code != 200:
-                        logger.warning(f"MOEX index history error for {ticker}: {resp.status_code}")
-                        break
-                    payload = resp.json().get("history", {})
-                    cols = payload.get("columns", [])
-                    rows = payload.get("data", [])
-                    if not rows:
-                        break
-                    di = cols.index("TRADEDATE") if "TRADEDATE" in cols else 0
-                    ci = cols.index("CLOSE") if "CLOSE" in cols else 1
-                    for r in rows:
-                        date_val = r[di]
-                        close_val = r[ci]
-                        if date_val is None or close_val is None:
-                            continue
-                        all_rows.append({"date": str(date_val), "value": float(close_val)})
-                    if len(rows) < 100:
-                        break
-                    start_offset += len(rows)
-                    if start_offset > 5000:  # защита от бесконечного цикла
-                        break
-        except Exception as exc:
-            logger.error(f"Index history fetch failed for {ticker}: {exc}")
+        while True:
+            params = {
+                "iss.meta": "off",
+                "iss.only": "history",
+                "history.columns": "TRADEDATE,CLOSE",
+                "from": start_iso,
+                "till": end_iso,
+                "start": start_offset,
+            }
+            try:
+                payload = await moex_async.fetch_json(url, params=params)
+            except Exception as exc:
+                logger.error(f"Index history fetch failed for {ticker}: {exc}")
+                break
+            if not payload:
+                # fetch_json уже отлогировал warning. Прерываем пагинацию.
+                break
+            history = payload.get("history", {}) or {}
+            cols = history.get("columns", [])
+            rows = history.get("data", [])
+            if not rows:
+                break
+            di = cols.index("TRADEDATE") if "TRADEDATE" in cols else 0
+            ci = cols.index("CLOSE") if "CLOSE" in cols else 1
+            for r in rows:
+                date_val = r[di]
+                close_val = r[ci]
+                if date_val is None or close_val is None:
+                    continue
+                all_rows.append({"date": str(date_val), "value": float(close_val)})
+            if len(rows) < 100:
+                break
+            start_offset += len(rows)
+            if start_offset > 5000:  # защита от бесконечного цикла
+                break
 
         self._index_cache[cache_key] = (all_rows, datetime.utcnow())
         return all_rows

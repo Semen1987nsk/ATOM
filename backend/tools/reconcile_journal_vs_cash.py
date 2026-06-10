@@ -33,7 +33,7 @@ Usage:
     python -X utf8 -m tools.reconcile_journal_vs_cash --account-id 4 \
         --baseline-date 2025-12-01 --initial-portfolio-value 50000
 
-Exit codes: 0 = match (diff < 1%), 1 = significant diff, 2 = error
+Exit codes: 0 = match (diff < 5%, см. THRESHOLD_OK_PCT), 1 = significant diff, 2 = error
 """
 
 from __future__ import annotations
@@ -52,6 +52,14 @@ from domain.pnl.cash_flow_classification import (
     CASH_FLOW_MAP,
     CashFlowCategory,
     operation_types_in,
+)
+
+# MATH-09: единый источник правды по порогам — pnl_health_service.
+# Re-export под локальными именами (THRESHOLD_WARN_PCT — псевдоним сервисного
+# THRESHOLD_WARNING_PCT) чтобы CLI tool и API возвращали одинаковые статусы.
+from services.pnl_health_service import (
+    THRESHOLD_OK_PCT,
+    THRESHOLD_WARNING_PCT as THRESHOLD_WARN_PCT,
 )
 
 log = logging.getLogger("reconcile_journal_vs_cash")
@@ -324,15 +332,19 @@ def print_result(result: dict) -> int:
     if not has_orphan:
         print(f"  (нет значимых orphans)")
 
-    # Status
-    if abs(d["abs"]) < 100 or d["pct"] < 1.0:
-        print(f"\n✅ MATCH (diff < 100₽ или < 1%)")
+    # Status — пороги синхронизированы с pnl_health_service (MATH-09).
+    ok_pct = float(THRESHOLD_OK_PCT)
+    warn_pct = float(THRESHOLD_WARN_PCT)
+    if abs(d["abs"]) < 100 or d["pct"] < ok_pct:
+        print(f"\n✅ MATCH (diff < 100₽ или < {ok_pct:g}%)")
         return 0
-    elif d["pct"] < 5.0 and abs(d["abs"]) < 5000:
-        print(f"\n⚠️  WARN — diff {d['pct']:.1f}% / {d['abs']:,.0f}₽ (acceptable но проверь pre-sync state)")
+    elif d["pct"] < warn_pct:
+        print(f"\n⚠️  WARN — diff {d['pct']:.1f}% / {d['abs']:,.0f}₽ "
+              f"(в полосе {ok_pct:g}–{warn_pct:g}%, проверь pre-sync state)")
         return 1
     else:
-        print(f"\n❌ MISMATCH — diff {d['pct']:.1f}% / {d['abs']:,.0f}₽ (требует investigation)")
+        print(f"\n❌ MISMATCH — diff {d['pct']:.1f}% / {d['abs']:,.0f}₽ "
+              f"(≥{warn_pct:g}%, требует investigation)")
         return 1
 
 

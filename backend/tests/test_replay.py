@@ -118,7 +118,9 @@ class _FakeMoex:
         # Не используем — endpoint всё равно вызовет get_candles напрямую.
         return "10m"
 
-    def get_candles(self, ticker, interval, start, end):
+    async def get_candles(self, ticker, interval, start, end):
+        # SYNC-04 (Task 1.3): MoexService.get_candles стал async.
+        # Fake тоже async, чтобы await в роутере не падал.
         self.last_call = (ticker, interval, start, end)
         if self.fail:
             raise RuntimeError("network down")
