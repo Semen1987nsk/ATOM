@@ -232,6 +232,9 @@ def test_token_invalid_deactivates_connection(db_session_factory, token_repo, se
         for c in conns:
             assert c.is_active is False
             assert c.api_token == ""
+            # SYNC-01: причина деактивации — человекочитаемая, UI показывает
+            # её в ReconnectBanner через GET /broker/connections.
+            assert c.last_sync_error == "deactivated: token_invalid"
 
 
 def test_rate_limit_does_not_deactivate(db_session_factory, token_repo, setup_two_connections) -> None:

@@ -77,16 +77,19 @@ class TokenRepository:
         Сохранить новый токен. Шифрование выполняется здесь, plaintext
         в БД НЕ попадает ни в каком виде.
 
-        Если для этого `(account_id, broker_account_id)` уже есть активная
-        запись — обновляем её (rotate token), иначе создаём новую.
+        Если для этого `(account_id, broker_account_id)` уже есть запись —
+        обновляем её (rotate token), включая деактивированную (SYNC-01:
+        реконнект после отозванного токена реактивирует ту же строку —
+        INSERT упал бы на UNIQUE (account_id, broker, broker_account_id)).
+        Иначе создаём новую.
         """
         existing: BrokerConnection | None = (
             session.query(BrokerConnection)
             .filter(
                 BrokerConnection.account_id == account_id,
                 BrokerConnection.broker_account_id == broker_account_id,
-                BrokerConnection.is_active.is_(True),
             )
+            .order_by(BrokerConnection.is_active.desc())
             .first()
         )
 
@@ -94,6 +97,8 @@ class TokenRepository:
         now = utc_now_naive()
 
         if existing is not None:
+            reactivated = not existing.is_active
+            existing.is_active = True
             existing.api_token = ciphertext
             existing.key_id = self._enc.current_key_id
             existing.updated_at = now
@@ -101,7 +106,8 @@ class TokenRepository:
             existing.consecutive_failures = 0
             existing.circuit_open_until = None
             connection = existing
-            log.info(f"rotated token for account_id={account_id}, broker_account_id={broker_account_id}")
+            verb = "reactivated" if reactivated else "rotated"
+            log.info(f"{verb} token for account_id={account_id}, broker_account_id={broker_account_id}")
         else:
             connection = BrokerConnection(
                 account_id=account_id,

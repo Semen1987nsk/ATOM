@@ -198,6 +198,53 @@ def test_rotate_resets_failure_counters(repo, db_session_factory, setup_account)
         assert row.circuit_open_until is None
 
 
+def test_store_reactivates_deactivated_connection(repo, db_session_factory, setup_account) -> None:
+    """SYNC-01: reconnect после отозванного токена.
+
+    Orchestrator деактивирует подключение (is_active=False, api_token="").
+    Повторный store с новым токеном должен РЕАКТИВИРОВАТЬ ту же запись,
+    а не падать на UNIQUE (account_id, broker, broker_account_id).
+    """
+    with db_session_factory() as session:
+        first = repo.store(
+            session,
+            account_id=setup_account,
+            broker_account_id="2000000",
+            plaintext_token="t.revoked",
+        )
+        first_id = first.id
+        session.commit()
+
+    with db_session_factory() as session:
+        repo.deactivate(
+            session,
+            account_id=setup_account,
+            broker_account_id="2000000",
+            reason="token_invalid",
+        )
+        session.commit()
+
+    with db_session_factory() as session:
+        again = repo.store(
+            session,
+            account_id=setup_account,
+            broker_account_id="2000000",
+            plaintext_token="t.fresh",
+        )
+        session.commit()
+        assert again.id == first_id, "должна реактивироваться та же запись"
+
+    with db_session_factory() as session:
+        row = session.query(BrokerConnection).filter_by(id=first_id).one()
+        assert row.is_active is True
+        assert row.last_sync_error is None
+        assert row.consecutive_failures == 0
+        decrypted = repo.get_decrypted(
+            session, account_id=setup_account, broker_account_id="2000000"
+        )
+    assert decrypted == "t.fresh"
+
+
 # ── deactivate ─────────────────────────────────────────────────────────
 
 

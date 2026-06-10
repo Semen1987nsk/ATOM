@@ -135,6 +135,11 @@ class BrokerConnectionResponse(BaseModel):
     sync_interval_minutes: int
     last_sync_at: Optional[datetime]
     last_sync_status: Optional[str]
+    # SYNC-01: причина последней ошибки (orchestrator пишет
+    # "deactivated: token_invalid" при отозванном токене) + computed-флаг
+    # для UI «нужно переподключить брокера». Сам токен НЕ возвращается.
+    last_sync_error: Optional[str] = None
+    needs_reconnect: bool = False
     total_synced_trades: int  # legacy: кумулятивный счётчик из BrokerConnection
     created_at: datetime
     consecutive_failures: int = 0
@@ -235,6 +240,8 @@ def _orm_to_response(conn: BrokerConnection, db: Optional[Session] = None) -> Br
         sync_interval_minutes=conn.sync_interval_minutes or 60,
         last_sync_at=conn.last_sync_at,
         last_sync_status=conn.last_sync_status,
+        last_sync_error=conn.last_sync_error,
+        needs_reconnect=not bool(conn.is_active),
         total_synced_trades=conn.total_synced_trades or 0,
         created_at=conn.created_at,
         consecutive_failures=conn.consecutive_failures or 0,
@@ -386,10 +393,18 @@ async def list_connections(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """Список подключений юзера, ВКЛЮЧАЯ неактивные.
+
+    SYNC-01: orchestrator деактивирует подключение при отозванном токене
+    (is_active=False, api_token=""). Раньше фильтр is_active=True молча
+    прятал его из UI — юзер видел «подключение исчезло» вместо баннера
+    «переподключите брокера». Теперь неактивные возвращаются с
+    needs_reconnect=true + last_sync_error; фронт сам решает что показывать.
+    """
     account = get_user_account(db, current_user)
     rows = (
         db.query(BrokerConnection)
-        .filter(BrokerConnection.account_id == account.id, BrokerConnection.is_active.is_(True))
+        .filter(BrokerConnection.account_id == account.id)
         .all()
     )
     return [_orm_to_response(r, db) for r in rows]
