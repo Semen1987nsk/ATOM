@@ -73,8 +73,8 @@ class TestTradingHours:
         assert self.service.is_trading_hours(dt) == True
     
     def test_before_trading_hours(self):
-        """09:00 — до начала торгов"""
-        dt = datetime(2026, 1, 12, 9, 0)  # Понедельник 09:00
+        """09:00 МСК — до начала торгов (naive = UTC, MAE-01)"""
+        dt = datetime(2026, 1, 12, 6, 0)  # Понедельник 06:00 UTC = 09:00 МСК
         assert self.service.is_trading_hours(dt) == False
     
     def test_after_trading_hours_stocks(self):
@@ -109,9 +109,9 @@ class TestCountTradingHours:
         assert hours >= 3  # Минимум 3 торговых часа
     
     def test_overnight_counts_correctly(self):
-        """Через ночь (вне торговых часов) не считается"""
-        start = datetime(2026, 1, 12, 18, 0)  # Понедельник 18:00
-        end = datetime(2026, 1, 13, 10, 0)    # Вторник 10:00
+        """Через ночь (вне торговых часов) не считается (naive = UTC, MAE-01)"""
+        start = datetime(2026, 1, 12, 15, 0)  # Понедельник 15:00 UTC = 18:00 МСК
+        end = datetime(2026, 1, 13, 7, 0)     # Вторник 07:00 UTC = 10:00 МСК
         hours = self.service.count_trading_hours(start, end)
         # Между 18:00 пн и 10:00 вт почти нет торговых часов
         assert hours <= 2

@@ -210,14 +210,15 @@ class TestCalculateMaeMfe:
             'end': '2025-12-01 11:00:00'
         }]
         
+        # MAE-01: времена сделок naive-UTC (конвенция БД); свеча 10:00 МСК = 07:00 UTC
         mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
-            entry_time=datetime(2025, 12, 1, 10, 0, 0),
-            exit_time=datetime(2025, 12, 1, 11, 0, 0)
+            entry_time=datetime(2025, 12, 1, 7, 0, 0),
+            exit_time=datetime(2025, 12, 1, 8, 0, 0)
         )
-        
+
         assert mae == 95, "MAE для LONG должен быть low"
         assert mfe == 105, "MFE для LONG должен быть high"
     
@@ -235,14 +236,15 @@ class TestCalculateMaeMfe:
             'end': '2025-12-01 11:00:00'
         }]
         
+        # MAE-01: naive-UTC; свеча 10:00 МСК = 07:00 UTC
         mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="SHORT",
             entry_price=100.0,
-            entry_time=datetime(2025, 12, 1, 10, 0, 0),
-            exit_time=datetime(2025, 12, 1, 11, 0, 0)
+            entry_time=datetime(2025, 12, 1, 7, 0, 0),
+            exit_time=datetime(2025, 12, 1, 8, 0, 0)
         )
-        
+
         assert mae == 105, "MAE для SHORT должен быть high (против нас)"
         assert mfe == 95, "MFE для SHORT должен быть low (в нашу пользу)"
     
@@ -255,14 +257,15 @@ class TestCalculateMaeMfe:
             {'open': 100, 'high': 105, 'low': 95, 'close': 102, 'volume': 1000, 'begin': '2025-12-01 11:00:00', 'end': '2025-12-01 12:00:00'},
         ]
         
+        # MAE-01: naive-UTC; свечи 10:00-12:00 МСК = 07:00-09:00 UTC
         mae, mfe = await self.service.calculate_mae_mfe(
             ticker="SBER",
             direction="LONG",
             entry_price=100.0,
-            entry_time=datetime(2025, 12, 1, 10, 0, 0),
-            exit_time=datetime(2025, 12, 1, 12, 0, 0)
+            entry_time=datetime(2025, 12, 1, 7, 0, 0),
+            exit_time=datetime(2025, 12, 1, 9, 0, 0)
         )
-        
+
         # Должен использовать только валидную свечу
         assert mae == 95
         assert mfe == 105
@@ -455,12 +458,13 @@ class TestMaeMfeSimulation:
             mock_get_candles.return_value = candles
             
             try:
+                # MAE-01: naive-UTC; свечи 10:00 МСК = 07:00 UTC
                 mae, mfe = await self.service.calculate_mae_mfe(
                     ticker="TEST",
                     direction="LONG",
                     entry_price=100.0,
-                    entry_time=datetime(2025, 12, 1, 10, 0, 0),
-                    exit_time=datetime(2025, 12, 1, 11, 0, 0)
+                    entry_time=datetime(2025, 12, 1, 7, 0, 0),
+                    exit_time=datetime(2025, 12, 1, 8, 0, 0)
                 )
                 
                 if expect_mae and mae is None:

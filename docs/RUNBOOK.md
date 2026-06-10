@@ -54,6 +54,23 @@ tail -f /var/log/empirik/api.log  # 1 минута — ошибок быть н�
 
 **Окно деплоя**: пн–чт, 10:00–17:00 MSK. Не деплоить в пятницу.
 
+### Одноразовый шаг после деплоя Sprint 6.5 (MAE-01)
+
+Фикс таймзоны MAE/MFE (naive=UTC вместо МСК) меняет окно расчёта для ВСЕХ
+сделок — старые значения посчитаны по сдвинутому на −3ч окну и обязаны быть
+пересчитаны один раз после деплоя:
+
+```bash
+# для каждого активного аккаунта (или admin-скриптом по всем):
+curl -X POST https://empirik.app/trades/calculate-mae-mfe \
+  -H "Authorization: Bearer <admin-or-user-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"force_all": true}'
+# либо дождаться nightly mae_mfe_backfill (покрывает только сделки <30 дней!)
+```
+
+Прогресс контролировать по coverage-виджету MAE/MFE.
+
 ---
 
 <a id="rollback"></a>

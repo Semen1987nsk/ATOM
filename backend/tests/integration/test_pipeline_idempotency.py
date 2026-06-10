@@ -251,3 +251,56 @@ def test_cursor_saved_after_sync(db_session_factory, setup) -> None:
     assert conn.sync_cursor == "saved-cursor-xyz"
     assert conn.last_sync_status == "success"
     assert conn.last_sync_at is not None
+
+
+def test_sync_schedules_mae_backfill_for_closed_trades(db_session_factory, setup) -> None:
+    """MAE-05: после FIFO-пересборки закрытые сделки без MAE/MFE уходят в
+    schedule_mae_mfe_backfill — иначе sync-сделки ждут значений до суток
+    (nightly), а история старше 30 дней не получает их никогда."""
+    instrument = Instrument(
+        uid="uid-sber",
+        figi="BBG004730N88",
+        ticker="SBER",
+        instrument_type=InstrumentType.SHARE,
+    )
+    base = datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc)
+    operations = [
+        _op("op-buy", OperationType.BUY, 100, 270, base),
+        _op("op-sell", OperationType.SELL, 100, 275, base.replace(hour=12)),
+    ]
+    fake_ops, fake_instr, fake_md = _make_fake_clients([(operations, "c1")], instrument)
+
+    pipeline = SyncPipeline(
+        account_id=setup["account_id"],
+        broker_account_id="acc-1",
+        token_plaintext="t.fake",
+        session_factory=db_session_factory,
+    )
+    with patch(
+        "application.sync.pipeline.client_factory.async_client",
+        side_effect=_fake_async_client,
+    ), patch(
+        "application.sync.pipeline.TinkoffOperationsClient",
+        return_value=fake_ops,
+    ), patch(
+        "application.sync.pipeline.TinkoffInstrumentsClient",
+        return_value=fake_instr,
+    ), patch(
+        "application.sync.pipeline.TinkoffMarketDataClient",
+        return_value=fake_md,
+    ), patch(
+        "import_service.schedule_mae_mfe_backfill"
+    ) as mock_backfill:
+        report = asyncio.run(pipeline.run(full_sync=True))
+
+    assert report.success
+    mock_backfill.assert_called_once()
+    scheduled_ids = mock_backfill.call_args[0][0]
+    with db_session_factory() as session:
+        closed = (
+            session.query(TradeORM)
+            .filter(TradeORM.exit_at.isnot(None))
+            .all()
+        )
+    assert len(closed) == 1
+    assert scheduled_ids == [closed[0].id]

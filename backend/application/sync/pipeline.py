@@ -602,7 +602,7 @@ class SyncPipeline:
         if not affected_uids:
             return 0, 0
 
-        def _run_for_one(uid: str) -> tuple[int, int]:
+        def _run_for_one(uid: str) -> tuple[int, int, list[int]]:
             session = self._session_factory()
             try:
                 # Снимок справочника.
@@ -659,21 +659,49 @@ class SyncPipeline:
                 # как proxy реального портфеля, но расходился при корпоративных
                 # действиях (SECURITY_OUT, переводы между счетами).
                 session.commit()
+                # MAE-05: свежепересобранные закрытые сделки без MAE/MFE —
+                # кандидаты на немедленный backfill. Раньше backfill дёргался
+                # только из ручного импорта (/trades/import), а nightly-джоб
+                # ограничен 30 днями — сделки из брокерского синка ждали
+                # значения до суток, история старше месяца — навсегда.
+                from models import Trade as _TradeORM
+                need_mae_ids = [
+                    row[0]
+                    for row in session.query(_TradeORM.id)
+                    .filter(
+                        _TradeORM.account_id == self._account_id,
+                        _TradeORM.instrument_uid == uid,
+                        _TradeORM.data_source == "tinkoff_v2",
+                        _TradeORM.exit_at.isnot(None),
+                        _TradeORM.mae_price.is_(None),
+                    )
+                    .all()
+                ]
                 positions_open = len(open_trades)
-                return len(result.closed_trades), positions_open
+                return len(result.closed_trades), positions_open, need_mae_ids
             except Exception:
                 session.rollback()
                 log.exception("fifo_match failed for uid=%s", uid)
-                return 0, 0
+                return 0, 0, []
             finally:
                 session.close()
 
         total_trades = 0
         total_positions = 0
+        need_backfill: list[int] = []
         for uid in affected_uids:
-            trades, positions = await asyncio.to_thread(_run_for_one, uid)
+            trades, positions, mae_ids = await asyncio.to_thread(_run_for_one, uid)
             total_trades += trades
             total_positions += positions
+            need_backfill.extend(mae_ids)
+
+        if need_backfill:
+            # Lazy-import: import_service тянет market_service/MOEX — не
+            # хотим этой зависимости на module-level в sync-пайплайне.
+            from import_service import schedule_mae_mfe_backfill
+
+            schedule_mae_mfe_backfill(need_backfill)
+            log.info("fifo_match: scheduled MAE/MFE backfill for %d trades", len(need_backfill))
 
         log.info(
             "fifo_match: instruments=%d trades=%d open_positions=%d",

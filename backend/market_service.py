@@ -159,12 +159,15 @@ class MarketService:
         """
         Нормализует datetime к часовому поясу биржи (MSK).
 
-        Для domain-логики рынка naive datetime трактуем как локальное время MOEX,
-        а не как UTC. Это соответствует пользовательским вводам, тестам и формату
-        времени свечей MOEX ISS.
+        MAE-01: naive datetime трактуем как UTC — это конвенция хранения
+        в БД (trade_repo/import_service пишут UTC-naive). Прежняя трактовка
+        naive=МСК сдвигала окно фильтра свечей на −3 часа для всех путей,
+        читающих сделку из БД (bulk-пересчёт, import-hook, nightly backfill),
+        и расходилась с calculate_post_exit_analysis, который всегда
+        конвертировал naive как UTC.
         """
         if dt.tzinfo is None:
-            return MSK_TZ.localize(dt)
+            return pytz.utc.localize(dt).astimezone(MSK_TZ)
         return dt.astimezone(MSK_TZ)
 
     async def get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
