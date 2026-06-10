@@ -13,6 +13,7 @@ import database
 import models
 import schemas
 import auth_service
+from domain.enums import TradeDataSource
 import import_service
 import market_service
 import ai_service
@@ -1085,6 +1086,16 @@ async def delete_trade(
     ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
+    # DATA-11: sync пересоберёт tinkoff_v2-сделку из operations при следующем
+    # запуске — DELETE создаёт иллюзию удаления («воскресающая» сделка).
+    if trade.data_source == TradeDataSource.TINKOFF_V2.value:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Синхронизированную сделку нельзя удалить — "
+                "она восстановится при следующей синхронизации."
+            ),
+        )
     db.delete(trade)
     db.commit()
     return {"message": "Trade deleted"}

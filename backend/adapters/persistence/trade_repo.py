@@ -32,6 +32,19 @@ from utils.datetime_utils import utc_now_naive
 
 log = get_logger("trade_repo")
 
+# DATA-02: пользовательские аннотации, которые user проставляет на
+# sync-сделках через PATCH /trades/{id}. FIFO-пересборка пересоздаёт строки —
+# эти поля обязаны переехать на новые, иначе re-sync молча стирает журнал.
+_ANNOTATION_FIELDS = (
+    "notes",
+    "tags",
+    "mood",
+    "discipline",
+    "confidence",
+    "setup_id",
+    "screenshot_url",
+)
+
 
 def _domain_to_orm_direction(d: TradeDirection):
     """domain TradeDirection -> ORM enum (значения совпадают по str, но
@@ -65,19 +78,69 @@ class TradeRepository:
         ticker (SBER, GAZP) вместо FIGI/UID. Опционально для обратной
         совместимости с тестами и старыми вызовами.
         """
-        # 1) Удалить старые записи (только своего data_source!).
-        session.query(TradeORM).filter(
+        # 0) DATA-02: снять аннотации с перезаписываемых строк, чтобы вернуть
+        # их на пересозданные. Column-tuple query — не загружаем ORM-объекты
+        # в identity map перед bulk-delete.
+        scope = (
             TradeORM.account_id == account_id,
             TradeORM.instrument_uid == instrument_uid,
             TradeORM.data_source == data_source,
-        ).delete(synchronize_session=False)
+        )
+        exact_annotations: dict[tuple, dict] = {}
+        fallback_annotations: dict[tuple, list[dict]] = {}
+        for row in session.query(
+            TradeORM.entry_at,
+            TradeORM.exit_at,
+            TradeORM.direction,
+            TradeORM.quantity,
+            *(getattr(TradeORM, f) for f in _ANNOTATION_FIELDS),
+        ).filter(*scope):
+            ann = dict(zip(_ANNOTATION_FIELDS, row[4:]))
+            # Пустые значения (None/""/[]) — не аннотация, такие строки
+            # в переносе не участвуют.
+            if not any(ann.values()):
+                continue
+            exact_annotations[(row.entry_at, row.direction, row.quantity, row.exit_at)] = ann
+            fallback_annotations.setdefault((row.entry_at, row.direction), []).append(ann)
+
+        # 1) Удалить старые записи (только своего data_source!).
+        session.query(TradeORM).filter(*scope).delete(synchronize_session=False)
 
         # 2) Вставить новые.
         now = utc_now_naive()
-        for trade in trades:
-            session.add(
-                self._trade_to_orm(trade, account_id, data_source, now, instrument)
-            )
+        new_rows = [
+            self._trade_to_orm(trade, account_id, data_source, now, instrument)
+            for trade in trades
+        ]
+
+        # 2a) Перенос аннотаций. Два прохода: сперва точные match'и по
+        # (entry_at, direction, quantity, exit_at) — иначе fallback-кандидат
+        # мог бы «увести» аннотацию у точного совпадения; затем fallback по
+        # (entry_at, direction) для сделок, у которых брокер дослал операции
+        # и exit_at/quantity сместились — только при единственном кандидате
+        # (при нескольких привязка неоднозначна, лучше потерять молча).
+        unmatched_rows = []
+        for orm_row in new_rows:
+            key = (orm_row.entry_at, orm_row.direction, orm_row.quantity, orm_row.exit_at)
+            ann = exact_annotations.pop(key, None)
+            if ann is None:
+                unmatched_rows.append(orm_row)
+                continue
+            ann["_consumed"] = True
+            self._apply_annotations(orm_row, ann)
+        for orm_row in unmatched_rows:
+            candidates = [
+                a
+                for a in fallback_annotations.get((orm_row.entry_at, orm_row.direction), [])
+                if not a.get("_consumed")
+            ]
+            if len(candidates) != 1:
+                continue
+            candidates[0]["_consumed"] = True
+            self._apply_annotations(orm_row, candidates[0])
+
+        for orm_row in new_rows:
+            session.add(orm_row)
         session.flush()
         return len(trades)
 
@@ -114,6 +177,11 @@ class TradeRepository:
         return q.count()
 
     # ── helpers ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _apply_annotations(orm_row: TradeORM, ann: dict) -> None:
+        for field in _ANNOTATION_FIELDS:
+            setattr(orm_row, field, ann[field])
 
     @staticmethod
     def _trade_to_orm(
