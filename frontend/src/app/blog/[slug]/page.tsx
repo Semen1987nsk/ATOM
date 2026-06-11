@@ -306,11 +306,11 @@ export default function ArticlePage() {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center">
                 <span className="text-lg font-bold text-white">
-                  {(article.author_name || 'A')[0].toUpperCase()}
+                  {(article.author_name || 'Э')[0].toUpperCase()}
                 </span>
               </div>
               <div>
-                <p className="font-medium">{article.author_name || 'Редакция ATOM'}</p>
+                <p className="font-medium">{article.author_name || 'Редакция Эмпирика'}</p>
                 <p className="text-sm text-muted-foreground">Автор статьи</p>
               </div>
             </div>

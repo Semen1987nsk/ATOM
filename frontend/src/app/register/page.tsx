@@ -72,8 +72,7 @@ export default function RegisterPage() {
             href="/"
             className="inline-flex items-center gap-1 text-4xl font-bold tracking-tight"
           >
-            <span className="text-[var(--accent)]">Eq</span>
-            <span>io</span>
+            <span className="text-[var(--accent)]">Эмпирик</span>
           </Link>
           <p className="text-sm text-[var(--text-secondary)] mt-2">
             Создайте аккаунт за 30 секунд

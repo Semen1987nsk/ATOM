@@ -381,7 +381,7 @@ export default function PricingPage() {
           <div className="cyber-card inline-block p-8 max-w-2xl">
             <h2 className="text-2xl font-bold mb-4">Готовы улучшить свою торговлю?</h2>
             <p className="text-muted-foreground mb-6">
-              Присоединяйтесь к тысячам трейдеров, которые уже используют ATOM для анализа своих сделок
+              Присоединяйтесь к тысячам трейдеров, которые уже используют Эмпирик для анализа своих сделок
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {isAuthenticated ? (

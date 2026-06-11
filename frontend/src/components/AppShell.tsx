@@ -56,6 +56,38 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
+// Логомарка «сигнал из шума» (геометрия из public/logo-empirik.svg).
+// Инлайн-SVG вместо <img>: в img wordmark с currentColor рендерится чёрным
+// (невидим на тёмной теме), а синие цвета лендинга конфликтуют с ochre-акцентом.
+function EmpirikMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="4 6 58 50" className={className} aria-hidden="true" focusable="false">
+      <g fill="var(--text-tertiary)" opacity="0.55">
+        <circle cx="10" cy="20" r="1.6" />
+        <circle cx="16" cy="40" r="1.6" />
+        <circle cx="13" cy="50" r="1.6" />
+        <circle cx="22" cy="28" r="1.6" />
+        <circle cx="28" cy="46" r="1.6" />
+        <circle cx="34" cy="22" r="1.6" />
+      </g>
+      <polyline
+        points="8,52 20,44 30,34 42,24 56,12"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <g fill="var(--accent)">
+        <circle cx="20" cy="44" r="2.4" />
+        <circle cx="30" cy="34" r="2.4" />
+        <circle cx="42" cy="24" r="2.4" />
+      </g>
+      <circle cx="56" cy="12" r="3" fill="var(--accent)" />
+    </svg>
+  );
+}
+
 // ──────────────────────────────────────────────
 //  Navigation config
 // ──────────────────────────────────────────────
@@ -264,15 +296,14 @@ function Sidebar({
       <div className="flex items-center justify-between h-14 px-4 border-b border-[var(--border)]">
         <Link
           href="/"
-          className="text-xl font-bold tracking-tight no-underline"
+          className="flex items-center gap-2 text-xl font-bold tracking-tight no-underline"
           onClick={onCloseMobile}
         >
+          <EmpirikMark className="h-6 w-auto shrink-0" />
           {collapsed ? (
-            <span className="text-[var(--accent)]">E</span>
+            <span className="sr-only">Эмпирик</span>
           ) : (
-            <>
-              <span className="text-[var(--accent)]">Eq</span>io
-            </>
+            <span>Эмпирик</span>
           )}
         </Link>
         <button
