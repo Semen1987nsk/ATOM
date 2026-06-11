@@ -200,6 +200,11 @@ class Account(Base):
     trades = relationship("Trade", back_populates="account", cascade="all, delete-orphan")
     deposit_history = relationship("DepositHistory", back_populates="account", cascade="all, delete-orphan")
     setups = relationship("Setup", back_populates="account", cascade="all, delete-orphan")
+    # DATA-03: без delete-orphan ORM-delete аккаунта NULL'ил FK и оставлял
+    # в БД сироту с зашифрованным брокерским токеном (152-ФЗ риск).
+    broker_connections = relationship(
+        "BrokerConnection", back_populates="account", cascade="all, delete-orphan"
+    )
 
 
 class DailyReview(Base):
@@ -529,7 +534,7 @@ class BrokerConnection(Base):
     last_sync_positions_count = Column(Integer, nullable=True)
     last_sync_duration_ms = Column(Integer, nullable=True)
 
-    account = relationship("Account", backref="broker_connections")
+    account = relationship("Account", back_populates="broker_connections")
 
 
 # ════════════════════════════════════════════════════════════════════════
