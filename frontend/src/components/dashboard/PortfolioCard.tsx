@@ -235,7 +235,7 @@ export default function PortfolioCard() {
 
         {/* Main Balance */}
         <div className="mb-4">
-          <div className="text-3xl font-bold text-white mb-1">
+          <div className="text-3xl font-bold text-[var(--foreground)] mb-1">
             {formatMoney(portfolio.total_balance)}
           </div>
           <div className={`flex items-center gap-2 ${pnlColor}`}>
@@ -358,8 +358,7 @@ export default function PortfolioCard() {
                     <input
                       type="date"
                       id="net-deposit-date-picker"
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-white flex-1 outline-none focus:border-accent"
-                      style={{ colorScheme: 'dark' }}
+                      className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--foreground)] flex-1 outline-none focus:border-accent"
                     />
                     <button
                       onClick={() => {

@@ -92,7 +92,7 @@ function CloseTradeModalContent({
       
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative cyber-card bg-[#0d0d0d] w-full max-w-md animate-scaleIn overflow-hidden">
+        <div className="relative cyber-card bg-[var(--surface-1)] w-full max-w-md animate-scaleIn overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border relative z-10">
             <h3 className="text-lg font-bold text-foreground italic">

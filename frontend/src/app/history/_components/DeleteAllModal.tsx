@@ -14,13 +14,13 @@ export function DeleteAllModal({ isOpen, onClose, onConfirm, tradeCount, isDelet
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+      <div className="bg-[var(--surface-1)] border border-red-500/50 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
             <Trash2 className="w-6 h-6 text-red-500" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">Удалить все сделки?</h3>
+            <h3 className="text-xl font-bold text-[var(--foreground)]">Удалить все сделки?</h3>
             <p className="text-slate-400 text-sm">Это действие нельзя отменить</p>
           </div>
         </div>
@@ -34,7 +34,7 @@ export function DeleteAllModal({ isOpen, onClose, onConfirm, tradeCount, isDelet
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+            className="px-4 py-2 rounded-lg bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] text-[var(--foreground)] transition-colors"
           >
             Отмена
           </button>

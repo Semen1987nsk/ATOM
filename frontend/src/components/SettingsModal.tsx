@@ -112,7 +112,7 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
+      <div className="cyber-card w-full max-w-md bg-[var(--surface-1)] p-6 relative animate-scaleIn overflow-hidden">
         <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
           <X size={20} />
         </button>

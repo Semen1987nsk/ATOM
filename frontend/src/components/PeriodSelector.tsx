@@ -70,7 +70,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[150px]">
+        <div className="absolute top-full left-0 mt-1 bg-[var(--surface-1)] border border-border z-50 min-w-[150px]">
           {periods.map((period) => (
             <button
               key={period.value}
@@ -88,7 +88,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
       {/* Custom Date Modal */}
       {showCustom && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative">
+          <div className="cyber-card w-full max-w-sm bg-[var(--surface-1)] p-6 relative">
             <button 
               onClick={() => setShowCustom(false)} 
               className="absolute top-4 right-4 opacity-50 hover:opacity-100"

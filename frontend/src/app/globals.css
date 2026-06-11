@@ -14,6 +14,8 @@
 
 /* ─────────────────── DARK THEME (default — traders work in dark) ─────── */
 :root {
+  color-scheme: dark;
+
   /* Paper / ink — warm editorial */
   --paper-base:     #14110d;   /* warm near-black */
   --paper-sunken:   #100e0a;
@@ -94,6 +96,8 @@
 
 /* ─────────────────── LIGHT THEME (FT pink-paper) ─────────────────── */
 :root[data-theme="light"] {
+  color-scheme: light;
+
   --paper-base:     #faf7f0;   /* cream warm paper */
   --paper-sunken:   #f4f0e6;
   --paper-raised:   #ffffff;
@@ -769,8 +773,9 @@ h1 { letter-spacing: -0.015em; }
      с JS-синхронизацией) — отложено. Сейчас thead просто остаётся в потоке
      (не sticky), TopScrollbar (Phase 14) + sticky cols дают основную UX-навигацию. */
   .journal-table-sticky thead th {
-    /* position: static — натуральная позиция в потоке таблицы */
-    background: rgba(13, 13, 13, 0.95);
+    /* position: static — натуральная позиция в потоке таблицы.
+       Фон из темы: хардкод rgba(13,13,13) оставался чёрным в light. */
+    background: var(--surface-1);
     backdrop-filter: blur(4px);
   }
   /* Col 1 (expand chevron — alwaysVisible) */
@@ -779,7 +784,8 @@ h1 { letter-spacing: -0.015em; }
     position: sticky;
     left: 0;
     z-index: 4;
-    background: rgba(10, 10, 10, 0.98);
+    /* Opaque-фон обязан закрывать прокручиваемые колонки — из темы. */
+    background: var(--surface-1);
     width: 32px;
     min-width: 32px;
     max-width: 32px;
@@ -791,7 +797,7 @@ h1 { letter-spacing: -0.015em; }
     position: sticky;
     left: 32px;
     z-index: 4;
-    background: rgba(10, 10, 10, 0.98);
+    background: var(--surface-1);
     min-width: 130px;
     max-width: 130px;
   }
@@ -948,11 +954,83 @@ h1 { letter-spacing: -0.015em; }
 :root[data-theme="light"] .text-white\/60 { color: var(--text-secondary) !important; }
 :root[data-theme="light"] .bg-black\/30,
 :root[data-theme="light"] .bg-black\/50,
+:root[data-theme="light"] .bg-black\/60,
+:root[data-theme="light"] .bg-black\/70,
 :root[data-theme="light"] .bg-black\/80 { background: rgba(31, 29, 26, 0.3) !important; }
 :root[data-theme="light"] .bg-white\/5,
+:root[data-theme="light"] .bg-white\/10,
 :root[data-theme="light"] .bg-white\/\[0\.02\] { background: var(--surface-2) !important; }
 :root[data-theme="light"] .text-green-400 { color: var(--success) !important; }
 :root[data-theme="light"] .text-red-400 { color: var(--danger) !important; }
+
+/* slate-семейство — исторические dark-компоненты (history, dashboard panels,
+ * модалки). Текст. */
+:root[data-theme="light"] .text-slate-100,
+:root[data-theme="light"] .text-slate-200 { color: var(--foreground) !important; }
+:root[data-theme="light"] .text-slate-300,
+:root[data-theme="light"] .text-slate-400,
+:root[data-theme="light"] .text-slate-500 { color: var(--text-secondary) !important; }
+:root[data-theme="light"] .text-slate-600 { color: var(--text-tertiary) !important; }
+
+/* slate-фоны: 900/950 → surface-1, 800 → surface-2, 700/600 → surface-3 */
+:root[data-theme="light"] .bg-slate-950,
+:root[data-theme="light"] .bg-slate-950\/50,
+:root[data-theme="light"] .bg-slate-900,
+:root[data-theme="light"] .bg-slate-900\/30,
+:root[data-theme="light"] .bg-slate-900\/40,
+:root[data-theme="light"] .bg-slate-900\/50,
+:root[data-theme="light"] .bg-slate-900\/60,
+:root[data-theme="light"] .bg-slate-900\/80,
+:root[data-theme="light"] .bg-slate-900\/95,
+:root[data-theme="light"] .bg-slate-900\/98 { background: var(--surface-1) !important; }
+:root[data-theme="light"] .bg-slate-800,
+:root[data-theme="light"] .bg-slate-800\/20,
+:root[data-theme="light"] .bg-slate-800\/30,
+:root[data-theme="light"] .bg-slate-800\/40,
+:root[data-theme="light"] .bg-slate-800\/50,
+:root[data-theme="light"] .bg-slate-500\/10,
+:root[data-theme="light"] .bg-slate-500\/15,
+:root[data-theme="light"] .bg-slate-500\/20,
+:root[data-theme="light"] .bg-slate-500\/30 { background: var(--surface-2) !important; }
+:root[data-theme="light"] .bg-slate-700,
+:root[data-theme="light"] .bg-slate-700\/20,
+:root[data-theme="light"] .bg-slate-700\/30,
+:root[data-theme="light"] .bg-slate-700\/40,
+:root[data-theme="light"] .bg-slate-700\/50,
+:root[data-theme="light"] .bg-slate-600,
+:root[data-theme="light"] .bg-slate-600\/30 { background: var(--surface-3) !important; }
+
+/* slate-бордеры */
+:root[data-theme="light"] .border-slate-500\/30,
+:root[data-theme="light"] .border-slate-600,
+:root[data-theme="light"] .border-slate-600\/50,
+:root[data-theme="light"] .border-slate-700,
+:root[data-theme="light"] .border-slate-700\/30,
+:root[data-theme="light"] .border-slate-700\/40,
+:root[data-theme="light"] .border-slate-700\/50,
+:root[data-theme="light"] .border-slate-800,
+:root[data-theme="light"] .border-slate-800\/50,
+:root[data-theme="light"] .border-slate-800\/60 { border-color: var(--border) !important; }
+
+/* hover-варианты: «подсветка к белому» в dark = «к чернилам» в light */
+:root[data-theme="light"] .hover\:text-white:hover,
+:root[data-theme="light"] .hover\:text-slate-200:hover,
+:root[data-theme="light"] .hover\:text-slate-300:hover { color: var(--foreground) !important; }
+:root[data-theme="light"] .hover\:bg-slate-800:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/20:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/30:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/40:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/50:hover,
+:root[data-theme="light"] .hover\:bg-slate-700:hover,
+:root[data-theme="light"] .hover\:bg-slate-700\/20:hover,
+:root[data-theme="light"] .hover\:bg-slate-700\/30:hover,
+:root[data-theme="light"] .hover\:bg-slate-700\/50:hover,
+:root[data-theme="light"] .hover\:bg-slate-600:hover,
+:root[data-theme="light"] .hover\:bg-slate-500\/30:hover,
+:root[data-theme="light"] .hover\:bg-white\/5:hover,
+:root[data-theme="light"] .hover\:bg-white\/10:hover,
+:root[data-theme="light"] .hover\:bg-white\/15:hover { background: var(--surface-hover) !important; }
+:root[data-theme="light"] .hover\:border-slate-600:hover { border-color: var(--border-strong) !important; }
 
 
 /* ════════════════════════════════════════════════════

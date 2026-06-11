@@ -38,9 +38,9 @@ export function ColumnSettings({
 
       {/* Column Settings Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-12 z-50 bg-slate-900 border border-border rounded-xl shadow-2xl p-4 w-72">
+        <div className="absolute right-0 top-12 z-50 bg-[var(--surface-1)] border border-border rounded-xl shadow-2xl p-4 w-72">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-white flex items-center gap-2">
+            <h3 className="font-bold text-[var(--foreground)] flex items-center gap-2">
               <Settings size={16} className="text-accent" />
               Колонки таблицы
             </h3>

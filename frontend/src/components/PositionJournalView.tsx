@@ -957,7 +957,7 @@ export function PositionJournalView() {
       </div>
 
       {/* Phase 13 (2026-05-17): Journal Navigator Bar — sticky filter row. */}
-      <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-[var(--bg,#0a0a0a)]/95 backdrop-blur-sm">
+      <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-[var(--background)]/95 backdrop-blur-sm">
         <JournalNavigatorBar
           filters={filters}
           onUpdate={updateFilters}

@@ -85,7 +85,7 @@ export function TableTopScrollbar({ mainScrollRef, scrollWidth }: Props) {
   return (
     <div
       ref={setTopRef}
-      className="sticky top-14 overflow-x-auto scrollbar-visible bg-[#0d0d0d]/95 backdrop-blur-sm border-b border-slate-800"
+      className="sticky top-14 overflow-x-auto scrollbar-visible bg-[var(--surface-1)] backdrop-blur-sm border-b border-slate-800"
       style={{
         height: 14,
         display: needsScroll ? 'block' : 'none',

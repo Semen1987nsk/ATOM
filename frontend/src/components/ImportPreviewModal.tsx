@@ -262,7 +262,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <div className="flex items-center gap-3">
             <FileSpreadsheet className="w-6 h-6 text-indigo-400" />
-            <h2 className="text-xl font-semibold text-white">Импорт сделок</h2>
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">Импорт сделок</h2>
           </div>
           <button 
             onClick={handleClose}
@@ -334,7 +334,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
             <>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="bg-slate-700/50 rounded-xl p-4">
-                  <div className="text-2xl font-bold text-white">{preview.total_trades}</div>
+                  <div className="text-2xl font-bold text-[var(--foreground)]">{preview.total_trades}</div>
                   <div className="text-sm text-slate-400">Всего в файле</div>
                 </div>
                 <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
@@ -350,10 +350,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                   <div className="text-sm text-slate-400">Открытых</div>
                 </div>
                 <div className="bg-slate-700/50 rounded-xl p-4">
-                  <div className="text-sm font-medium text-white truncate">
+                  <div className="text-sm font-medium text-[var(--foreground)] truncate">
                     {formatDate(preview.date_range.first)} 
                   </div>
-                  <div className="text-sm font-medium text-white truncate mt-1">
+                  <div className="text-sm font-medium text-[var(--foreground)] truncate mt-1">
                     — {formatDate(preview.date_range.last)}
                   </div>
                   <div className="text-sm text-slate-400">Период</div>
@@ -362,7 +362,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
 
               {/* Range Selection */}
               <div className="bg-slate-700/30 rounded-xl p-4 space-y-4">
-                <h3 className="font-medium text-white flex items-center gap-2">
+                <h3 className="font-medium text-[var(--foreground)] flex items-center gap-2">
                   <Filter className="w-4 h-4" />
                   Выбор диапазона импорта
                 </h3>
@@ -388,7 +388,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                     {preview.balance_info.initial_balance !== null && (
                       <div className={saveBalance ? '' : 'opacity-50'}>
                         <span className="text-slate-400">Начальный:</span>
-                        <div className="text-white font-medium">
+                        <div className="text-[var(--foreground)] font-medium">
                           {preview.balance_info.initial_balance.toLocaleString('ru-RU')} {preview.balance_info.currency}
                         </div>
                       </div>
@@ -396,7 +396,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                     {preview.balance_info.final_balance !== null && (
                       <div className={saveBalance ? '' : 'opacity-50'}>
                         <span className="text-slate-400">Конечный:</span>
-                        <div className="text-white font-medium">
+                        <div className="text-[var(--foreground)] font-medium">
                           {preview.balance_info.final_balance.toLocaleString('ru-RU')} {preview.balance_info.currency}
                         </div>
                       </div>
@@ -432,7 +432,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                           placeholder="Например: 500000"
                           value={manualBalance || ''}
                           onChange={(e) => setManualBalance(e.target.value ? parseFloat(e.target.value) : null)}
-                          className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500"
+                          className="w-full p-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder-slate-500"
                           disabled={!saveBalance}
                         />
                       </div>
@@ -459,7 +459,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                     <select 
                       value={startIndex}
                       onChange={(e) => setStartIndex(Number(e.target.value))}
-                      className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                      className="w-full p-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)]"
                     >
                       {preview.trades.map((t, idx) => (
                         <option key={idx} value={idx} disabled={idx > endIndex}>
@@ -474,7 +474,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                     <select 
                       value={endIndex}
                       onChange={(e) => setEndIndex(Number(e.target.value))}
-                      className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                      className="w-full p-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)]"
                     >
                       {preview.trades.map((t, idx) => (
                         <option key={idx} value={idx} disabled={idx < startIndex}>
@@ -510,7 +510,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                 {/* Selection stats */}
                 {selectionStats && (
                   <div className="text-sm text-slate-400 pt-2 border-t border-slate-600">
-                    Выбрано: <span className="text-white font-medium">{selectionStats.total}</span> сделок
+                    Выбрано: <span className="text-[var(--foreground)] font-medium">{selectionStats.total}</span> сделок
                     {' '}(новых: <span className="text-green-400">{selectionStats.newTrades}</span>,
                     дубликатов: <span className="text-yellow-400">{selectionStats.duplicates}</span>,
                     открытых: <span className="text-blue-400">{selectionStats.openTrades}</span>)
@@ -547,7 +547,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
                       return (
                         <tr key={trade.index} className={`${rowClass} border-b border-slate-700/50 hover:bg-slate-700/30`}>
                           <td className="p-3">
-                            <span className={inRange ? 'text-white' : 'text-slate-500'}>
+                            <span className={inRange ? 'text-[var(--foreground)]' : 'text-slate-500'}>
                               {trade.index + 1}
                             </span>
                           </td>
@@ -601,7 +601,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
           <div className="text-sm text-slate-400">
             {preview && selectionStats && (
               <>
-                Будет импортировано: <span className="text-white font-medium">
+                Будет импортировано: <span className="text-[var(--foreground)] font-medium">
                   {skipDuplicates ? selectionStats.newTrades : selectionStats.total}
                 </span> сделок
               </>

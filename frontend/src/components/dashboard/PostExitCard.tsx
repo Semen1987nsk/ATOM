@@ -289,7 +289,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                     <div key={idx} className="flex items-center justify-between text-sm py-2 border-b border-white/10">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400">{exit.exit_date}</span>
-                        <span className="font-semibold text-white">{exit.symbol}</span>
+                        <span className="font-semibold text-[var(--foreground)]">{exit.symbol}</span>
                         <span className={`font-medium ${exit.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                           {exit.direction}
                         </span>
@@ -457,7 +457,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-white/10 rounded-lg">
                       <div className="text-xs text-slate-400 uppercase mb-1">Инструмент</div>
-                      <div className="text-2xl font-bold text-white">{selectedTrade.symbol}</div>
+                      <div className="text-2xl font-bold text-[var(--foreground)]">{selectedTrade.symbol}</div>
                       <div className={`text-base font-semibold ${selectedTrade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                         {selectedTrade.direction}
                       </div>
@@ -518,9 +518,9 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                           {availablePeriods.map(([key, period]) => (
                             <div key={key} className="grid grid-cols-5 gap-3 text-sm py-3 border-b border-white/10">
                               <div className="text-purple-400 font-semibold">{period.label || key}</div>
-                              <div className="text-white">{formatPrice(period.max_price || 0)}</div>
-                              <div className="text-white">{formatPrice(period.min_price || 0)}</div>
-                              <div className="text-white">{formatPrice(period.final_price || 0)}</div>
+                              <div className="text-[var(--foreground)]">{formatPrice(period.max_price || 0)}</div>
+                              <div className="text-[var(--foreground)]">{formatPrice(period.min_price || 0)}</div>
+                              <div className="text-[var(--foreground)]">{formatPrice(period.final_price || 0)}</div>
                               <div className={
                                 `font-semibold ${period.exit_quality === 'early' ? 'text-yellow-400' :
                                 period.exit_quality === 'good' ? 'text-green-400' : 'text-slate-300'}`
@@ -538,10 +538,10 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                   
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="p-3 bg-white/10 rounded-lg">
-                      <span className="text-slate-400">Вход:</span> <span className="text-white font-medium">{formatPrice(selectedTrade.entry_price)}</span> <span className="text-slate-400">@</span> <span className="text-white">{selectedTrade.entry_at?.split('T')[0]}</span>
+                      <span className="text-slate-400">Вход:</span> <span className="text-[var(--foreground)] font-medium">{formatPrice(selectedTrade.entry_price)}</span> <span className="text-slate-400">@</span> <span className="text-[var(--foreground)]">{selectedTrade.entry_at?.split('T')[0]}</span>
                     </div>
                     <div className="p-3 bg-white/10 rounded-lg">
-                      <span className="text-slate-400">Выход:</span> <span className="text-white font-medium">{formatPrice(selectedTrade.exit_price)}</span> <span className="text-slate-400">@</span> <span className="text-white">{selectedTrade.exit_at?.split('T')[0]}</span>
+                      <span className="text-slate-400">Выход:</span> <span className="text-[var(--foreground)] font-medium">{formatPrice(selectedTrade.exit_price)}</span> <span className="text-slate-400">@</span> <span className="text-[var(--foreground)]">{selectedTrade.exit_at?.split('T')[0]}</span>
                     </div>
                   </div>
                 </div>
@@ -564,7 +564,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                       onClick={() => setSelectedTrade(trade)}
                     >
                       <div className="text-slate-300">{trade.exit_at?.split('T')[0]}</div>
-                      <div className="font-semibold text-white">{trade.symbol}</div>
+                      <div className="font-semibold text-[var(--foreground)]">{trade.symbol}</div>
                       <div className={`font-medium ${trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                         {trade.direction}
                       </div>

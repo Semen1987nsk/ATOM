@@ -138,10 +138,10 @@ export function HistoryFilters({
         </button>
 
         {showDatePicker && (
-          <div className="absolute top-20 left-4 z-50 bg-slate-900 border border-border rounded-xl shadow-2xl p-4 min-w-80">
+          <div className="absolute top-20 left-4 z-50 bg-[var(--surface-1)] border border-border rounded-xl shadow-2xl p-4 min-w-80">
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-white">Показывать сделки с:</span>
+                <span className="text-sm font-bold text-[var(--foreground)]">Показывать сделки с:</span>
                 <button onClick={() => setShowDatePicker(false)} className="text-slate-400 hover:text-white">
                   <X size={16} />
                 </button>
@@ -171,8 +171,7 @@ export function HistoryFilters({
                       setTradesForSelectedDate([]);
                     }
                   }}
-                  className="w-full bg-slate-800 border border-border rounded-lg px-3 py-2 text-white text-sm"
-                  style={{ colorScheme: 'dark' }}
+                  className="w-full bg-[var(--input-bg)] border border-border rounded-lg px-3 py-2 text-[var(--foreground)] text-sm"
                 />
               </div>
 

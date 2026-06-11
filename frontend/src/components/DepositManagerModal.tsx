@@ -184,7 +184,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <div className="flex items-center gap-3">
             <Wallet className="w-6 h-6 text-green-400" />
-            <h2 className="text-xl font-semibold text-white">Управление депозитом</h2>
+            <h2 className="text-xl font-semibold text-[var(--foreground)]">Управление депозитом</h2>
           </div>
           <button 
             onClick={onClose}
@@ -205,7 +205,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-slate-700/50 rounded-xl p-4">
                     <div className="text-sm text-slate-400 mb-1">{isBrokerBacked ? 'Чистый ввод' : 'Начальный'}</div>
-                    <div className="text-lg font-bold text-white">
+                    <div className="text-lg font-bold text-[var(--foreground)]">
                       {formatCurrency(isBrokerBacked ? balance.net_deposit : balance.initial_balance)}
                     </div>
                   </div>
@@ -275,7 +275,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
 
               <div className="bg-slate-700/30 rounded-xl p-4 space-y-3 border border-slate-600/50">
                 <div>
-                  <div className="text-sm font-medium text-white">Импорт баланса из отчёта брокера</div>
+                  <div className="text-sm font-medium text-[var(--foreground)]">Импорт баланса из отчёта брокера</div>
                   <div className="text-xs text-slate-400 mt-1">
                     Загрузите Excel-отчёт с входящим/исходящим остатком. Снимки баланса будут сохранены как исторические якоря для точного расчёта капитала на старт периода.
                   </div>
@@ -301,7 +301,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
               {showForm && (
                 <form onSubmit={handleSubmit} className="bg-slate-700/50 rounded-xl p-4 space-y-3">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium text-white">
+                    <h3 className="font-medium text-[var(--foreground)]">
                       {formType === 'initial' && '💰 Начальный депозит'}
                       {formType === 'deposit' && '➕ Пополнение'}
                       {formType === 'withdrawal' && '➖ Снятие'}
@@ -323,7 +323,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                         value={formAmount}
                         onChange={(e) => setFormAmount(e.target.value)}
                         placeholder="100000"
-                        className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                        className="w-full p-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)]"
                         required
                         min="0"
                         step="0.01"
@@ -335,7 +335,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                         type="date"
                         value={formDate}
                         onChange={(e) => setFormDate(e.target.value)}
-                        className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                        className="w-full p-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)]"
                         required
                       />
                     </div>
@@ -348,7 +348,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                       value={formNote}
                       onChange={(e) => setFormNote(e.target.value)}
                       placeholder="Например: Пополнение с зарплаты"
-                      className="w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                      className="w-full p-2 bg-[var(--input-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)]"
                     />
                   </div>
                   
@@ -395,7 +395,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
                             {op.operation_type === 'withdrawal' && <Minus className="w-4 h-4" />}
                           </div>
                           <div>
-                            <div className="text-sm text-white">{getOperationLabel(op.operation_type)}</div>
+                            <div className="text-sm text-[var(--foreground)]">{getOperationLabel(op.operation_type)}</div>
                             <div className="text-xs text-slate-500">
                               {formatDate(op.date)}
                               {op.source && ` • ${op.source === 'broker' ? 'Брокер' : 'Ручная'}`}
@@ -432,7 +432,7 @@ export const DepositManagerModal: React.FC<DepositManagerModalProps> = ({ isOpen
         <div className="flex items-center justify-end p-4 border-t border-slate-700">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+            className="px-4 py-2 bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] text-[var(--foreground)] rounded-lg transition-colors"
           >
             Закрыть
           </button>

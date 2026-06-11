@@ -876,9 +876,9 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
             if (e.target === e.currentTarget) setSelectedItem(null);
           }}
         >
-          <div className="bg-[#0a0a0a] border border-slate-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--surface-1)] border border-slate-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-[#0a0a0a] z-10">
+            <div className="p-6 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-[var(--surface-1)] z-10">
               <div className="flex items-center gap-3">
                 {getGroupIcon()}
                 <div>
@@ -932,7 +932,7 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
               {/* Method indicator */}
               <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg px-3 py-2 text-xs">
                 <span className="text-purple-400 font-medium">Метод расчёта MAE/MFE:</span>{' '}
-                <span className="text-white">{maeCalculationMethod === 'first_entry' ? 'От первой цены входа' : 'От средневзвешенной цены'}</span>
+                <span className="text-[var(--foreground)]">{maeCalculationMethod === 'first_entry' ? 'От первой цены входа' : 'От средневзвешенной цены'}</span>
               </div>
 
               {/* Trade Stats */}

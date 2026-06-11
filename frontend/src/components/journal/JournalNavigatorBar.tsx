@@ -188,7 +188,7 @@ export function JournalNavigatorBar({
           <ChevronDown size={11} />
         </button>
         {showSetupDropdown && (
-          <div className="absolute top-full left-0 mt-1 z-30 min-w-[180px] max-h-[280px] overflow-y-auto bg-[#0d0d0d] border border-slate-700 rounded-md shadow-xl py-1">
+          <div className="absolute top-full left-0 mt-1 z-30 min-w-[180px] max-h-[280px] overflow-y-auto bg-[var(--surface-1)] border border-slate-700 rounded-md shadow-xl py-1">
             <button
               type="button"
               onClick={() => {
@@ -249,7 +249,7 @@ export function JournalNavigatorBar({
           <ChevronDown size={11} />
         </button>
         {showSortDropdown && (
-          <div className="absolute top-full left-0 mt-1 z-30 min-w-[180px] bg-[#0d0d0d] border border-slate-700 rounded-md shadow-xl py-1">
+          <div className="absolute top-full left-0 mt-1 z-30 min-w-[180px] bg-[var(--surface-1)] border border-slate-700 rounded-md shadow-xl py-1">
             {SORT_OPTIONS.map((s) => (
               <button
                 key={s.key}
@@ -301,7 +301,7 @@ export function JournalNavigatorBar({
           onClick={() => setShowCustomDate(false)}
         >
           <div
-            className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative"
+            className="cyber-card w-full max-w-sm bg-[var(--surface-1)] p-6 relative"
             onClick={(e) => e.stopPropagation()}
           >
             <button
