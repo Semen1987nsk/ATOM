@@ -31,6 +31,9 @@ import { TradesTable } from './_components/TradesTable';
 export default function HistoryPage() {
   const { settings, updateSettings } = useSettings();
   const [trades, setTrades] = useState<Trade[]>([]);
+  // API-02: полное число сделок на счёте из X-Total-Count — бэкенд режет
+  // выдачу limit'ом (500 по умолчанию), и без заголовка усечение невидимо.
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -149,8 +152,11 @@ export default function HistoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get<Trade[]>('/trades/');
+      const res = await api.get<Response>('/trades/', { rawResponse: true });
+      const data = (await res.json()) as Trade[];
       setTrades(data);
+      const total = Number(res.headers.get('X-Total-Count'));
+      setTotalCount(Number.isFinite(total) && total > 0 ? total : null);
     } catch (err) {
       console.error('Failed to fetch trades:', err);
       setError(err instanceof ApiError ? err.toUserMessage() : 'Не удалось загрузить сделки');
@@ -478,6 +484,13 @@ export default function HistoryPage() {
           tradeCount={trades.length}
           isDeleting={isDeleting}
         />
+
+        {/* API-02: бэкенд отдаёт максимум limit строк — предупреждаем об усечении */}
+        {totalCount !== null && totalCount > trades.length && (
+          <div className="mb-4 px-4 py-2.5 text-sm text-[var(--text-secondary)] bg-[var(--surface-2)] border border-[var(--border)] rounded-[var(--radius-lg)]">
+            Показаны {trades.length} из {totalCount} сделок — уточните фильтры или период.
+          </div>
+        )}
 
         {/* TR1: grouped view (default) — round-trip aggregation */}
         {viewMode === 'grouped' && (

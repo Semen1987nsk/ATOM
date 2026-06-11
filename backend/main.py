@@ -358,7 +358,7 @@ app.add_middleware(
         "X-Request-ID",
         settings.CSRF_HEADER_NAME,
     ],
-    expose_headers=["X-Request-ID", "X-Process-Time"],
+    expose_headers=["X-Request-ID", "X-Process-Time", "X-Total-Count"],
 )
 
 # ==================== РОУТЕРЫ ====================

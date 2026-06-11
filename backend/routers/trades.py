@@ -1,7 +1,8 @@
 """
 Trades Router — CRUD для сделок, импорт, unrealized PnL
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Query, Form
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
@@ -531,12 +532,20 @@ async def import_trades(
 
 @router.get("/", response_model=list[schemas.Trade])
 async def read_trades(
+    response: Response,
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=settings.MAX_TRADES_LIMIT),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
     account_id = auth_service.get_account_id(db, current_user)
+    # API-02: тело остаётся plain array (его читают многие хуки фронта),
+    # поэтому полное число строк отдаём заголовком — фронт показывает
+    # предупреждение об усечении при total > len(body).
+    total = db.query(func.count(models.Trade.id)).filter(
+        models.Trade.account_id == account_id
+    ).scalar() or 0
+    response.headers["X-Total-Count"] = str(total)
     trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id
     ).order_by(models.Trade.entry_at.desc()).offset(skip).limit(limit).all()
