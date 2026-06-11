@@ -1050,3 +1050,278 @@ h1 { letter-spacing: -0.015em; }
  * back-compat. KonturCurve удаляется в Phase 3, после этого секцию можно
  * убрать. */
 .kontur-curve { display: none; }
+
+
+/* ─────────────────── FONT BRIDGE (landing merge 2026-06-11) ───────────────
+   Лендинг привёз набор шрифтов: Inter(--font-sans) / JetBrains Mono(--font-mono)
+   / Manrope(--font-display) / Cormorant(--font-serif-cyr). Geist и Fraunces
+   выгружены (font diet: Fraunces без кириллицы, Geist дублировал Inter).
+   Алиасы сохраняют все существующие var()-стеки рабочими. */
+:root {
+  --font-serif:      var(--font-serif-cyr);
+  --font-geist-sans: var(--font-sans);
+  --font-geist-mono: var(--font-mono);
+}
+
+/* ═════════ Эмпирик Editorial Cream — landing palette ═════════
+   Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
+   См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
+[data-theme="empirik-cream"] {
+  /* Fraunces dropped for perf — Cormorant (--font-serif-cyr) is now the sole
+     editorial serif; alias keeps existing var(--font-serif) stacks resolving. */
+  --font-serif:      var(--font-serif-cyr);
+  --paper:           #FAF8F2;
+  --paper-tint:      #f4ecdc;
+  --ink:             #14110B;
+  --ink-2:           rgba(20, 17, 11, 0.62);
+  --ink-3:           rgba(20, 17, 11, 0.40);
+  --rule:            rgba(20, 17, 11, 0.08);
+  --rule-strong:     rgba(20, 17, 11, 0.20);
+  --accent:          #B58A2F;
+  --accent-hover:    #9B7424;
+  --accent-soft:     rgba(181, 138, 47, 0.10);
+  --profit:          #1F6A47;
+  --loss:            #A03A2A;
+
+  /* ─── Bloomberg uplift tokens (2026-05-19) ─── */
+  --orange:           #E84E1C;
+  --orange-hover:     #d44516;
+  --orange-strip:     #E84E1C;
+  --orange-soft:      rgba(232, 78, 28, 0.10);
+  --orange-quote:     rgba(232, 78, 28, 0.40);
+
+  --ink-dark:         #0a0a0a;
+  --ink-dark-2:       #1a1a1a;
+  --paper-on-dark:    #fafafa;
+  --paper-on-dark-2:  rgba(250, 250, 250, 0.70);
+  --paper-on-dark-3:  rgba(250, 250, 250, 0.45);
+  --rule-on-dark:     rgba(250, 250, 250, 0.10);
+  --rule-on-dark-strong: rgba(250, 250, 250, 0.22);
+
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+[data-theme="empirik-cream"] .editorial-eyebrow {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+[data-theme="empirik-cream"] .editorial-display {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-weight: 350;
+  font-size: clamp(44px, 6vw, 88px);
+  line-height: 0.94;
+  letter-spacing: -0.025em;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+}
+
+[data-theme="empirik-cream"] .editorial-h2 {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.018em;
+  font-variation-settings: "opsz" 96, "SOFT" 20;
+}
+
+[data-theme="empirik-cream"] .editorial-lede {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+[data-theme="empirik-cream"] .editorial-pullquote {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(28px, 3.5vw, 48px);
+  line-height: 1.12;
+  font-variation-settings: "opsz" 144, "SOFT" 40, "WONK" 1;
+}
+
+[data-theme="empirik-cream"] .num {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="empirik-cream"] .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 12px 22px;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: transform 120ms ease, background 120ms ease;
+}
+[data-theme="empirik-cream"] .btn-primary:hover {
+  background: #000;
+  transform: translateY(-1px);
+}
+
+[data-theme="empirik-cream"] .editorial-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+[data-theme="empirik-cream"] .editorial-table th {
+  text-align: left;
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 400;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+[data-theme="empirik-cream"] .editorial-table td {
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+/* ═════════ Bloomberg uplift — utility classes (2026-05-19) ═════════ */
+
+[data-theme="empirik-cream"] .uplift-section-light {
+  background-color: var(--paper);
+  color: var(--ink);
+}
+[data-theme="empirik-cream"] .uplift-section-tint {
+  background-color: var(--paper-tint);
+  color: var(--ink);
+}
+[data-theme="empirik-cream"] .uplift-section-dark {
+  background-color: var(--ink-dark);
+  color: var(--paper-on-dark);
+}
+[data-theme="empirik-cream"] .uplift-section-dark .uplift-eyebrow,
+[data-theme="empirik-cream"] .uplift-section-dark .editorial-eyebrow {
+  color: var(--paper-on-dark-3);
+}
+[data-theme="empirik-cream"] .uplift-section-dark a {
+  color: var(--paper-on-dark);
+}
+
+/* Display sans (Manrope) heading family */
+[data-theme="empirik-cream"] .uplift-h1 {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(48px, 7vw, 88px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+[data-theme="empirik-cream"] .uplift-h2 {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(36px, 4.5vw, 56px);
+  line-height: 0.96;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+[data-theme="empirik-cream"] .uplift-numbers {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(56px, 7vw, 96px);
+  line-height: 0.88;
+  letter-spacing: -0.02em;
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ticker strip */
+[data-theme="empirik-cream"] .uplift-ticker-strip {
+  background-color: var(--orange-strip);
+  color: #0a0a0a;
+  border-top: 1px solid #0a0a0a;
+  border-bottom: 1px solid #0a0a0a;
+}
+[data-theme="empirik-cream"] .uplift-ticker-track {
+  display: inline-flex;
+  gap: 36px;
+  white-space: nowrap;
+  animation: uplift-ticker-scroll 35s linear infinite;
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+@keyframes uplift-ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Hero equity curve draw */
+@keyframes uplift-curve-draw {
+  from { stroke-dashoffset: var(--curve-length, 800); }
+  to   { stroke-dashoffset: 0; }
+}
+[data-theme="empirik-cream"] .uplift-curve-animate {
+  animation: uplift-curve-draw 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Champions raise on scroll */
+[data-theme="empirik-cream"] .uplift-raise {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme="empirik-cream"] .uplift-raise[data-inview="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Primary CTA button — orange bg + ink-dark text + Manrope bold uppercase */
+[data-theme="empirik-cream"] .uplift-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--orange);
+  color: var(--ink-dark);
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+[data-theme="empirik-cream"] .uplift-cta-primary:hover {
+  background-color: var(--orange-hover);
+}
+
+/* Focus ring for orange CTAs */
+[data-theme="empirik-cream"] .uplift-focus:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+/* Hero text mount entrance — fade-in + 8px translate-up */
+@keyframes uplift-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-theme="empirik-cream"] .uplift-fade-in {
+  opacity: 0;
+  animation: uplift-fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* prefers-reduced-motion — disable all uplift motion */
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="empirik-cream"] .uplift-ticker-track { animation: none; transform: none; }
+  [data-theme="empirik-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
+  [data-theme="empirik-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
+  [data-theme="empirik-cream"] .uplift-fade-in { animation: none; opacity: 1 !important; transform: none !important; }
+}

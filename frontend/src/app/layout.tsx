@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Fraunces } from "next/font/google";
+import { Cormorant, Inter, JetBrains_Mono, Manrope } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 import { LanguageProvider } from "@/i18n/LanguageContext";
@@ -10,31 +10,64 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { QueryProvider } from "@/lib/QueryProvider";
 import { CookieConsent } from "@/components/CookieConsent";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin", "cyrillic"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// Editorial serif для headlines / lede / pull-quotes.
-// NB: Google-шрифт Fraunces не имеет cyrillic-сабсета — кириллица в этих
-// местах рендерится фолбэком. Выбор serif с кириллицей — см. дизайн-трек.
-// ADR-0006 (editorial-financial-rebrand), design-system.md v3.
-const fraunces = Fraunces({
-  variable: "--font-serif",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+// Cormorant: editorial serif (Cyrillic + Latin) для цитат и заголовков.
+// Заменил Fraunces (Latin-only, ~150KB) — видимый serif-текст кириллический,
+// который Fraunces всё равно не покрывал. globals.css алиасит
+// --font-serif → --font-serif-cyr, существующие стеки работают без правок.
+const cormorant = Cormorant({
+  subsets: ["cyrillic", "cyrillic-ext", "latin"],
+  variable: "--font-serif-cyr",
+  weight: "variable",
   style: ["normal", "italic"],
   display: "swap",
 });
 
+const inter = Inter({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-sans",
+  weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  weight: ["400", "500"],
+  display: "swap",
+});
+
+// Manrope: Bloomberg-style display sans — только 700 (CTA) и 800
+// (H1/H2/числа), 500 выгружен ради веса бандла.
+const manrope = Manrope({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-display",
+  weight: ["700", "800"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Эмпирик",
-  description: "Система торговой аналитики на базе ИИ",
+  title: "Эмпирик — журнал торговых сделок | Торгуй по данным, не по догадкам.",
+  description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка — гипотеза. Данные выносят вердикт.",
+  icons: {
+    icon: [
+      { url: "/landing/favicon-empirik.svg", type: "image/svg+xml" },
+    ],
+  },
+  openGraph: {
+    title: "Эмпирик — журнал торговых сделок",
+    description: "Каждая сделка — гипотеза. Данные выносят вердикт.",
+    url: "https://empirik.io",
+    siteName: "Эмпирик",
+    images: [{ url: "/landing/og-image-empirik.png", width: 1200, height: 630 }],
+    locale: "ru_RU",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Эмпирик — журнал сделок",
+    description: "Сигнал из шума.",
+    images: ["/landing/og-image-empirik.png"],
+  },
 };
 
 export default async function RootLayout({
@@ -49,13 +82,15 @@ export default async function RootLayout({
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html
+      lang="ru"
+      className={`${cormorant.variable} ${inter.variable} ${jetbrainsMono.variable} ${manrope.variable}`}
+      suppressHydrationWarning
+    >
       <head>
         {nonce ? <meta property="csp-nonce" content={nonce} /> : null}
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} antialiased`}
-      >
+      <body className="antialiased">
         <ErrorBoundary>
           <QueryProvider>
             <AuthProvider>

@@ -11,7 +11,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:api-types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.generated.ts",
-    "gen:api-types:from-file": "openapi-typescript ../backend/openapi.json -o src/types/api.generated.ts"
+    "gen:api-types:from-file": "openapi-typescript ../backend/openapi.json -o src/types/api.generated.ts",
+    "test:e2e": "playwright test",
+    "test:visual": "playwright test --grep @visual",
+    "test:e2e:update": "playwright test --update-snapshots",
+    "assets:candles": "tsx scripts/landing-assets/snapshot-moex-candles.ts",
+    "assets:screenshots": "tsx scripts/landing-assets/capture-screenshots.ts",
+    "assets:og": "tsx scripts/landing-assets/build-og-image.ts"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.54.0",
@@ -42,6 +48,7 @@
     "jsdom": "^29.1.1",
     "openapi-typescript": "^7.4.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.1",
     "typescript": "^5",
     "vitest": "^4.1.7"
   }

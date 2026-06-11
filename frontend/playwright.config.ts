@@ -1,28 +1,25 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from "@playwright/test";
 
-/**
- * FE-12 (Sprint 5, Batch 8): Playwright config для E2E smoke-тестов.
- *
- * Запуск локально:
- *   1. Поднять backend (FastAPI) на :8000 с seed-юзером test@example.com.
- *   2. Поднять frontend (npm run dev) на :3000.
- *   3. `npx playwright test` (или с --ui).
- *
- * В CI baseURL переопределяется через PLAYWRIGHT_BASE_URL; retries=2 чтобы
- * случайные сетевые флэки не валили pipeline.
- */
 export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  fullyParallel: true,
+  testDir: "./e2e",
+  outputDir: "./test-results",
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: 'html',
+  workers: process.env.CI ? 1 : 2,
+  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
-    trace: 'on-first-retry',
+    baseURL: process.env.BASE_URL ?? "http://localhost:3001",
+    trace: "retain-on-failure",
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: "chromium-desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "chromium-mobile", use: { ...devices["iPhone 13"] } },
   ],
+  webServer: {
+    command: "npm run dev -- -p 3001",
+    url: "http://localhost:3001",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
 });
