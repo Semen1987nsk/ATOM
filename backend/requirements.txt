@@ -50,9 +50,10 @@ gunicorn>=21.2.0,<23.0.0  # WSGI manager + uvicorn workers (см. Dockerfile CMD
 
 # ==================== OBSERVABILITY ====================
 # Sentry: наш application monitoring (opt-in через SENTRY_DSN).
-# AU10: минимум 2.47.0 потому что t-tech-investments 0.3.5 требует ровно эту версию
-# для своего ErrorHub integration (хардкоженный DSN error-hub.tbank.ru). Если
-# понизим — SDK не установится. См. AU10 Phase 4b — Hub isolation.
+# AU10: минимум 2.47.0 потому что t-tech-investments требует sentry-sdk
+# >=2.47.0,<3.0.0 (Requires-Dist 1.49.2) для своего ErrorHub integration
+# (хардкоженный DSN error-hub.tbank.ru). Если понизим — SDK не установится.
+# См. AU10 Phase 4b — Hub isolation.
 sentry-sdk[fastapi]>=2.47.0,<3.0.0
 python-json-logger>=2.0.7,<3.0.0  # JSON логи для prod-агрегаторов
 
@@ -70,8 +71,15 @@ prometheus-fastapi-instrumentator>=7.0,<8
 # Пакет переименован: tinkoff-investments → t-tech-investments после
 # переезда репозитория на opensource.tbank.ru. Git lineage непрерывен:
 # 0.2.0-beta117 (последний legacy) → 0.2.0-beta118 → 0.3.0 (rename 2025-12-11)
-# → 0.3.5 (current, добавлен Python 3.13/3.14, proto contracts v1.48).
-# Импорт-namespace: `t_tech.invest` (был `tinkoff.invest`).
+# → 0.3.5 (proto contracts v1.48) → 1.0.0 (2026-05-26) → 1.49.2 (current,
+# 2026-06-15, proto contracts v1.49 + SSL-verification под возможный cert-свитч
+# на корень Минцифры). Версия SDK теперь трекает версию gRPC-контракта (1.49.x).
+# Импорт-namespace: `t_tech.invest` (был `tinkoff.invest`). 1.x ввёл новый
+# `t_tech.invest.grpc.*` namespace, но плоский `t_tech.invest.schemas` + сигнатуры
+# (get_portfolio(account_id=), get_operations_by_cursor(request), get_broker_report
+# kwargs, instruments *_by(id_type=,id=)) сохранены как back-compat — наш код
+# работает без правок (проверено probe'ом 0.3.5↔1.49.2, паритет полный).
+# См. opensource.tbank.ru/invest/invest-python BREAKING_CHANGES.md.
 #
 # Install: PyPI listing quarantined → ставим через T-Bank GitLab PyPI:
 #   pip install -r requirements.txt --extra-index-url \
@@ -79,10 +87,13 @@ prometheus-fastapi-instrumentator>=7.0,<8
 #
 # Обязательно прокидывать --extra-index-url в CI/CD (см. .github/workflows/*.yml
 # или pip.conf). Без этого пакет не находится на public PyPI.
-t-tech-investments==0.3.5
-# Зависимости SDK (versions per pyproject 0.3.5):
+t-tech-investments==1.49.2
+# Зависимости SDK (versions per pyproject 1.49.2):
 cachetools>=5.2.0,<6.0.0
 deprecation>=2.1.0,<3.0.0
+# iprotopy: новый транзитивный dep линии 1.x (proto codegen). Резолвится с того
+# же T-Bank GitLab-индекса (--extra-index-url выше) — на public PyPI его нет.
+iprotopy>=0.3.0,<0.4.0
 # Py3.11+: grpcio >=1.75; py<3.11: >=1.59.3 — берём оба сразу.
 grpcio>=1.59.3,<2.0.0
 # Py3.11+: protobuf >=6.31; py<3.11: >=4.25. У нас Python 3.14 → нужен 6.x.
