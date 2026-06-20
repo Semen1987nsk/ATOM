@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, AsyncIterator, Optional, Sequence
+from typing import Any, AsyncIterator, Optional
 
 from tenacity import (
     AsyncRetrying,
-    RetryError,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -65,6 +64,48 @@ def _retry_policy() -> AsyncRetrying:
         retry=retry_if_exception_type(_RETRYABLE),
         reraise=True,
     )
+
+
+def _report_not_ready(exc: Exception) -> bool:
+    """Сигнал, что отчёт ещё генерируется на стороне T-API (любого достаточно)."""
+    msg = str(exc).lower()
+    return (
+        "not_ready" in msg
+        or "not ready" in msg
+        or "30058" in msg  # REPORT_GENERATION_IN_PROGRESS / NOT_READY
+        or "in_progress" in msg
+        or "in progress" in msg
+    )
+
+
+def _dividend_rows_to_dicts(wrapper: Any) -> list[dict[str, Any]]:
+    """GetDividendsForeignIssuerReportResponse -> list raw-dict'ов.
+
+    Mapper в dict (а не domain) намеренно: reconciliation_service сам решает,
+    какие поля и как агрегировать (метрика #6 NDFL cross-check).
+    """
+    if wrapper is None:
+        return []
+    rows = getattr(wrapper, "dividends_foreign_issuer_report", None) or []
+    result: list[dict[str, Any]] = []
+    for r in rows:
+        result.append(
+            {
+                "record_date": getattr(r, "record_date", None),
+                "payment_date": getattr(r, "payment_date", None),
+                "security_name": getattr(r, "security_name", None),
+                "isin": getattr(r, "isin", None),
+                "issuer_country": getattr(r, "issuer_country", None),
+                "quantity": getattr(r, "quantity", 0) or 0,
+                "dividend": getattr(r, "dividend", None),
+                "dividend_gross": getattr(r, "dividend_gross", None),
+                "external_commission": getattr(r, "external_commission", None),
+                "tax": getattr(r, "tax", None),
+                "dividend_amount": getattr(r, "dividend_amount", None),
+                "currency": getattr(r, "currency", None),
+            }
+        )
+    return result
 
 
 class TinkoffOperationsClient:
@@ -455,6 +496,8 @@ class TinkoffOperationsClient:
         *,
         from_dt: datetime,
         to_dt: datetime,
+        max_poll_attempts: int = 8,
+        page_size_limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Отчёт по дивидендам иностранных эмитентов (NDFL ground truth).
 
@@ -463,43 +506,119 @@ class TinkoffOperationsClient:
         наших расчётов NDFL в reconciliation_service (метрика #6).
 
         Возвращает raw dict'ы — конкретный mapper будет в reconciliation_service.
-        """
-        from t_tech.invest.schemas import GetDividendsForeignIssuerRequest
 
-        request = GetDividendsForeignIssuerRequest(
+        T-API `get_dividends_foreign_issuer` — двухшаговый oneof (как
+        get_broker_report): сначала generate (-> task_id), затем get по task_id
+        постранично. Отчёт генерируется асинхронно -> поллим готовность с
+        exponential backoff (NOT_READY / code 30058). Раньше код звал метод
+        одним позиционным GetDividendsForeignIssuerRequest(account_id=...) —
+        TypeError в любой версии SDK (keyword-only oneof); метод никогда не
+        работал. Зеркалит fetch_full_broker_report.
+        """
+        from t_tech.invest.schemas import (
+            GenerateDividendsForeignIssuerReportRequest,
+            GetDividendsForeignIssuerReportRequest,
+        )
+
+        # AU2-style backoff (~120с суммарно) — укладывается в report-лимит.
+        _POLL_BACKOFF = [2.0, 5.0, 10.0, 15.0, 30.0, 30.0, 30.0, 30.0]
+
+        # 1. Generate -> task_id (ретраим только transient через _retry_policy).
+        gen_req = GenerateDividendsForeignIssuerReportRequest(
             account_id=account_id,
             from_=from_dt,
             to=to_dt,
         )
 
-        async def _call():
+        async def _generate():
             return await self._guarded(
                 self._svc.limiter,
-                self._svc.operations.get_dividends_foreign_issuer(request),
+                self._svc.operations.get_dividends_foreign_issuer(
+                    generate_div_foreign_issuer_report=gen_req,
+                ),
             )
 
+        task_id = ""
         async for attempt in _retry_policy():
             with attempt:
-                response = await _call()
-                # T-API ответ: либо .dividends_foreign_issuer_report (list)
-                # либо отдельная подгенерация через task_id. У большинства
-                # SDK версий это прямой ответ.
-                rows = getattr(response, "dividends_foreign_issuer_report", None) or []
-                # Конвертим в dict для гибкости (mapper выберет в service слое).
-                result: list[dict[str, Any]] = []
-                for r in rows:
-                    result.append({
-                        "record_date": getattr(r, "record_date", None),
-                        "payment_date": getattr(r, "payment_date", None),
-                        "security_name": getattr(r, "security_name", None),
-                        "isin": getattr(r, "isin", None),
-                        "issuer_country": getattr(r, "issuer_country", None),
-                        "quantity": getattr(r, "quantity", 0) or 0,
-                        "dividend": getattr(r, "dividend", None),
-                        "dividend_gross": getattr(r, "dividend_gross", None),
-                        "external_commission": getattr(r, "external_commission", None),
-                        "tax": getattr(r, "tax", None),
-                        "dividend_amount": getattr(r, "dividend_amount", None),
-                    })
-                return result
-        return []
+                gen_resp = await _generate()
+                gen_inner = getattr(
+                    gen_resp, "generate_div_foreign_issuer_report_response", None
+                )
+                task_id = getattr(gen_inner, "task_id", "") if gen_inner else ""
+                break
+        if not task_id:
+            log.warning(
+                "dividends_foreign_issuer_no_task_id",
+                extra={"account_id": account_id},
+            )
+            return []
+
+        # 2. Poll первой страницы по task_id (отчёт мог ещё генерироваться).
+        all_rows: list[dict[str, Any]] = []
+        pages_count = 0
+        for attempt_idx in range(max_poll_attempts):
+            try:
+                wrapper = await self._fetch_dividends_page(
+                    GetDividendsForeignIssuerReportRequest, task_id, page=0
+                )
+            except BrokerError as exc:
+                if _report_not_ready(exc):
+                    log.debug(
+                        "dividends_foreign_issuer_not_ready",
+                        extra={"task_id": task_id, "attempt": attempt_idx},
+                    )
+                    await asyncio.sleep(
+                        _POLL_BACKOFF[min(attempt_idx, len(_POLL_BACKOFF) - 1)]
+                    )
+                    continue
+                raise
+            pages_count = int(
+                getattr(wrapper, "pagesCount", None)
+                or getattr(wrapper, "pages_count", 0)
+                or 0
+            )
+            all_rows.extend(_dividend_rows_to_dicts(wrapper))
+            if pages_count > 0 or all_rows:
+                break
+            await asyncio.sleep(
+                _POLL_BACKOFF[min(attempt_idx, len(_POLL_BACKOFF) - 1)]
+            )
+        else:
+            log.warning(
+                "dividends_foreign_issuer_timeout",
+                extra={"account_id": account_id, "task_id": task_id},
+            )
+            return all_rows
+
+        # 3. Остальные страницы (1..pages_count-1), с hard cap по памяти.
+        for page in range(1, min(pages_count, page_size_limit)):
+            wrapper = await self._fetch_dividends_page(
+                GetDividendsForeignIssuerReportRequest, task_id, page=page
+            )
+            all_rows.extend(_dividend_rows_to_dicts(wrapper))
+        log.info(
+            "dividends_foreign_issuer_fetched",
+            extra={
+                "account_id": account_id,
+                "rows": len(all_rows),
+                "pages": pages_count,
+            },
+        )
+        return all_rows
+
+    async def _fetch_dividends_page(
+        self, request_cls: Any, task_id: str, *, page: int
+    ) -> Any:
+        """Одна страница dividends-foreign-issuer отчёта (get-режим oneof).
+
+        Возвращает обёртку GetDividendsForeignIssuerReportResponse (или None).
+        """
+        req = request_cls(task_id=task_id, page=page)
+        resp = await self._guarded(
+            self._svc.limiter,
+            self._svc.operations.get_dividends_foreign_issuer(
+                get_div_foreign_issuer_report=req,
+            ),
+        )
+        return getattr(resp, "div_foreign_issuer_report", None)
