@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant, Inter, JetBrains_Mono, Manrope } from "next/font/google";
+import { Cormorant, Inter, JetBrains_Mono, Manrope, Unbounded } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 import { LanguageProvider } from "@/i18n/LanguageContext";
@@ -45,28 +45,39 @@ const manrope = Manrope({
   display: "swap",
 });
 
+// Unbounded: geometric display (Cyrillic + Latin) — фирменный логотип «Полистата».
+// Округло-геометрический, заметный, читает кириллицу. Только тяжёлые начертания
+// (логотип/акцентные заголовки), body остаётся на Geist/Inter.
+const unbounded = Unbounded({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-brand",
+  weight: ["600", "700", "800", "900"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Эмпирик — журнал торговых сделок | Торгуй по данным, не по догадкам.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://polistata.ru"),
+  title: "Полистата — журнал торговых сделок | Торгуй по данным, не по догадкам.",
   description: "Журнал торговых сделок для активных трейдеров Московской биржи. Optimal f, SQN, MAE/MFE, Trade Replay. Каждая сделка — гипотеза. Данные выносят вердикт.",
   icons: {
     icon: [
-      { url: "/landing/favicon-empirik.svg", type: "image/svg+xml" },
+      { url: "/landing/favicon-polistata.svg", type: "image/svg+xml" },
     ],
   },
   openGraph: {
-    title: "Эмпирик — журнал торговых сделок",
+    title: "Полистата — журнал торговых сделок",
     description: "Каждая сделка — гипотеза. Данные выносят вердикт.",
     url: "https://empirik.io",
-    siteName: "Эмпирик",
-    images: [{ url: "/landing/og-image-empirik.png", width: 1200, height: 630 }],
+    siteName: "Полистата",
+    images: [{ url: "/landing/og-image-polistata.png", width: 1200, height: 630 }],
     locale: "ru_RU",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Эмпирик — журнал сделок",
+    title: "Полистата — журнал сделок",
     description: "Сигнал из шума.",
-    images: ["/landing/og-image-empirik.png"],
+    images: ["/landing/og-image-polistata.png"],
   },
 };
 
@@ -84,7 +95,7 @@ export default async function RootLayout({
   return (
     <html
       lang="ru"
-      className={`${cormorant.variable} ${inter.variable} ${jetbrainsMono.variable} ${manrope.variable}`}
+      className={`${cormorant.variable} ${inter.variable} ${jetbrainsMono.variable} ${manrope.variable} ${unbounded.variable}`}
       suppressHydrationWarning
     >
       <head>

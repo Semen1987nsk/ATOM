@@ -1,11 +1,10 @@
 /**
- * Guest landing — Эмпирик hand-crafted (Trader Desk + cream palette).
+ * Guest landing — Полистата hand-crafted (Trader Desk + cream palette).
  *
  * См. spec docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md
  *
  * Изоляция темы: data-theme="empirik-cream" — не течёт в auth-zone.
  */
-import { Fragment } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { LiveTicker } from "./parts/LiveTicker";
@@ -16,6 +15,7 @@ import { ManifestCutIn } from "./parts/ManifestCutIn";
 import { AudienceQualifier } from "./parts/AudienceQualifier";
 import { SimpleFactSection } from "./parts/SimpleFactSection";
 import { ChampionsSection } from "./parts/ChampionsSection";
+import { MetricsTerminal } from "./parts/MetricsTerminal";
 import { CountUp } from "@/components/common/CountUp";
 
 const NAV_LINKS = [
@@ -41,37 +41,6 @@ function renderNumeral(value: string) {
   return <span>{value}</span>;
 }
 
-const METRICS_TABLE: Array<{ metric: string; source: string; what: string; where: string; explainer?: string }> = [
-  { metric: "Optimal f", source: "Винс", what: "Оптимальная доля капитала на сделку", where: "Риск",
-    explainer: "Доля капитала на сделку, при которой геометрический рост портфеля максимален. Optimal f = 0.18 означает 18 % риска от равновесия на каждую сделку — больше дороже геометрически, меньше — упускаешь рост." },
-  { metric: "SQN", source: "Тарп", what: "Качество торговой системы", where: "Риск",
-    explainer: "System Quality Number = √N × (среднее R / σ R). SQN ниже 1.6 — система плохая, 2.0–2.5 — средняя, выше 3.0 — отличная. Считается на твоих закрытых сделках, не на бэктесте." },
-  { metric: "R-Expectancy", source: "—", what: "Среднее R-multiple на сделку", where: "Базовая",
-    explainer: "Среднее R-multiple по всем закрытым сделкам: суммируешь R каждой сделки и делишь на их число. R-Expectancy = 0,35 означает, что в среднем сделка приносит 0,35 от размера риска. Положительная — стратегия в плюсе на длинной дистанции. Отрицательная — стратегия теряет систематически, не «не повезло». Минимум 50 закрытых сделок для надёжной оценки." },
-  { metric: "Profit Factor", source: "—", what: "Сумма прибылей / сумма убытков", where: "Базовая",
-    explainer: "Сумма прибылей делённая на сумму убытков. Profit Factor = 1,8 означает, что на каждый рубль убытка приходится 1,8 рубля прибыли. Ниже 1,0 — стратегия теряет. 1,3–1,6 — рабочая. Выше 2,0 — редкая для розничной торговли, проверяй сделки на ошибки разметки. На малой выборке завышается одной крупной сделкой — смотри вместе с R-Expectancy." },
-  { metric: "Z-Score", source: "—", what: "Значимость серий — есть ли паттерн", where: "Продвинутая",
-    explainer: "Статистическая значимость серий выигрышей и проигрышей в твоей истории сделок. |Z| ниже 1,96 — серии случайны, паттерна нет. |Z| выше 1,96 — серии не случайны. Положительный Z — выигрыши и проигрыши группируются (полосы дольше ожидаемых). Отрицательный — чередуются чаще ожидаемого. Подсказывает, стоит ли менять размер позиции после серии или это шум." },
-  { metric: "Sortino Ratio", source: "—", what: "Доходность с поправкой на downside", where: "Продвинутая",
-    explainer: "Доходность сверх безрисковой ставки, делённая только на downside-волатильность — стандартное отклонение убыточных периодов. Sortino выше 1,0 — приемлемо, выше 2,0 — хорошо. Отличается от Sharpe тем, что не штрафует за «волатильность вверх»: всплеск прибыли — это не риск. Метрика Фрэнка Сортино; считается на месячной или дневной серии P&L." },
-  { metric: "Calmar Ratio", source: "—", what: "CAGR / Max Drawdown", where: "Продвинутая",
-    explainer: "Годовая доходность (CAGR) делённая на максимальную просадку за период. Calmar = 2,0 означает: годовая доходность в два раза перекрывает худшую просадку. Ниже 0,5 — слабо: одна плохая полоса съедает год роста. Выше 3,0 — отлично, но проверь длину истории. Метрика Терри Янга, применяется на минимум трёхлетней истории." },
-  { metric: "Recovery Factor", source: "—", what: "Чистая прибыль / Max Drawdown", where: "Продвинутая",
-    explainer: "Чистая прибыль за период делённая на максимальную просадку. Recovery Factor = 5 означает, что общая прибыль в пять раз перекрывает худшую просадку счёта. Ниже 1,0 — система не отбила свой худший момент. 2,0–3,0 — норма. Выше 5,0 — стратегия с высокой скоростью восстановления. Считается на закрытой equity-кривой, не на open-trade P&L." },
-  { metric: "Risk of Ruin", source: "—", what: "Вероятность потерять 20% / 50% депо", where: "Риск",
-    explainer: "Вероятность потерять 20 % или 50 % депозита при твоей текущей win rate и среднем R. Считается аналитически по Ральфу Винсу и подтверждается 10 000 Monte Carlo-симуляций." },
-  { metric: "Monte Carlo 10 000", source: "—", what: "Worst-case 5 % симуляции", where: "Риск",
-    explainer: "10 000 случайных перестановок твоих сделок: тот же набор R, но в другом порядке. Из распределения берётся worst-case 5 % сценариев — пятый процентиль по максимальной просадке и итоговой equity. Подсказывает, какую просадку реально получить при той же стратегии, если бы убыточные сделки сгруппировались иначе. Сравнивай с фактической просадкой: ниже worst-case 5 % — везение пока на твоей стороне." },
-  { metric: "MAE / MFE", source: "MOEX", what: "Edge Ratio из реальных свечей", where: "Анализ",
-    explainer: "Maximum Adverse Excursion — насколько глубоко цена уходила против тебя внутри сделки. Maximum Favorable Excursion — насколько далеко в твою сторону. Из минутных свечей биржи. Средний MAE убыточных сделок в 1.5 раза дальше стопа — стоп ставится слишком далеко." },
-  { metric: "Post-Exit", source: "MOEX", what: "Что было с ценой после выхода", where: "Анализ",
-    explainer: "Что было с ценой после твоего выхода: насколько она ушла в твою сторону или против неё на 5, 15, 60 минутах после exit. Считается из тех же минутных свечей MOEX, что и MAE/MFE. Систематически положительный Post-Exit на прибыльных сделках — выходишь рано, тейк закрывается из страха. Систематически отрицательный на убыточных — наоборот, выход вовремя." },
-  { metric: "Tail Ratio", source: "—", what: "P95 win / |P05 loss|", where: "Эффективность",
-    explainer: "P95 win делённый на модуль P05 loss: размер 95-го перцентиля прибыли по сравнению с 5-м перцентилем убытка. Tail Ratio выше 1,0 — правый хвост толще левого, крупные выигрыши перебивают крупные проигрыши. Ниже 1,0 — система отдаёт на хвостах. Совпадает с философией «срезай убытки, давай прибыли расти» Ливермора, посчитанной на твоих сделках." },
-  { metric: "GHPR", source: "—", what: "Geometric Holding Period Return", where: "Эффективность",
-    explainer: "Geometric Holding Period Return — геометрическая средняя доходность за один период удержания позиции. Корень N-степени из произведения (1 + R каждой сделки), минус единица. Отличается от арифметической средней тем, что учитывает компаундинг: цепочка +20 % и −20 % даёт −4 %, а не ноль. Если GHPR положителен, депозит растёт геометрически; если отрицателен — разрушается, даже когда арифметическая средняя в плюсе." },
-];
-
 export function Landing() {
   return (
     <main data-theme="empirik-cream" className="min-h-screen">
@@ -80,10 +49,18 @@ export function Landing() {
         <div className="max-w-[1200px] mx-auto flex items-center justify-between px-6 lg:px-12 h-16">
           <Link
             href="/"
-            className="text-[22px] italic no-underline text-[var(--ink)]"
-            style={{ fontFamily: "var(--font-serif), Georgia, serif", fontWeight: 400, letterSpacing: "-0.015em" }}
+            className="flex items-center gap-2.5 no-underline text-[var(--ink)]"
+            aria-label="Полистата — на главную"
           >
-            Эмпирик
+            <svg width="26" height="26" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
+              <rect x="6" y="28" width="9" height="14" rx="2.5" fill="currentColor" />
+              <rect x="19.5" y="20" width="9" height="22" rx="2.5" fill="currentColor" />
+              <rect x="33" y="10" width="9" height="32" rx="2.5" fill="#E2521C" />
+              <circle cx="37.5" cy="10" r="3.4" fill="currentColor" />
+            </svg>
+            <span className="font-brand text-[20px]" style={{ fontWeight: 800, letterSpacing: "-0.01em" }}>
+              Полистата
+            </span>
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-[13px] text-[var(--ink-2)]">
             {NAV_LINKS.map((l) => (
@@ -148,7 +125,7 @@ export function Landing() {
               className="mt-6 text-[12px] num uplift-fade-in"
               style={{ color: "var(--paper-on-dark-3)", animationDelay: "420ms" }}
             >
-              Бесплатно до 50 сделок. Без карты. 21 день Pro в подарок.
+              Бесплатно навсегда. Импорт из Тинькофф / Финам / БКС. Без карты.
             </p>
           </div>
           <div className="col-span-12 lg:col-span-5 lg:pl-6">
@@ -313,38 +290,7 @@ export function Landing() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="editorial-table">
-              <thead>
-                <tr>
-                  <th className="w-[24%]">Метрика</th>
-                  <th className="w-[14%]">Источник</th>
-                  <th>Что показывает</th>
-                  <th className="w-[16%]">Категория</th>
-                </tr>
-              </thead>
-              <tbody>
-                {METRICS_TABLE.map((m) => (
-                  <Fragment key={m.metric}>
-                    <tr>
-                      <td className="text-[var(--ink)] font-medium">{m.metric}</td>
-                      <td className="text-[var(--ink-3)] text-[13px]">{m.source}</td>
-                      <td className="text-[var(--ink-2)]">{m.what}</td>
-                      <td className="text-[var(--ink-3)] text-[13px]">{m.where}</td>
-                    </tr>
-                    {m.explainer && (
-                      <tr className="bg-[var(--accent-soft)]/40">
-                        <td colSpan={4} className="text-[13px] leading-[1.55] text-[var(--ink-2)] italic px-3 py-3"
-                            style={{ fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif" }}>
-                          {m.explainer}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <MetricsTerminal />
 
           <div className="mt-10 flex items-center justify-between gap-6 border-t border-[var(--rule)] pt-6">
             <p className="text-[14px] text-[var(--ink-3)]">
@@ -479,7 +425,7 @@ export function Landing() {
                 Чтобы понять, что происходит на счёте.
               </p>
               <ul className="space-y-3 mb-8 list-none p-0 text-[15px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
-                <li>До 50 сделок в месяц с FIFO-учётом. Выше — старые вытесняются.</li>
+                <li>Безлимит сделок. История журнала не закрывается.</li>
                 <li>P&amp;L, Win Rate, Profit Factor — базовые метрики на закрытых сделках.</li>
                 <li>Импорт CSV / Excel из любого терминала MOEX. Ручной ввод сделок.</li>
                 <li>Календарный P&amp;L по дням недели — какие дни в плюсе, какие в минусе.</li>
@@ -521,7 +467,7 @@ export function Landing() {
                 className="inline-flex items-center mb-6 px-2.5 py-1 text-[11px] uppercase tracking-[0.08em]"
                 style={{ fontFamily: "var(--font-mono), monospace", border: "1px solid var(--orange)", color: "var(--orange)" }}
               >
-                21 день в подарок · без карты
+                Отмена в любой момент
               </div>
               <p
                 className="text-[14px] italic mb-6 leading-snug"
@@ -582,7 +528,7 @@ export function Landing() {
             className="mt-6 num text-[11px] uppercase tracking-[0.08em]"
             style={{ color: "var(--paper-on-dark-3)" }}
           >
-            Без карты · 21 день Pro в подарок · 50 сделок в месяц бесплатно
+            Без карты · Free навсегда · Pro 399 ₽/мес, отмена в любой момент
           </p>
         </div>
       </section>
@@ -594,10 +540,19 @@ export function Landing() {
             <div>
               <Link
                 href="/"
-                className="text-[22px] no-underline mb-4 block"
-                style={{ fontFamily: "var(--font-display), sans-serif", fontWeight: 800, color: "var(--paper-on-dark)", letterSpacing: "-0.025em", textTransform: "uppercase" }}
+                className="inline-flex items-center gap-2 no-underline mb-4"
+                style={{ color: "var(--paper-on-dark)" }}
+                aria-label="Полистата — на главную"
               >
-                Эмпирик
+                <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true" className="shrink-0">
+                  <rect x="6" y="28" width="9" height="14" rx="2.5" fill="currentColor" />
+                  <rect x="19.5" y="20" width="9" height="22" rx="2.5" fill="currentColor" />
+                  <rect x="33" y="10" width="9" height="32" rx="2.5" fill="#E2521C" />
+                  <circle cx="37.5" cy="10" r="3.4" fill="currentColor" />
+                </svg>
+                <span className="font-brand text-[19px]" style={{ fontWeight: 800, letterSpacing: "-0.01em" }}>
+                  Полистата
+                </span>
               </Link>
               <p className="leading-relaxed text-[13px]" style={{ color: "var(--paper-on-dark-3)" }}>
                 Журнал сделок для активных трейдеров MOEX. На минутных свечах биржи. На вашем брокере через API или CSV.
@@ -634,7 +589,7 @@ export function Landing() {
             152-ФЗ · Хостинг Yandex Cloud · Тинькофф Invest API read-only · 30 дней передумать
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4 text-[13px]" style={{ color: "var(--paper-on-dark-3)" }}>
-            <div>© Эмпирик · Запись. Учёт. Свидетельство.</div>
+            <div>© Полистата · Запись. Учёт. Свидетельство.</div>
             <div>Данные: MOEX ISS · Брокеры через API и CSV · Бета-период · Платный запуск Q3 2026</div>
           </div>
         </div>

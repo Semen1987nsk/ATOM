@@ -56,34 +56,17 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Логомарка «сигнал из шума» (геометрия из public/logo-empirik.svg).
-// Инлайн-SVG вместо <img>: в img wordmark с currentColor рендерится чёрным
-// (невидим на тёмной теме), а синие цвета лендинга конфликтуют с ochre-акцентом.
-function EmpirikMark({ className }: { className?: string }) {
+// Логомарка «гистограмма-П»: три восходящих столбца (поли+стата), верхний —
+// фирменный оранжевый с дата-точкой. currentColor наследует цвет текста (ink),
+// поэтому знак виден на любой теме; оранжевый #E2521C фиксирован для консистентности
+// бренда (гармонирует с ochre-акцентом приложения, в отличие от старого cyan).
+function PolistataMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="4 6 58 50" className={className} aria-hidden="true" focusable="false">
-      <g fill="var(--text-tertiary)" opacity="0.55">
-        <circle cx="10" cy="20" r="1.6" />
-        <circle cx="16" cy="40" r="1.6" />
-        <circle cx="13" cy="50" r="1.6" />
-        <circle cx="22" cy="28" r="1.6" />
-        <circle cx="28" cy="46" r="1.6" />
-        <circle cx="34" cy="22" r="1.6" />
-      </g>
-      <polyline
-        points="8,52 20,44 30,34 42,24 56,12"
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <g fill="var(--accent)">
-        <circle cx="20" cy="44" r="2.4" />
-        <circle cx="30" cy="34" r="2.4" />
-        <circle cx="42" cy="24" r="2.4" />
-      </g>
-      <circle cx="56" cy="12" r="3" fill="var(--accent)" />
+    <svg viewBox="0 0 48 48" className={className} aria-hidden="true" focusable="false">
+      <rect x="6" y="28" width="9" height="14" rx="2.5" fill="currentColor" />
+      <rect x="19.5" y="20" width="9" height="22" rx="2.5" fill="currentColor" />
+      <rect x="33" y="10" width="9" height="32" rx="2.5" fill="#E2521C" />
+      <circle cx="37.5" cy="10" r="3.4" fill="currentColor" />
     </svg>
   );
 }
@@ -296,14 +279,16 @@ function Sidebar({
       <div className="flex items-center justify-between h-14 px-4 border-b border-[var(--border)]">
         <Link
           href="/"
-          className="flex items-center gap-2 text-xl font-bold tracking-tight no-underline"
+          className="flex items-center gap-2 no-underline"
           onClick={onCloseMobile}
         >
-          <EmpirikMark className="h-6 w-auto shrink-0" />
+          <PolistataMark className="h-6 w-auto shrink-0" />
           {collapsed ? (
-            <span className="sr-only">Эмпирик</span>
+            <span className="sr-only">Полистата</span>
           ) : (
-            <span>Эмпирик</span>
+            <span className="font-brand text-[19px]" style={{ fontWeight: 800, letterSpacing: "-0.01em" }}>
+              Полистата
+            </span>
           )}
         </Link>
         <button

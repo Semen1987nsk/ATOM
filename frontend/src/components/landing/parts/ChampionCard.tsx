@@ -22,7 +22,7 @@ export function ChampionCard({ champion, idx = 0 }: { champion: Champion; idx?: 
       <div className="mb-6 mx-auto" style={{ width: 220, height: 220 }}>
         <Image
           src={champion.portraitSrc}
-          alt={`Гравюрный портрет — ${champion.firstName} ${champion.lastName}`}
+          alt={`Монограмма — ${champion.firstName} ${champion.lastName}`}
           width={220}
           height={220}
           loading="lazy"
@@ -47,9 +47,9 @@ export function ChampionCard({ champion, idx = 0 }: { champion: Champion; idx?: 
       {champion.quote && (
         <blockquote
           data-champion-quote
-          className="text-[15px] italic text-[var(--ink)] leading-[1.55] pl-4 mb-4 flex-grow m-0"
+          className="text-[17px] lg:text-[18px] italic text-[var(--ink)] leading-[1.6] pl-5 mb-4 flex-grow m-0"
           style={{
-            borderLeft: "2px solid var(--orange)",
+            borderLeft: "3px solid var(--orange)",
             fontFamily: "var(--font-serif), var(--font-serif-cyr), Georgia, serif",
           }}
         >

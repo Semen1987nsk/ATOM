@@ -1,0 +1,10 @@
+<svg viewBox="0 0 300 56" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Полистата"
+     font-family="Unbounded, Manrope, 'Segoe UI', Arial, sans-serif">
+  <!-- mark: гистограмма-«П» (три восходящих столбца, верхний — оранжевый с дата-точкой) -->
+  <rect x="2"    y="30" width="9" height="14" rx="2.5" fill="#16140F"/>
+  <rect x="15.5" y="22" width="9" height="22" rx="2.5" fill="#16140F"/>
+  <rect x="29"   y="12" width="9" height="32" rx="2.5" fill="#E2521C"/>
+  <circle cx="33.5" cy="12" r="3.4" fill="#16140F"/>
+  <!-- wordmark -->
+  <text x="50" y="38" font-weight="800" font-size="27" letter-spacing="-0.3" fill="#16140F">Полистата</text>
+</svg>

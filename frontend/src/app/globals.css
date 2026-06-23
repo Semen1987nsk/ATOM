@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================================================
- *  ATOM / Эмпирик — Design System v3 (Editorial Financial)
+ *  ATOM / Полистата — Design System v3 (Editorial Financial)
  *  Стиль: FT.com / Stripe Press / Bloomberg Markets.
  *  Brand: Ochre #d4a13a.
  *  Принципы: hairline rules вместо боксов, serif headlines (Fraunces),
@@ -202,6 +202,12 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Brand wordmark — Unbounded (geometric display, поддерживает кириллицу).
+ * Только для логотипа «Полистата» и акцентных брендовых заголовков. */
+.font-brand {
+  font-family: var(--font-brand), "Segoe UI", system-ui, sans-serif;
 }
 
 /* Базовые headings — НЕ задаём font-size глобально (Tailwind text-* классы
@@ -1063,7 +1069,7 @@ h1 { letter-spacing: -0.015em; }
   --font-geist-mono: var(--font-mono);
 }
 
-/* ═════════ Эмпирик Editorial Cream — landing palette ═════════
+/* ═════════ Полистата Editorial Cream — landing palette ═════════
    Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
    См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
 [data-theme="empirik-cream"] {
@@ -1318,10 +1324,20 @@ h1 { letter-spacing: -0.015em; }
   animation: uplift-fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+/* Metrics terminal — деталь проявляется при смене активной метрики */
+@keyframes metric-detail-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-theme="empirik-cream"] .metric-detail-anim {
+  animation: metric-detail-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* prefers-reduced-motion — disable all uplift motion */
 @media (prefers-reduced-motion: reduce) {
   [data-theme="empirik-cream"] .uplift-ticker-track { animation: none; transform: none; }
   [data-theme="empirik-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
   [data-theme="empirik-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
   [data-theme="empirik-cream"] .uplift-fade-in { animation: none; opacity: 1 !important; transform: none !important; }
+  [data-theme="empirik-cream"] .metric-detail-anim { animation: none; }
 }

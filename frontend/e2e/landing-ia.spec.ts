@@ -50,12 +50,12 @@ test("SimpleFact columns show large orange numerals", async ({ page }) => {
   expect(fontFamily.toLowerCase()).toContain("manrope");
 });
 
-test('Champions section has 6 cards', async ({ page }) => {
+test('Champions section has 7 cards', async ({ page }) => {
   await page.goto('/');
   const section = page.locator('#champions');
   await expect(section).toBeVisible();
-  await expect(section.locator('[data-testid="champion-card"]')).toHaveCount(6);
-  for (const name of ['Ливермор', 'Дарвас', 'Минервини', 'Тюдор Джонс', 'Элдер', 'Рашке']) {
+  await expect(section.locator('[data-testid="champion-card"]')).toHaveCount(7);
+  for (const name of ['Хомма', 'Ливермор', 'Дарвас', 'Минервини', 'Тюдор Джонс', 'Элдер', 'Рашке']) {
     await expect(section.getByText(name).first()).toBeVisible();
   }
 });
