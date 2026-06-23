@@ -1,17 +1,21 @@
 # Тарифы Empirik
 
-> Модель: **Reverse-Trial 21 день → Free+ (навсегда) → Pro 399₽**. Обоснование решения — [`ADR-0005`](../tech/decisions/0005-reverse-trial-model.md). Реализация эталона UX — [`feature-canon/04-downgrade-experience.md`](../product/feature-canon/04-downgrade-experience.md).
+> **MVP-модель (с 2026-06-23, [`ADR-0009`](../tech/decisions/0009-mvp-flat-freemium-pricing.md)): плоский Free / Pro 399₽ / Corporate.** Граница — **импорт всегда бесплатен, автосинк платный**.
+> **Целевая модель (fast-follow после ЮKassa): Reverse-Trial 21 день → Free+ → Pro 399₽** ([`ADR-0005`](../tech/decisions/0005-reverse-trial-model.md), UX-эталон [`feature-canon/04-downgrade-experience.md`](../product/feature-canon/04-downgrade-experience.md)). Reverse-trial-машинерия написана, но висит орфаном — включается подключением, не стройкой с нуля.
 
-## Действующая сетка (с 2026-05-14)
+## Действующая сетка MVP (с 2026-06-23 — ADR-0009)
 
 | План | Цена | Доступ | Для кого |
 |---|---|---|---|
-| **Trial** | 0₽ × 21 день | Полный Pro без карты | Любой при регистрации |
-| **Free+** | 0₽ навсегда | Безлимит сделок, базовая статистика, архив trial-периода | После trial / тестирующие |
-| **Pro** | 399₽/мес или 3 990₽/год | Безлимит, AI, MAE/MFE, Replay, API-sync, до 5 счетов | Активный трейдер |
+| **Free** | 0₽ навсегда | Безлимит сделок; ручной ввод + импорт CSV/Excel (Тинькофф/Финам/БКС); 6 базовых метрик (PnL, WinRate, Profit Factor, Expectancy, R-Multiple, Equity); 1 счёт; экспорт CSV | Активация + виральность |
+| **Pro** | 399₽/мес или 3 990₽/год | Всё из Free + API-автосинк + AI + MAE/MFE + Trade Replay + продвинутые метрики + до 5 счетов + безлимит PDF | Активный трейдер |
 | **Corporate** | индивидуально | Multi-team (10+), white-label, SSO, SLA | Проп-фонды |
 
-Реализовано в `frontend/src/app/pricing/page.tsx` (требует перерисовки — три колонки Trial/Free+/Pro).
+Реализовано в `frontend/src/app/pricing/page.tsx` (Free / Pro / Corporate). Черновик reverse-trial-страницы — `pricing/page-v2.tsx` (Trial/Free+/Pro), в роутинг не включён, заготовка под fast-follow.
+
+---
+
+> ⬇️ **Разделы ниже (Trial / Free+ / заморозка фич / email-flow) описывают ЦЕЛЕВУЮ reverse-trial модель — это fast-follow, НЕ действующая MVP-сетка.** На MVP действует плоская сетка выше.
 
 ## Что входит куда
 

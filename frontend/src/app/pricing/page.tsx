@@ -15,22 +15,23 @@ const plans = [
   {
     id: 'free',
     name: 'Free',
-    description: 'Для начинающих трейдеров',
+    description: 'Журнал + базовая аналитика',
     price: 0,
     period: 'навсегда',
     icon: Zap,
     color: 'from-gray-500 to-gray-600',
     borderColor: 'border-gray-500/30',
     features: [
-      { text: 'До 50 сделок в месяц', included: true },
+      { text: 'Безлимит сделок', included: true },
+      { text: 'Ручной ввод + импорт CSV/Excel (Тинькофф/Финам/БКС)', included: true },
+      { text: '6 базовых метрик (PnL, WinRate, Profit Factor…)', included: true },
       { text: '1 торговый счёт', included: true },
-      { text: 'Базовая статистика', included: true },
-      { text: 'Импорт из Excel/PDF', included: true },
-      { text: 'Дневник сделок', included: true },
+      { text: 'Экспорт CSV', included: true },
+      { text: 'API-автосинхронизация с брокером', included: false },
       { text: 'AI-анализ сделок', included: false },
-      { text: 'Продвинутая аналитика', included: false },
-      { text: 'Экспорт отчётов', included: false },
-      { text: 'Приоритетная поддержка', included: false },
+      { text: 'MAE/MFE из свечей MOEX', included: false },
+      { text: 'Продвинутые метрики (Sharpe, Sortino, Optimal f…)', included: false },
+      { text: 'Trade Replay', included: false },
     ],
     cta: 'Текущий план',
     popular: false,
@@ -45,15 +46,15 @@ const plans = [
     color: 'bg-[var(--accent-soft)] border border-[var(--accent)]/30',
     borderColor: 'border-[var(--accent)]/50',
     features: [
-      { text: 'Безлимит сделок', included: true },
-      { text: 'До 5 торговых счетов', included: true },
-      { text: 'Полная статистика', included: true },
-      { text: 'Импорт из Excel/PDF', included: true },
-      { text: 'Дневник сделок', included: true },
+      { text: 'Всё из Free', included: true },
+      { text: 'API-автосинхронизация Тинькофф (60 сек)', included: true },
       { text: 'AI-анализ сделок', included: true },
-      { text: 'Продвинутая аналитика', included: true },
-      { text: 'Экспорт отчётов', included: true },
-      { text: 'Приоритетная поддержка', included: false },
+      { text: 'MAE/MFE из свечей MOEX', included: true },
+      { text: 'Продвинутые метрики (Sharpe, Sortino, Optimal f, SQN)', included: true },
+      { text: 'Trade Replay', included: true },
+      { text: 'До 5 торговых счетов', included: true },
+      { text: 'Безлимит PDF-отчётов', included: true },
+      { text: 'Приоритетная поддержка', included: true },
     ],
     cta: 'Выбрать Pro',
     popular: true,
@@ -88,8 +89,8 @@ const plans = [
 
 const faqs = [
   {
-    q: 'Можно ли попробовать Pro бесплатно?',
-    a: 'Да! При регистрации вы получаете 14 дней Pro-доступа бесплатно. Карта не требуется.',
+    q: 'Сколько стоит начать?',
+    a: 'Free-план бесплатен навсегда и без карты: безлимит сделок, ручной ввод и импорт CSV/Excel из Тинькофф/Финам/БКС, 6 базовых метрик. Pro (399₽/мес) подключаете, когда нужны автосинхронизация, AI-анализ, MAE/MFE и продвинутые метрики.',
   },
   {
     q: 'Как работает оплата?',
@@ -105,7 +106,7 @@ const faqs = [
   },
   {
     q: 'Как связаться для корпоративного тарифа?',
-    a: 'Напишите нам на corp@empirik.app или заполните форму на странице контактов. Мы подберём решение под ваши задачи.',
+    a: 'Напишите нам на corp@empirik.io или заполните форму на странице контактов. Мы подберём решение под ваши задачи.',
   },
 ];
 
@@ -287,7 +288,7 @@ export default function PricingPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-20">
           {[
             { icon: Shield, text: 'Безопасные платежи', sub: 'Шифрование данных' },
-            { icon: Clock, text: '14 дней бесплатно', sub: 'Попробуйте Pro' },
+            { icon: Clock, text: 'Бесплатно навсегда', sub: 'Free без карты' },
             { icon: BarChart3, text: '10,000+ трейдеров', sub: 'Уже с нами' },
             { icon: Headphones, text: 'Поддержка', sub: 'Ответим за 24ч' },
           ].map((item, i) => (
@@ -315,16 +316,20 @@ export default function PricingPage() {
                 </thead>
                 <tbody>
                   {[
-                    ['Количество сделок', '50/мес', '∞', '∞'],
+                    ['Сделки', '∞', '∞', '∞'],
                     ['Торговые счета', '1', '5', '∞'],
-                    ['Импорт Excel/PDF', true, true, true],
-                    ['Базовая статистика', true, true, true],
+                    ['Импорт CSV/Excel', true, true, true],
+                    ['6 базовых метрик', true, true, true],
+                    ['Экспорт CSV', true, true, true],
+                    ['API-автосинк с брокером', false, true, true],
                     ['AI-анализ', false, true, true],
-                    ['MAE/MFE аналитика', false, true, true],
-                    ['Экспорт отчётов', false, true, true],
+                    ['MAE/MFE из свечей MOEX', false, true, true],
+                    ['Продвинутые метрики (Sharpe/Sortino/Optimal f)', false, true, true],
+                    ['Trade Replay', false, true, true],
+                    ['Безлимит PDF', false, true, true],
                     ['API доступ', false, false, true],
                     ['Мультипользователи', false, false, true],
-                    ['Приоритетная поддержка', false, false, true],
+                    ['Приоритетная поддержка', false, true, true],
                   ].map((row, i) => (
                     <tr key={i} className="border-b border-white/5">
                       <td className="p-4">{row[0]}</td>
@@ -381,7 +386,7 @@ export default function PricingPage() {
           <div className="cyber-card inline-block p-8 max-w-2xl">
             <h2 className="text-2xl font-bold mb-4">Готовы улучшить свою торговлю?</h2>
             <p className="text-muted-foreground mb-6">
-              Присоединяйтесь к тысячам трейдеров, которые уже используют Эмпирик для анализа своих сделок
+              Присоединяйтесь к тысячам трейдеров, которые уже используют Полистату для анализа своих сделок
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {isAuthenticated ? (
