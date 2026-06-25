@@ -3,6 +3,7 @@
  */
 import { useEffect, useState } from 'react';
 import { JournalFilters, DEFAULT_JOURNAL_FILTERS } from './types';
+import { AUTH_USER_CHANGED_EVENT } from '@/lib/userScopedStorage';
 
 const STORAGE_KEY = 'empirik_journal_filters_v1';
 
@@ -40,8 +41,8 @@ export function useJournalFilters() {
   // не должен утечь новому пользователю на том же устройстве.
   useEffect(() => {
     const onUserChanged = () => setFilters(DEFAULT_JOURNAL_FILTERS);
-    window.addEventListener('auth:user-changed', onUserChanged);
-    return () => window.removeEventListener('auth:user-changed', onUserChanged);
+    window.addEventListener(AUTH_USER_CHANGED_EVENT, onUserChanged);
+    return () => window.removeEventListener(AUTH_USER_CHANGED_EVENT, onUserChanged);
   }, []);
 
   const update = (patch: Partial<JournalFilters>) =>

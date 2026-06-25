@@ -215,4 +215,24 @@ describe('AuthContext — cross-user state leak guard', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(localStorage.getItem('language')).toBe('ru');
   });
+
+  it('purges on logout transition (A→null): owner был, теперь гость 401', async () => {
+    // Прошлый владелец (id 2) + его состояние; на /auth/me теперь 401 (вышел).
+    localStorage.setItem('empirik:last_user_id', '2');
+    localStorage.setItem('tradingSettings', JSON.stringify({ tradesStartTradeSymbol: 'GLDRUBF' }));
+    localStorage.setItem('language', 'en'); // device pref — обязан выжить
+    const onChanged = vi.fn();
+    window.addEventListener('auth:user-changed', onChanged);
+
+    apiGetMock.mockRejectedValue(new ApiError(401, 'Unauthorized'));
+
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(localStorage.getItem('tradingSettings')).toBeNull(); // user-scoped вычищено
+    expect(localStorage.getItem('language')).toBe('en'); // device pref цел
+    expect(localStorage.getItem('empirik:last_user_id')).toBeNull(); // владелец сброшен (null)
+    expect(onChanged).toHaveBeenCalled();
+    window.removeEventListener('auth:user-changed', onChanged);
+  });
 });

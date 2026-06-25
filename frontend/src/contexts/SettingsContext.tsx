@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { AUTH_USER_CHANGED_EVENT } from '@/lib/userScopedStorage';
 
 export type Currency = 'USD' | 'EUR' | 'RUB' | 'USDT' | 'BTC';
 export type Theme = 'dark' | 'light';
@@ -99,8 +100,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // мгновенно исчезают без перезагрузки.
   useEffect(() => {
     const onUserChanged = () => setSettings(getInitialSettings());
-    window.addEventListener('auth:user-changed', onUserChanged);
-    return () => window.removeEventListener('auth:user-changed', onUserChanged);
+    window.addEventListener(AUTH_USER_CHANGED_EVENT, onUserChanged);
+    return () => window.removeEventListener(AUTH_USER_CHANGED_EVENT, onUserChanged);
   }, []);
 
   const updateSettings = (newSettings: Partial<Settings>) => {

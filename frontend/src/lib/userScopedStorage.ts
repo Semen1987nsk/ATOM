@@ -17,8 +17,16 @@
 export const USER_SCOPED_STORAGE_KEYS = [
   'tradingSettings', // SettingsContext: tradesStartDate/Symbol → бейдж, + currency/pnl/mae
   'empirik_journal_filters_v1', // фильтры журнала: search/setupId/dateRange
-  'empirik_reconciliation_banner_dismissed_until', // snooze баннера реконсиляции (per-account)
+  'empirik_reconciliation_banner_dismissed_until', // единый snooze-таймстамп баннера реконсиляции (не per-account) — чистим при смене юзера
 ] as const;
+
+/**
+ * Событие «владелец сессии сменился» — диспатчится AuthProvider'ом после
+ * clearUserScopedState(), слушается storage-backed контекстами/хуками
+ * (SettingsContext, useJournalFilters) для in-memory сброса без перезагрузки.
+ * Единая константа — чтобы имя не разъезжалось между dispatcher'ом и listener'ами.
+ */
+export const AUTH_USER_CHANGED_EVENT = 'auth:user-changed';
 
 export function clearUserScopedState(): void {
   if (typeof window === 'undefined') return;

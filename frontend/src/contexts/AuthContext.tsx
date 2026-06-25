@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useCallback, useRef, React
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, clearAuthTokens } from '@/lib/apiClient';
-import { clearUserScopedState } from '@/lib/userScopedStorage';
+import { clearUserScopedState, AUTH_USER_CHANGED_EVENT } from '@/lib/userScopedStorage';
 import { useCurrentUserQuery, queryKeys } from '@/lib/queries';
 
 const LAST_USER_ID_KEY = 'empirik:last_user_id';
@@ -84,6 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
     // Возвращаем актуального юзера (или null-гостя) в кэш сразу после clear,
     // чтобы подписчики useCurrentUserQuery не моргнули loading/undefined.
+    // ВАЖНО: clear() снёс запись auth.me целиком, поэтому смонтированный
+    // observer переподпишется и ОДИН раз сделает фоновый GET /auth/me — это
+    // намеренно и безвредно (setQueryData убирает loading-флэш, но не отменяет
+    // refetch). Не «оптимизировать» удалением setQueryData — флэш вернётся.
     queryClient.setQueryData(queryKeys.auth.me(), user);
     lastOwnerRef.current = currentId;
     try {
@@ -93,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // private mode — игнорируем
     }
     // In-memory сброс storage-backed контекстов/хуков без перезагрузки.
-    window.dispatchEvent(new CustomEvent('auth:user-changed', { detail: { userId: currentId } }));
+    window.dispatchEvent(new CustomEvent(AUTH_USER_CHANGED_EVENT, { detail: { userId: currentId } }));
   }, [user, userQuery.isPending, queryClient]);
 
   // Logout-mutation как функция (не useMutation — нет инвалидации UI-плана,
