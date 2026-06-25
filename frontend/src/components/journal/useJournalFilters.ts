@@ -35,6 +35,15 @@ export function useJournalFilters() {
     persistToStorage(filters);
   }, [filters]);
 
+  // Cross-user leak guard: при смене владельца сессии (localStorage уже почищен
+  // AuthProvider) сбрасываем фильтры журнала к дефолтам — чужой search/setupId
+  // не должен утечь новому пользователю на том же устройстве.
+  useEffect(() => {
+    const onUserChanged = () => setFilters(DEFAULT_JOURNAL_FILTERS);
+    window.addEventListener('auth:user-changed', onUserChanged);
+    return () => window.removeEventListener('auth:user-changed', onUserChanged);
+  }, []);
+
   const update = (patch: Partial<JournalFilters>) =>
     setFilters((f) => ({ ...f, ...patch }));
 

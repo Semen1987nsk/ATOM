@@ -1,10 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, clearAuthTokens } from '@/lib/apiClient';
+import { clearUserScopedState } from '@/lib/userScopedStorage';
 import { useCurrentUserQuery, queryKeys } from '@/lib/queries';
+
+const LAST_USER_ID_KEY = 'empirik:last_user_id';
 
 // ==================== TYPES ====================
 
@@ -57,6 +60,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // isPending = первый запрос ещё в полёте; после первого ответа (success/error)
   // pending=false, и UI безопасно решает по user.
   const isLoading = userQuery.isPending;
+
+  // ── Cross-user leak guard ─────────────────────────────────────────────────
+  // Всё user-scoped client-состояние (localStorage-настройки/фильтры + React
+  // Query кэш) было привязано к устройству, а не к user.id, и не сбрасывалось
+  // ни при logout, ни при тихой смене аккаунта (OAuth / повторный вход) →
+  // новый юзер видел данные прошлого (бейдж «С GLDRUBF» на дашборде).
+  // Единый детектор смены владельца: при переходе A→B / A→null / null→B чистим
+  // user-scoped localStorage + ВЕСЬ query-кэш (forward-proof: ловит и
+  // ['broker','sync-status'], и любой будущий per-user ключ) и сигналим
+  // контекстам сброс in-memory. Сравниваем по authoritative server-resolved
+  // user.id, поэтому покрыты и явный logout, и login-as-different-account.
+  const lastOwnerRef = useRef<string | null>(
+    typeof window !== 'undefined' ? localStorage.getItem(LAST_USER_ID_KEY) : null,
+  );
+  useEffect(() => {
+    if (userQuery.isPending) return; // ждём первый ответ /auth/me
+    const currentId = user ? String(user.id) : null;
+    if (currentId === lastOwnerRef.current) return; // тот же владелец (вкл. guest→guest)
+
+    // Личность сменилась — персистентное состояние принадлежит другому аккаунту.
+    clearUserScopedState();
+    queryClient.clear();
+    // Возвращаем актуального юзера (или null-гостя) в кэш сразу после clear,
+    // чтобы подписчики useCurrentUserQuery не моргнули loading/undefined.
+    queryClient.setQueryData(queryKeys.auth.me(), user);
+    lastOwnerRef.current = currentId;
+    try {
+      if (currentId) localStorage.setItem(LAST_USER_ID_KEY, currentId);
+      else localStorage.removeItem(LAST_USER_ID_KEY);
+    } catch {
+      // private mode — игнорируем
+    }
+    // In-memory сброс storage-backed контекстов/хуков без перезагрузки.
+    window.dispatchEvent(new CustomEvent('auth:user-changed', { detail: { userId: currentId } }));
+  }, [user, userQuery.isPending, queryClient]);
 
   // Logout-mutation как функция (не useMutation — нет инвалидации UI-плана,
   // и сам по себе logout это «сброс кеша»; tanstack-мутация тут избыточна).

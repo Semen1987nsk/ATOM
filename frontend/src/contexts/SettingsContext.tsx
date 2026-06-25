@@ -36,7 +36,7 @@ const currencySymbols: Record<Currency, string> = {
   BTC: '₿',
 };
 
-// Эмпирик таргетится на трейдеров MOEX — все сделки приходят из Tinkoff API
+// Полистата таргетится на трейдеров MOEX — все сделки приходят из Tinkoff API
 // в рублях. Дефолтная валюта = RUB. USD/EUR/USDT/BTC доступны для тех
 // кто торгует не на MOEX (опциональный override в настройках).
 const defaultSettings: Settings = {
@@ -92,6 +92,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', settings.theme);
   }, [settings.theme]);
+
+  // Cross-user leak guard: при смене владельца сессии (AuthProvider уже почистил
+  // localStorage) перечитываем настройки — getInitialSettings вернёт дефолты,
+  // и чужие tradesStartDate/tradesStartTradeSymbol (бейдж «С GLDRUBF») и пр.
+  // мгновенно исчезают без перезагрузки.
+  useEffect(() => {
+    const onUserChanged = () => setSettings(getInitialSettings());
+    window.addEventListener('auth:user-changed', onUserChanged);
+    return () => window.removeEventListener('auth:user-changed', onUserChanged);
+  }, []);
 
   const updateSettings = (newSettings: Partial<Settings>) => {
     setSettings(prev => {

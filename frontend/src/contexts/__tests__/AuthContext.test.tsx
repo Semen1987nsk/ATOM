@@ -135,3 +135,84 @@ describe('AuthContext', () => {
     });
   });
 });
+
+describe('AuthContext — cross-user state leak guard', () => {
+  const userB = {
+    id: 2,
+    email: 'b@example.com',
+    name: null,
+    is_active: true,
+    is_admin: false,
+    created_at: '2026-01-01T00:00:00Z',
+    last_login: null,
+    settings: {},
+  };
+
+  beforeEach(() => {
+    apiGetMock.mockReset();
+    apiPostMock.mockReset();
+    localStorage.clear();
+  });
+
+  it('purges previous user state when a DIFFERENT user resolves on mount (the GLDRUBF bug)', async () => {
+    // Состояние прошлого юзера (A = id 1), оставшееся на этом устройстве:
+    localStorage.setItem('empirik:last_user_id', '1');
+    localStorage.setItem(
+      'tradingSettings',
+      JSON.stringify({ tradesStartTradeSymbol: 'GLDRUBF', tradesStartDate: '2025-10-21' }),
+    );
+    localStorage.setItem('empirik_journal_filters_v1', JSON.stringify({ search: 'SBER' }));
+    // device-преференсы — обязаны выжить (иначе регресс):
+    localStorage.setItem('empirik.cookie_consent.v1', '{"version":"v1"}');
+    localStorage.setItem('language', 'en');
+    localStorage.setItem('empirik:sidebar-collapsed', 'true');
+    localStorage.setItem('empirik_history_sort', 'opened_at');
+
+    const onChanged = vi.fn();
+    window.addEventListener('auth:user-changed', onChanged);
+
+    // /auth/me резолвит ДРУГОГО пользователя (B = id 2). mockResolvedValue (не Once)
+    // — устойчиво к фоновому refetch, который React Query делает после clear().
+    apiGetMock.mockResolvedValue(userB);
+
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isAuthenticated).toBe(true));
+
+    // user-scoped очищено:
+    expect(localStorage.getItem('tradingSettings')).toBeNull();
+    expect(localStorage.getItem('empirik_journal_filters_v1')).toBeNull();
+    // device-преференсы сохранены:
+    expect(localStorage.getItem('empirik.cookie_consent.v1')).not.toBeNull();
+    expect(localStorage.getItem('language')).toBe('en');
+    expect(localStorage.getItem('empirik:sidebar-collapsed')).toBe('true');
+    expect(localStorage.getItem('empirik_history_sort')).toBe('opened_at');
+    // владелец обновлён + событие сброса разослано контекстам:
+    expect(localStorage.getItem('empirik:last_user_id')).toBe('2');
+    expect(onChanged).toHaveBeenCalled();
+
+    window.removeEventListener('auth:user-changed', onChanged);
+  });
+
+  it('keeps state when the SAME user returns (no purge, prefs preserved)', async () => {
+    localStorage.setItem('empirik:last_user_id', '2');
+    localStorage.setItem('tradingSettings', JSON.stringify({ tradesStartTradeSymbol: 'GLDRUBF' }));
+    const onChanged = vi.fn();
+    window.addEventListener('auth:user-changed', onChanged);
+
+    apiGetMock.mockResolvedValue(userB); // id 2 == владелец
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isAuthenticated).toBe(true));
+
+    expect(localStorage.getItem('tradingSettings')).not.toBeNull();
+    expect(onChanged).not.toHaveBeenCalled();
+    window.removeEventListener('auth:user-changed', onChanged);
+  });
+
+  it('guest mount does not purge device prefs or crash', async () => {
+    localStorage.setItem('language', 'ru');
+    apiGetMock.mockRejectedValue(new ApiError(401, 'Unauthorized'));
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(localStorage.getItem('language')).toBe('ru');
+  });
+});
