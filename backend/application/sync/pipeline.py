@@ -608,7 +608,10 @@ class SyncPipeline:
                 # Снимок справочника.
                 instrument = self._instrument_repo.get_by_uid(session, uid)
                 if instrument is None:
-                    return 0, 0
+                    # Инструмент не разрешился в enrich (T-Bank NOT_FOUND) —
+                    # пропускаем. Возвращаем 3-кортеж как остальные ветки:
+                    # caller распаковывает (trades, positions, mae_ids).
+                    return 0, 0, []
 
                 # Полный набор операций по инструменту (для replace-стратегии).
                 all_ops = self._operation_repo.fetch_for_instrument(

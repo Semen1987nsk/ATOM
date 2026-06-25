@@ -574,6 +574,52 @@ broker_report fetch failed: OperationParseError: 30064
 
 ---
 
+### ERR-114: sync «Failed to fetch» = tuple-arity краш в FIFO на неразрешимом инструменте
+
+**Категория:** api-sdk | **Severity:** P0
+
+**Symptom:**
+```
+# В браузере (модалка «Авто-синхронизация»):
+Failed to fetch
+# В logs/atom.log:
+ValueError: not enough values to unpack (expected 3, got 2)
+  application/sync/pipeline.py:_stage_fifo_match
+```
+Счёт «0 операций · 0 сделок / ни разу», sync падает всегда. Легко
+ошибочно списать на SDK-бамп — это НЕ SDK.
+
+**Root cause:** Два слоя.
+1. `pipeline.py` `_stage_fifo_match._run_for_one`: ранняя ветка
+   `if instrument is None: return 0, 0` отдавала 2 значения, а success/except
+   ветки и вызывающий код — 3 (`trades, positions, mae_ids`). Триггер: у счёта
+   есть операция по инструменту, который T-Bank не резолвит (`GetInstrumentBy
+   NOT_FOUND 50002`, enrich его skip → `get_by_uid`=None). `ValueError` валил
+   весь sync. Недо-рефактор: при добавлении `need_mae_ids` (MAE-05) ветку забыли.
+2. `routers/broker.py sync_now` ловил только `TokenInvalid/RateLimitExceeded/
+   BrokerError` — прочее исключение не превращалось в HTTP-ответ, а рвало коннект
+   через BaseHTTPMiddleware → браузер видит «Failed to fetch» (плановый путь
+   `_guard_one` это переживал, ручной — нет).
+
+**Fix:**
+1. `pipeline.py`: ранняя ветка → `return 0, 0, []` (3 значения; неразрешимый
+   инструмент молча пропускается).
+2. `broker.py`: catch-all `except Exception` в `sync_now` → чистый 500;
+   аналогично `get_portfolio` (парсинг убран под guarded-try) → 502.
+
+**Prevention:**
+- «Failed to fetch» на sync = браузерный fetch TypeError (оборванный коннект),
+  НЕ таймаут. Сначала `curl -m5 /health` (200 = backend жив), затем РЕАЛЬНЫЙ
+  traceback из `logs/atom.log` — не предполагать SDK.
+- HTTP-эндпоинты, дёргающие orchestrator/SDK, обязаны иметь catch-all →
+  структурный ответ (как `_guard_one`), а не полагаться на узкий список except.
+- Тесты: `tests/integration/test_fifo_match_missing_instrument.py`,
+  `test_broker_sync_error_handling.py`.
+
+**Reference:** memory `tools_workflow_atom_sync_failed_fetch_diagnosis.md`.
+
+---
+
 ## Database/migration
 
 ### ERR-201: SQLAlchemy `IndexError: tuple index out of range` = schema mismatch

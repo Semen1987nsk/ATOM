@@ -172,7 +172,7 @@ class SyncResultResponse(BaseModel):
 def _validate_token_scope(accounts: List[TinkoffAccountInfo], broker_account_id: str) -> None:
     """Подтверждает, что токен strictly READ_ONLY на выбранном счёте.
 
-    AU7 hardening: FULL_ACCESS токены отклоняются — Эмпирик это
+    AU7 hardening: FULL_ACCESS токены отклоняются — Полистата это
     журнал-аналитика, ему хватает read-only прав, а у full-access
     blast radius существенно больше (потенциальные ордера, вывод средств).
     Раньше мы принимали оба уровня; теперь требуем строго read-only.
@@ -188,7 +188,7 @@ def _validate_token_scope(accounts: List[TinkoffAccountInfo], broker_account_id:
             status_code=400,
             detail=(
                 f"Токен имеет FULL_ACCESS на счёте {broker_account_id}. "
-                "Для безопасности Эмпирик принимает только read-only токены. "
+                "Для безопасности Полистата принимает только read-only токены. "
                 "Создайте новый read-only токен в lk.tbank.ru → Инвестиции → "
                 "Настройки → API → «Доступ только на чтение»."
             ),
@@ -445,6 +445,16 @@ async def sync_now(
         raise HTTPException(status_code=429, detail="Превышен лимит запросов")
     except BrokerError as exc:
         raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc.message}")
+    except Exception as exc:
+        # Плановый sync переживает любые исключения через _guard_one; ручной
+        # путь (sync_one_account) — нет. Без этого catch-all непредвиденная
+        # ошибка (ValueError/KeyError/DB) рвала HTTP-коннект → «Failed to fetch»
+        # в браузере вместо понятного ответа. Внутренности не светим клиенту.
+        log.exception("sync_now failed unexpectedly for connection_id=%s", connection_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Синхронизация завершилась с ошибкой: {type(exc).__name__}",
+        )
 
     return SyncResultResponse(
         success=report.success,
@@ -704,15 +714,6 @@ async def get_portfolio(
     if not token:
         raise HTTPException(status_code=410, detail="Подключение брокера повреждено, переподключите")
 
-    try:
-        async with client_factory.async_client(token) as services:
-            ops = TinkoffOperationsClient(services)
-            raw = await ops.get_portfolio_raw(conn.broker_account_id)
-    except TokenInvalid:
-        raise HTTPException(status_code=401, detail="Токен невалиден")
-    except BrokerError as exc:
-        raise HTTPException(status_code=502, detail=f"Tinkoff API: {exc.message}")
-
     # Распарсить базовые поля.
     def _money_decimal(m) -> float:
         if m is None:
@@ -721,36 +722,54 @@ async def get_portfolio(
         nano = getattr(m, "nano", 0) or 0
         return float(units) + float(nano) / 1e9
 
-    total_balance = _money_decimal(getattr(raw, "total_amount_portfolio", None))
-    cash = _money_decimal(getattr(raw, "total_amount_currencies", None))
-    stocks = _money_decimal(getattr(raw, "total_amount_shares", None))
-    bonds_value = _money_decimal(getattr(raw, "total_amount_bonds", None))
-    etf_value = _money_decimal(getattr(raw, "total_amount_etf", None))
-    futures_value = _money_decimal(getattr(raw, "total_amount_futures", None))
-    options_value = _money_decimal(getattr(raw, "total_amount_options", None))
+    # SDK-вызов И парсинг ответа — в одном guarded-блоке: раньше парсинг
+    # (доступ к полям raw) шёл ВНЕ try, и кривой/неполный PortfolioResponse рвал
+    # HTTP-коннект («Failed to fetch») вместо чистого 502.
+    try:
+        async with client_factory.async_client(token) as services:
+            ops = TinkoffOperationsClient(services)
+            raw = await ops.get_portfolio_raw(conn.broker_account_id)
 
-    initial = float(account.initial_balance) if account and account.initial_balance else None
-    roi = None
-    if initial and initial > 0:
-        roi = (total_balance - initial) / initial * 100
+        total_balance = _money_decimal(getattr(raw, "total_amount_portfolio", None))
+        cash = _money_decimal(getattr(raw, "total_amount_currencies", None))
+        stocks = _money_decimal(getattr(raw, "total_amount_shares", None))
+        bonds_value = _money_decimal(getattr(raw, "total_amount_bonds", None))
+        etf_value = _money_decimal(getattr(raw, "total_amount_etf", None))
+        futures_value = _money_decimal(getattr(raw, "total_amount_futures", None))
+        options_value = _money_decimal(getattr(raw, "total_amount_options", None))
 
-    positions_raw = list(getattr(raw, "positions", []) or [])
-    positions = []
-    for p in positions_raw:
-        ticker = getattr(p, "figi", None) or ""
-        qty = _money_decimal(getattr(p, "quantity", None))
-        if ticker == "RUB000UTSTOM":
-            continue  # рубли отдельно
-        positions.append(
-            {
-                "ticker": ticker,
-                "instrument_uid": getattr(p, "instrument_uid", None),
-                "instrument_type": getattr(p, "instrument_type", None),
-                "quantity": qty,
-                "average_price": _money_decimal(getattr(p, "average_position_price", None)),
-                "current_price": _money_decimal(getattr(p, "current_price", None)),
-                "unrealized_pnl": _money_decimal(getattr(p, "expected_yield_fifo", None)),
-            }
+        initial = float(account.initial_balance) if account and account.initial_balance else None
+        roi = None
+        if initial and initial > 0:
+            roi = (total_balance - initial) / initial * 100
+
+        positions_raw = list(getattr(raw, "positions", []) or [])
+        positions = []
+        for p in positions_raw:
+            ticker = getattr(p, "figi", None) or ""
+            qty = _money_decimal(getattr(p, "quantity", None))
+            if ticker == "RUB000UTSTOM":
+                continue  # рубли отдельно
+            positions.append(
+                {
+                    "ticker": ticker,
+                    "instrument_uid": getattr(p, "instrument_uid", None),
+                    "instrument_type": getattr(p, "instrument_type", None),
+                    "quantity": qty,
+                    "average_price": _money_decimal(getattr(p, "average_position_price", None)),
+                    "current_price": _money_decimal(getattr(p, "current_price", None)),
+                    "unrealized_pnl": _money_decimal(getattr(p, "expected_yield_fifo", None)),
+                }
+            )
+    except TokenInvalid:
+        raise HTTPException(status_code=401, detail="Токен невалиден")
+    except BrokerError as exc:
+        raise HTTPException(status_code=502, detail=f"Tinkoff API: {exc.message}")
+    except Exception as exc:
+        log.exception("get_portfolio failed unexpectedly for account_id=%s", account.id)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Не удалось получить портфель: {type(exc).__name__}",
         )
 
     return {
