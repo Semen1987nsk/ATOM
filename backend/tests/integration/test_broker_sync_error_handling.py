@@ -137,3 +137,21 @@ def test_get_portfolio_converts_unexpected_error_to_502(test_app):
 
     assert r.status_code == 502, f"ожидали чистый 502, получили {r.status_code}"
     assert "detail" in r.json()
+
+
+def test_get_portfolio_broken_token_returns_410_not_502(test_app):
+    """Lock границы: deliberate HTTPException (410, токен повреждён) НЕ должна
+    проглатываться catch-all'ом get_portfolio и превращаться в 502/500.
+    Регрессия-замок для restructure (парсинг ушёл под guarded-try)."""
+    db = test_app["db"]
+    user, acc, conn = _user_account_conn(db)
+
+    with patch("routers.broker.settings.BROKER_SYNC_V2_ENABLED", True), patch(
+        "routers.broker._token_repo"
+    ) as mock_repo:
+        mock_repo.return_value.get_decrypted.return_value = ""  # повреждённый токен
+        r = test_app["client"].get("/broker/portfolio", headers=_auth_headers(user))
+
+    assert r.status_code == 410, (
+        f"410 (повреждённый токен) не должен стать 502/500, получили {r.status_code}"
+    )
