@@ -502,27 +502,31 @@ h1 { letter-spacing: -0.015em; }
 }
 
 /* ─────────────────── INPUTS ─────────────────── */
-.input-cyber {
-  width: 100%;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
-  color: var(--foreground);
-  padding: 10px 14px;
-  font-size: 14px;
-  font-family: inherit;
-  border-radius: var(--radius-sm);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+/* В @layer components, чтобы unlayered утилиты Tailwind (pl-10/pr-10 под
+   left/right-иконку в Input.tsx) переопределяли padding-шорткат, а не наоборот. */
+@layer components {
+  .input-cyber {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    border-radius: var(--radius-sm);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .input-cyber:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .input-cyber:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .input-cyber::placeholder { color: var(--input-placeholder); }
 }
-.input-cyber:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-.input-cyber:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.input-cyber::placeholder { color: var(--input-placeholder); }
 
 @layer utilities {
   /* ─────────────────── CARD ─────────────────── */
