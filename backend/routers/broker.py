@@ -738,10 +738,19 @@ async def get_portfolio(
         futures_value = _money_decimal(getattr(raw, "total_amount_futures", None))
         options_value = _money_decimal(getattr(raw, "total_amount_options", None))
 
-        initial = float(account.initial_balance) if account and account.initial_balance else None
+        # ADR-0010: ROI-знаменатель — каноническая опорная база
+        # initial_balance + Σ NET_DEPOSITS (как в /stats/), а не initial_balance
+        # в одиночку. На счёте без якоря и без депозитов (оба 0) → прежнее
+        # скрытое поведение (roi=None). initial_balance остаётся в ответе как было.
+        from analytics._common_baseline import get_net_deposits_baseline_from_db
+
+        initial_balance = float(account.initial_balance or 0) if account else 0.0
+        net_deposits = float(get_net_deposits_baseline_from_db(db, account.id)) if account else 0.0
+        roi_base = initial_balance + net_deposits
+        initial = initial_balance if (account and account.initial_balance) else None
         roi = None
-        if initial and initial > 0:
-            roi = (total_balance - initial) / initial * 100
+        if roi_base > 0:
+            roi = (total_balance - roi_base) / roi_base * 100
 
         positions_raw = list(getattr(raw, "positions", []) or [])
         positions = []

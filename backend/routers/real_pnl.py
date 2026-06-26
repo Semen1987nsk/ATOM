@@ -139,8 +139,12 @@ async def get_real_pnl(
     # internal_transfer (trans_iis_bs/trans_bs_bs — зеркальные записи) и
     # security_transfer (input_securities/output_securities — без cash).
     net_deposit = float(breakdown_by_category[CashFlowCategory.NET_DEPOSIT])
-    real_pnl = current_balance - net_deposit
-    roi = (real_pnl / net_deposit * 100) if net_deposit > 0 else 0
+    # ADR-0010: effective_deposits = net_deposits + initial_balance (восстановленный
+    # стартовый якорь для broker-счёта с неполной историей). На счёте без якоря
+    # (initial_balance==0) это тождественно прежнему net_deposit.
+    eff_deposit = net_deposit + float(account.initial_balance or 0)
+    real_pnl = current_balance - eff_deposit
+    roi = (real_pnl / eff_deposit * 100) if eff_deposit > 0 else 0
 
     health = pnl_health_service.compute_health(db, account.id)
     clearing_adjustment = health.components.get("clearing_adjustment", 0)

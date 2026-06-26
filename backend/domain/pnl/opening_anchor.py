@@ -24,7 +24,7 @@ ANCHOR_MAX_FACTOR = Decimal("50")
 class AnchorDecision:
     should_anchor: bool
     value: Decimal       # округлённый якорь (0 если не якорим)
-    source: str          # 'inferred_anchor' | 'inferred_blocked' | 'complete'
+    source: str          # 'inferred_anchor' | 'inferred_blocked' | 'inferred_skipped' | 'complete'
     reason: str
 
 
@@ -63,8 +63,14 @@ def decide_anchor(
     )
 
     # G1 — знак.
+    # source='inferred_skipped' (НЕ 'complete'): история всё ещё неполная,
+    # реальный стартовый капитал не появился — кандидат лишь временно просел
+    # ≤1 ₽ (напр. убыточный счёт восстанавливается к безубытку). 'complete'
+    # снял бы service-заморозку и обнулил бы уже поставленный якорь. См. ADR-0010 §5.
     if candidate <= ANCHOR_MIN:
-        return AnchorDecision(False, Decimal("0"), "complete", "candidate<=min; nothing to restore")
+        return AnchorDecision(
+            False, Decimal("0"), "inferred_skipped", "candidate<=min; nothing to restore"
+        )
 
     # G2 — телескоп фьючерсов (только если на счёте есть варм-маржа).
     if abs(varmargin_net) >= VARMARGIN_FLOOR:

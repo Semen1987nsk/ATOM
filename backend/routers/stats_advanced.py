@@ -7,7 +7,7 @@ Stats Advanced Router — продвинутые quant-метрики и benchma
 Endpoints:
     GET /stats/advanced  — Ulcer, K-Ratio, Sterling, Omega, MAR, hold-time,
                            psycho-correlations, mistake-categories, …
-    GET /stats/benchmark — сравнение метрик пользователя с когортой Эмпирик
+    GET /stats/benchmark — сравнение метрик пользователя с когортой Полистата
                            (синтетическая база до Phase 5)
 
 Helpers (load_filtered_trades, build_equity_curve) импортируются из
@@ -77,10 +77,15 @@ async def get_advanced_stats(
     trades_with_tags = [{"tags": t.tags or [], "pnl": _net_or_gross(t)} for t in trades]
 
     # MATH-07 / PNL-02: baseline = Σ NET_DEPOSITS (cash truth), а НЕ equity[0]
-    # (PnL первой сделки — кумулятив от 0, это не капитал) и не
-    # account.initial_balance (user-provided, часто врёт). Тот же baseline,
+    # (PnL первой сделки — кумулятив от 0, это не капитал). ADR-0010: к этому
+    # добавляется account.initial_balance как восстановленный стартовый якорь —
+    # для broker-счёта с неполной историей это defensible опорная база (а не
+    # «user-provided часто врёт» как было до ADR-0010). На счёте без якоря
+    # (initial_balance==0) это тождественно прежнему baseline. Тот же расчёт,
     # что и на главной вкладке /stats/.
     baseline = float(get_net_deposits_baseline_from_db(db, account_id))
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    baseline += float(account.initial_balance or 0) if account else 0.0
 
     # Drawdown статистика — нужна для Sterling/MAR
     dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=baseline)
@@ -166,7 +171,7 @@ async def get_benchmark(
     current_user: models.User = Depends(auth_service.get_current_user),
 ):
     """
-    Сравнение метрик пользователя с когортой Эмпирик. Пока живых юзеров мало —
+    Сравнение метрик пользователя с когортой Полистата. Пока живых юзеров мало —
     база синтетическая (academic baselines). При росте — переключается на real.
     """
     account_id = auth_service.get_account_id(db, current_user)
@@ -186,9 +191,12 @@ async def get_benchmark(
     equity = build_equity_curve(trades)
 
     # MATH-07 / PNL-02: baseline = Σ NET_DEPOSITS (cash truth), не equity[0]
-    # (PnL первой сделки) и не account.initial_balance. Тот же helper что в
-    # /stats/advanced и /stats/ — три эндпойнта согласованы.
+    # (PnL первой сделки). ADR-0010: + account.initial_balance (восстановленный
+    # стартовый якорь). Тот же расчёт что в /stats/advanced и /stats/ — три
+    # эндпойнта согласованы. На счёте без якоря тождественно прежнему baseline.
     baseline = float(get_net_deposits_baseline_from_db(db, account_id))
+    account = db.query(models.Account).filter(models.Account.id == account_id).first()
+    baseline += float(account.initial_balance or 0) if account else 0.0
 
     # Считаем те метрики, по которым у нас есть baseline
     win_loss = analytics.calculate_win_loss_stats(pnls)

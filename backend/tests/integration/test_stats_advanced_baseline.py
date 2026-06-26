@@ -184,6 +184,40 @@ def test_benchmark_max_drawdown_uses_deposit_baseline(client_with_db):
     )
 
 
+def test_advanced_baseline_includes_initial_balance_anchor(client_with_db):
+    """I1 (ADR-0010): baseline в /stats/advanced = net_deposits + initial_balance.
+
+    Восстановленный стартовый якорь (broker-счёт с неполной историей) сдвигает
+    drawdown-baseline вверх → max_drawdown_pct падает. Без якоря (предыдущий код)
+    baseline = только net_deposits и просадка завышена.
+    """
+    db = client_with_db["db"]
+    client = client_with_db["client"]
+    u, acc, token = _setup_user(db)
+    # Якорь 50_000 поверх депозита 100_000 → baseline 150_000.
+    acc.initial_balance = Decimal("50000")
+    acc.initial_balance_source = "inferred_anchor"
+    db.commit()
+    _seed_net_deposit(db, acc.id)
+    _seed_long_history_trades(db, acc.id)
+
+    resp = client.get("/stats/advanced", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    items = resp.json().get("items", {})
+    cagr = items.get("cagr_pct")
+    mar = items.get("mar_ratio")
+    assert cagr is not None and cagr > 0
+    # baseline = 150_000: peak 152_500 → дно 151_000 → dd = 1500/152500 = 0.98%.
+    anchored_dd_pct = round(1500 / 152500 * 100, 2)
+    expected_mar = round(cagr / anchored_dd_pct, 2)
+    # baseline без якоря (100_000) дал бы EXPECTED_DD_PCT=1.46% и другой MAR.
+    no_anchor_mar = round(cagr / EXPECTED_DD_PCT, 2)
+    assert mar == pytest.approx(expected_mar, abs=0.05), (
+        f"ожидался mar от anchored baseline ~{expected_mar}, получено {mar} "
+        f"(без якоря дал бы ~{no_anchor_mar})"
+    )
+
+
 def test_advanced_mar_ratio_uses_deposit_baseline(client_with_db):
     """PNL-02: /stats/advanced — dd_stats от net-deposits baseline.
 

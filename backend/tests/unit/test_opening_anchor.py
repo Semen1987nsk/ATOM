@@ -57,11 +57,12 @@ def test_complete_history_never_anchors():
 
 def test_g1_nonpositive_candidate_does_not_anchor():
     # journal >= cash → candidate <= 0 → nothing to restore (benign, not blocked).
+    # source='inferred_skipped' (НЕ 'complete'): история неполная, заморозка держится.
     d = decide_anchor(
         **{**ACC2, "portfolio_value": Decimal("10000"), "journal_pnl": Decimal("5000")}
     )
     assert d.should_anchor is False
-    assert d.source == "complete"
+    assert d.source == "inferred_skipped"
 
 
 def test_g2_telescope_failure_blocks_anchor():
@@ -122,10 +123,10 @@ def test_anchor_max_factor_constant_is_50():
 
 
 def test_g1_boundary_exactly_anchor_min_does_not_anchor():
-    # candidate == ANCHOR_MIN (1) → <= boundary → no anchor, source 'complete'.
+    # candidate == ANCHOR_MIN (1) → <= boundary → no anchor, source 'inferred_skipped'.
     d = decide_anchor(
         **{**ACC2, "portfolio_value": Decimal("8557"), "journal_pnl": Decimal("0")}
     )
     # candidate = 8557 - 8556 - 0 = 1 == ANCHOR_MIN
     assert d.should_anchor is False
-    assert d.source == "complete"
+    assert d.source == "inferred_skipped"

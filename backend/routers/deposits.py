@@ -144,7 +144,10 @@ def get_balance(
     if broker_current_balance is not None:
         current = broker_current_balance
         balance_source = "broker_live"
-        broker_pnl = broker_current_balance - net_deposit
+        # ADR-0010: вычитаем effective deposits = net_deposit + initial_balance
+        # (восстановленный стартовый якорь). На счёте без якоря (initial_balance==0)
+        # тождественно прежней формуле. Manual-ветка (local_current_balance) не трогается.
+        broker_pnl = broker_current_balance - (net_deposit + float(account.initial_balance or 0))
         total_pnl = broker_pnl
         pnl_gap = broker_pnl - float(journal_pnl)
     

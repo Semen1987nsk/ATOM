@@ -163,3 +163,29 @@ def test_manual_source_never_overwritten(session):
     session.refresh(acc)
     assert Decimal(str(acc.initial_balance)) == Decimal("123456")
     assert acc.initial_balance_source == "manual"
+
+
+def test_anchored_account_not_wiped_when_candidate_drops_below_min(session):
+    """M1 (ADR-0010 §5): уже поставленный inferred_anchor НЕ обнуляется, если
+    кандидат позже просел ≤ ANCHOR_MIN (убыточный счёт восстанавливается к
+    безубытку). До фикса G1 возвращал source='complete' → service-заморозка
+    (key: source != 'complete') пропускала запись → initial_balance перетирался в 0.
+    Теперь G1 → 'inferred_skipped' → заморозка держится."""
+    acc = _seed_acc2(session)
+    autoset_inferred_anchor(session, acc.id)
+    session.refresh(acc)
+    assert acc.initial_balance_source == "inferred_anchor"
+    anchored_value = Decimal(str(acc.initial_balance))
+    assert anchored_value > Decimal("0")
+
+    # Журнал восстановился к безубытку (net_pnl закрытого трейда → +24400):
+    # candidate = 32938 - 8556 - 24400 = -18 ≤ ANCHOR_MIN.
+    t = session.query(Trade).filter(Trade.account_id == acc.id).first()
+    t.net_pnl = Decimal("24400")
+    session.commit()
+
+    d = autoset_inferred_anchor(session, acc.id)
+    assert d.source == "inferred_anchor"  # заморозка вернула текущий якорь
+    session.refresh(acc)
+    assert Decimal(str(acc.initial_balance)) == anchored_value
+    assert acc.initial_balance_source == "inferred_anchor"
