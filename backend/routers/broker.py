@@ -745,12 +745,16 @@ async def get_portfolio(
         from analytics._common_baseline import get_net_deposits_baseline_from_db
 
         initial_balance = float(account.initial_balance or 0) if account else 0.0
-        net_deposits = float(get_net_deposits_baseline_from_db(db, account.id)) if account else 0.0
-        roi_base = initial_balance + net_deposits
-        initial = initial_balance if (account and account.initial_balance) else None
+        initial = initial_balance if initial_balance > 0 else None
         roi = None
-        if roi_base > 0:
-            roi = (total_balance - roi_base) / roi_base * 100
+        # ADR-0010: ROI только при наличии опорной базы (anchor/manual). База =
+        # initial_balance + Σ NET_DEPOSITS (как в /stats/). Без якоря (initial_balance=0)
+        # ROI скрыт (roi=None) — прежнее поведение, консистентно с дашбордом.
+        if initial_balance > 0:
+            net_deposits = float(get_net_deposits_baseline_from_db(db, account.id)) if account else 0.0
+            roi_base = initial_balance + net_deposits
+            if roi_base > 0:
+                roi = (total_balance - roi_base) / roi_base * 100
 
         positions_raw = list(getattr(raw, "positions", []) or [])
         positions = []
