@@ -47,6 +47,7 @@ from decimal import Decimal
 import database
 import models
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from domain.pnl.cash_flow_classification import (
     CASH_FLOW_MAP,
@@ -108,9 +109,12 @@ def reconcile_account(
     *,
     baseline_date: datetime | None = None,
     initial_portfolio_value: Decimal | None = None,
+    session: Session | None = None,
 ) -> dict:
     """Сверка одного аккаунта. Returns dict с metrics + diff."""
-    session = database.SessionLocal()
+    _owned = session is None
+    if _owned:
+        session = database.SessionLocal()
     try:
         account = session.get(models.Account, account_id)
         if account is None:
@@ -187,7 +191,11 @@ def reconcile_account(
         baseline_offset = Decimal(0)
         if baseline_date is not None and initial_portfolio_value is not None:
             baseline_offset = Decimal(initial_portfolio_value)
-        cash_pnl = current_portfolio - net_deposits - baseline_offset
+
+        # ADR-0010: opening-balance anchor — эффективная база депозитов в all-time режиме.
+        # В baseline-режиме (--baseline-date) НЕ применяем, чтобы не двоить с baseline_offset.
+        anchor = Decimal(account.initial_balance or 0) if baseline_date is None else Decimal(0)
+        cash_pnl = current_portfolio - net_deposits - anchor - baseline_offset
 
         # 3. Diff
         diff = journal_pnl - cash_pnl
@@ -264,6 +272,7 @@ def reconcile_account(
             "cash": {
                 "current_portfolio": float(current_portfolio),
                 "net_deposits": float(net_deposits),
+                "initial_balance": float(anchor),
                 "baseline_offset": float(baseline_offset),
                 "total": float(cash_pnl),
             },
@@ -276,7 +285,8 @@ def reconcile_account(
             "orphans": {k: float(v) for k, v in orphans.items()},
         }
     finally:
-        session.close()
+        if _owned:
+            session.close()
 
 
 def print_result(result: dict) -> int:
@@ -302,6 +312,8 @@ def print_result(result: dict) -> int:
     print(f"\n[Cash truth]")
     print(f"  current_portfolio:              {c['current_portfolio']:>16,.2f} ₽")
     print(f"  − net deposits:                 {c['net_deposits']:>16,.2f} ₽")
+    if c.get("initial_balance"):
+        print(f"  − opening anchor (ADR-0010):    {c['initial_balance']:>16,.2f} ₽")
     if c["baseline_offset"]:
         print(f"  − initial_portfolio_value:      {c['baseline_offset']:>16,.2f} ₽")
     print(f"  = cash P&L:                     {c['total']:>16,.2f} ₽")
