@@ -4,8 +4,6 @@ Oracles = acc#2 (Артём, 2135909232) snapshot, см. spec §3.
 """
 from decimal import Decimal
 
-import pytest
-
 from domain.pnl.opening_anchor import (
     ANCHOR_MAX_FACTOR,
     AnchorDecision,
@@ -121,3 +119,13 @@ def test_zero_buy_peak_blocks_when_no_futures():
 
 def test_anchor_max_factor_constant_is_50():
     assert ANCHOR_MAX_FACTOR == Decimal("50")
+
+
+def test_g1_boundary_exactly_anchor_min_does_not_anchor():
+    # candidate == ANCHOR_MIN (1) → <= boundary → no anchor, source 'complete'.
+    d = decide_anchor(
+        **{**ACC2, "portfolio_value": Decimal("8557"), "journal_pnl": Decimal("0")}
+    )
+    # candidate = 8557 - 8556 - 0 = 1 == ANCHOR_MIN
+    assert d.should_anchor is False
+    assert d.source == "complete"
