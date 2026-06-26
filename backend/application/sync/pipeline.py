@@ -242,6 +242,10 @@ class SyncPipeline:
             # просто наблюдение, результат пишется в sync_health_checks.
             await asyncio.to_thread(self._stage_health_audit)
 
+            # ADR-0010: авто-якорь баланса открытия (неполная история депозитов).
+            # ДО pnl_health_check, чтобы badge считался с эффективными депозитами.
+            await asyncio.to_thread(self._stage_autoset_inferred_anchor)
+
             # Phase 10 (2026-05-17): P&L Health Check — сверка journal_pnl
             # с cash truth через две независимые методологии. Не блокирует
             # sync (non-fatal), результат кешируется на Account для UI badge.
@@ -895,6 +899,28 @@ class SyncPipeline:
             log.exception(
                 "pnl_health_check failed (non-blocking) account_id=%s",
                 self._account_id,
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    def _stage_autoset_inferred_anchor(self) -> None:
+        """ADR-0010: восстановить opening-balance anchor для счёта с неполной
+        историей депозитов. Запускается ПОСЛЕ phantom_sweep+mark_to_market
+        (журнал и last_portfolio_value финальны), ДО pnl_health_check (badge
+        считается уже с якорем). Non-fatal: ошибка логируется, sync не падает.
+        """
+        from services.opening_anchor_service import autoset_inferred_anchor
+
+        session = self._session_factory()
+        try:
+            autoset_inferred_anchor(session, self._account_id)
+        except Exception:
+            log.exception(
+                "opening_anchor failed (non-blocking) account_id=%s", self._account_id
             )
             try:
                 session.rollback()
