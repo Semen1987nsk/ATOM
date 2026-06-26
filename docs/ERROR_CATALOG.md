@@ -620,6 +620,36 @@ ValueError: not enough values to unpack (expected 3, got 2)
 
 ---
 
+### ERR-115: Badge «Расхождение 406%» / доходность «−873%» на свежеподключённом брокерском счёте
+
+**Категория:** api-sdk | **Severity:** P1
+
+**Symptom:**
+
+На только что подключённом брокерском счёте (sync выполнен, ошибок нет):
+- Badge сверки P&L показывает огромное расхождение (например, 406% — статус `investigate`).
+- Headline cash резко положительный (+24 383 ₽), журнал — резко отрицательный (−74 713 ₽).
+- Доходность в дашборде выглядит абсурдно (например, −873%).
+- `clearing_adjustment` огромный и положительный (+99 096 ₽) — ошибочно помечается как «неразложимая вармаржа».
+
+**Root cause:** Неполная история депозитов. T-Bank `getOperationsByCursor` отдаёт историю только с некоторой даты; стартовое финансирование счёта (пополнение / перевод бумаг) произошло **раньше окна синхронизации** и в него не попало. В результате `net_deposits` занижен, а ADR-0008 формула `cash_truth = portfolio − net_deposits` даёт ложно положительный результат — разрыв уходит в `clearing_adjustment`, а не в отдельную строку.
+
+Это структурная особенность T-Bank API при подключении уже торговавшего счёта, а не баг синхронизации.
+
+**Fix:** Автоматически устанавливается при следующем sync после деплоя ADR-0010: pipeline-стадия `_stage_autoset_inferred_anchor` вычисляет `candidate_anchor = portfolio − net_deposits − journal`, проверяет safety-gate (G1/G2/G3) и записывает `Account.initial_balance` (`source='inferred_anchor'`). После этого:
+```
+cash_truth = portfolio − (net_deposits + initial_balance)
+diff_pct ≈ 0% в T0, grows only from new futures drift
+```
+
+Если badge по-прежнему огромный после деплоя — проверить `Account.initial_balance` для счёта: если 0 и `source='inferred_blocked'` → safety-gate заблокировал якорь из-за реальной проблемы в журнале (pv×1000 и т.п.).
+
+**Prevention:** Стадия `_stage_autoset_inferred_anchor` запускается автоматически при каждом sync для счетов с неполной историей (freeze: якорь не пересчитывается на re-sync). Ручной ввод реального стартового депозита (`source='manual'`) имеет приоритет.
+
+**Reference:** ADR-0010 (`decisions/0010-inferred-opening-balance-anchor.md`), `docs/superpowers/specs/2026-06-26-inferred-opening-balance-anchor-design.md`, `domain/pnl/opening_anchor.py`, `services/opening_anchor_service.py`.
+
+---
+
 ## Database/migration
 
 ### ERR-201: SQLAlchemy `IndexError: tuple index out of range` = schema mismatch
