@@ -375,3 +375,52 @@ def test_health_clearing_adjustment_closes_identity_to_cash(in_memory_session):
     assert abs(result.journal_pnl + ca - result.cash_pnl) < Decimal("0.01")
     # sign: clearing_adjustment == cash - journal
     assert abs(ca - (result.cash_pnl - result.journal_pnl)) < Decimal("0.01")
+
+
+# ── ADR-0010: effective deposits (anchor) tests ────────────────────────
+
+
+def test_anchor_corrects_cash_pnl_and_badge(in_memory_session):
+    """ADR-0010: с initial_balance(anchor) cash_pnl = portfolio − net_dep − anchor,
+    badge diff_pct схлопывается (без якоря cash_pnl=24382, diff_pct=406%; с якорём ~0)."""
+    u = models.User(email="h@test.com", hashed_password="x", is_active=1)
+    in_memory_session.add(u)
+    in_memory_session.commit()
+    acc = models.Account(
+        user_id=u.id, name="M", currency="RUB",
+        initial_balance=Decimal("99095"),
+        initial_balance_source="inferred_anchor",
+        last_portfolio_value=Decimal("32938"),
+    )
+    in_memory_session.add(acc)
+    in_memory_session.commit()
+    in_memory_session.add(models.OperationORM(
+        operation_id="op-anchor-deposit",
+        account_id=acc.id,
+        broker_account_id="ba-anchor",
+        operation_type="input",
+        state="executed",
+        payment_units=8556,
+        payment_nano=0,
+        executed_at=datetime(2026, 2, 1),
+    ))
+    in_memory_session.add(models.Trade(
+        account_id=acc.id,
+        symbol="MXI",
+        instrument_type_v2="futures",
+        direction="LONG",
+        entry_price=Decimal("32000"),
+        exit_price=Decimal("31000"),
+        quantity=1,
+        pnl=Decimal("-70754"),
+        net_pnl=Decimal("-74713"),
+        commission=Decimal("3959"),
+        entry_at=datetime(2026, 1, 10),
+        exit_at=datetime(2026, 2, 5),
+    ))
+    in_memory_session.commit()
+
+    result = pnl_health_service.compute_health(in_memory_session, acc.id)
+    # cash_pnl = 32938 − 8556 − 99095 = −74713 → equals journal → diff ~0.
+    assert abs(result.cash_pnl - Decimal("-74713")) < Decimal("1")
+    assert result.diff_pct < Decimal("25")

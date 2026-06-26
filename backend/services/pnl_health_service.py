@@ -194,7 +194,12 @@ def compute_health(session: Session, account_id: int) -> PnLHealthResult:
     # ===== Method B: broker cash truth =====
     net_deposits = _sum_cash_category(session, account_id, CashFlowCategory.NET_DEPOSIT)
     portfolio_value = Decimal(account.last_portfolio_value or 0)
-    cash_pnl = portfolio_value - net_deposits
+    # ADR-0010: эффективные депозиты = реальные + восстановленный баланс открытия
+    # (для счёта с неполной историей). source='inferred_anchor'/'manual' → база
+    # включает initial_balance; иначе initial_balance=0 → формула неизменна.
+    initial_balance = Decimal(account.initial_balance or 0)
+    effective_deposits = net_deposits + initial_balance
+    cash_pnl = portfolio_value - effective_deposits
 
     # ===== Compare =====
     diff_rub = journal_pnl - cash_pnl
@@ -228,7 +233,7 @@ def compute_health(session: Session, account_id: int) -> PnLHealthResult:
     )
     layer1 = cash_reconstruction_residual(
         portfolio_value=portfolio_value,
-        net_deposits=net_deposits,
+        net_deposits=effective_deposits,
         non_deposit_cash=non_deposit_cash,
     )
     layer2 = ratio_sanity(journal_pnl=journal_pnl, cash_pnl=cash_pnl)
