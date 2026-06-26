@@ -374,10 +374,17 @@ async def get_stats(
     starting_net_deposit = get_net_deposit_as_of(db, account_id, period_start_date) if period_start_date else get_net_deposit_as_of(db, account_id)
 
     if is_broker_user:
-        # Equity curve начинается от 0; ROI скрыт.
-        starting_balance = 0.0
-        period_start_balance_source = "broker_cumulative_pnl"
-        period_start_balance_reliable = False  # signal к UI: ROI не показывать
+        if account_initial_balance > 0:
+            # ADR-0010: есть опорная база капитала (anchor или manual) → ROI честен.
+            # Equity curve по-прежнему от 0 (cumulative PnL); ROI-знаменатель отдельный.
+            starting_balance = 0.0
+            period_start_balance_source = "anchored_capital_base"
+            period_start_balance_reliable = True
+        else:
+            # Без якоря базы нет — ROI по-прежнему скрыт.
+            starting_balance = 0.0
+            period_start_balance_source = "broker_cumulative_pnl"
+            period_start_balance_reliable = False
     else:
         starting_balance = starting_net_deposit + pnl_before
         if not period_start_date:
@@ -386,7 +393,14 @@ async def get_stats(
         period_start_balance_reliable = True
 
     period_start_balance_reason = None
-    public_period_start_balance = starting_balance if not is_broker_user else None
+    if is_broker_user and period_start_balance_reliable and account_initial_balance > 0:
+        # ADR-0010: anchored broker → ROI-знаменатель = anchor + net deposits.
+        # starting_balance=0 чтобы equity curve шла от 0 (cumulative PnL).
+        public_period_start_balance = account_initial_balance + starting_net_deposit
+    else:
+        public_period_start_balance = (
+            starting_balance if (not is_broker_user or period_start_balance_reliable) else None
+        )
 
     if not is_broker_user and broker_backed and period_start_date:
         first_snapshot = db.query(models.BalanceSnapshot).filter(
@@ -526,6 +540,10 @@ async def get_stats(
             drawdown_baseline = abs(float(_row[0] or 0) + float(_row[1] or 0) / 1e9)
         if drawdown_baseline <= 0 and starting_net_deposit > 0:
             drawdown_baseline = starting_net_deposit
+        # ADR-0010: включаем восстановленный баланс открытия в развёрнутый капитал
+        # → drawdown%/Calmar считаются от реальной базы (acc#2: 8556 → 107651).
+        if account_initial_balance > 0:
+            drawdown_baseline += account_initial_balance
     elif starting_balance > 0:
         drawdown_baseline = starting_balance
     if drawdown_baseline <= 0:
@@ -677,7 +695,8 @@ async def get_stats(
             realized_closed_gross=Decimal(str(total_pnl_gross)),
             unrealized_position_based=Decimal(str(unrealized_pnl_position_based)),
             last_portfolio_value=Decimal(str(last_portfolio_value)),
-            net_deposits=Decimal(str(raw_deposits)),
+            # ADR-0010: эффективные депозиты = реальные + восстановленный баланс открытия.
+            net_deposits=Decimal(str(raw_deposits + account_initial_balance)),
             broker_commission_raw=Decimal(str(raw_broker)),
             attributable_fee_raw=Decimal(str(raw_attr_fee)),
             tax_raw=Decimal(str(raw_tax)),

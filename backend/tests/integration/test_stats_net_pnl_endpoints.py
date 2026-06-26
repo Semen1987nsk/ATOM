@@ -343,3 +343,144 @@ def test_advanced_stats_use_net_pnl_in_dict_bindings(client_with_db):
         f"NET period_breakdown.yearly.best.pnl=2000 ожидался, "
         f"получено {best.get('pnl')} (похоже на GROSS=5000)"
     )
+
+
+# ============================================================================
+# ADR-0010 Task 4 — anchored broker account: headline / ROI / drawdown
+# ============================================================================
+
+
+def test_anchor_broker_account_stats(client_with_db):
+    """ADR-0010 Task 4: anchored broker account shows correct headline/ROI/drawdown.
+
+    Setup: initial_balance=99095 (anchor), one CapitalOperation deposit 8556,
+    one OperationORM INPUT 8556, one closed futures trade pnl=-70754/net_pnl=-74713.
+    last_portfolio_value=32938.
+
+    Expected after edits:
+      - cash_truth_pnl = last_portfolio_value - (raw_deposits + initial_balance)
+                       = 32938 - (8556 + 99095) = 32938 - 107651 = -74713
+      - period_start_balance_reliable = True
+      - period_start_balance = account_initial_balance + starting_net_deposit
+                             = 99095 + 8556 = 107651
+      - total_roi is not None
+
+    Equity-curve equality: same curve whether initial_balance=99095 or 0.
+    (anchor only moves the % base, not the curve itself)
+    """
+    from decimal import Decimal as D
+    from datetime import datetime
+
+    db = client_with_db["db"]
+    client = client_with_db["client"]
+
+    from models import User, Account, Trade, TradeDirection, CapitalOperation, OperationORM
+    import auth_service as _auth
+
+    u = User(
+        email="anchor-test@test.com",
+        hashed_password=_auth.get_password_hash("pass1234"),
+        is_active=1,
+        is_admin=0,
+    )
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+
+    acc = Account(
+        user_id=u.id,
+        name="AnchorBroker",
+        currency="RUB",
+        initial_balance=D("99095"),
+        initial_balance_source="inferred_anchor",
+        last_portfolio_value=D("32938"),  # triggers is_broker_user = True
+    )
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+
+    token = _auth.create_access_token({"sub": str(u.id)})
+
+    # CapitalOperation deposit 8556 — используется get_net_deposit_as_of
+    # (has_broker_capital_operations → True → queries CapitalOperation.operation_type=="deposit")
+    cap_op = CapitalOperation(
+        account_id=acc.id,
+        date=datetime(2026, 1, 2),
+        amount=D("8556"),
+        operation_type="deposit",
+    )
+    db.add(cap_op)
+
+    # OperationORM input 8556 — используется для raw_deposits в headline
+    # operation_type должен совпадать с OperationType.INPUT.value = "input"
+    op = OperationORM(
+        account_id=acc.id,
+        broker_account_id="test-broker-acc-1",
+        operation_id="op-anchor-test-001",
+        operation_type="input",
+        state="executed",
+        quantity=0,
+        payment_units=8556,
+        payment_nano=0,
+        payment_currency="RUB",
+        executed_at=datetime(2026, 1, 2, 10, 0),
+    )
+    db.add(op)
+
+    # Closed futures trade: pnl=-70754, net_pnl=-74713
+    trade = Trade(
+        account_id=acc.id,
+        symbol="RIM6",
+        direction=TradeDirection.LONG,
+        entry_price=D("200000"),
+        exit_price=D("170000"),
+        quantity=D("1"),
+        entry_at=datetime(2026, 1, 3, 10, 0),
+        exit_at=datetime(2026, 1, 3, 15, 0),
+        currency="RUB",
+        data_source="broker",
+        position_id=99001,
+        commission=D("3959"),
+        pnl=D("-70754"),
+        net_pnl=D("-74713"),
+    )
+    db.add(trade)
+    db.commit()
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # --- Call with anchor ---
+    resp1 = client.get("/stats/", headers=headers)
+    assert resp1.status_code == 200, resp1.text
+    body1 = resp1.json()
+
+    assert abs(body1["cash_truth_pnl"] - (-74713)) < 2, (
+        f"cash_truth_pnl: {body1['cash_truth_pnl']}"
+    )
+    assert body1["period_start_balance_reliable"] is True, (
+        f"reliable: {body1['period_start_balance_reliable']}"
+    )
+    assert abs(body1["period_start_balance"] - 107651) < 2, (
+        f"period_start_balance: {body1['period_start_balance']}"
+    )
+    assert body1["total_roi"] is not None, (
+        "total_roi must not be None for anchored account"
+    )
+
+    equity1 = body1.get("equity_curve", [])
+
+    # --- Remove anchor (set initial_balance=0) and call again ---
+    acc.initial_balance = D("0")
+    db.commit()
+
+    resp2 = client.get("/stats/", headers=headers)
+    assert resp2.status_code == 200, resp2.text
+    body2 = resp2.json()
+    equity2 = body2.get("equity_curve", [])
+
+    # Equity curve MUST be equal — anchor moves only the % base, not the curve
+    assert equity1 == equity2, (
+        f"EQUITY CURVE SHIFTED by anchor change!\n"
+        f"With anchor: {equity1}\n"
+        f"Without anchor: {equity2}"
+    )
