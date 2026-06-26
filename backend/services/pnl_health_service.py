@@ -247,7 +247,8 @@ def compute_health(session: Session, account_id: int) -> PnLHealthResult:
     ).all()
     outlier_symbols = trade_outliers(
         trades=[(s, Decimal(p or 0)) for s, p in trade_rows],
-        net_deposits=net_deposits,
+        # ADR-0010: outlier base = effective deposits (incl. anchor), consistent with cash_pnl/layer1
+        net_deposits=effective_deposits,
     )
 
     # Слой 6 — операции с cash-эффектом, тип которых не в CASH_FLOW_MAP.

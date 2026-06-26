@@ -424,3 +424,55 @@ def test_anchor_corrects_cash_pnl_and_badge(in_memory_session):
     # cash_pnl = 32938 − 8556 − 99095 = −74713 → equals journal → diff ~0.
     assert abs(result.cash_pnl - Decimal("-74713")) < Decimal("1")
     assert result.diff_pct < Decimal("25")
+
+
+def test_layer4_outlier_uses_effective_deposits_not_raw(in_memory_session):
+    """ADR-0010: layer4 trade_outliers base = effective_deposits (net_deposits + anchor).
+    A trade whose |net_pnl| > 0.5*net_deposits but < 0.5*effective_deposits must NOT be flagged.
+    Shape: net_deposits=10000, initial_balance=90000 (effective=100000),
+           closed trade net_pnl=-30000 (>0.5*10000=5000 but <0.5*100000=50000) → NOT outlier."""
+    u = models.User(email="layer4@test.com", hashed_password="x", is_active=1)
+    in_memory_session.add(u)
+    in_memory_session.commit()
+    acc = models.Account(
+        user_id=u.id, name="layer4-anchor", currency="RUB",
+        initial_balance=Decimal("90000"),
+        initial_balance_source="inferred_anchor",
+        last_portfolio_value=Decimal("70000"),
+    )
+    in_memory_session.add(acc)
+    in_memory_session.commit()
+    # net_deposits = 10000 via one input operation
+    in_memory_session.add(models.OperationORM(
+        operation_id="op-layer4-dep",
+        account_id=acc.id,
+        broker_account_id="ba-layer4",
+        operation_type="input",
+        state="executed",
+        payment_units=10000,
+        payment_nano=0,
+        executed_at=datetime(2026, 3, 1),
+    ))
+    # closed trade net_pnl=-30000: |−30000| > 0.5*10000=5000 (raw → outlier)
+    #                               but |−30000| < 0.5*100000=50000 (effective → NOT outlier)
+    in_memory_session.add(models.Trade(
+        account_id=acc.id,
+        symbol="FUTURES_XYZ",
+        direction="LONG",
+        entry_price=Decimal("100"),
+        exit_price=Decimal("70"),
+        quantity=1,
+        pnl=Decimal("-30000"),
+        net_pnl=Decimal("-30000"),
+        commission=Decimal("0"),
+        entry_at=datetime(2026, 3, 2),
+        exit_at=datetime(2026, 3, 10),
+    ))
+    in_memory_session.commit()
+
+    result = pnl_health_service.compute_health(in_memory_session, acc.id)
+    outlier_symbols = result.components.get("outlier_symbols", [])
+    assert "FUTURES_XYZ" not in outlier_symbols, (
+        f"Layer4 used raw net_deposits instead of effective_deposits; "
+        f"outlier_symbols={outlier_symbols}"
+    )
