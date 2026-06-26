@@ -125,6 +125,17 @@ interface DashboardData {
   account_level_adjustments_gross?: number;
 }
 
+export function anchorSourceLabel(source?: string | null): string | null {
+  switch (source) {
+    case 'inferred_anchor':
+      return 'База открытия восстановлена автоматически (не подтверждена депозитами)';
+    case 'inferred_blocked':
+      return 'Журнал требует проверки: автоякорь не применён';
+    default:
+      return null;
+  }
+}
+
 export default function DashboardHome() {
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
@@ -445,6 +456,11 @@ export default function DashboardHome() {
                     </span>
                   )}
                 </>
+              )}
+              {isBrokerUser && anchorSourceLabel(stats?.initial_balance_source) && (
+                <span className="basis-full w-full text-[11px] text-[var(--text-tertiary)] mt-1">
+                  {anchorSourceLabel(stats?.initial_balance_source)}
+                </span>
               )}
               {/* Для manual-юзера (без брокера) — показываем initial_balance если задан. */}
               {!isBrokerUser && effectiveInitialDeposit && (
