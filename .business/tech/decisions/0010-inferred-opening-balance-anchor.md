@@ -123,4 +123,4 @@ INVESTIGATE: diff_pct ≥ 25% или |diff_rub| > 50 000 ₽
 - `docs/superpowers/specs/2026-06-26-inferred-opening-balance-anchor-design.md`
 - [`ADR-0008`](0008-pnl-cash-anchored-6layer-control.md) — cash-anchored P&L, 6-слойный контроль (amendится этим ADR)
 - `docs/ERROR_CATALOG.md` — ERR-115 (false-positive reconcile badge на новых счетах)
-- **Supersedes (частично):** ADR-0008 §1 (headline cash формула), ADR-0008 §3 (интерпретация diff_pct)
+- **Amends:** ADR-0008 §1 (headline cash формула), ADR-0008 §3 (интерпретация diff_pct)
