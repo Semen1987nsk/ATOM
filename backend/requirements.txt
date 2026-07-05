@@ -23,6 +23,7 @@ psycopg2-binary>=2.9.9,<3.0.0  # или asyncpg для async
 PyJWT>=2.10,<3.0  # JWT
 bcrypt>=4.1.0,<5.0.0  # Password hashing
 passlib[bcrypt]>=1.7.4,<2.0.0  # Password utilities
+pyotp>=2.9.0,<3.0.0  # TOTP 2FA (services/totp_service.py)
 
 # ==================== ENCRYPTION ====================
 cryptography>=42.0.0,<44.0.0  # Fernet encryption for broker tokens

@@ -119,6 +119,7 @@ class UserLogin(BaseModel):
     """Схема для входа"""
     email: EmailStr
     password: str
+    totp_code: Optional[str] = None
 
 class UserResponse(BaseModel):
     """Ответ с данными пользователя (без пароля)"""

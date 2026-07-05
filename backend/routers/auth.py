@@ -126,7 +126,17 @@ def login(request: Request, response: Response, user_data: schemas.UserLogin, db
             status_code=403,
             detail="Аккаунт деактивирован"
         )
-    
+
+    # S1-06: если у юзера включён TOTP, финальную пару токенов не выдаём
+    # до проверки 6-значного кода — иначе 2FA была бы фиктивной защитой.
+    if user.totp_enabled:
+        from services.totp_service import verify_code
+        if not user_data.totp_code or not verify_code(user.totp_secret, user_data.totp_code):
+            raise HTTPException(
+                status_code=401,
+                detail="Требуется код двухфакторной аутентификации",
+            )
+
     # Создаём пару токенов
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     auth_service.set_auth_cookies(response, request, access_token, refresh_token)
