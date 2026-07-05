@@ -1,7 +1,7 @@
 """Phase 9: point_value snapshot per Trade (для futures)
 
 Revision ID: 0024_trade_point_value_snapshot
-Revises: 0023_position_authoritative_fields
+Revises: 0023_position_auth_fields
 Create Date: 2026-05-17 19:30:00.000000
 
 Phase 9 (2026-05-17): для futures Trade сохраняем snapshot point_value,
@@ -36,7 +36,7 @@ from alembic import op
 
 
 revision: str = "0024_trade_point_value_snapshot"
-down_revision: Union[str, Sequence[str], None] = "0023_position_authoritative_fields"
+down_revision: Union[str, Sequence[str], None] = "0023_position_auth_fields"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

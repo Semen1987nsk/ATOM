@@ -1,6 +1,6 @@
 """Phase 7: authoritative Tinkoff fields на PositionORM
 
-Revision ID: 0023_position_authoritative_fields
+Revision ID: 0023_position_auth_fields
 Revises: 0022_trade_fee_breakdown
 Create Date: 2026-05-17 18:00:00.000000
 
@@ -34,7 +34,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "0023_position_authoritative_fields"
+revision: str = "0023_position_auth_fields"
 down_revision: Union[str, Sequence[str], None] = "0022_trade_fee_breakdown"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

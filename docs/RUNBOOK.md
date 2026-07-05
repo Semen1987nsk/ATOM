@@ -71,6 +71,16 @@ curl -X POST https://empirik.app/trades/calculate-mae-mfe \
 
 Прогресс контролировать по coverage-виджету MAE/MFE.
 
+### Ре-стамп после переименования 0023 (S1-02)
+
+Если dev/stage БД застамплена на старый id `0023_position_authoritative_fields`
+(alembic upgrade head падает "Can't locate revision"):
+```sql
+UPDATE alembic_version SET version_num='0023_position_auth_fields'
+ WHERE version_num='0023_position_authoritative_fields';
+```
+Затем `alembic upgrade head`.
+
 ---
 
 <a id="rollback"></a>
