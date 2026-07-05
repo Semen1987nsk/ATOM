@@ -129,7 +129,8 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
           take_profit: formData.take_profit ? parseFloat(formData.take_profit) : null,
           risk_amount: formData.risk_amount ? parseFloat(formData.risk_amount) : null,
           entry_at: new Date(formData.entry_at).toISOString(),
-          tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== '')
+          tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
+          confidence: formData.confidence ? parseInt(formData.confidence, 10) : null,
         }
       });
       toast.success('Сделка обновлена');
@@ -305,12 +306,12 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
           </div>
 
           <div>
-            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Уверенность (1-10)</label>
+            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Уверенность (1-5)</label>
             <div className="flex items-center gap-2">
-              <input 
+              <input
                 type="range"
                 min="1"
-                max="10"
+                max="5"
                 className="w-full accent-accent"
                 value={formData.confidence || '5'}
                 onChange={e => setFormData({...formData, confidence: e.target.value})}
