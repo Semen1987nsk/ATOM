@@ -654,13 +654,13 @@ export function TradeRow({
                 <div className="col-span-full">
                   <span className="text-slate-500 block mb-1">📷 Скриншот графика</span>
                   <a
-                    href={getApiUrl(trade.screenshot_url)}
+                    href={getApiUrl(`/trades/${trade.id}/screenshot`)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block"
                   >
                     <Image
-                      src={getApiUrl(trade.screenshot_url)}
+                      src={getApiUrl(`/trades/${trade.id}/screenshot`)}
                       alt="Скриншот сделки"
                       width={640}
                       height={160}

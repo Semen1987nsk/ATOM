@@ -32,6 +32,10 @@ interface TradeWithScreenshot {
 type SortMode = "best" | "worst" | "recent";
 type FilterMode = "all" | "wins" | "losses";
 
+export function screenshotSrc(tradeId: number): string {
+  return getApiUrl(`/trades/${tradeId}/screenshot`);
+}
+
 export default function ScreenshotsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { formatCurrency } = useSettings();
@@ -139,9 +143,7 @@ function ScreenshotCard({
 }) {
   const pnl = trade.net_pnl ?? trade.pnl ?? 0;
   const isWin = pnl > 0;
-  const url = trade.screenshot_url?.startsWith("http")
-    ? trade.screenshot_url
-    : getApiUrl(trade.screenshot_url || "");
+  const url = trade.screenshot_url ? screenshotSrc(trade.id) : "";
 
   return (
     <button
@@ -211,9 +213,7 @@ function Lightbox({
 }) {
   const pnl = trade.net_pnl ?? trade.pnl ?? 0;
   const isWin = pnl > 0;
-  const url = trade.screenshot_url?.startsWith("http")
-    ? trade.screenshot_url
-    : getApiUrl(trade.screenshot_url || "");
+  const url = trade.screenshot_url ? screenshotSrc(trade.id) : "";
 
   return (
     <div
