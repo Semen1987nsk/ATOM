@@ -27,7 +27,7 @@ import { EquityCurveSection } from './sections/EquityCurveSection';
 import { EquityCurveSkeleton } from './sections/EquityCurveSkeleton';
 
 export const metadata = {
-  title: 'Дашборд (Server demo) · Эмпирик',
+  title: 'Дашборд (Server demo) · Полистата',
   description: 'Демо Server Components + Suspense streaming на изолированном роуте',
 };
 

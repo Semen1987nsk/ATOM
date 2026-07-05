@@ -87,7 +87,7 @@ export function BenchmarkingView({ data, loading }: Props) {
             </div>
             <p className="text-[13px] text-[var(--text-secondary)] mt-1.5">
               {overallPct >= 90
-                ? `Ты в топ-${100 - overallPct}% всех ${data.is_synthetic ? "ретейл-трейдеров (academic baseline)" : "юзеров Эмпирик"}. Это редкий уровень.`
+                ? `Ты в топ-${100 - overallPct}% всех ${data.is_synthetic ? "ретейл-трейдеров (academic baseline)" : "юзеров Полистата"}. Это редкий уровень.`
                 : overallPct >= 75
                 ? `Ты лучше ${overallPct}% когорты. Хороший трейдер.`
                 : overallPct >= 50

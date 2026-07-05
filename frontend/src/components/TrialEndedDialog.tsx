@@ -128,7 +128,7 @@ function TrialEndedDialogContent({
             className="text-sm mb-4"
             style={{ color: 'var(--text-secondary, #a1a1aa)' }}
           >
-            Спасибо что попробовал Эмпирик. Твоя история сделок сохранена на Free+ навсегда.
+            Спасибо что попробовал Полистату. Твоя история сделок сохранена на Free+ навсегда.
           </p>
         )}
 

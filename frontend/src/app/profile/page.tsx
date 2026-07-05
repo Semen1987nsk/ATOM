@@ -9,7 +9,7 @@ import {
   User, Mail, Calendar, Settings, LogOut, Save,
   ArrowLeft, Loader2, CheckCircle, AlertCircle,
   TrendingUp, BarChart3, Target, Shield, Crown, Zap, Building2, ArrowUpRight, HelpCircle,
-  Download
+  Download, Trash2, X
 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import BrokerConnectModal from '@/components/BrokerConnectModal';
@@ -36,6 +36,11 @@ function ProfileContent() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  // 152-ФЗ ст. 14: право на удаление. Диалог требует пароль + явное согласие.
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // BUG-008: footer-sidebar «Брокеры» ведёт на /profile?tab=brokers, но
   // tab-system на странице не реализована. Открываем BrokerConnectModal
   // напрямую при наличии параметра.
@@ -109,7 +114,29 @@ function ProfileContent() {
       setIsExporting(false);
     }
   };
-  
+
+  const closeDeleteDialog = () => {
+    if (isDeleting) return;
+    setIsDeleteDialogOpen(false);
+    setDeletePassword('');
+    setDeleteError(null);
+  };
+
+  // 152-ФЗ ст. 14: запрос на удаление аккаунта. Бэкенд ставит soft-delete
+  // (grace period 30 дней) и сам сбрасывает auth-cookies → разлогиниваемся локально.
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete('/auth/me', { body: { password: deletePassword } });
+      logout();
+      window.location.href = '/';
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Не удалось удалить аккаунт');
+      setIsDeleting(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -443,8 +470,115 @@ function ProfileContent() {
               Выйти
             </button>
           </div>
+
+          {/* 152-ФЗ ст. 14 — право на удаление */}
+          <div className="mt-4 pt-4 border-t border-red-500/20 flex items-center justify-between">
+            <div>
+              <p className="font-medium">Удалить аккаунт</p>
+              <p className="text-sm text-muted-foreground">
+                Аккаунт и все данные будут безвозвратно удалены через 30 дней
+              </p>
+            </div>
+            <button
+              onClick={() => setIsDeleteDialogOpen(true)}
+              className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <Trash2 size={16} />
+              Удалить аккаунт
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Диалог подтверждения удаления аккаунта */}
+      {isDeleteDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={closeDeleteDialog}
+        >
+          <div
+            className="cyber-card w-full max-w-md p-6 border-red-500/30"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-bold text-red-400 flex items-center gap-2">
+                <Trash2 size={20} />
+                Удалить аккаунт
+              </h3>
+              <button
+                onClick={closeDeleteDialog}
+                disabled={isDeleting}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                aria-label="Закрыть"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <p>
+                Это действие необратимо. Через 30 дней ваш аккаунт, сделки, согласия
+                и все персональные данные будут удалены без возможности восстановления.
+                До этого момента вы сможете отменить удаление, войдя снова.
+              </p>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              <label className="text-sm font-medium text-foreground">
+                Введите пароль для подтверждения
+              </label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Ваш пароль"
+                autoComplete="current-password"
+                className="w-full px-4 py-3 bg-secondary/50 border border-white/10 rounded-lg
+                         text-foreground placeholder:text-muted-foreground
+                         focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500
+                         transition-all"
+              />
+            </div>
+
+            {deleteError && (
+              <div className="flex items-center gap-2 p-3 mb-4 rounded-lg text-sm bg-red-500/10 border border-red-500/20 text-red-400">
+                <AlertCircle size={16} />
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={closeDeleteDialog}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-secondary/50 hover:bg-secondary text-foreground rounded-lg transition-colors disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={isDeleting || !deletePassword}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg
+                         flex items-center gap-2 transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Удаление…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Удалить навсегда
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
     <BrokerConnectModal
       isOpen={isBrokerModalOpen}

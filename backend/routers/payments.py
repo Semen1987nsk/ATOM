@@ -265,15 +265,7 @@ async def payment_webhook(request: Request, db: Session = Depends(database.get_d
             raise HTTPException(status_code=400, detail="missing user_email")
         user_id = None  # будем искать по email ниже
 
-    # 4. Idempotency: дубликат payment_id → 200 без действий
-    attempt_attr = getattr(models, "PaymentAttemptORM", None)
-    if attempt_attr is not None and payment_id:
-        existing = db.query(attempt_attr).filter(attempt_attr.external_id == payment_id).first()
-        if existing and existing.status == target_status:
-            log.info("payment_webhook: idempotent replay payment_id=%s status=%s", payment_id, target_status)
-            return {"ok": True, "idempotent": True}
-
-    # 5. Найти юзера
+    # 4. Найти юзера (нужен user.id для замка payment_attempts.user_id NOT NULL)
     user = None
     if user_id:
         user = db.query(models.User).filter(models.User.id == int(user_id)).first()
@@ -284,33 +276,38 @@ async def payment_webhook(request: Request, db: Session = Depends(database.get_d
         log.error("payment_webhook: user not found payment_id=%s", payment_id)
         raise HTTPException(status_code=404, detail="user not found")
 
-    # 6. Применить действие
+    # 5. Атомарная идемпотентность: СНАЧАЛА вставляем payment_attempts как замок
+    #    по UNIQUE(external_id), и только при успешном захвате замка применяем
+    #    действие в ТОЙ ЖЕ транзакции. Раньше активация шла ДО записи попытки →
+    #    ретрай/конкурентный webhook (YooKassa повторяет до 30 раз) мог активировать
+    #    подписку дважды. IntegrityError на вставке = повтор → 200 без re-активации.
+    attempt_attr = getattr(models, "PaymentAttemptORM", None)
+    if attempt_attr is not None and payment_id:
+        from sqlalchemy.exc import IntegrityError
+
+        db.add(attempt_attr(
+            external_id=payment_id,
+            user_id=user.id,
+            amount_rub=amount_rub,
+            status=target_status,
+            created_at=utc_now_naive(),
+        ))
+        try:
+            db.flush()  # бьёт по UNIQUE(external_id) немедленно — захват замка
+        except IntegrityError:
+            db.rollback()
+            log.info("payment_webhook: idempotent replay payment_id=%s status=%s", payment_id, target_status)
+            return {"ok": True, "idempotent": True}
+
+    # 6. Применить действие (commit внутри = атомарно с замком payment_attempts)
     if target_status == "succeeded":
         _activate_subscription(db, user, plan, amount_rub, payment_id, "yookassa")
     elif target_status == "refunded":
         _deactivate_subscription(db, user, payment_id)
     else:
+        # Нет subscription-действия, но замок уже захвачен — фиксируем его.
+        db.commit()
         log.info("payment_webhook: status=%s — no action", target_status)
-
-    # 7. Запись попытки (idempotency для следующего раза)
-    if attempt_attr is not None and payment_id:
-        try:
-            row = db.query(attempt_attr).filter(attempt_attr.external_id == payment_id).first()
-            if row is None:
-                row = attempt_attr(
-                    external_id=payment_id,
-                    user_id=user.id,
-                    amount_rub=amount_rub,
-                    status=target_status,
-                    created_at=utc_now_naive(),
-                )
-                db.add(row)
-            else:
-                row.status = target_status
-            db.commit()
-        except Exception:
-            log.exception("PaymentAttemptORM write failed (non-blocking)")
-            db.rollback()
 
     return {"ok": True}
 

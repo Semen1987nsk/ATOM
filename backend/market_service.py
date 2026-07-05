@@ -55,6 +55,29 @@ class _TTLCache:
 _price_cache = _TTLCache(default_ttl=30.0)
 # Глобальный кэш спецификаций фьючерсов — TTL 300 секунд (меняются редко)
 _specs_cache = _TTLCache(default_ttl=300.0)
+# Кэш payload'а лендинг-тикера целиком — TTL 60 секунд (free-данные ISS идут с
+# ~15-мин задержкой, чаще обновлять незачем; защищает ISS от наплыва гостей).
+_ticker_cache = _TTLCache(default_ttl=60.0)
+
+
+def _to_num(v) -> Optional[float]:
+    """ISS-значение → float или None (None/''/нечисло — None)."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_positive(*vals) -> Optional[float]:
+    """Первое положительное число из аргументов (для last с фолбэками: в
+    нерабочее время LAST=null/0, тогда берём LCLOSEPRICE/LASTVALUE и т.п.)."""
+    for v in vals:
+        n = _to_num(v)
+        if n is not None and n > 0:
+            return n
+    return None
 
 # ═══════════════════════════════════════════════════
 #  MOEX HTTP — делегируется services/moex_async (PERF-04)
@@ -144,6 +167,26 @@ MOEX_HOLIDAYS = {
     datetime(2026, 11, 4).date(),
 }
 
+# Курируемый набор тикеров для лендинг-строки (порядок сохраняется в выдаче).
+# IMOEX — индекс (отдельный market/колонки), остальное — ликвидные акции TQBR.
+LANDING_TICKER_SYMBOLS = [
+    "IMOEX", "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "TATN", "NVTK", "VTBR", "YDEX",
+]
+_INDEX_SYMBOLS = {"IMOEX"}
+
+# marketdata-only запросы с урезанными колонками (меньше трафика, см. skill §2).
+_LANDING_SHARES_URL = (
+    "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json"
+    "?iss.meta=off&iss.only=marketdata"
+    "&marketdata.columns=SECID,LAST,LCLOSEPRICE,CLOSEPRICE,MARKETPRICE,LASTCHANGEPRCNT"
+)
+_LANDING_INDEX_URL = (
+    "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities.json"
+    "?iss.meta=off&iss.only=marketdata"
+    "&marketdata.columns=SECID,CURRENTVALUE,LASTVALUE,LASTCHANGEPRC"
+)
+
+
 class MarketService:
     def __init__(self):
         self.sources = [
@@ -215,6 +258,57 @@ class MarketService:
 
         log.debug(f"Retrieved {len(prices)} prices")
         return prices
+
+    async def get_landing_ticker(self) -> Dict:
+        """Курируемый набор тикеров MOEX для публичной лендинг-строки.
+
+        Возвращает {"stale": bool, "tickers": [{"symbol","last","change_pct"}]}.
+        Два запроса к ISS (акции TQBR + индекс SNDX), весь payload кешируется
+        на 60с. Если ISS недоступен и собрать нечего — stale=True, tickers=[]
+        (фронт показывает свой статичный fallback). Без auth (гостевой лендинг).
+        """
+        cached = _ticker_cache.get("landing:ticker")
+        if cached is not None:
+            return cached
+
+        shares_data = await _moex_get(_LANDING_SHARES_URL)
+        index_data = await _moex_get(_LANDING_INDEX_URL)
+
+        shares_map: Dict[str, Dict] = {}
+        for row in _normalize_iss_block(shares_data, "marketdata"):
+            secid = row.get("SECID")
+            last = _first_positive(
+                row.get("LAST"), row.get("LCLOSEPRICE"),
+                row.get("MARKETPRICE"), row.get("CLOSEPRICE"),
+            )
+            if secid and last is not None:
+                shares_map[secid] = {
+                    "last": last,
+                    "change_pct": _to_num(row.get("LASTCHANGEPRCNT")) or 0.0,
+                }
+
+        index_map: Dict[str, Dict] = {}
+        for row in _normalize_iss_block(index_data, "marketdata"):
+            secid = row.get("SECID")
+            value = _first_positive(row.get("CURRENTVALUE"), row.get("LASTVALUE"))
+            if secid and value is not None:
+                index_map[secid] = {
+                    "last": value,
+                    "change_pct": _to_num(row.get("LASTCHANGEPRC")) or 0.0,
+                }
+
+        tickers: List[Dict] = []
+        for sym in LANDING_TICKER_SYMBOLS:
+            src = index_map if sym in _INDEX_SYMBOLS else shares_map
+            item = src.get(sym)
+            if item is not None:
+                tickers.append({"symbol": sym, "last": item["last"], "change_pct": item["change_pct"]})
+
+        stale = len(tickers) == 0
+        result = {"stale": stale, "tickers": tickers}
+        if not stale:
+            _ticker_cache.set("landing:ticker", result)
+        return result
 
     async def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
         """

@@ -116,7 +116,7 @@ export default function OnboardingReconcilePage() {
         <div className="mb-6">
           <h1 className="text-2xl font-semibold mb-2">Проверка корректности данных</h1>
           <p className="text-slate-400 text-sm">
-            Эмпирик сверит свои расчёты с официальным брокерским отчётом Tinkoff за
+            Полистата сверит свои расчёты с официальным брокерским отчётом Tinkoff за
             последние 30 дней. Это разовая проверка для уверенности, что цифры в
             журнале совпадают с тем, что показывает Тинькофф в личном кабинете.
           </p>
@@ -214,7 +214,7 @@ export default function OnboardingReconcilePage() {
                       <thead>
                         <tr className="text-slate-500 text-xs uppercase tracking-wide">
                           <th className="text-left pb-2">Метрика</th>
-                          <th className="text-right pb-2">Эмпирик</th>
+                          <th className="text-right pb-2">Полистата</th>
                           <th className="text-right pb-2">Tinkoff</th>
                           <th className="text-right pb-2">Разница</th>
                           <th className="text-center pb-2">Статус</th>

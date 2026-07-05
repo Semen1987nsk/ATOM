@@ -173,6 +173,13 @@ jobs:
             export SHA=${SHA}
             echo "[deploy] Pulling backend/frontend images for SHA=${SHA}"
             docker compose -f docker-compose.prod.yml pull
+            # Миграции ПЕРЕД стартом: main.py поднимает RuntimeError при db≠head
+            # (alembic head check) → иначе backend crash-loop на каждом деплое
+            # с новой ревизией. One-shot контейнер из НОВОГО образа (SHA);
+            # postgres-зависимость поднимается через depends_on/service_healthy,
+            # .env (env_file) даёт DATABASE_URL.
+            echo "[deploy] Applying DB migrations (alembic upgrade head) for SHA=${SHA}"
+            docker compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
             echo "[deploy] Recreating services (no-deps, remove orphans)"
             docker compose -f docker-compose.prod.yml up -d --no-deps --remove-orphans
             echo "[deploy] Health-gate: waiting for /ready"

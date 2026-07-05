@@ -9,6 +9,7 @@
  * сегмент без полного reload.
  */
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 
 export default function RootError({
   error,
@@ -19,6 +20,7 @@ export default function RootError({
 }) {
   useEffect(() => {
     console.error('Root error:', error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

@@ -3,6 +3,7 @@ Trades Router — CRUD для сделок, импорт, unrealized PnL
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Query, Form
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
@@ -207,8 +208,12 @@ async def create_trade(
             
             db.add(remainder_trade)
             last_modified_trade = remainder_trade
-            
-        db.commit()
+
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="Такая сделка уже существует")
         if last_modified_trade:
             db.refresh(last_modified_trade)
             return last_modified_trade
@@ -220,7 +225,11 @@ async def create_trade(
         db_trade.account_id = account_id
         db_trade.entry_commission = db_trade.commission
         db.add(db_trade)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="Такая сделка уже существует")
         db.refresh(db_trade)
         return db_trade
 

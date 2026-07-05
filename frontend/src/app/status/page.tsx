@@ -63,7 +63,7 @@ export default function StatusPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12">
       <div className="max-w-3xl mx-auto">
         <Link href="/" className="text-sm text-slate-400 hover:text-slate-200">
-          ← Эмпирик
+          ← Полистата
         </Link>
         <h1 className="text-3xl md:text-4xl font-bold mt-4 mb-2">System Status</h1>
         <p className="text-slate-400 mb-8">Текущее состояние сервиса. Обновляется каждые 30 секунд.</p>

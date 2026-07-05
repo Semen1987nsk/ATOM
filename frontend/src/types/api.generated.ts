@@ -2709,7 +2709,7 @@ export interface paths {
         };
         /**
          * Get Benchmark
-         * @description Сравнение метрик пользователя с когортой Эмпирик. Пока живых юзеров мало —
+         * @description Сравнение метрик пользователя с когортой Полистата. Пока живых юзеров мало —
          *     база синтетическая (academic baselines). При росте — переключается на real.
          */
         get: operations["get_benchmark_stats_benchmark_get"];

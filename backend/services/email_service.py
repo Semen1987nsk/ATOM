@@ -108,21 +108,21 @@ async def send_email(
 def send_email_verification(to_email: str, verify_url: str, *, user_name: Optional[str] = None) -> bool:
     """PR 26 Phase 3: письмо для подтверждения email при регистрации."""
     greeting = f"Здравствуйте, {user_name}!" if user_name else "Здравствуйте!"
-    subject = "Эмпирик — подтверждение email"
+    subject = "Полистата — подтверждение email"
     body_text = (
         f"{greeting}\n\n"
-        f"Спасибо за регистрацию в Эмпирик.\n\n"
+        f"Спасибо за регистрацию в Полистата.\n\n"
         f"Подтвердите ваш email, перейдя по ссылке (действует 24 часа):\n"
         f"{verify_url}\n\n"
         f"Если это были не вы — игнорируйте письмо.\n\n"
-        f"— Команда Эмпирик"
+        f"— Команда Полистата"
     )
     body_html = (
         f"<p>{greeting}</p>"
-        f"<p>Спасибо за регистрацию в Эмпирик.</p>"
+        f"<p>Спасибо за регистрацию в Полистата.</p>"
         f"<p><a href=\"{verify_url}\" style=\"background:#4f46e5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;\">Подтвердить email</a></p>"
         f"<p style=\"color:#666;font-size:12px\">Ссылка действительна 24 часа. Если это были не вы — игнорируйте письмо.</p>"
-        f"<p style=\"color:#999;font-size:11px\">— Команда Эмпирик</p>"
+        f"<p style=\"color:#999;font-size:11px\">— Команда Полистата</p>"
     )
     return _send_sync(to_email=to_email, subject=subject, body_text=body_text, body_html=body_html)
 
@@ -133,13 +133,13 @@ def send_already_registered_notice(to_email: str, reset_url: str) -> bool:
 
     Это закрывает enumeration: атакующий получает одинаковый 202 как для
     нового email, так и для существующего."""
-    subject = "Эмпирик — попытка регистрации"
+    subject = "Полистата — попытка регистрации"
     body_text = (
-        f"Кто-то попытался зарегистрироваться в Эмпирик с вашим email.\n\n"
+        f"Кто-то попытался зарегистрироваться в Полистата с вашим email.\n\n"
         f"У вас уже есть аккаунт. Если забыли пароль, сбросьте по ссылке:\n"
         f"{reset_url}\n\n"
         f"Если это были не вы — просто игнорируйте.\n\n"
-        f"— Команда Эмпирик"
+        f"— Команда Полистата"
     )
     return _send_sync(to_email=to_email, subject=subject, body_text=body_text)
 
@@ -155,18 +155,18 @@ def send_password_reset_email(
     Письмо содержит ссылку с one-time token. Истекает через 1 час.
     """
     greeting = f"Здравствуйте, {user_name}!" if user_name else "Здравствуйте!"
-    subject = "Эмпирик — сброс пароля"
+    subject = "Полистата — сброс пароля"
     body_text = (
         f"{greeting}\n\n"
-        f"Кто-то запросил сброс пароля для вашего аккаунта Эмпирик.\n\n"
+        f"Кто-то запросил сброс пароля для вашего аккаунта Полистата.\n\n"
         f"Перейдите по ссылке (действительна 1 час):\n"
         f"{reset_url}\n\n"
         f"Если это были не вы — просто игнорируйте письмо.\n\n"
-        f"— Команда Эмпирик"
+        f"— Команда Полистата"
     )
     body_html = (
         f"<p>{greeting}</p>"
-        f"<p>Кто-то запросил сброс пароля для вашего аккаунта Эмпирик.</p>"
+        f"<p>Кто-то запросил сброс пароля для вашего аккаунта Полистата.</p>"
         f"<p>"
         f"<a href=\"{reset_url}\" style=\"background:#4f46e5;color:#fff;"
         f"padding:10px 20px;border-radius:6px;text-decoration:none;\">"
@@ -174,7 +174,7 @@ def send_password_reset_email(
         f"</p>"
         f"<p style=\"color:#666;font-size:12px\">Ссылка действительна 1 час. "
         f"Если это были не вы — просто игнорируйте письмо.</p>"
-        f"<p style=\"color:#999;font-size:11px\">— Команда Эмпирик</p>"
+        f"<p style=\"color:#999;font-size:11px\">— Команда Полистата</p>"
     )
     return _send_sync(
         to_email=to_email,

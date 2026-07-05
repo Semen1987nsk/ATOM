@@ -57,6 +57,7 @@
 - Native mobile (iOS/Android) — после PWA
 - Опционы / структурные продукты
 - Алготрейдинг / backtest
+- **Fincept-derived фичи** (slippage-vs-VWAP, дисциплинарные уведомления, карта концентрации риска и др.) — запарковано, см. [fincept-derived-backlog.md](./fincept-derived-backlog.md). В MVP не берём.
 
 ## Не делаем (закрыто)
 

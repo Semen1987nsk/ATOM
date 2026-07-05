@@ -6,7 +6,6 @@ ATOM API — Главный файл приложения
 from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -53,6 +52,7 @@ from routers.review import router as review_router
 from routers.replay import router as replay_router
 from routers.payments import router as payments_router
 from routers.onboarding import router as onboarding_router
+from routers.landing import router as landing_router
 from sync_scheduler import scheduler
 
 log = get_logger("api")
@@ -382,14 +382,16 @@ app.include_router(review_router)
 app.include_router(replay_router)
 app.include_router(payments_router)
 app.include_router(onboarding_router)  # PR 26 Phase 3: reconciliation wizard
+app.include_router(landing_router)  # публичная лендинг-строка MOEX (без auth)
 
 # ==================== СТАТИЧЕСКИЕ ФАЙЛЫ ====================
-# Создаём папку uploads если её нет
+# Создаём папку uploads если её нет (запись скриншотов в trades.upload_screenshot).
 uploads_dir = Path("uploads/screenshots")
 uploads_dir.mkdir(parents=True, exist_ok=True)
 
-# Монтируем папку uploads для отдачи скриншотов
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# SEC (IDOR): публичный static-mount /uploads УДАЛЁН. Скриншоты сделок отдаёт
+# authenticated-эндпоинт GET /trades/{id}/screenshot с проверкой ownership.
+# Прямой static-доступ позволял читать чужой скриншот перебором UUID-имени.
 
 # ==================== ДОКУМЕНТАЦИЯ ====================
 #

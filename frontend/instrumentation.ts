@@ -3,8 +3,12 @@
 // инициализации Sentry на server runtime (Node) и edge runtime (если нужно).
 //
 // Edge runtime пока не настроен — добавим если миддлвары начнут жить на edge.
+import * as Sentry from '@sentry/nextjs';
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('./sentry.server.config');
   }
 }
+
+export const onRequestError = Sentry.captureRequestError;

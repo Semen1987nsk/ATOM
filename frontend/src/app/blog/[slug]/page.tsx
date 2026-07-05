@@ -310,7 +310,7 @@ export default function ArticlePage() {
                 </span>
               </div>
               <div>
-                <p className="font-medium">{article.author_name || 'Редакция Эмпирика'}</p>
+                <p className="font-medium">{article.author_name || 'Редакция Полистаты'}</p>
                 <p className="text-sm text-muted-foreground">Автор статьи</p>
               </div>
             </div>

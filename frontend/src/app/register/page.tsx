@@ -72,7 +72,7 @@ export default function RegisterPage() {
             href="/"
             className="inline-flex items-center gap-1 text-4xl font-bold tracking-tight"
           >
-            <span className="text-[var(--accent)]">Эмпирик</span>
+            <span className="text-[var(--accent)]">Полистата</span>
           </Link>
           <p className="text-sm text-[var(--text-secondary)] mt-2">
             Создайте аккаунт за 30 секунд
@@ -205,7 +205,7 @@ export default function RegisterPage() {
                 >
                   согласие на обработку персональных данных
                 </Link>{' '}
-                в соответствии с политикой Эмпирик (версия v1)
+                в соответствии с политикой Полистаты (версия v1)
               </span>
             </label>
 
