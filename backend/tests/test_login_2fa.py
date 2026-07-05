@@ -109,3 +109,16 @@ def test_login_wrong_password_has_no_totp_required_flag(app_db):
     # остаётся простой строкой (как раньше), не dict.
     body = r.json()
     assert not isinstance(body.get("detail"), dict), r.text
+
+
+def test_login_wrong_password_with_2fa_enabled_has_no_totp_required_flag(app_db):
+    client, db = app_db
+    secret = pyotp.random_base32()
+    _user(db, enabled=True, secret=secret)
+    r = client.post("/auth/login", json={"email": "a@b.com", "password": "wrong-password"})
+    assert r.status_code == 401, r.text
+    # Неверный пароль на 2FA-включённом аккаунте — тоже обычная ошибка
+    # аутентификации, а не 2FA-required сигнал: brute-force пароля не должен
+    # получать машиночитаемое подтверждение "код нужен только на верном пароле".
+    body = r.json()
+    assert not isinstance(body.get("detail"), dict), r.text

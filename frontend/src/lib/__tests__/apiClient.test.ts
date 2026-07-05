@@ -237,3 +237,65 @@ describe('apiClient — requestId pass-through', () => {
     });
   });
 });
+
+describe('apiClient — S1-06c: detail dict (2FA) vs detail array (422 validation)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('422 с массивом detail (FastAPI validation errors) НЕ схлопывается в generic "HTTP 422"', async () => {
+    const { api } = await loadApi();
+
+    // typeof [] === 'object' — регресс-ловушка: массив не должен матчиться
+    // под detail-object ветку (там ожидается {message, totp_required}).
+    const validationErrors = [
+      { loc: ['body', 'email'], msg: 'field required', type: 'value_error.missing' },
+    ];
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(422, { detail: validationErrors }),
+    );
+
+    let caught: { status?: number; detail?: unknown; totpRequired?: boolean } | undefined;
+    try {
+      await api.get('/test');
+    } catch (e) {
+      caught = e as typeof caught;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught?.status).toBe(422);
+    expect(caught?.detail).not.toBe('HTTP 422');
+    expect(caught?.detail).toEqual(validationErrors);
+    expect(caught?.totpRequired).toBeUndefined();
+  });
+
+  it('401 с dict detail ({message, totp_required}) по-прежнему разворачивает totpRequired', async () => {
+    const { api } = await loadApi();
+
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(401, {
+        detail: { message: 'Требуется код 2FA', totp_required: true },
+      }),
+    );
+
+    await expect(
+      api.post('/auth/login', { body: { email: 'a', password: 'b' }, noAuth: true }),
+    ).rejects.toMatchObject({
+      status: 401,
+      detail: 'Требуется код 2FA',
+      totpRequired: true,
+    });
+  });
+
+  it('обычный строковый detail работает как раньше', async () => {
+    const { api } = await loadApi();
+
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+      mockJsonResponse(400, { detail: 'Некорректный запрос' }),
+    );
+
+    await expect(api.get('/test')).rejects.toMatchObject({
+      status: 400,
+      detail: 'Некорректный запрос',
+      totpRequired: undefined,
+    });
+  });
+});

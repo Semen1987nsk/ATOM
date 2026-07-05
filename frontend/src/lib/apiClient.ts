@@ -209,7 +209,7 @@ async function request<T>(
     // см. POST /auth/login при 2FA-required), а не строкой. Разворачиваем
     // message для отображения, totp_required — отдельным полем ApiError.
     const rawDetail = errorData.detail;
-    const isDetailObject = rawDetail !== null && typeof rawDetail === 'object';
+    const isDetailObject = rawDetail !== null && typeof rawDetail === 'object' && !Array.isArray(rawDetail);
     const detailMessage = isDetailObject ? rawDetail.message : rawDetail;
     const totpRequired = isDetailObject ? rawDetail.totp_required === true : undefined;
 
