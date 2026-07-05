@@ -480,6 +480,7 @@ async def trigger_manual_sync(
 @router.post("/connections/{connection_id}/reset")
 async def reset_connection(
     connection_id: int,
+    confirm_data_loss: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -489,6 +490,10 @@ async def reset_connection(
     Следующий sync будет полным (с начала истории).
 
     Сохраняет: legacy/manual сделки, само подключение и токен.
+
+    S1-08: требует явного confirm_data_loss=true — удаление sync-сделок
+    безвозвратно стирает их ручные аннотации (notes/tags/mood/discipline/
+    confidence/setup_id/screenshot_url).
     """
     from tools.reset_broker_account import reset_account
 
@@ -500,6 +505,16 @@ async def reset_connection(
     )
     if conn is None:
         raise HTTPException(status_code=404, detail="Подключение не найдено")
+
+    if not confirm_data_loss:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Полная пересинхронизация безвозвратно удалит заметки, теги, "
+                "оценки настроения/дисциплины и скриншоты всех синхронизированных "
+                "сделок. Подтвердите: confirm_data_loss=true."
+            ),
+        )
 
     # Закрываем текущую сессию (database.get_db) перед reset_account, чтобы
     # тот мог открыть свою собственную SessionLocal и сделать commit.
