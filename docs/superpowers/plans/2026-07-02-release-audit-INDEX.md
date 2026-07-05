@@ -79,19 +79,19 @@
 
 | ✔ | ID | Severity | Файл | Проблема |
 |---|----|----------|------|----------|
-| [ ] | S1-01 | CRIT | `backend/routers/trades.py:1037` | Arbitrary file deletion через DELETE /trades/{id}/screenshot (path traversa |
-| [ ] | S1-02 | CRIT | `backend/alembic/versions/0023_position_authoritative_fields.py:24` | Revision id 0023 (34 символа) не влезает в alembic_version VARCHAR(32) — al |
-| [ ] | S1-03 | HIGH | `backend/main.py:392` | Скриншоты сделок сломаны: static /uploads удалён, но фронт по-прежнему груз |
-| [ ] | S1-04 | HIGH | `backend/routers/payments.py:297` | Refund больше не деактивирует подписку: новый idempotency-замок глотает ref |
-| [ ] | S1-05 | HIGH | `backend/routers/broker.py:778` | 401 от broker-эндпоинтов при невалидном T-Bank токене принудительно разлоги |
-| [ ] | S1-06 | HIGH | `backend/routers/auth.py:108` | 2FA (TOTP) включается, но никогда не проверяется при входе — защита фиктивн |
-| [ ] | S1-07 | HIGH | `frontend/src/app/login/page.tsx:144` | Восстановление пароля — тупик: страницы /auth/reset-password не существует, |
-| [ ] | S1-08 | HIGH | `backend/routers/broker.py:507` | POST /broker/connections/{id}/reset безвозвратно уничтожает пользовательски |
-| [ ] | S1-09 | HIGH | `frontend/src/components/EditTradeModal.tsx:121` | Редактирование сделки падает 422: confidence='' для sync-сделок и слайдер 1 |
-| [ ] | S1-10 | HIGH | `backend/routers/payments.py:374` | Refund-webhook помечает Payment REFUNDED глобально по external_id без скоуп |
-| [ ] | S1-11 | HIGH | `backend/routers/payments.py:296` | Webhook refund.succeeded блокируется idempotency-замком — подписка не деакт |
-| [ ] | S1-12 | HIGH | `backend/main.py:392` | Удалён static-mount /uploads, но фронт не переведён на новый эндпоинт — все |
-| [ ] | S1-13 | MED | `backend/services/pd_export.py:75` | Self-service PD export leaks 2FA secret and verification token |
+| [x] | S1-01 | CRIT | `backend/routers/trades.py:1037` | Arbitrary file deletion через DELETE /trades/{id}/screenshot (path traversa |
+| [x] | S1-02 | CRIT | `backend/alembic/versions/0023_position_authoritative_fields.py:24` | Revision id 0023 (34 символа) не влезает в alembic_version VARCHAR(32) — al |
+| [x] | S1-03 | HIGH | `backend/main.py:392` | Скриншоты сделок сломаны: static /uploads удалён, но фронт по-прежнему груз |
+| [x] | S1-04 | HIGH | `backend/routers/payments.py:297` | Refund больше не деактивирует подписку: новый idempotency-замок глотает ref |
+| [x] | S1-05 | HIGH | `backend/routers/broker.py:778` | 401 от broker-эндпоинтов при невалидном T-Bank токене принудительно разлоги |
+| [x] | S1-06 | HIGH | `backend/routers/auth.py:108` | 2FA (TOTP) включается, но никогда не проверяется при входе — защита фиктивн |
+| [x] | S1-07 | HIGH | `frontend/src/app/login/page.tsx:144` | Восстановление пароля — тупик: страницы /auth/reset-password не существует, |
+| [x] | S1-08 | HIGH | `backend/routers/broker.py:507` | POST /broker/connections/{id}/reset безвозвратно уничтожает пользовательски |
+| [x] | S1-09 | HIGH | `frontend/src/components/EditTradeModal.tsx:121` | Редактирование сделки падает 422: confidence='' для sync-сделок и слайдер 1 |
+| [x] | S1-10 | HIGH | `backend/routers/payments.py:374` | Refund-webhook помечает Payment REFUNDED глобально по external_id без скоуп |
+| [x] | S1-11 | HIGH | `backend/routers/payments.py:296` | Webhook refund.succeeded блокируется idempotency-замком — подписка не деакт |
+| [x] | S1-12 | HIGH | `backend/main.py:392` | Удалён static-mount /uploads, но фронт не переведён на новый эндпоинт — все |
+| [x] | S1-13 | MED | `backend/services/pd_export.py:75` | Self-service PD export leaks 2FA secret and verification token |
 
 ### Спринт 2 — Синхронизация-крепость + прод-масштабирование
 
