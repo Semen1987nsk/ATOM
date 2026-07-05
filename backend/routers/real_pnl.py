@@ -84,7 +84,7 @@ async def get_real_pnl(
             ops = TinkoffOperationsClient(services)
             portfolio = await ops.get_portfolio_raw(conn.broker_account_id)
     except TokenInvalid:
-        raise HTTPException(status_code=401, detail="Токен невалиден")
+        raise HTTPException(status_code=424, detail="Токен брокера невалиден")
     except BrokerError as exc:
         raise HTTPException(status_code=502, detail=f"Tinkoff API: {exc.message}")
 

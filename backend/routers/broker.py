@@ -440,7 +440,7 @@ async def sync_now(
     try:
         report = await orchestrator.sync_one_account(connection_id)
     except TokenInvalid:
-        raise HTTPException(status_code=401, detail="Токен невалиден или отозван")
+        raise HTTPException(status_code=424, detail="Токен брокера невалиден или отозван")
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Превышен лимит запросов")
     except BrokerError as exc:
@@ -775,7 +775,7 @@ async def get_portfolio(
                 }
             )
     except TokenInvalid:
-        raise HTTPException(status_code=401, detail="Токен невалиден")
+        raise HTTPException(status_code=424, detail="Токен брокера невалиден")
     except BrokerError as exc:
         raise HTTPException(status_code=502, detail=f"Tinkoff API: {exc.message}")
     except Exception as exc:
