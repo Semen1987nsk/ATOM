@@ -129,12 +129,23 @@ def login(request: Request, response: Response, user_data: schemas.UserLogin, db
 
     # S1-06: если у юзера включён TOTP, финальную пару токенов не выдаём
     # до проверки 6-значного кода — иначе 2FA была бы фиктивной защитой.
+    #
+    # S1-06c: detail — dict с машиночитаемым totp_required=true (паттерн уже
+    # используется в кодовой базе, см. pro_required в subscription_service.py).
+    # Пароль на этом шаге уже подтверждён authenticate_user() выше — раскрытие
+    # факта "у юзера включена 2FA" не даёт атакующему ничего сверх того, что
+    # он и так знает (пароль верный, но недостаточен). Без dict-сигнала фронт
+    # вынужден был бы matchить строку detail по языку — brittle и небезопасно
+    # при локализации.
     if user.totp_enabled:
         from services.totp_service import verify_code
         if not user_data.totp_code or not verify_code(user.totp_secret, user_data.totp_code):
             raise HTTPException(
                 status_code=401,
-                detail="Требуется код двухфакторной аутентификации",
+                detail={
+                    "message": "Требуется код двухфакторной аутентификации",
+                    "totp_required": True,
+                },
             )
 
     # Создаём пару токенов

@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { OAuthButtons } from '@/components/OAuthButtons';
 import { Button, Input } from '@/components/ui';
+import { ApiError } from '@/lib/apiClient';
 
 export default function LoginPage() {
   const { login, refreshUser, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -17,6 +18,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // S1-06c: двухшаговый вход для password-юзеров с включённой 2FA. Шаг 2
+  // открывается только по машиночитаемому ApiError.totpRequired=true
+  // (см. POST /auth/login), а не по тексту detail.
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
@@ -42,10 +48,17 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await login(email, password, totpRequired ? totpCode : undefined);
       router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка входа');
+      if (err instanceof ApiError && err.totpRequired) {
+        // Пароль уже подтверждён backend'ом — переходим на шаг ввода кода,
+        // email/пароль остаются в состоянии (не сбрасываем).
+        setTotpRequired(true);
+        setError(totpRequired ? 'Неверный код' : '');
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка входа');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -70,9 +83,13 @@ export default function LoginPage() {
         {/* Card */}
         <div className="cyber-card p-8">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold leading-tight">Вход в аккаунт</h1>
+            <h1 className="text-2xl font-bold leading-tight">
+              {totpRequired ? 'Двухфакторная аутентификация' : 'Вход в аккаунт'}
+            </h1>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
-              Введите свои данные для продолжения
+              {totpRequired
+                ? 'Введите 6-значный код из приложения-аутентификатора'
+                : 'Введите свои данные для продолжения'}
             </p>
           </div>
 
@@ -83,85 +100,118 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Input
-              label="Email"
-              type="email"
-              name="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              required
-              leftIcon={<Mail size={16} />}
-              autoComplete="email"
-            />
+          {totpRequired ? (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <Input
+                label="Код двухфакторной аутентификации"
+                type="text"
+                name="totp_code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                required
+                leftIcon={<ShieldCheck size={16} />}
+                className="text-center tracking-widest"
+              />
 
-            <Input
-              label="Пароль"
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              leftIcon={<Lock size={16} />}
-              autoComplete="current-password"
-              rightAddon={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="p-1 hover:text-[var(--foreground)] transition-colors"
-                  aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+              <Button
+                type="submit"
+                size="lg"
+                fullWidth
+                loading={isLoading}
+                disabled={totpCode.length !== 6}
+                leftIcon={!isLoading ? <LogIn size={16} /> : undefined}
+                className="mt-2"
+              >
+                {isLoading ? 'Проверка...' : 'Подтвердить'}
+              </Button>
+            </form>
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <Input
+                  label="Email"
+                  type="email"
+                  name="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  required
+                  leftIcon={<Mail size={16} />}
+                  autoComplete="email"
+                />
+
+                <Input
+                  label="Пароль"
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  leftIcon={<Lock size={16} />}
+                  autoComplete="current-password"
+                  rightAddon={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="p-1 hover:text-[var(--foreground)] transition-colors"
+                      aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+
+                <div className="text-right -mt-1">
+                  <Link
+                    href="/auth/forgot-password"
+                    className="text-sm text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors"
+                  >
+                    Забыли пароль?
+                  </Link>
+                </div>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  fullWidth
+                  loading={isLoading}
+                  leftIcon={!isLoading ? <LogIn size={16} /> : undefined}
+                  className="mt-2"
                 >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              }
-            />
+                  {isLoading ? 'Вход...' : 'Войти'}
+                </Button>
+              </form>
 
-            <div className="text-right -mt-1">
-              <Link
-                href="/auth/forgot-password"
-                className="text-sm text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors"
-              >
-                Забыли пароль?
-              </Link>
-            </div>
+              {/* OAuth */}
+              <div className="mt-6">
+                <OAuthButtons
+                  onSuccess={async () => {
+                    await refreshUser();
+                    router.push('/');
+                  }}
+                  onError={(err) => setError(err)}
+                />
+              </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              fullWidth
-              loading={isLoading}
-              leftIcon={!isLoading ? <LogIn size={16} /> : undefined}
-              className="mt-2"
-            >
-              {isLoading ? 'Вход...' : 'Войти'}
-            </Button>
-          </form>
-
-          {/* OAuth */}
-          <div className="mt-6">
-            <OAuthButtons
-              onSuccess={async () => {
-                await refreshUser();
-                router.push('/');
-              }}
-              onError={(err) => setError(err)}
-            />
-          </div>
-
-          {/* Register link */}
-          <div className="mt-6 pt-5 border-t border-[var(--border)] text-center">
-            <p className="text-sm text-[var(--text-secondary)]">
-              Нет аккаунта?{' '}
-              <Link
-                href="/register"
-                className="text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium transition-colors"
-              >
-                Зарегистрироваться
-              </Link>
-            </p>
-          </div>
+              {/* Register link */}
+              <div className="mt-6 pt-5 border-t border-[var(--border)] text-center">
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Нет аккаунта?{' '}
+                  <Link
+                    href="/register"
+                    className="text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium transition-colors"
+                  >
+                    Зарегистрироваться
+                  </Link>
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Back to home */}

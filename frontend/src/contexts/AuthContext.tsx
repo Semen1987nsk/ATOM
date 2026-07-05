@@ -29,7 +29,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, totpCode?: string) => Promise<void>;
   register: (email: string, password: string, name: string | undefined, pdConsent: boolean) => Promise<void>;
   logout: () => void;
   updateProfile: (data: { name?: string; settings?: Record<string, unknown> }) => Promise<void>;
@@ -119,9 +119,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [userQuery]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, totpCode?: string) => {
+      // S1-06c: totp_code шлём только когда задан — второй шаг двухфакторного
+      // логина (см. login/page.tsx). Без 2FA у юзера body не меняется.
       await api.post('/auth/login', {
-        body: { email, password },
+        body: totpCode ? { email, password, totp_code: totpCode } : { email, password },
         noAuth: true,
       });
       // После логина — обновить user в кеше; trades/stats должны быть свежими

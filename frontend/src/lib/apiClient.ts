@@ -109,13 +109,18 @@ export class ApiError extends Error {
   // PR 26 Scenario #68: X-Request-ID из ответа сервера. Юзер может скопировать
   // в support email/чат, и мы найдём в логах за секунду что произошло.
   requestId?: string;
+  // S1-06c: машиночитаемый сигнал "нужен TOTP-код" (backend detail — dict
+  // {message, totp_required: true} на POST /auth/login). Робастная замена
+  // brittle-match по тексту detail — тот локализуем и может меняться.
+  totpRequired?: boolean;
 
-  constructor(status: number, detail: string, requestId?: string) {
+  constructor(status: number, detail: string, requestId?: string, totpRequired?: boolean) {
     super(detail);
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
     this.requestId = requestId;
+    this.totpRequired = totpRequired;
   }
 
   /** Сообщение для toast'а с request_id (если есть). */
@@ -200,7 +205,15 @@ async function request<T>(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: undefined }));
-    const detail = errorData.detail
+    // S1-06c: detail иногда приходит dict-ом ({message, totp_required} —
+    // см. POST /auth/login при 2FA-required), а не строкой. Разворачиваем
+    // message для отображения, totp_required — отдельным полем ApiError.
+    const rawDetail = errorData.detail;
+    const isDetailObject = rawDetail !== null && typeof rawDetail === 'object';
+    const detailMessage = isDetailObject ? rawDetail.message : rawDetail;
+    const totpRequired = isDetailObject ? rawDetail.totp_required === true : undefined;
+
+    const detail = detailMessage
       || (response.status === 401
         ? (isAuthEndpoint
             ? 'Неверный email или пароль'
@@ -218,7 +231,7 @@ async function request<T>(
 
     // PR 26 Scenario #68: пробрасываем X-Request-ID в ApiError для toast'а
     const requestId = response.headers.get('X-Request-ID') ?? undefined;
-    throw new ApiError(response.status, detail, requestId);
+    throw new ApiError(response.status, detail, requestId, totpRequired);
   }
 
   if (rawResponse) return response as unknown as T;

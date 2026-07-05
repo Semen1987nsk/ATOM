@@ -66,6 +66,15 @@ def test_login_with_2fa_missing_code_rejected(app_db):
     _user(db, enabled=True, secret=secret)
     r = client.post("/auth/login", json={"email": "a@b.com", "password": "password12345"})
     assert r.status_code == 401, r.text
+    # S1-06c: сигнал должен быть машиночитаемым (detail.totp_required=true),
+    # а не brittle-match по тексту detail-строки — фронт по нему решает,
+    # показывать ли поле ввода кода вместо голой ошибки "неверный пароль".
+    # Формат detail-dict уже используется в кодовой базе (см. pro_required
+    # в subscription_service.py) — FastAPI кладёт exc.detail как есть под
+    # ключ "detail" в JSON-теле ответа.
+    body = r.json()
+    assert isinstance(body.get("detail"), dict), r.text
+    assert body["detail"].get("totp_required") is True, r.text
 
 
 def test_login_with_2fa_valid_code_succeeds(app_db):
@@ -83,3 +92,20 @@ def test_login_with_2fa_wrong_code_rejected(app_db):
     _user(db, enabled=True, secret=secret)
     r = client.post("/auth/login", json={"email": "a@b.com", "password": "password12345", "totp_code": "000000"})
     assert r.status_code == 401, r.text
+    # Неверный (но присутствующий) код — тоже 2FA-required сигнал, юзер
+    # остаётся на шаге ввода кода, не откатывается к email/password форме.
+    body = r.json()
+    assert isinstance(body.get("detail"), dict), r.text
+    assert body["detail"].get("totp_required") is True, r.text
+
+
+def test_login_wrong_password_has_no_totp_required_flag(app_db):
+    client, db = app_db
+    _user(db, enabled=False)
+    r = client.post("/auth/login", json={"email": "a@b.com", "password": "wrong-password"})
+    assert r.status_code == 401, r.text
+    # Обычный неверный пароль НЕ должен нести totp_required — иначе фронт
+    # ошибочно покажет поле кода для юзера без включённой 2FA. detail тут
+    # остаётся простой строкой (как раньше), не dict.
+    body = r.json()
+    assert not isinstance(body.get("detail"), dict), r.text
