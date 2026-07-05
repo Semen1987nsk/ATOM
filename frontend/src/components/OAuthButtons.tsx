@@ -17,6 +17,8 @@ interface OAuthUser {
 
 interface OAuthCallbackResponse {
   user: OAuthUser;
+  two_factor_required?: boolean;
+  pending_token?: string;
 }
 
 // Иконки провайдеров
@@ -74,13 +76,17 @@ const getProviderStyles = (provider: string) => {
 };
 
 interface OAuthButtonsProps {
-  onSuccess?: (user: OAuthUser) => void;
+  onSuccess?: (user?: OAuthUser) => void;
   onError?: (error: string) => void;
 }
 
 export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
   const [providers, setProviders] = useState<OAuthProvider[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState('');
+  const [totpError, setTotpError] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     // Получаем список доступных провайдеров
@@ -115,11 +121,17 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
           }
           
           const data: OAuthCallbackResponse = await response.json();
-          window.dispatchEvent(new Event('auth:login'));
-          
+
           // Очищаем URL от параметров OAuth
           window.history.replaceState({}, '', window.location.pathname);
-          
+
+          if (data.two_factor_required && data.pending_token) {
+            // 2FA включена — сессия ещё не выдана, ждём код от юзера.
+            setPendingToken(data.pending_token);
+            return;
+          }
+
+          window.dispatchEvent(new Event('auth:login'));
           onSuccess?.(data.user);
         } catch (err) {
           onError?.(err instanceof Error ? err.message : 'Ошибка авторизации');
@@ -159,6 +171,67 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
     }
   };
 
+  const handleTotpVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingToken) return;
+    setTotpError('');
+    setVerifying(true);
+
+    try {
+      const response = await fetch(getApiUrl('/auth/oauth/2fa/verify'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pending_token: pendingToken, code: totpCode }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Неверный код');
+      }
+
+      setPendingToken(null);
+      setTotpCode('');
+      window.dispatchEvent(new Event('auth:login'));
+      onSuccess?.();
+    } catch (err) {
+      setTotpError(err instanceof Error ? err.message : 'Неверный код');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  if (pendingToken) {
+    return (
+      <form onSubmit={handleTotpVerify} className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Введите 6-значный код из приложения-аутентификатора
+        </p>
+        {totpError && (
+          <div className="text-sm text-red-500">{totpError}</div>
+        )}
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={totpCode}
+          onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+          placeholder="000000"
+          required
+          className="w-full py-3 px-4 rounded-lg border border-white/10 bg-transparent text-center text-lg tracking-widest"
+        />
+        <button
+          type="submit"
+          disabled={verifying || totpCode.length !== 6}
+          className="w-full py-3 px-4 rounded-lg font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {verifying ? 'Проверка...' : 'Подтвердить'}
+        </button>
+      </form>
+    );
+  }
+
   if (providers.length === 0) {
     return null;
   }
@@ -173,14 +246,14 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
           <span className="px-2 bg-card text-muted-foreground">или войти через</span>
         </div>
       </div>
-      
+
       <div className="grid gap-2">
         {providers.map((provider) => (
           <button
             key={provider.id}
             onClick={() => handleOAuthLogin(provider.id)}
             disabled={loading !== null}
-            className={`w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-3 
+            className={`w-full py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-3
                        transition-all disabled:opacity-50 disabled:cursor-not-allowed
                        ${getProviderStyles(provider.id)}`}
           >

@@ -792,6 +792,17 @@ async def oauth_callback(
 
             log.info("👤 Создан OAuth пользователь: user_id=%s через %s", user.id, provider)
 
+        # S1-06b: OAuth-юзер с включённым TOTP не получает полную сессию до
+        # проверки 6-значного кода — иначе 2FA была бы фиктивной защитой
+        # (OAuth-юзеры часто без пароля и не могут пройти /auth/login).
+        if user.totp_enabled:
+            pending_token = auth_service.create_2fa_pending_token(user.id)
+            log.info("🔐 OAuth вход требует 2FA: user_id=%s через %s", user.id, provider)
+            return {
+                "two_factor_required": True,
+                "pending_token": pending_token,
+            }
+
         # Создаём пару токенов
         access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
         auth_service.set_auth_cookies(response, request, access_token, refresh_token)
@@ -811,7 +822,7 @@ async def oauth_callback(
                 "oauth_provider": user.oauth_provider,
             }
         }
-        
+
     except HTTPException:
         raise
     except httpx.TimeoutException as exc:
@@ -826,3 +837,42 @@ async def oauth_callback(
     except Exception as exc:
         log.error(f"❌ OAuth ошибка для {provider}: {exc}")
         raise HTTPException(status_code=500, detail="Внутренняя ошибка OAuth авторизации")
+
+
+@router.post("/oauth/2fa/verify", response_model=schemas.AuthSuccess)
+@limiter.limit(AUTH_LIMIT)
+def oauth_2fa_verify(
+    request: Request,
+    response: Response,
+    payload: schemas.OAuth2faVerifyRequest,
+    db: Session = Depends(database.get_db),
+):
+    """S1-06b: завершить OAuth-вход для юзера с включённым 2FA.
+
+    Принимает pending-токен (выданный /auth/oauth/{provider}/callback) +
+    6-значный TOTP код. При успехе — полная сессия (cookies), как обычный
+    OAuth-вход. Rate limit: 5 запросов в минуту (защита от brute-force кода).
+    """
+    from services.totp_service import verify_code
+
+    user_id = auth_service.decode_2fa_pending_token(payload.pending_token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Сессия истекла. Войдите заново.")
+
+    user = auth_service.get_user_by_id(db, user_id)
+    if user is None or user.is_active != 1:
+        raise HTTPException(status_code=401, detail="Сессия истекла. Войдите заново.")
+
+    if not user.totp_enabled or not verify_code(user.totp_secret, payload.code):
+        raise HTTPException(status_code=401, detail="Неверный код двухфакторной аутентификации")
+
+    access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
+    auth_service.set_auth_cookies(response, request, access_token, refresh_token)
+
+    log.info("🔐 OAuth 2FA подтверждён: user_id=%s", user.id)
+
+    return {
+        "token_type": "bearer",
+        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "authenticated": True,
+    }

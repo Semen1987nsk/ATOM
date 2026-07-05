@@ -239,6 +239,42 @@ def create_token_pair(user_id: int, email: str) -> Tuple[str, str]:
     return access_token, refresh_token
 
 
+OAUTH_2FA_PENDING_TOKEN_EXPIRE_MINUTES = 5
+
+
+def create_2fa_pending_token(user_id: int) -> str:
+    """S1-06b: короткоживущий токен для OAuth-2FA challenge-flow.
+
+    Подписан SECRET_KEY (как access token), но `type="2fa_pending"` —
+    decode_access_token его отвергает (type mismatch), поэтому он НЕ даёт
+    доступа ни к одному защищённому эндпоинту через get_current_user.
+    """
+    to_encode = {
+        "sub": str(user_id),
+        "type": "2fa_pending",
+        "exp": utc_now_naive() + timedelta(minutes=OAUTH_2FA_PENDING_TOKEN_EXPIRE_MINUTES),
+        "iat": utc_now_naive(),
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_2fa_pending_token(token: str) -> Optional[int]:
+    """Валидирует pending-2FA токен (подпись, exp, scope). Возвращает user_id."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except InvalidTokenError:
+        return None
+
+    if payload.get("type") != "2fa_pending":
+        return None
+
+    sub = payload.get("sub")
+    if sub is None:
+        return None
+
+    return int(sub) if isinstance(sub, str) else sub
+
+
 def decode_access_token(token: str) -> Optional[schemas.TokenData]:
     """Декодирование Access JWT токена.
 

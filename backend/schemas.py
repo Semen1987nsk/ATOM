@@ -197,6 +197,12 @@ class TotpVerifyRequest(BaseModel):
     code: str
 
 
+class OAuth2faVerifyRequest(BaseModel):
+    """S1-06b: подтверждение TOTP-кода после OAuth-входа юзера с 2FA."""
+    pending_token: str
+    code: str
+
+
 class PasswordResetRequest(BaseModel):
     """PR 26: запрос ссылки для сброса пароля."""
     email: str
