@@ -4,7 +4,8 @@
 Право доступа: субъект ПД вправе получить копию всех своих ПД у оператора.
 
 Что отдаём:
-- User (без hashed_password)
+- User (без hashed_password, totp_secret, email_verification_token,
+  tokens_valid_after — это секреты/аутентификационные маркеры, не ПД)
 - Accounts, Trades, BalanceSnapshots, CapitalOperation, DepositHistory
 - Setups, DailyReviews
 - Subscriptions, Payments (без полных номеров карт — только маска card_last4)
@@ -71,8 +72,17 @@ def build_user_export(
     Не использует .relationship() lazy-load — вместо этого делает явные queries
     по user_id / account_id, чтобы не зависеть от состояния session expiration.
     """
-    # User — без hashed_password
-    user_data = _serialize_columns(user, exclude={"hashed_password"})
+    # User — без секретных/аутентификационных полей (hashed_password, TOTP
+    # shared secret, email verification token, JWT invalidation marker).
+    user_data = _serialize_columns(
+        user,
+        exclude={
+            "hashed_password",
+            "totp_secret",
+            "email_verification_token",
+            "tokens_valid_after",
+        },
+    )
 
     # Accounts (нужны для дальнейших запросов)
     accounts = db.query(models.Account).filter(models.Account.user_id == user.id).all()
