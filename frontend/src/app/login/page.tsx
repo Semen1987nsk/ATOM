@@ -118,6 +118,15 @@ export default function LoginPage() {
               }
             />
 
+            <div className="text-right -mt-1">
+              <Link
+                href="/auth/forgot-password"
+                className="text-sm text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors"
+              >
+                Забыли пароль?
+              </Link>
+            </div>
+
             <Button
               type="submit"
               size="lg"
