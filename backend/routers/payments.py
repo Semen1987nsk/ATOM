@@ -268,7 +268,11 @@ async def payment_webhook(request: Request, db: Session = Depends(database.get_d
     # 4. Найти юзера (нужен user.id для замка payment_attempts.user_id NOT NULL)
     user = None
     if user_id:
-        user = db.query(models.User).filter(models.User.id == int(user_id)).first()
+        try:
+            uid = int(user_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="invalid user_id in metadata")
+        user = db.query(models.User).filter(models.User.id == uid).first()
     elif "user_email" in body:
         user = db.query(models.User).filter(models.User.email == body["user_email"]).first()
 
@@ -390,9 +394,11 @@ def _deactivate_subscription(db: Session, user: models.User, payment_id: str) ->
         models.Subscription.is_active == 1,
     ).update({"is_active": 0})
 
-    # Помечаем Payment как REFUNDED
+    # Помечаем Payment как REFUNDED — ТОЛЬКО платежи этого юзера (защита от
+    # коллизии external_id между юзерами).
     db.query(models.Payment).filter(
-        models.Payment.external_id == payment_id
+        models.Payment.external_id == payment_id,
+        models.Payment.user_id == user.id,
     ).update({"status": models.PaymentStatus.REFUNDED if hasattr(models.PaymentStatus, "REFUNDED") else models.PaymentStatus.FAILED})
 
     db.commit()
