@@ -336,7 +336,6 @@ class TradeUpdate(BaseModel):
     setup_name: Optional[str] = None
     timeframe: Optional[str] = None
     news_event: Optional[str] = None
-    screenshot_url: Optional[str] = None
     entry_reason: Optional[str] = None
     exit_reason: Optional[str] = None
     notes: Optional[str] = None

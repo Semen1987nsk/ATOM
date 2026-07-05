@@ -1033,9 +1033,14 @@ async def delete_screenshot(
         raise HTTPException(status_code=404, detail="Сделка не найдена")
 
     if trade.screenshot_url:
-        # Удаляем файл
-        filepath = Path(trade.screenshot_url.lstrip("/"))
-        if filepath.exists():
+        # SEC: тот же containment, что в get_screenshot — берём только basename
+        # и проверяем, что resolved path внутри UPLOAD_DIR, иначе не трогаем ФС.
+        filename = os.path.basename(trade.screenshot_url)
+        filepath = UPLOAD_DIR / filename
+        if (
+            filepath.resolve().is_relative_to(UPLOAD_DIR.resolve())
+            and filepath.is_file()
+        ):
             filepath.unlink()
         trade.screenshot_url = None
         db.commit()
