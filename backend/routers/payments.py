@@ -276,6 +276,15 @@ async def payment_webhook(request: Request, db: Session = Depends(database.get_d
     elif "user_email" in body:
         user = db.query(models.User).filter(models.User.email == body["user_email"]).first()
 
+    # refund.succeeded обычно не несёт metadata платежа → user_id пуст.
+    # Резолвим юзера по исходному Payment (external_id == payment_id).
+    if user is None and target_status == "refunded" and payment_id:
+        orig = db.query(models.Payment).filter(
+            models.Payment.external_id == payment_id
+        ).first()
+        if orig is not None:
+            user = db.query(models.User).filter(models.User.id == orig.user_id).first()
+
     if user is None:
         log.error("payment_webhook: user not found payment_id=%s", payment_id)
         raise HTTPException(status_code=404, detail="user not found")
