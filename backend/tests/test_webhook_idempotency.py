@@ -141,3 +141,45 @@ class TestWebhookIdempotency:
         assert len(subs) == 0, f"ожидалось 0 Subscription (замок взят), получено {len(subs)}"
         payments = db.query(Payment).filter(Payment.external_id == "pmt-lock-1").all()
         assert len(payments) == 0, f"ожидалось 0 Payment (замок взят), получено {len(payments)}"
+
+    def test_refund_after_succeeded_deactivates_subscription(self, test_app):
+        """succeeded-webhook активирует Pro; refund.succeeded по тому же payment_id
+        деактивирует подписку. Раньше idempotency-замок глотал refund (IntegrityError
+        на уже существующем external_id) и _deactivate_subscription не вызывался.
+        """
+        db = test_app["db"]
+        user, _ = _make_user(db)
+        client = test_app["client"]
+
+        # 1. Активация (real YooKassa формат — refund придёт тоже в нём).
+        r1 = client.post("/payments/webhook", json={
+            "event": "payment.succeeded",
+            "object": {
+                "id": "pmt-refund-1",
+                "status": "succeeded",
+                "amount": {"value": "399.00"},
+                "metadata": {"user_id": str(user.id), "plan": "pro"},
+            },
+        })
+        assert r1.status_code == 200, r1.text
+        sub = db.query(Subscription).filter(Subscription.user_id == user.id).one()
+        assert sub.is_active == 1
+
+        # 2. Refund по тому же исходному платежу.
+        r2 = client.post("/payments/webhook", json={
+            "event": "refund.succeeded",
+            "object": {
+                "id": "rfnd-1",
+                "payment_id": "pmt-refund-1",
+                "status": "succeeded",
+                "amount": {"value": "399.00"},
+                "metadata": {"user_id": str(user.id), "plan": "pro"},
+            },
+        })
+        assert r2.status_code == 200, r2.text
+
+        db.expire_all()
+        subs = db.query(Subscription).filter(Subscription.user_id == user.id).all()
+        assert all(s.is_active == 0 for s in subs), "refund должен деактивировать подписку"
+        pmt = db.query(Payment).filter(Payment.external_id == "pmt-refund-1").one()
+        assert pmt.status == PaymentStatus.REFUNDED

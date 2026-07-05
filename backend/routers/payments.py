@@ -296,8 +296,28 @@ async def payment_webhook(request: Request, db: Session = Depends(database.get_d
             db.flush()  # бьёт по UNIQUE(external_id) немедленно — захват замка
         except IntegrityError:
             db.rollback()
-            log.info("payment_webhook: idempotent replay payment_id=%s status=%s", payment_id, target_status)
-            return {"ok": True, "idempotent": True}
+            # Замок уже взят предыдущим webhook'ом по этому external_id. Обычно
+            # это повтор (YooKassa ретраит до 30 раз) — идемпотентный ранний выход.
+            # ИСКЛЮЧЕНИЕ: refund.succeeded приходит с payment_id ОРИГИНАЛЬНОГО платежа
+            # (см. п.3 выше), значит замок с этим external_id уже существует со
+            # статусом "succeeded" — это не повтор, а легитимный переход статуса
+            # succeeded → refunded, и деактивация должна произойти.
+            existing = (
+                db.query(attempt_attr)
+                .filter(attempt_attr.external_id == payment_id)
+                .first()
+            )
+            is_refund_transition = (
+                existing is not None
+                and existing.status == "succeeded"
+                and target_status == "refunded"
+            )
+            if not is_refund_transition:
+                log.info("payment_webhook: idempotent replay payment_id=%s status=%s", payment_id, target_status)
+                return {"ok": True, "idempotent": True}
+            existing.status = target_status
+            db.flush()
+            log.info("payment_webhook: status transition payment_id=%s succeeded -> refunded", payment_id)
 
     # 6. Применить действие (commit внутри = атомарно с замком payment_attempts)
     if target_status == "succeeded":
