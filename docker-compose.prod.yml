@@ -84,6 +84,9 @@ services:
   backend:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-empirik}/empirik-backend:${SHA:-latest}
     env_file: .env
+    environment:
+      # API-реплики НЕ держат stream consumers/scheduler — только backend-scheduler.
+      IS_SCHEDULER_WORKER: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +112,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
+    networks: [empirik-net]
+
+  # ──────── Backend scheduler (singleton: stream consumers + sync scheduler) ────────
+  backend-scheduler:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-empirik}/empirik-backend:${SHA:-latest}
+    env_file: .env
+    environment:
+      IS_SCHEDULER_WORKER: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/var/log/atom
+    command: ["sh", "-c", "exec gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --workers 1 --bind 0.0.0.0:8000 --timeout 120 --graceful-timeout 30"]
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
     restart: unless-stopped
     networks: [empirik-net]
 
