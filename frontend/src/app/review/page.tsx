@@ -46,6 +46,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<ApiError | Error | null>(null);
   // FE-02: surface ошибки загрузки. До этого silent `.catch(setData(null))`
   // показывал empty-review без объяснения.
   const [error, setError] = useState<ApiError | Error | null>(null);
@@ -86,6 +87,7 @@ export default function ReviewPage() {
 
   async function save() {
     setSaving(true);
+    setSaveError(null);
     try {
       const updated = await api.post<ReviewData>("/review/", {
         body: {
@@ -99,6 +101,9 @@ export default function ReviewPage() {
       setData(updated);
       setSavedAt(Date.now());
       setTimeout(() => setSavedAt(null), 3000);
+    } catch (e) {
+      // Не очищаем локальный стейт формы — текст рефлексии должен остаться (S3-23).
+      setSaveError(e as ApiError | Error);
     } finally {
       setSaving(false);
     }
@@ -214,6 +219,11 @@ export default function ReviewPage() {
                 <div className="sticky bottom-4 flex justify-end gap-3 items-center">
                   {savedAt && (
                     <span className="text-[12px] text-[var(--success)] animate-fadeIn">Сохранено ✓</span>
+                  )}
+                  {saveError && (
+                    <span className="text-rose-400 text-sm ml-3">
+                      {saveError instanceof ApiError ? saveError.toUserMessage() : 'Не удалось сохранить'}
+                    </span>
                   )}
                   <button
                     onClick={save}
