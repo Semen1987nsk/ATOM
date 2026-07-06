@@ -691,9 +691,13 @@ class SyncPipeline:
                 positions_open = len(open_trades)
                 return len(result.closed_trades), positions_open, need_mae_ids
             except Exception:
+                # S2-08 / SYNC-08: транзиентная ошибка БД (deadlock, IntegrityError
+                # от конкурентного sync) НЕ должна молча возвращать 0 — иначе
+                # _stage_commit_cursor сдвинет курсор при протухших сделках.
+                # Осознанный skip выше — только для instrument is None.
                 session.rollback()
                 log.exception("fifo_match failed for uid=%s", uid)
-                return 0, 0, []
+                raise
             finally:
                 session.close()
 
