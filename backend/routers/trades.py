@@ -479,6 +479,7 @@ async def import_trades(
                     float(initial_balance),
                     date=date_start,
                     note=f"Initial balance imported from {file.filename}",
+                    source="manual",
                     commit=False,
                 )
         except Exception as e:

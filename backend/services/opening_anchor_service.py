@@ -45,8 +45,15 @@ def autoset_inferred_anchor(session: Session, account_id: int) -> AnchorDecision
         return AnchorDecision(False, Decimal("0"), "complete", "account not found")
 
     # Manual имеет приоритет — никогда не перетираем (spec §3.4).
-    if account.initial_balance_source == "manual":
-        return AnchorDecision(False, Decimal("0"), "manual", "manual source frozen")
+    # Legacy-счёт (баланс задан вручную до ADR-0010, source=NULL) трактуем
+    # как manual, иначе авто-якорь молча уничтожит пользовательский ввод.
+    if account.initial_balance_source == "manual" or (
+        account.initial_balance_source is None
+        and Decimal(str(account.initial_balance or 0)) > 0
+    ):
+        return AnchorDecision(
+            False, Decimal(str(account.initial_balance or 0)), "manual", "manual source frozen"
+        )
 
     # --- detect incomplete history: первая executed-операция не депозит ---
     net_dep_types = tuple(operation_types_in(CashFlowCategory.NET_DEPOSIT))

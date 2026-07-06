@@ -240,6 +240,7 @@ def sync_initial_balance(
     *,
     date: Optional[datetime] = None,
     note: Optional[str] = None,
+    source: Optional[str] = None,
     commit: bool = False,
 ) -> None:
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
@@ -248,6 +249,8 @@ def sync_initial_balance(
 
     normalized_amount = float(amount or 0)
     setattr(account, "initial_balance", Decimal(str(normalized_amount)))
+    if source is not None:
+        setattr(account, "initial_balance_source", source)
 
     existing = db.query(models.DepositHistory).filter(
         models.DepositHistory.account_id == account_id,

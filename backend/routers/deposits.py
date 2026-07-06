@@ -191,6 +191,7 @@ def set_initial_balance(
         amount,
         date=operation_date,
         note="Начальный депозит",
+        source="manual",
         commit=True,
     )
     
