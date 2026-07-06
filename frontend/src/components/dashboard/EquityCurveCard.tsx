@@ -81,19 +81,22 @@ export function EquityCurveCard({
     if (benchmark) {
       for (const b of benchmark) benchByDate[b.date.slice(0, 10)] = b.value;
     }
-    // Нормализуем benchmark к стартовому balance, чтобы линии были сравнимы
+    // Нормализуем benchmark к базе капитала. Для broker (кумулятивный PnL от 0)
+    // база = pctBaseline (Σ NET_DEPOSIT), НЕ PnL первой сделки — иначе убыточный
+    // старт инвертирует линию, а нулевой — ломает масштаб (S3-22).
     const firstBenchmark = benchmark?.[0]?.value;
-    const ratio = firstBenchmark && data[0]?.balance ? data[0].balance / firstBenchmark : 1;
+    const normBase = isBrokerCumulative ? pctBaseline : data[0]?.balance;
+    const ratio = firstBenchmark && normBase && normBase > 0 ? normBase / firstBenchmark : null;
     return data.map((p) => {
       const dayKey = p.date.slice(0, 10);
       const benchValue = benchByDate[dayKey];
       return {
         date: p.date,
         balance: p.balance,
-        benchmark: benchValue !== undefined ? benchValue * ratio : null,
+        benchmark: ratio !== null && benchValue !== undefined ? benchValue * ratio : null,
       };
     });
-  }, [data, benchmark]);
+  }, [data, benchmark, isBrokerCumulative, pctBaseline]);
 
   const stats = useMemo<{
     start: number;
