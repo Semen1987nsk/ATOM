@@ -1,7 +1,51 @@
+import asyncio
+
 import jwt as _pyjwt
+from fastapi.security import HTTPAuthorizationCredentials
+
 import auth_service
 
 from tests.integration.test_pr26_endpoints import _make_user, _auth_headers, test_app
+
+
+def _optional_result(token, db):
+    """Вызвать get_current_user_optional напрямую (dependency нигде не подключён)."""
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    return asyncio.run(auth_service.get_current_user_optional(None, creds, db))
+
+
+def test_optional_returns_none_for_revoked_token(test_app):
+    """S2-15: get_current_user_optional уважает revocation, как get_current_user."""
+    db = test_app["db"]
+    user, _ = _make_user(db, "opt-revoked@test.com")
+    token = auth_service.create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+    td = auth_service.decode_access_token(token)
+    auth_service.revoke_token(db, jti=td.jti, user_id=user.id, exp_ts=None)
+    assert _optional_result(token, db) is None
+
+
+def test_optional_returns_user_for_valid_token(test_app):
+    """S2-15: валидный токен по-прежнему возвращает пользователя."""
+    db = test_app["db"]
+    user, _ = _make_user(db, "opt-valid@test.com")
+    token = auth_service.create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+    assert _optional_result(token, db).id == user.id
+
+
+def test_optional_returns_none_for_inactive_user(test_app):
+    """S2-15: деактивированный аккаунт не считается авторизованным."""
+    db = test_app["db"]
+    user, _ = _make_user(db, "opt-inactive@test.com")
+    user.is_active = 0
+    db.commit()
+    token = auth_service.create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+    assert _optional_result(token, db) is None
 
 
 def test_tokens_use_pyjwt_not_jose():

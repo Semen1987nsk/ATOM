@@ -634,13 +634,24 @@ async def get_current_user_optional(
     
     try:
         token_data = decode_access_token(token)
-        
+
         if token_data is None:
             return None
-        
+
+        # S2-15: та же гигиена, что get_current_user — отозванный/протухший
+        # токен и деактивированный аккаунт НЕ считаем авторизованными.
+        if is_token_revoked(db, token_data.jti):
+            return None
+
         user = get_user_by_id(db, token_data.user_id)
+        if user is None:
+            return None
+        if is_token_stale(user, token_data.iat_ts):
+            return None
+        if user.is_active != 1:
+            return None
         return user
-        
+
     except Exception:
         return None
 
