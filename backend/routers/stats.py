@@ -400,8 +400,12 @@ async def get_stats(
         # get_net_deposit_as_of при пустой DepositHistory возвращал сам
         # initial_balance → база = anchor+anchor (double count). Берём depozits
         # из того же источника и по той же формуле, что drawdown_baseline ниже
-        # (без date-фильтра: полный Σ NET_DEPOSIT — deployed capital, паритет с
-        # /broker/portfolio, acc#2: 99095 + 8556 = 107651).
+        # и get_net_deposits_baseline_from_db — abs(Σ NET_DEPOSIT), без
+        # date-фильтра: полный deployed capital, паритет с /broker/portfolio
+        # ROI-базой (get_net_deposits_baseline_from_db → abs) и с drawdown_baseline
+        # в этом же ответе. abs() обязателен: OUTPUT хранятся с отрицательным
+        # payment_units, а обе baseline берут абсолют — signed != abs при выводах.
+        # acc#2 (только заводы): 99095 + 8556 = 107651.
         from domain.pnl.cash_flow_classification import (
             CashFlowCategory as _CFC2,
             operation_types_in as _op_types_in2,
@@ -417,7 +421,7 @@ async def get_stats(
                 models.OperationORM.operation_type.in_(_dep_types2),
                 models.OperationORM.state == "executed",
             ).one()
-            net_dep_ops = float(_r[0] or 0) + float(_r[1] or 0) / 1e9
+            net_dep_ops = abs(float(_r[0] or 0) + float(_r[1] or 0) / 1e9)
         public_period_start_balance = account_initial_balance + net_dep_ops
     else:
         public_period_start_balance = (
