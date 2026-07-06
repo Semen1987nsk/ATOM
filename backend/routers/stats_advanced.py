@@ -42,7 +42,7 @@ def _net_or_gross(t) -> float:
 
 @router.get("/advanced")
 @limiter.limit(API_LIMIT)
-async def get_advanced_stats(
+def get_advanced_stats(
     request: Request,
     period: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),

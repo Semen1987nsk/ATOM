@@ -566,7 +566,7 @@ async def read_trades(
 
 
 @router.get("/positions", response_model=list[schemas.PositionTrade])
-async def read_position_trades(
+def read_position_trades(
     status: str = Query("all", pattern="^(all|open|closed)$"),
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=settings.MAX_TRADES_LIMIT),
