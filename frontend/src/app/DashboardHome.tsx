@@ -36,6 +36,7 @@ import { SetupPerformance } from '@/components/dashboard/SetupPerformance';
 import { CollapsibleSection } from '@/components/dashboard/CollapsibleSection';
 import { api, ApiError } from '@/lib/apiClient';
 import { queryKeys } from '@/lib/queries';
+import { toStatsSubset } from './dashboardTabsParams';
 import { DataError } from '@/components/ui/DataError';
 
 interface Trade {
@@ -201,6 +202,10 @@ export default function DashboardHome() {
     settings.maeCalculationMethod,
   ]);
 
+  // advanced/benchmark принимают period/start_date/end_date/start_trade_id/tag,
+  // но НЕ mae_method — иначе бэкенд отбросит лишний query-параметр.
+  const statsSubset = useMemo(() => toStatsSubset(statsParams), [statsParams]);
+
   // /stats/ — useStatsQuery не подошёл (поддерживает только period/start/end),
   // нам нужны ещё tag/limit/mae_method/start_trade_id, поэтому прямой useQuery
   // с queryKeys.stats.summary (полный набор params в ключе → разные фильтры =
@@ -224,14 +229,14 @@ export default function DashboardHome() {
   // staleTime: Infinity + enabled-флаг по activeTab. При повторном переключении
   // на advanced data уже в кеше → мгновенно показываем без сетевого запроса.
   const advancedQuery = useQuery<unknown>({
-    queryKey: ['stats', 'advanced'],
-    queryFn: () => api.get('/stats/advanced'),
+    queryKey: ['stats', 'advanced', statsSubset],
+    queryFn: () => api.get('/stats/advanced', { params: statsSubset }),
     enabled: !!user && activeTab === 'advanced',
     staleTime: 5 * 60 * 1000,
   });
   const benchmarkQuery = useQuery<unknown>({
-    queryKey: ['stats', 'benchmark'],
-    queryFn: () => api.get('/stats/benchmark'),
+    queryKey: ['stats', 'benchmark', statsSubset],
+    queryFn: () => api.get('/stats/benchmark', { params: statsSubset }),
     enabled: !!user && activeTab === 'benchmark',
     staleTime: 5 * 60 * 1000,
   });
