@@ -394,9 +394,31 @@ async def get_stats(
 
     period_start_balance_reason = None
     if is_broker_user and period_start_balance_reliable and account_initial_balance > 0:
-        # ADR-0010: anchored broker → ROI-знаменатель = anchor + net deposits.
-        # starting_balance=0 чтобы equity curve шла от 0 (cumulative PnL).
-        public_period_start_balance = account_initial_balance + starting_net_deposit
+        # ADR-0010 / S2-06: anchored broker → ROI-знаменатель = anchor +
+        # Σ NET_DEPOSIT из OperationORM (реальные завозы). ADR-0010 §"Реализующие
+        # модули": stats.py база % = initial_balance + net_deposits (total).
+        # get_net_deposit_as_of при пустой DepositHistory возвращал сам
+        # initial_balance → база = anchor+anchor (double count). Берём depozits
+        # из того же источника и по той же формуле, что drawdown_baseline ниже
+        # (без date-фильтра: полный Σ NET_DEPOSIT — deployed capital, паритет с
+        # /broker/portfolio, acc#2: 99095 + 8556 = 107651).
+        from domain.pnl.cash_flow_classification import (
+            CashFlowCategory as _CFC2,
+            operation_types_in as _op_types_in2,
+        )
+        _dep_types2 = tuple(_op_types_in2(_CFC2.NET_DEPOSIT))
+        net_dep_ops = 0.0
+        if _dep_types2:
+            _r = db.query(
+                func.coalesce(func.sum(models.OperationORM.payment_units), 0),
+                func.coalesce(func.sum(models.OperationORM.payment_nano), 0),
+            ).filter(
+                models.OperationORM.account_id == account_id,
+                models.OperationORM.operation_type.in_(_dep_types2),
+                models.OperationORM.state == "executed",
+            ).one()
+            net_dep_ops = float(_r[0] or 0) + float(_r[1] or 0) / 1e9
+        public_period_start_balance = account_initial_balance + net_dep_ops
     else:
         public_period_start_balance = (
             starting_balance if (not is_broker_user or period_start_balance_reliable) else None
