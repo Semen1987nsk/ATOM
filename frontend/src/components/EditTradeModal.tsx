@@ -201,7 +201,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Цена входа</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.entry_price}
                 onChange={e => setFormData({...formData, entry_price: e.target.value})}
@@ -211,7 +211,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Количество</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
@@ -223,7 +223,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Плечо</label>
               <input 
-                type="number" step="any"
+                type="number" step="any" min="1"
                 className="input-cyber"
                 value={formData.leverage}
                 onChange={e => setFormData({...formData, leverage: e.target.value})}
@@ -299,6 +299,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Дата входа</label>
             <input 
               type="datetime-local"
+              max={new Date().toISOString().slice(0, 16)}
               className="input-cyber"
               value={formData.entry_at}
               onChange={e => setFormData({...formData, entry_at: e.target.value})}
