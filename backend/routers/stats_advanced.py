@@ -210,6 +210,7 @@ async def get_benchmark(
     # Считаем те метрики, по которым у нас есть baseline
     win_loss = analytics.calculate_win_loss_stats(pnls)
     opt_f = analytics.calculate_optimal_f(pnls, risks)
+    adv_stats = analytics.calculate_advanced_stats(pnls, risks)
     sqn = analytics.calculate_sqn(pnls, risks)
     dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=baseline)
     sharpe_sortino = analytics.calculate_sharpe_sortino(pnls)
@@ -231,8 +232,8 @@ async def get_benchmark(
 
     user_metrics = {
         "win_rate": win_loss.get("win_rate"),
-        "profit_factor": win_loss.get("profit_factor"),
-        "r_expectancy": opt_f.get("r_expectancy") if isinstance(opt_f, dict) else None,
+        "profit_factor": adv_stats.get("profit_factor"),
+        "r_expectancy": adv_stats.get("r_expectancy"),
         "optimal_f": opt_f.get("optimal_f") if isinstance(opt_f, dict) else None,
         "sqn": sqn.get("sqn") if isinstance(sqn, dict) else None,
         "sortino": sharpe_sortino.get("sortino_ratio") if isinstance(sharpe_sortino, dict) else None,
