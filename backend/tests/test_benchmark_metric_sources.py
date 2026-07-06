@@ -20,3 +20,10 @@ def test_advanced_stats_has_both_keys():
     assert "profit_factor" in adv
     assert "r_expectancy" in adv
     assert adv["profit_factor"] is not None
+
+
+def test_sqn_returns_n100_key():
+    sqn = analytics.calculate_sqn([100.0, -50.0, 200.0, -30.0], [10.0, 10.0, 10.0, 10.0])
+    assert "sqn_n100" in sqn
+    # sqn_n100 ограничен sqrt(min(n,100)) — для сопоставимости с baseline Ван Тарпа.
+    assert sqn["sqn_n100"] is not None

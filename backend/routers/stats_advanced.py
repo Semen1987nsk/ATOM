@@ -235,7 +235,9 @@ async def get_benchmark(
         "profit_factor": adv_stats.get("profit_factor"),
         "r_expectancy": adv_stats.get("r_expectancy"),
         "optimal_f": opt_f.get("optimal_f") if isinstance(opt_f, dict) else None,
-        "sqn": sqn.get("sqn") if isinstance(sqn, dict) else None,
+        # Ван-Тарп-шкала калибрована на N≤100 → сопоставимая метрика = sqn_n100,
+        # а не полный sqrt(N)-SQN (иначе активный трейдер «топ-1%» по определению).
+        "sqn": sqn.get("sqn_n100") if isinstance(sqn, dict) else None,
         "sortino": sharpe_sortino.get("sortino_ratio") if isinstance(sharpe_sortino, dict) else None,
         "calmar": calmar if isinstance(calmar, (int, float)) else None,
         "max_drawdown_pct": dd_stats.get("max_drawdown_pct"),
