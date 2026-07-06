@@ -40,7 +40,10 @@ from adapters.security.token_encryption import (
 from adapters.tinkoff.client_factory import client_factory
 from adapters.tinkoff.operations_client import TinkoffOperationsClient
 from adapters.tinkoff.users_client import TinkoffAccountInfo, TinkoffUsersClient
-from application.sync.orchestrator import build_default_orchestrator
+from application.sync.orchestrator import (
+    SyncAlreadyRunning,
+    build_default_orchestrator,
+)
 from auth_service import get_current_user, get_user_account
 from capital_service import sync_initial_balance
 from config import settings
@@ -439,6 +442,8 @@ async def sync_now(
 
     try:
         report = await orchestrator.sync_one_account(connection_id)
+    except SyncAlreadyRunning:
+        raise HTTPException(status_code=409, detail="Синхронизация уже выполняется")
     except TokenInvalid:
         raise HTTPException(status_code=424, detail="Токен брокера невалиден или отозван")
     except RateLimitExceeded:
