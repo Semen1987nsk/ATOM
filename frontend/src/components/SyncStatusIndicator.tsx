@@ -5,8 +5,9 @@ import {
   RefreshCw, CheckCircle, AlertCircle, Clock,
   Zap, ChevronDown, ChevronUp, Link2, ShieldCheck, ShieldAlert
 } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
 import { useSyncStatusQuery } from '@/lib/useSyncStatusQuery';
+import { useToast } from '@/contexts/ToastContext';
 
 // PR 20: Health-audit response shape.
 interface HealthIssue {
@@ -84,6 +85,7 @@ export default function SyncStatusIndicator({
   const [expanded, setExpanded] = useState(false);
   const [syncing, setSyncing] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<string>('');
+  const toast = useToast();
 
   // PR 20: подтягиваем последний health-audit для индикатора.
   // (Отдельный poll — другая responsibility, не дедуплится с sync-status.)
@@ -146,16 +148,15 @@ export default function SyncStatusIndicator({
   const triggerSync = async (connectionId: number) => {
     setSyncing(connectionId);
     try {
+      // Блокирующий endpoint (10-90с) — держим spinner до фактического ответа,
+      // затем сразу рефетчим статус (ERR-303: фикс-таймеры вводили в заблуждение).
       await api.post(`/broker/trigger-sync/${connectionId}`);
-      // Ждём немного и обновляем статус
-      setTimeout(() => {
-        refetchStatus();
-        onTradesUpdated?.();
-      }, 2000);
+      refetchStatus();
+      onTradesUpdated?.();
     } catch (error) {
-      console.error('Failed to trigger sync:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось запустить синхронизацию');
     } finally {
-      setTimeout(() => setSyncing(null), 3000);
+      setSyncing(null);
     }
   };
 
