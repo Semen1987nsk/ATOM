@@ -90,10 +90,15 @@ def load_filtered_trades(
     return trades
 
 
-def build_equity_curve(trades) -> list:
-    """Кумулятивный баланс по PnL (без учёта депозитов — для DD-метрик это и нужно)."""
+def build_equity_curve(trades, baseline: float = 0.0) -> list:
+    """Кумулятивная equity-кривая по PnL.
+
+    baseline=0.0 → кумулятив от нуля (legacy).
+    baseline>0 (Σ NET_DEPOSITS + initial_balance) → DD-метрики (Ulcer/K/Sterling)
+    считают % просадки от реального капитала, а не от пика прибыли (S3-03).
+    """
     eq: list = []
-    running = 0.0
+    running = float(baseline)
     for t in trades:
         pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
         running += pnl

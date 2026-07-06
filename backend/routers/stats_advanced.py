@@ -87,9 +87,14 @@ async def get_advanced_stats(
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     baseline += float(account.initial_balance or 0) if account else 0.0
 
+    # S3-03: DD-метрики считаются от кривой с baseline (реальный капитал),
+    # чтобы % просадки был от капитала, а не от пика кумулятивной прибыли.
+    # equity (без baseline) остаётся для CAGR — его equity[-1] это чистый PnL.
+    dd_equity = build_equity_curve(trades, baseline=baseline)
+
     # Drawdown статистика — нужна для Sterling/MAR
     dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=baseline)
-    dd_episodes = analytics.collect_drawdown_episodes(equity)
+    dd_episodes = analytics.collect_drawdown_episodes(dd_equity)
 
     # CAGR требует достаточной истории (3+ месяца) и реального стартового баланса.
     # На короткой выборке аннуализированная доходность взрывается математически и
@@ -107,12 +112,12 @@ async def get_advanced_stats(
     return {
         "total_trades": len(trades),
         "items": {
-            "ulcer_index": analytics.calculate_ulcer_index(equity),
-            "k_ratio": analytics.calculate_k_ratio(equity),
+            "ulcer_index": analytics.calculate_ulcer_index(dd_equity),
+            "k_ratio": analytics.calculate_k_ratio(dd_equity),
             "sterling_ratio": analytics.calculate_sterling_ratio(cagr_pct or 0, dd_episodes),
             "omega_ratio": analytics.calculate_omega_ratio(pnls, threshold=0),
             "mar_ratio": analytics.calculate_mar_ratio(cagr_pct, dd_stats.get("max_drawdown_pct")),
-            "drawdown_duration": analytics.calculate_drawdown_duration(equity),
+            "drawdown_duration": analytics.calculate_drawdown_duration(dd_equity),
             "hold_time_distribution": analytics.calculate_hold_time_distribution(holding_minutes, pnls),
             "period_breakdown": analytics.calculate_period_breakdown(trades_for_period),
             "hour_dow_heatmap": analytics.calculate_hour_dow_heatmap(trades_for_period),
@@ -198,6 +203,10 @@ async def get_benchmark(
     account = db.query(models.Account).filter(models.Account.id == account_id).first()
     baseline += float(account.initial_balance or 0) if account else 0.0
 
+    # S3-03: DD-метрики (Ulcer/K) от кривой с baseline (реальный капитал).
+    # equity (без baseline) остаётся для CAGR (final_balance = baseline + equity[-1]).
+    dd_equity = build_equity_curve(trades, baseline=baseline)
+
     # Считаем те метрики, по которым у нас есть baseline
     win_loss = analytics.calculate_win_loss_stats(pnls)
     opt_f = analytics.calculate_optimal_f(pnls, risks)
@@ -229,8 +238,8 @@ async def get_benchmark(
         "sortino": sharpe_sortino.get("sortino_ratio") if isinstance(sharpe_sortino, dict) else None,
         "calmar": calmar if isinstance(calmar, (int, float)) else None,
         "max_drawdown_pct": dd_stats.get("max_drawdown_pct"),
-        "ulcer_index": analytics.calculate_ulcer_index(equity),
-        "k_ratio": analytics.calculate_k_ratio(equity),
+        "ulcer_index": analytics.calculate_ulcer_index(dd_equity),
+        "k_ratio": analytics.calculate_k_ratio(dd_equity),
         "trades_per_week": freq.get("per_week"),
     }
 
