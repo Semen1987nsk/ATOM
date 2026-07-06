@@ -537,7 +537,7 @@ async def get_stats(
                 models.OperationORM.operation_type.in_(_dep_types),
                 models.OperationORM.state == "executed",
             ).one()
-            drawdown_baseline = abs(float(_row[0] or 0) + float(_row[1] or 0) / 1e9)
+            drawdown_baseline = float(_row[0] or 0) + float(_row[1] or 0) / 1e9
         if drawdown_baseline <= 0 and starting_net_deposit > 0:
             drawdown_baseline = starting_net_deposit
         # ADR-0010: включаем восстановленный баланс открытия в развёрнутый капитал
