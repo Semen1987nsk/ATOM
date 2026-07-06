@@ -560,34 +560,38 @@ class SyncPipeline:
         if not missing:
             return 0
 
-        targets = missing[: self._max_instruments_per_run]
-        log.info(
-            f"enrich: {len(missing)} missing instruments, resolving {len(targets)}"
-        )
+        log.info(f"enrich: {len(missing)} missing instruments, resolving all in chunks")
 
-        async with client_factory.async_client(self._token) as services:
-            instruments_client = TinkoffInstrumentsClient(services)
-            resolved = []
-            for uid in targets:
-                try:
-                    inst = await instruments_client.get_instrument_by_uid(uid)
-                    resolved.append(inst)
-                except InstrumentNotFound:
-                    log.warning(f"enrich: instrument {uid} not found, skipping")
-                except BrokerError as exc:
-                    log.warning(f"enrich: {uid}: {type(exc).__name__} — {exc.message}")
+        total_resolved = 0
+        # S2-07: резолвим ВСЕ missing чанками по max_instruments_per_run —
+        # rate-limiter client_factory + IP-cooldown gate защищают RPS. Раньше
+        # брали только первый чанк → сделки по инструментам 51+ терялись навсегда.
+        for start in range(0, len(missing), self._max_instruments_per_run):
+            targets = missing[start : start + self._max_instruments_per_run]
+            async with client_factory.async_client(self._token) as services:
+                instruments_client = TinkoffInstrumentsClient(services)
+                resolved = []
+                for uid in targets:
+                    try:
+                        inst = await instruments_client.get_instrument_by_uid(uid)
+                        resolved.append(inst)
+                    except InstrumentNotFound:
+                        log.warning(f"enrich: instrument {uid} not found, skipping")
+                    except BrokerError as exc:
+                        log.warning(f"enrich: {uid}: {type(exc).__name__} — {exc.message}")
 
-        if resolved:
-            def _persist() -> None:
-                session = self._session_factory()
-                try:
-                    self._instrument_repo.upsert_many(session, resolved)
-                    session.commit()
-                finally:
-                    session.close()
+            if resolved:
+                def _persist(_resolved=resolved) -> None:
+                    session = self._session_factory()
+                    try:
+                        self._instrument_repo.upsert_many(session, _resolved)
+                        session.commit()
+                    finally:
+                        session.close()
 
-            await asyncio.to_thread(_persist)
-        return len(resolved)
+                await asyncio.to_thread(_persist)
+                total_resolved += len(resolved)
+        return total_resolved
 
     async def _stage_fifo_match(
         self, operations: Sequence[Operation]
