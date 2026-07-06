@@ -71,6 +71,11 @@ from utils.datetime_utils import utc_now_naive
 log = get_logger("broker_router")
 router = APIRouter(prefix="/broker", tags=["broker"])
 
+# CR-2: возрастной лимит для «running» sync-события. Свежий running блокирует
+# reset (409); старше — считаем брошенным (hard-kill/OOM/рестарт оставили
+# finished_at=NULL) и не блокируем. 30 мин заведомо больше любого реального sync.
+STALE_SYNC_TTL_MINUTES = 30
+
 
 # ── feature flag ──────────────────────────────────────────────────────
 
@@ -516,6 +521,11 @@ async def reset_connection(
     # не перетянется, а UI покажет "success". In-flight признак — строка
     # sync_events со status='running' и finished_at IS NULL (conn.last_sync_status
     # хранит только success/error/partial, «running» туда не пишется).
+    # CR-2: hard-kill/OOM/рестарт посреди sync оставит running/finished_at=NULL
+    # навсегда → reset заблокирован 409 без выхода. Учитываем только СВЕЖИЕ
+    # running (started_at за последние STALE_SYNC_TTL_MINUTES) — заведомо больше
+    # любого реального sync, но освобождает брошенный лок.
+    running_cutoff = utc_now_naive() - timedelta(minutes=STALE_SYNC_TTL_MINUTES)
     running_sync = (
         db.query(models.SyncEventORM.id)
         .filter(
@@ -523,6 +533,7 @@ async def reset_connection(
             models.SyncEventORM.broker_account_id == conn.broker_account_id,
             models.SyncEventORM.status == "running",
             models.SyncEventORM.finished_at.is_(None),
+            models.SyncEventORM.started_at > running_cutoff,
         )
         .first()
     )

@@ -171,6 +171,49 @@ class TestResetConfirmationGate:
         assert r.status_code == 409
         assert "синхрониз" in r.json()["detail"].lower()
 
+    def test_reset_not_blocked_by_stale_running_sync(self, test_app, monkeypatch):
+        """CR-2: hard-kill/OOM/рестарт посреди sync оставляет строку
+        running/finished_at=NULL навсегда → reset заблокирован 409 без выхода.
+        Возрастной лимит (30 мин) считает такой протухший running мёртвым →
+        reset проходит к реальному удалению, а не виснет на sync-guard'е.
+        """
+        from datetime import timedelta
+        from utils.datetime_utils import utc_now_naive
+
+        db = test_app["db"]
+        user, account = _make_user(db)
+        conn = _make_connection(db, account)
+        trade = _make_annotated_sync_trade(db, account)
+        trade_id = trade.id
+
+        db.add(
+            SyncEventORM(
+                account_id=account.id,
+                broker_account_id=conn.broker_account_id,
+                sync_id="sync-stale",
+                status="running",
+                finished_at=None,
+                started_at=utc_now_naive() - timedelta(minutes=40),
+            )
+        )
+        db.commit()
+
+        import tools.reset_broker_account as reset_mod
+
+        monkeypatch.setattr(reset_mod, "SessionLocal", test_app["Session"])
+
+        r = test_app["client"].post(
+            f"/broker/connections/{conn.id}/reset?confirm_data_loss=true",
+            headers=_auth_headers(user),
+        )
+
+        # НЕ 409 «синхронизация выполняется» — протухший лок не блокирует.
+        assert r.status_code == 200
+        assert r.json()["trades_deleted"] == 1
+
+        gone = db.query(Trade).filter(Trade.id == trade_id).first()
+        assert gone is None
+
     def test_reset_with_confirmation_deletes_sync_trade(self, test_app, monkeypatch):
         db = test_app["db"]
         user, account = _make_user(db)
