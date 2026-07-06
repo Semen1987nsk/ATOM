@@ -2,7 +2,7 @@
 Trades Router — CRUD для сделок, импорт, unrealized PnL
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Query, Form
-from sqlalchemy import func, case, or_
+from sqlalchemy import func, case, or_, and_, literal, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -586,50 +586,95 @@ async def read_position_trades(
 
     S2-10: пагинация групп выполняется в SQL (страница ключей
     (instrument_uid, position_id) через offset/limit), затем Trade
-    загружаются только для страницы. Legacy round-trips без position_id
-    в эту ветку не попадают (не пагинируются).
+    загружаются только для страницы. Legacy/manual round-trips без
+    position_id/instrument_uid (напр. POST /trades/) НЕ группируются —
+    каждый такой Trade сам себе позиция (ключ по id) и участвует в той же
+    странице ключей, поэтому из выдачи не выпадает.
     """
     account_id = auth_service.get_account_id(db, current_user)
 
     # S2-10: пагинация ГРУПП в SQL — не тянем все 5-10k Trade в память.
-    # Фаза 1: агрегируем ключи (instrument_uid, position_id) с last-activity
-    # и has_open, фильтруем по status, режем страницу в БД. Фаза 2: грузим
-    # Trade только для ключей страницы.
-    # ОГРАНИЧЕНИЕ: legacy round-trips (position_id IS NULL) НЕ пагинируются
-    # этой веткой — они выпадают из выдачи. Для tinkoff_v2/live-потока
-    # position_id всегда заполнен; legacy-manual trades — редкий хвост.
-    last_activity = func.max(
-        func.coalesce(models.Trade.exit_at, models.Trade.entry_at)
-    ).label("last_activity")
-    has_open = func.max(
-        case((models.Trade.exit_at.is_(None), 1), else_=0)
-    ).label("has_open")
-    key_q = (
-        db.query(
-            models.Trade.instrument_uid,
-            models.Trade.position_id,
-            last_activity,
-            has_open,
-        )
-        .filter(models.Trade.account_id == account_id)
-        .filter(
-            models.Trade.position_id.isnot(None),
-            models.Trade.instrument_uid.isnot(None),
-        )
-        .group_by(models.Trade.instrument_uid, models.Trade.position_id)
+    # Фаза 1: агрегируем ключи с last-activity и has_open, фильтруем по
+    # status, режем страницу в БД. Фаза 2: грузим Trade только для страницы.
+    #
+    # Два класса ключей в одной странице (UNION ALL, единый порядок):
+    #   - grouped: (instrument_uid, position_id) — round-trip lifecycle
+    #     из tinkoff_v2/live (position_id + instrument_uid заполнены).
+    #   - legacy:  каждая manual/legacy-сделка без position_id ИЛИ без
+    #     instrument_uid — сама себе позиция (ключ leg_id = Trade.id).
+    #     POST /trades/ (ручной журнал) не проставляет ни position_id, ни
+    #     instrument_uid → без legacy-ветки такие сделки выпали бы из выдачи.
+    last_activity_col = func.coalesce(
+        models.Trade.exit_at, models.Trade.entry_at
     )
-    if status == "open":
-        key_q = key_q.having(has_open == 1)
-    elif status == "closed":
-        key_q = key_q.having(has_open == 0)
-    key_rows = key_q.order_by(last_activity.desc()).offset(skip).limit(limit).all()
+    is_open_col = case((models.Trade.exit_at.is_(None), 1), else_=0)
 
-    page_keys = [(r.instrument_uid, r.position_id) for r in key_rows]
+    grouped_key = db.query(
+        models.Trade.instrument_uid.label("instrument_uid"),
+        models.Trade.position_id.label("position_id"),
+        literal(None).label("leg_id"),
+        func.max(last_activity_col).label("last_activity"),
+        func.max(is_open_col).label("has_open"),
+    ).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.position_id.isnot(None),
+        models.Trade.instrument_uid.isnot(None),
+    ).group_by(models.Trade.instrument_uid, models.Trade.position_id)
+
+    legacy_key = db.query(
+        models.Trade.instrument_uid.label("instrument_uid"),
+        models.Trade.position_id.label("position_id"),
+        models.Trade.id.label("leg_id"),
+        last_activity_col.label("last_activity"),
+        is_open_col.label("has_open"),
+    ).filter(
+        models.Trade.account_id == account_id,
+        or_(
+            models.Trade.position_id.is_(None),
+            models.Trade.instrument_uid.is_(None),
+        ),
+    )
+
+    if status == "open":
+        grouped_key = grouped_key.having(func.max(is_open_col) == 1)
+        legacy_key = legacy_key.filter(is_open_col == 1)
+    elif status == "closed":
+        grouped_key = grouped_key.having(func.max(is_open_col) == 0)
+        legacy_key = legacy_key.filter(is_open_col == 0)
+
+    keys_union = union_all(grouped_key, legacy_key).subquery()
+    # Детерминированный порядок: last_activity desc + tie-breakers
+    # (position_id, leg_id) — иначе при равном last_activity (bulk import,
+    # closes в одну секунду) порядок строк между offset-вызовами не
+    # гарантирован → соседние страницы могут пересекаться/пропускать группу.
+    key_rows = (
+        db.query(keys_union)
+        .order_by(
+            keys_union.c.last_activity.desc(),
+            keys_union.c.position_id.desc(),
+            keys_union.c.leg_id.desc(),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    # Ключ группировки: legacy-строки различаем по leg_id, grouped — по
+    # (instrument_uid, position_id). page_keys задаёт порядок отображения
+    # (== порядок выбора страницы) для стабильности между страницами.
+    page_keys = [
+        (r.instrument_uid, r.position_id, r.leg_id) for r in key_rows
+    ]
     if page_keys:
-        conds = [
-            (models.Trade.instrument_uid == uid) & (models.Trade.position_id == pid)
-            for uid, pid in page_keys
-        ]
+        conds = []
+        for uid, pid, leg_id in page_keys:
+            if leg_id is not None:
+                conds.append(models.Trade.id == leg_id)
+            else:
+                conds.append(
+                    (models.Trade.instrument_uid == uid)
+                    & (models.Trade.position_id == pid)
+                )
         all_trades = (
             db.query(models.Trade)
             .filter(models.Trade.account_id == account_id)
@@ -640,13 +685,16 @@ async def read_position_trades(
     else:
         all_trades = []
 
-    # Группировка по (instrument_uid, position_id). Страница ключей уже
-    # выбрана и упорядочена по last-activity desc в SQL — сохраняем этот
-    # порядок для построения PositionTrade-схем.
+    # Группировка. Legacy-сделки (leg_id != None) — каждая своя группа по id;
+    # остальные — по (instrument_uid, position_id).
     from collections import defaultdict
     groups: dict[tuple, list[models.Trade]] = defaultdict(list)
+    legacy_ids = {leg_id for _, _, leg_id in page_keys if leg_id is not None}
     for t in all_trades:
-        groups[(t.instrument_uid, t.position_id)].append(t)
+        if t.id in legacy_ids:
+            groups[(t.instrument_uid, t.position_id, t.id)].append(t)
+        else:
+            groups[(t.instrument_uid, t.position_id, None)].append(t)
 
     paginated_groups = [
         (key, groups[key]) for key in page_keys if key in groups
@@ -902,11 +950,11 @@ async def read_position_trades(
             )
         )
 
-    # PERF-10: пагинация уже выполнена выше через paginated_groups; здесь
-    # лишь стабилизируем порядок по first_entry_at desc (как было исторически
-    # для UI Journal). Slice больше не нужен — paginated_groups содержит
-    # ровно `limit` страничных групп.
-    positions.sort(key=lambda p: p.first_entry_at, reverse=True)
+    # S2-10: порядок отображения == порядок ВЫБОРА страницы. `positions`
+    # уже построен в порядке page_keys (last_activity desc + tie-breakers из
+    # SQL), поэтому НЕ пересортировываем по first_entry_at — иначе ключ
+    # выбора страницы (max exit/entry) и ключ показа (min entry) расходятся
+    # для scale-in позиций, и группа "прыгает" через границу страницы.
     return positions
 
 

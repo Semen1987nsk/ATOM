@@ -244,3 +244,87 @@ def test_positions_pagination_returns_page_of_groups(client_with_db):
     resp2 = client.get("/trades/positions?status=all&skip=2&limit=2", headers=h)
     assert resp2.status_code == 200, resp2.text
     assert len(resp2.json()) == 1
+
+
+def test_positions_legacy_manual_trade_appears(client_with_db):
+    """S2-10 regression: manual/legacy round-trip без position_id И без
+    instrument_uid (как создаёт POST /trades/) должен появляться в
+    /trades/positions — раньше SQL-фильтр .isnot(None) его молча ронял."""
+    db = client_with_db["db"]
+    client = client_with_db["client"]
+    _, acc, token = _setup_user(db)
+    db.add(
+        Trade(
+            account_id=acc.id,
+            symbol="MANUAL",
+            direction=TradeDirection.LONG,
+            entry_price=Decimal("100"),
+            exit_price=Decimal("120"),
+            quantity=Decimal("5"),
+            entry_at=datetime(2026, 5, 1, 10, 0),
+            exit_at=datetime(2026, 5, 1, 12, 0),
+            currency="RUB",
+            data_source="manual",
+            instrument_uid=None,
+            position_id=None,
+            commission=Decimal("0"),
+            pnl=Decimal("100"),
+            net_pnl=Decimal("100"),
+        )
+    )
+    db.commit()
+    h = {"Authorization": f"Bearer {token}"}
+
+    resp = client.get("/trades/positions?status=all&skip=0&limit=50", headers=h)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 1, f"legacy manual trade выпал из выдачи: {body}"
+    assert body[0]["symbol"] == "MANUAL"
+    # position_id fallback → Trade.id (legacy: каждая сделка своя позиция).
+    assert body[0]["position_id"] is not None
+
+
+def test_positions_legacy_and_grouped_paginate_together(client_with_db):
+    """S2-10: legacy (NULL-ключ) и grouped-позиции пагинируются в одной
+    странице по общему порядку last_activity — legacy не выпадает и не
+    дублируется на границах страниц."""
+    db = client_with_db["db"]
+    client = client_with_db["client"]
+    _, acc, token = _setup_user(db)
+    _seed_3_positions(db, acc.id)  # 3 grouped, entry 10:00/11:00/12:00
+    # legacy-сделка с самой поздней активностью → должна идти первой.
+    db.add(
+        Trade(
+            account_id=acc.id,
+            symbol="LEG",
+            direction=TradeDirection.LONG,
+            entry_price=Decimal("100"),
+            exit_price=Decimal("120"),
+            quantity=Decimal("5"),
+            entry_at=datetime(2026, 5, 1, 14, 0),
+            exit_at=datetime(2026, 5, 1, 15, 0),
+            currency="RUB",
+            data_source="manual",
+            instrument_uid=None,
+            position_id=None,
+            commission=Decimal("0"),
+            pnl=Decimal("100"),
+            net_pnl=Decimal("100"),
+        )
+    )
+    db.commit()
+    h = {"Authorization": f"Bearer {token}"}
+
+    all_body = client.get(
+        "/trades/positions?status=all&skip=0&limit=50", headers=h
+    ).json()
+    assert len(all_body) == 4, f"ожидалось 4 позиции (3 grouped + 1 legacy): {all_body}"
+
+    # Дизъюнктность страниц: 3 страницы по 2 покрывают все 4 без пересечений.
+    p1 = client.get("/trades/positions?status=all&skip=0&limit=2", headers=h).json()
+    p2 = client.get("/trades/positions?status=all&skip=2&limit=2", headers=h).json()
+    assert len(p1) == 2 and len(p2) == 2
+    syms1 = {p["symbol"] for p in p1}
+    syms2 = {p["symbol"] for p in p2}
+    assert not (syms1 & syms2), f"страницы пересекаются: {syms1} & {syms2}"
+    assert syms1 | syms2 == {"LEG", "S30", "S31", "S32"}
