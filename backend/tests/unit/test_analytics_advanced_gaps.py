@@ -108,6 +108,14 @@ class TestPeriodBreakdown:
         assert out["yearly"]["best"]["pnl"] == 50.0
         assert out["yearly"]["best"]["trades"] == 1
 
+    def test_buckets_by_msk_not_utc(self):
+        # SSE-1: когерентность с S3-12 (heatmap/daily/time_patterns бакетируют по МСК).
+        # 2026-01-31 22:00 UTC → 2026-02-01 01:00 МСК: UTC отнёс бы в месяц 2026-01,
+        # МСК — в 2026-02 (вечерняя сессия MOEX уезжает через границу месяца).
+        trades = [{"entry_at": datetime(2026, 1, 31, 22, 0), "pnl": 100.0}]
+        out = calculate_period_breakdown(trades)
+        assert out["monthly"]["best"]["period"] == "2026-02"
+
 
 # ─────────────────────────────────────────────────────────────────
 # calculate_hour_dow_heatmap(trades_with_dates) -> List[List[Dict]] (7x24)

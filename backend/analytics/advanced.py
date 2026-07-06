@@ -311,6 +311,7 @@ def calculate_period_breakdown(trades_with_dates: List[Dict]) -> Dict:
         dt = t.get("entry_at")
         if not isinstance(dt, datetime):
             continue
+        dt = _to_msk(dt)  # SSE-1: бакетировать по МСК как heatmap/daily/time_patterns (S3-12)
         pnl = float(t.get("pnl") or 0)
         # ISO week — стандарт
         iso_year, iso_week, _ = dt.isocalendar()
