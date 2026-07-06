@@ -129,10 +129,11 @@ def client_and_acc_withdrawal():
 
 
 def test_broker_roi_base_parity_with_baseline_on_withdrawal(client_and_acc_withdrawal, monkeypatch):
-    """S2-06 review follow-up: /stats/period_start_balance должен совпадать с
-    anchor + get_net_deposits_baseline_from_db (тот же abs-based baseline, что
-    ROI-база /broker/portfolio). Locks sign-convention: без abs() блок дал бы
-    99095 + (-11444) = 87651, а abs-паритет — 99095 + 11444 = 110539."""
+    """S2-06 + S3-14: /stats/period_start_balance должен совпадать с
+    anchor + get_net_deposits_baseline_from_db — ЗНАКОВАЯ Σ NET_DEPOSIT (вывод
+    средств уменьшает базу), согласованная с pnl_health effective_deposits и
+    drawdown_baseline. Locks sign-convention: signed 99095 + (8556−20000) =
+    87651; ошибочный abs дал бы 99095 + 11444 = 110539 (вывод «увеличивал» базу)."""
     s, acc, u = client_and_acc_withdrawal
     import auth_service
     from analytics._common_baseline import get_net_deposits_baseline_from_db
@@ -140,13 +141,13 @@ def test_broker_roi_base_parity_with_baseline_on_withdrawal(client_and_acc_withd
     app.dependency_overrides[auth_service.get_current_user] = lambda: u
     monkeypatch.setattr(auth_service, "get_account_id", lambda db, user: acc.id)
 
-    baseline = get_net_deposits_baseline_from_db(s, acc.id)
-    expected = float(acc.initial_balance) + float(baseline)  # 99095 + 11444 = 110539
+    baseline = get_net_deposits_baseline_from_db(s, acc.id)  # signed = -11444
+    expected = float(acc.initial_balance) + float(baseline)  # 99095 + (-11444) = 87651
 
     client = TestClient(app)
     resp = client.get("/stats/?period=all", headers={"Authorization": "Bearer x"})
     assert resp.status_code == 200
     body = resp.json()
-    # Паритет с abs-based baseline. Signed-версия (баг) дала бы 87651.
+    # Паритет endpoint ↔ signed baseline. Abs-версия (баг) дала бы 110539.
     assert abs(body["period_start_balance"] - expected) < 2.0
-    assert abs(body["period_start_balance"] - 110539) < 2.0
+    assert abs(body["period_start_balance"] - 87651) < 2.0

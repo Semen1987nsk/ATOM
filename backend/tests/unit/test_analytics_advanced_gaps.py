@@ -115,7 +115,7 @@ class TestPeriodBreakdown:
 
 class TestHourDowHeatmap:
     def test_happy_correct_cell(self):
-        # 2026-05-26 — вторник (weekday=1), час 14
+        # 2026-05-26 — вторник (weekday=1), час 14 UTC → 17 МСК (S3-12, UTC+3).
         trades = [
             {"entry_at": datetime(2026, 5, 26, 14, 30), "pnl": 100.0},
             {"entry_at": datetime(2026, 5, 26, 14, 45), "pnl": -50.0},
@@ -123,7 +123,7 @@ class TestHourDowHeatmap:
         m = calculate_hour_dow_heatmap(trades)
         assert len(m) == 7
         assert all(len(row) == 24 for row in m)
-        cell = m[1][14]
+        cell = m[1][17]
         assert cell["count"] == 2
         assert cell["total_pnl"] == 50.0
         assert cell["win_rate"] == 50.0
@@ -141,7 +141,8 @@ class TestHourDowHeatmap:
             {"entry_at": datetime(2026, 5, 26, 14), "pnl": 100.0},
         ]
         m = calculate_hour_dow_heatmap(trades)
-        assert m[1][14]["count"] == 1
+        # S3-12: 14:00 UTC → 17:00 МСК (UTC+3), вторник (weekday=1) сохраняется.
+        assert m[1][17]["count"] == 1
 
 
 # ─────────────────────────────────────────────────────────────────

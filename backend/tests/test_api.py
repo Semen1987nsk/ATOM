@@ -797,9 +797,10 @@ class TestStats:
             {"day": "Пн", "total_pnl": 90.0, "trades": 2, "win_rate": 50.0},
             {"day": "Вт", "total_pnl": 70.0, "trades": 1, "win_rate": 100.0},
         ]
+        # S3-12: hour_stats бакетируется по МСК (UTC+3) — 10:00→13:00, 11:00→14:00.
         assert data["time_patterns"]["hour_stats"] == [
-            {"hour": "10:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
-            {"hour": "11:00", "total_pnl": -5.0, "trades": 1, "win_rate": 0.0},
+            {"hour": "13:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
+            {"hour": "14:00", "total_pnl": -5.0, "trades": 1, "win_rate": 0.0},
         ]
         assert data["time_patterns"]["month_stats"] == [
             {"month": "Янв", "total_pnl": 90.0, "trades": 2, "win_rate": 50.0},
