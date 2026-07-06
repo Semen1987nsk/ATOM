@@ -304,10 +304,16 @@ class MarketService:
             if item is not None:
                 tickers.append({"symbol": sym, "last": item["last"], "change_pct": item["change_pct"]})
 
-        stale = len(tickers) == 0
-        result = {"stale": stale, "tickers": tickers}
-        if not stale:
-            _ticker_cache.set("landing:ticker", result)
+        # S2-09: 1/10 (только IMOEX при пустом TQBR marketdata) — не успех.
+        # Требуем порог полноты, иначе фронт уйдёт в полный статичный fallback
+        # вместо бегущей строки из одного символа, и мы не кешируем огрызок.
+        # Порог=2: одиночный IMOEX (пустой TQBR) не проходит; ≥2 реальных строк — успех.
+        _MIN_FULL = 2
+        stale = len(tickers) < _MIN_FULL
+        if stale:
+            return {"stale": True, "tickers": []}
+        result = {"stale": False, "tickers": tickers}
+        _ticker_cache.set("landing:ticker", result)
         return result
 
     async def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
