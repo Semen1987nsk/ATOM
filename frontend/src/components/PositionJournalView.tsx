@@ -39,6 +39,7 @@ import {
   Edit2,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/apiClient';
+import { parseApiDate } from '@/lib/dateUtils';
 import { useToast } from '@/contexts/ToastContext';
 import { EditTradeModal, type EditableTrade } from '@/components/EditTradeModal';
 import { JournalNavigatorBar } from './journal/JournalNavigatorBar';
@@ -253,7 +254,7 @@ function fmtQty(v: number | null | undefined): string {
 
 function fmtDate(s: string | null | undefined): string {
   if (!s) return '—';
-  const d = new Date(s);
+  const d = parseApiDate(s);
   return d.toLocaleString('ru-RU', {
     day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit',

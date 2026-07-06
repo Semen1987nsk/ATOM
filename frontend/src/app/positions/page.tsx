@@ -24,6 +24,7 @@ import {
   type PositionResponse,
 } from './joinPositionsTrades';
 import { OpenPositionExpand } from './OpenPositionExpand';
+import { parseApiDate } from '@/lib/dateUtils';
 import { EditTradeModal, type EditableTrade } from '@/components/EditTradeModal';
 
 /**
@@ -413,7 +414,7 @@ export default function PositionsPage() {
                         </td>
                         <td className="px-4 py-3 text-right text-[11px] text-[var(--text-tertiary)]">
                           {p.last_priced_at
-                            ? new Date(p.last_priced_at).toLocaleString('ru-RU', {
+                            ? parseApiDate(p.last_priced_at).toLocaleString('ru-RU', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                                 day: '2-digit',

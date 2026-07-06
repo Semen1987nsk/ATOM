@@ -5,6 +5,7 @@ import { Calendar, X, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Settings } from '@/contexts/SettingsContext';
 import type { Trade, DirectionFilter, SortMode } from './types';
 import { SORT_STORAGE_KEY } from './types';
+import { parseApiDate } from '@/lib/dateUtils';
 
 interface HistoryFiltersProps {
   filterDirection: DirectionFilter;
@@ -204,7 +205,7 @@ export function HistoryFilters({
                             return (
                               <>
                                 <span className="font-mono">
-                                  {new Date(trade.entry_at).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}
+                                  {parseApiDate(trade.entry_at).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}
                                   {' '}
                                   <span className={trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}>
                                     {trade.direction}

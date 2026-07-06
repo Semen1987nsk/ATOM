@@ -4,6 +4,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { X, Upload, AlertTriangle, Check, FileSpreadsheet, Filter, ArrowDown, ArrowUp } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/apiClient';
+import { parseApiDate } from '@/lib/dateUtils';
 
 interface PreviewTrade {
   index: number;
@@ -236,7 +237,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({ isOpen, 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
     try {
-      return new Date(dateStr).toLocaleString('ru-RU', {
+      return parseApiDate(dateStr).toLocaleString('ru-RU', {
         day: '2-digit',
         month: '2-digit',
         year: '2-digit',

@@ -2,6 +2,7 @@
 'use client';
 
 import { StickyNote, ImageIcon, Edit2 } from 'lucide-react';
+import { parseApiDate } from '@/lib/dateUtils';
 import type { TradeExecution } from './joinPositionsTrades';
 
 interface OpenPositionExpandProps {
@@ -10,7 +11,7 @@ interface OpenPositionExpandProps {
 }
 
 const fmtDate = (iso: string): string => {
-  const d = new Date(iso);
+  const d = parseApiDate(iso);
   return d.toLocaleString('ru-RU', {
     day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit',

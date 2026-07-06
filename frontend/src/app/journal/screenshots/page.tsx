@@ -15,6 +15,7 @@ import { api, getApiUrl, ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { DataError } from "@/components/ui/DataError";
+import { parseApiDate } from "@/lib/dateUtils";
 
 interface TradeWithScreenshot {
   id: number;
@@ -195,7 +196,7 @@ function ScreenshotCard({
           )}
         </div>
         <div className="text-[11px] text-[var(--text-tertiary)]">
-          {new Date(trade.entry_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
+          {parseApiDate(trade.entry_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
         </div>
       </div>
     </button>
@@ -246,7 +247,7 @@ function Lightbox({
               </span>
             </div>
             <div className="text-[12px] text-[var(--text-tertiary)] mt-1">
-              {trade.setup_name || "Без сетапа"} · {new Date(trade.entry_at).toLocaleString("ru-RU")}
+              {trade.setup_name || "Без сетапа"} · {parseApiDate(trade.entry_at).toLocaleString("ru-RU")}
             </div>
           </div>
           <button onClick={onClose} className="btn-icon" aria-label="Закрыть">

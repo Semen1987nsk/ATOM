@@ -14,6 +14,7 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { api } from '@/lib/apiClient';
+import { parseApiDate } from '@/lib/dateUtils';
 
 interface GroupItem {
   name: string;
@@ -1010,7 +1011,7 @@ export function MAEMFEAnalysisPanel({ onRecalculate }: MAEMFEAnalysisPanelProps)
                         {selectedItemData.trades.map((t) => (
                           <tr key={t.id} className="border-b border-slate-800 last:border-0">
                             <td className="py-1.5 pr-2 text-slate-400 whitespace-nowrap">
-                              {t.exit_at ? new Date(t.exit_at).toLocaleDateString('ru-RU') : '—'}
+                              {t.exit_at ? parseApiDate(t.exit_at).toLocaleDateString('ru-RU') : '—'}
                             </td>
                             <td className="py-1.5 pr-2">
                               <span className="font-medium">{t.symbol}</span>{' '}

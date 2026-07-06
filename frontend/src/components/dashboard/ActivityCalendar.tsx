@@ -12,6 +12,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { parseApiDate } from '@/lib/dateUtils';
 
 interface Trade {
   id: number;
@@ -73,7 +74,7 @@ export function ActivityCalendar({ trades, monthOffset = 0 }: Props) {
 
     for (const t of trades) {
       if (!t.exit_at) continue;
-      const dt = new Date(t.exit_at);
+      const dt = parseApiDate(t.exit_at);
       if (dt.getFullYear() !== year || dt.getMonth() !== month) continue;
       const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
       const bucket = map.get(date);
