@@ -68,6 +68,14 @@ from utils.datetime_utils import utc_now_naive
 log = get_logger("sync.pipeline")
 
 
+def _is_stale_batch(max_in_batch, max_in_db) -> bool:
+    """max(executed_at) батча строго старше max в БД (на >1ч) → stale cursor."""
+    from datetime import timedelta
+    if max_in_db is None or max_in_batch is None:
+        return False
+    return max_in_batch < max_in_db - timedelta(hours=1)
+
+
 # ── data classes ──────────────────────────────────────────────────────
 
 
@@ -486,33 +494,28 @@ class SyncPipeline:
                     # последняя известная дата − 1 день.
                     needs_fallback = False
                     fallback_reason = None
-                    if cursor and current == cursor:
-                        if not all_ops:
+                    if cursor and current == cursor and not all_ops:
+                        needs_fallback = True
+                        fallback_reason = "empty_batch"
+                    elif all_ops:
+                        # S2-14: stale-детект БЕЗУСЛОВНО, для любого числа
+                        # страниц — многостраничный stale-ответ сдвигает
+                        # current, но max(batch) < max(db) всё равно ловит.
+                        max_in_batch = max(o.executed_at for o in all_ops)
+                        max_in_db = await self._get_max_executed_at()
+                        if _is_stale_batch(max_in_batch, max_in_db):
                             needs_fallback = True
-                            fallback_reason = "empty_batch"
-                        else:
-                            # Stale-batch detection: если max(executed_at) в
-                            # ответе строго старше max(executed_at) в БД, это
-                            # 100% индикатор stale cursor — мы и так знаем
-                            # более свежие данные.
-                            max_in_batch = max(o.executed_at for o in all_ops)
-                            max_in_db = await self._get_max_executed_at()
-                            if (
-                                max_in_db is not None
-                                and max_in_batch < max_in_db - timedelta(hours=1)
-                            ):
-                                needs_fallback = True
-                                fallback_reason = "stale_batch_older_than_db"
-                                log.warning(
-                                    "cursor_returned_stale_data",
-                                    extra={
-                                        "account_id": self._account_id,
-                                        "stuck_cursor": (cursor or "")[:32],
-                                        "batch_max_executed_at": max_in_batch.isoformat(),
-                                        "db_max_executed_at": max_in_db.isoformat(),
-                                        "ops_returned": len(all_ops),
-                                    },
-                                )
+                            fallback_reason = "stale_batch_older_than_db"
+                            log.warning(
+                                "cursor_returned_stale_data",
+                                extra={
+                                    "account_id": self._account_id,
+                                    "stuck_cursor": (cursor or "")[:32],
+                                    "batch_max_executed_at": max_in_batch.isoformat(),
+                                    "db_max_executed_at": max_in_db.isoformat(),
+                                    "ops_returned": len(all_ops),
+                                },
+                            )
                     if needs_fallback:
                         fallback_anchor = await self._get_max_executed_at()
                         if fallback_anchor is not None:
