@@ -104,6 +104,9 @@ def autoset_inferred_anchor(session: Session, account_id: int) -> AnchorDecision
     gross_buy_peak = max(
         (abs(_payment(u, n)) for u, n in buy_rows), default=Decimal(0)
     )
+    gross_buy_sum = sum(
+        (abs(_payment(u, n)) for u, n in buy_rows), Decimal(0)
+    )
 
     decision = decide_anchor(
         incomplete_history=incomplete_history,
@@ -114,6 +117,7 @@ def autoset_inferred_anchor(session: Session, account_id: int) -> AnchorDecision
         varmargin_net=varmargin_net,
         open_settled=open_settled,
         gross_buy_peak=gross_buy_peak,
+        gross_buy_sum=gross_buy_sum,
     )
 
     # Freeze: раз поставленный inferred_anchor не двигаем, пока история не стала
