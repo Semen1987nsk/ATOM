@@ -38,7 +38,8 @@ import {
   EyeOff,
   Edit2,
 } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
+import { useToast } from '@/contexts/ToastContext';
 import { EditTradeModal, type EditableTrade } from '@/components/EditTradeModal';
 import { JournalNavigatorBar } from './journal/JournalNavigatorBar';
 import { TableTopScrollbar } from './journal/TableTopScrollbar';
@@ -766,6 +767,7 @@ const SORTABLE_COLUMNS: Record<string, [SortKey, SortKey]> = {
 export function PositionJournalView() {
   // Phase 12: журнал показывает body P&L ВСЕГДА — toggle settings.pnlDisplayMode
   // не влияет на журнал (он управляет ТОЛЬКО dashboard headline).
+  const toast = useToast();
   const [positions, setPositions] = useState<PositionTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -852,9 +854,11 @@ export function PositionJournalView() {
       const full = await api.get<EditableTrade>(`/trades/${executionId}`);
       setEditingTrade(full);
     } catch (e) {
-      setError((e as Error).message || 'Не удалось загрузить сделку');
+      // Ошибка вторичного действия НЕ должна затирать уже загруженный журнал —
+      // error зарезервирован под первичную загрузку (S3-21).
+      toast.error(e instanceof ApiError ? e.toUserMessage() : 'Не удалось загрузить сделку');
     }
-  }, []);
+  }, [toast]);
 
   const toggleRow = (positionKey: string) => {
     setExpandedIds((prev) => {
