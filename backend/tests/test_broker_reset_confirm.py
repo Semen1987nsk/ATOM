@@ -21,7 +21,16 @@ from sqlalchemy.pool import StaticPool
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main import app
-from models import Account, Base, BrokerConnection, BrokerType, Trade, TradeDirection, User
+from models import (
+    Account,
+    Base,
+    BrokerConnection,
+    BrokerType,
+    SyncEventORM,
+    Trade,
+    TradeDirection,
+    User,
+)
 from database import get_db
 import auth_service
 
@@ -129,6 +138,38 @@ class TestResetConfirmationGate:
         assert still_there is not None
         assert still_there.notes == "важная заметка про сделку"
         assert still_there.mood == 5
+
+    def test_reset_rejected_while_sync_running(self, test_app):
+        """S2-13: reset во время идущего sync отклоняется 409, чтобы не
+        оставить БД полустёртой с продвинутым курсором.
+
+        Признак in-flight sync — строка sync_events со status='running' и
+        finished_at IS NULL для account/broker_account этого подключения
+        (conn.last_sync_status этого не отражает: он бывает только
+        success/error/partial).
+        """
+        db = test_app["db"]
+        user, account = _make_user(db)
+        conn = _make_connection(db, account)
+
+        db.add(
+            SyncEventORM(
+                account_id=account.id,
+                broker_account_id=conn.broker_account_id,
+                sync_id="sync-inflight",
+                status="running",
+                finished_at=None,
+            )
+        )
+        db.commit()
+
+        r = test_app["client"].post(
+            f"/broker/connections/{conn.id}/reset?confirm_data_loss=true",
+            headers=_auth_headers(user),
+        )
+
+        assert r.status_code == 409
+        assert "синхрониз" in r.json()["detail"].lower()
 
     def test_reset_with_confirmation_deletes_sync_trade(self, test_app, monkeypatch):
         db = test_app["db"]

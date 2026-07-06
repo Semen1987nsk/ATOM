@@ -511,6 +511,27 @@ async def reset_connection(
     if conn is None:
         raise HTTPException(status_code=404, detail="Подключение не найдено")
 
+    # S2-13: не сбрасывать при идущем sync — иначе pipeline дозапишет свой
+    # батч и закоммитит свежий курсор поверх обнулённого → полная история
+    # не перетянется, а UI покажет "success". In-flight признак — строка
+    # sync_events со status='running' и finished_at IS NULL (conn.last_sync_status
+    # хранит только success/error/partial, «running» туда не пишется).
+    running_sync = (
+        db.query(models.SyncEventORM.id)
+        .filter(
+            models.SyncEventORM.account_id == account.id,
+            models.SyncEventORM.broker_account_id == conn.broker_account_id,
+            models.SyncEventORM.status == "running",
+            models.SyncEventORM.finished_at.is_(None),
+        )
+        .first()
+    )
+    if running_sync is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Синхронизация выполняется, повторите reset позже",
+        )
+
     if not confirm_data_loss:
         raise HTTPException(
             status_code=409,
