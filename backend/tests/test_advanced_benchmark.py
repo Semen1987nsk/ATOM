@@ -95,16 +95,16 @@ class TestOmegaRatio:
 
 class TestSterlingRatio:
     def test_normal_case(self):
-        # Sterling = Annual / (avg(top3 DD) - 10%)
-        # avg([25, 20, 15]) = 20, denom = 20 - 10 = 10, sterling = 30/10 = 3.0
+        # Sterling = Annual / (avg(top3 DD) + 10%)
+        # avg([25, 20, 15]) = 20, denom = 20 + 10 = 30, sterling = 30/30 = 1.0
         sr = adv.calculate_sterling_ratio(30.0, [25.0, 20.0, 15.0])
-        assert sr == 3.0
+        assert sr == 1.0
 
-    def test_low_drawdowns_undefined(self):
-        # avg DD < 10% → формула даёт denom ≤ 0 → undefined
-        # Правильное поведение: не возвращаем магическое число.
+    def test_low_drawdowns_defined(self):
+        # avg DD < 10% → denom = avg + 10 > 0 → метрика ОПРЕДЕЛЕНА (была None).
+        # avg([5,3,1]) = 3, denom = 13, sterling = 20/13 ≈ 1.54
         sr = adv.calculate_sterling_ratio(20.0, [5.0, 3.0, 1.0])
-        assert sr is None
+        assert sr == 1.54
 
     def test_empty_drawdowns_undefined(self):
         assert adv.calculate_sterling_ratio(20.0, []) is None

@@ -102,17 +102,17 @@ def calculate_k_ratio(equity_curve: Sequence[float]) -> Optional[float]:
 
 def calculate_sterling_ratio(annual_return_pct: float, drawdowns_pct: List[float]) -> Optional[float]:
     """
-    Sterling Ratio = Annual Return / (avg(top-3 worst DD) − 10%)
+    Sterling Ratio = Annual Return / (avg(top-3 worst DD) + 10%)
 
-    Классическая формула отнимает 10% (риск-free buffer). Для крипто/Forex
-    можно использовать без вычитания, но академический стандарт с −10%.
+    Классическая формула прибавляет 10% (DD хранятся положительными). Буфер
+    сглаживает малые просадки, чтобы знаменатель не занижался.
     """
     if not drawdowns_pct or annual_return_pct is None:
         return UNDEFINED
 
     sorted_dd = sorted(drawdowns_pct, reverse=True)[:3]
     avg_worst_dd = float(np.mean(sorted_dd)) if sorted_dd else 0.0
-    denom = avg_worst_dd - 10.0
+    denom = avg_worst_dd + 10.0
     if denom <= 0:
         return UNDEFINED
     return _sanitize(round(annual_return_pct / denom, 2))
