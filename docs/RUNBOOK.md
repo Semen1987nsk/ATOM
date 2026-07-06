@@ -198,6 +198,46 @@ Email-алерт если падает.
 
 ---
 
+## 3a. Connection pool vs postgres max_connections (S2-02)
+
+**Инвариант:**
+
+```
+replicas × workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW) < max_connections
+```
+
+**Текущая топология:** `replicas(2) × workers(4) = 8` процессов backend.
+Каждый процесс держит собственный SQLAlchemy-пул `DB_POOL_SIZE + DB_MAX_OVERFLOW`
+соединений под пиком. Если сумма ≥ `max_connections`, postgres отвечает
+`FATAL: sorry, too many clients already` — падают и запросы, и healthcheck
+`/ready` (SELECT 1).
+
+**Защита (defense-in-depth, два независимых слоя):**
+
+1. `docker-compose.prod.yml` — `command: postgres -c max_connections=200`
+   (postgres:16-alpine иначе стартует с default `max_connections=100`).
+2. `.env.production.example` — `DB_POOL_SIZE=5`, `DB_MAX_OVERFLOW=5` →
+   `8 × (5 + 5) = 80 < 100`; запас держится даже без слоя (1).
+
+**При изменении replicas / --workers / пула — пересчитать неравенство.**
+Долгосрочно (при росте числа процессов) — вынести пул в pgbouncer
+(transaction pooling), тогда backend-процессы делят общий набор бэкенд-соединений.
+
+---
+
+## 3b. Singleton-воркер (scheduler + stream consumers) (S2-12)
+
+### Singleton-воркер (scheduler + stream consumers)
+Фоновые синглтоны крутятся ТОЛЬКО на сервисе `backend-scheduler`
+(IS_SCHEDULER_WORKER=true, --workers 1). API-реплики (`backend`) — false.
+Формула: ровно один процесс во всём деплое с true. Проверка после деплоя:
+`docker compose -f docker-compose.prod.yml config | grep -A2 IS_SCHEDULER_WORKER`.
+Кросс-процессную сериализацию sync одного аккаунта обеспечивает
+in-flight guard оркестратора (S2-04) в пределах процесса; для полной
+кросс-процессной защиты — pg_try_advisory_lock(account_id) (backlog).
+
+---
+
 <a id="token-leak"></a>
 ## 4. Security incident: token leak
 

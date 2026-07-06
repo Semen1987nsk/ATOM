@@ -18,6 +18,10 @@ TELESCOPE_TOL_PCT = Decimal("0.25")
 VARMARGIN_FLOOR = Decimal("1")
 # G3 — потолок правдоподобия: якорь не больше N× крупнейшей buy-операции.
 ANCHOR_MAX_FACTOR = Decimal("50")
+# G3' (S2-11) — deposit-независимый гейт для stock-only счетов (G2 skip):
+# якорь не больше M× СУММАРНОГО gross_buy. Ловит заниженный журнал
+# (пропущенные sell), который раздувает candidate.
+ANCHOR_MAX_SUM_FACTOR = Decimal("5")
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,7 @@ def decide_anchor(
     varmargin_net: Decimal,
     open_settled: Decimal,
     gross_buy_peak: Decimal,
+    gross_buy_sum: Decimal | None = None,
 ) -> AnchorDecision:
     if not incomplete_history:
         return AnchorDecision(False, Decimal("0"), "complete", "first op is a deposit")
@@ -88,6 +93,14 @@ def decide_anchor(
         return AnchorDecision(
             False, Decimal("0"), "inferred_blocked",
             f"candidate={candidate} exceeds {ANCHOR_MAX_FACTOR}x buy peak",
+        )
+
+    # G3' — stock-only счёт (G2 не сработал): гейт по суммарному gross_buy.
+    _effective_sum = gross_buy_sum if gross_buy_sum is not None else gross_buy_peak
+    if abs(varmargin_net) < VARMARGIN_FLOOR and candidate > ANCHOR_MAX_SUM_FACTOR * abs(_effective_sum):
+        return AnchorDecision(
+            False, Decimal("0"), "inferred_blocked",
+            f"stock-only candidate={candidate} exceeds {ANCHOR_MAX_SUM_FACTOR}x sum buys",
         )
 
     return AnchorDecision(

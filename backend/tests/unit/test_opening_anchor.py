@@ -104,6 +104,42 @@ def test_pure_stocks_account_anchors_via_g3():
     assert d.value == Decimal("100000.00")
 
 
+def test_stock_only_candidate_over_sum_of_buys_is_blocked():
+    """S2-11: на stock-only счёте (G2 skip) якорь-кандидат больше суммарного
+    gross_buy теперь блокируется (deposit-независимый гейт вместо только 50×peak).
+    Пропущенные sell-операции раздувают candidate → раньше молча якорилось."""
+    d = decide_anchor(
+        incomplete_history=True,
+        portfolio_value=Decimal("500000"),
+        net_deposits=Decimal("10000"),
+        journal_pnl=Decimal("-100000"),  # заниженный журнал → candidate=590000
+        body_closed=Decimal("0"),
+        varmargin_net=Decimal("0"),
+        open_settled=Decimal("0"),
+        gross_buy_peak=Decimal("40000"),
+        gross_buy_sum=Decimal("60000"),  # candidate 590000 >> 5*60000=300000
+    )
+    assert d.should_anchor is False
+    assert d.source == "inferred_blocked"
+
+
+def test_stock_only_plausible_candidate_still_anchors():
+    """Разумный candidate ≤ 5×Σgross_buy на stock-only — якорится (не regressed)."""
+    d = decide_anchor(
+        incomplete_history=True,
+        portfolio_value=Decimal("90000"),
+        net_deposits=Decimal("10000"),
+        journal_pnl=Decimal("-20000"),
+        body_closed=Decimal("0"),
+        varmargin_net=Decimal("0"),
+        open_settled=Decimal("0"),
+        gross_buy_peak=Decimal("40000"),
+        gross_buy_sum=Decimal("40000"),  # candidate 100000 ≤ 5*40000=200000
+    )
+    assert d.should_anchor is True
+    assert d.source == "inferred_anchor"
+
+
 def test_zero_buy_peak_blocks_when_no_futures():
     d = decide_anchor(
         **{

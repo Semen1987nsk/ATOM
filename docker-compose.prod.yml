@@ -42,9 +42,9 @@ services:
       # postgres/postgresql.prod.conf optional. Если файл есть, можно
       # подмонтировать и переключить command. По умолчанию — defaults.
       # - ./postgres/postgresql.prod.conf:/etc/postgresql/postgresql.conf:ro
-    # Без command — postgres использует default config.
-    # При наличии postgres/postgresql.prod.conf переключить на:
-    #   command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    # max_connections поднят под топологию replicas(2)×workers(4)×(pool5+overflow10)=120.
+    # Формула запаса в docs/RUNBOOK.md. Долгосрочно — pgbouncer.
+    command: postgres -c max_connections=200
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-empirik} -d ${POSTGRES_DB:-empirik}"]
       interval: 10s
@@ -84,6 +84,9 @@ services:
   backend:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-empirik}/empirik-backend:${SHA:-latest}
     env_file: .env
+    environment:
+      # API-реплики НЕ держат stream consumers/scheduler — только backend-scheduler.
+      IS_SCHEDULER_WORKER: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +112,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
+    networks: [empirik-net]
+
+  # ──────── Backend scheduler (singleton: stream consumers + sync scheduler) ────────
+  backend-scheduler:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-empirik}/empirik-backend:${SHA:-latest}
+    env_file: .env
+    environment:
+      IS_SCHEDULER_WORKER: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/var/log/atom
+    command: ["sh", "-c", "exec gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --workers 1 --bind 0.0.0.0:8000 --timeout 120 --graceful-timeout 30"]
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
     restart: unless-stopped
     networks: [empirik-net]
 

@@ -36,6 +36,8 @@ class SyncScheduler:
         self._last_check: Optional[datetime] = None
         # Сохраняем поле для совместимости с routers/broker.py (он читает is_syncing).
         self._sync_in_progress: Dict[int, bool] = {}
+        # S2-16: оркестратор (и его Redis-клиент IpCooldownGate) строим один раз.
+        self._orchestrator = None
         self._check_interval = 60
         # 152-ФЗ ст. 21 ч. 5: финализация удалений раз в сутки.
         self._last_pd_finalize_at: Optional[datetime] = None
@@ -206,6 +208,15 @@ class SyncScheduler:
         finally:
             self._last_instruments_check_at = now
 
+    def _get_orchestrator(self):
+        # S2-16: строим оркестратор (и его Redis-клиент IpCooldownGate) один раз,
+        # переиспользуем между 60с-итерациями. Иначе churn TCP-коннектов к Redis
+        # + in-flight bulkhead живёт лишь один прогон.
+        if getattr(self, "_orchestrator", None) is None:
+            from application.sync.orchestrator import build_default_orchestrator
+            self._orchestrator = build_default_orchestrator()
+        return self._orchestrator
+
     async def _check_broker_sync(self) -> None:
         """
         PR 5: запуск Tinkoff sync orchestrator'а под флагом
@@ -214,9 +225,7 @@ class SyncScheduler:
         """
         if not settings.BROKER_SYNC_V2_ENABLED:
             return
-        from application.sync.orchestrator import build_default_orchestrator
-
-        orchestrator = build_default_orchestrator()
+        orchestrator = self._get_orchestrator()
         if orchestrator is None:
             return
         try:
@@ -438,9 +447,7 @@ class SyncScheduler:
             )
             return False
 
-        from application.sync.orchestrator import build_default_orchestrator
-
-        orchestrator = build_default_orchestrator()
+        orchestrator = self._get_orchestrator()
         if orchestrator is None:
             return False
         try:

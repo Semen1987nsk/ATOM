@@ -68,6 +68,14 @@ from utils.datetime_utils import utc_now_naive
 log = get_logger("sync.pipeline")
 
 
+def _is_stale_batch(max_in_batch, max_in_db) -> bool:
+    """max(executed_at) батча строго старше max в БД (на >1ч) → stale cursor."""
+    from datetime import timedelta
+    if max_in_db is None or max_in_batch is None:
+        return False
+    return max_in_batch < max_in_db - timedelta(hours=1)
+
+
 # ── data classes ──────────────────────────────────────────────────────
 
 
@@ -486,33 +494,28 @@ class SyncPipeline:
                     # последняя известная дата − 1 день.
                     needs_fallback = False
                     fallback_reason = None
-                    if cursor and current == cursor:
-                        if not all_ops:
+                    if cursor and current == cursor and not all_ops:
+                        needs_fallback = True
+                        fallback_reason = "empty_batch"
+                    elif all_ops:
+                        # S2-14: stale-детект БЕЗУСЛОВНО, для любого числа
+                        # страниц — многостраничный stale-ответ сдвигает
+                        # current, но max(batch) < max(db) всё равно ловит.
+                        max_in_batch = max(o.executed_at for o in all_ops)
+                        max_in_db = await self._get_max_executed_at()
+                        if _is_stale_batch(max_in_batch, max_in_db):
                             needs_fallback = True
-                            fallback_reason = "empty_batch"
-                        else:
-                            # Stale-batch detection: если max(executed_at) в
-                            # ответе строго старше max(executed_at) в БД, это
-                            # 100% индикатор stale cursor — мы и так знаем
-                            # более свежие данные.
-                            max_in_batch = max(o.executed_at for o in all_ops)
-                            max_in_db = await self._get_max_executed_at()
-                            if (
-                                max_in_db is not None
-                                and max_in_batch < max_in_db - timedelta(hours=1)
-                            ):
-                                needs_fallback = True
-                                fallback_reason = "stale_batch_older_than_db"
-                                log.warning(
-                                    "cursor_returned_stale_data",
-                                    extra={
-                                        "account_id": self._account_id,
-                                        "stuck_cursor": (cursor or "")[:32],
-                                        "batch_max_executed_at": max_in_batch.isoformat(),
-                                        "db_max_executed_at": max_in_db.isoformat(),
-                                        "ops_returned": len(all_ops),
-                                    },
-                                )
+                            fallback_reason = "stale_batch_older_than_db"
+                            log.warning(
+                                "cursor_returned_stale_data",
+                                extra={
+                                    "account_id": self._account_id,
+                                    "stuck_cursor": (cursor or "")[:32],
+                                    "batch_max_executed_at": max_in_batch.isoformat(),
+                                    "db_max_executed_at": max_in_db.isoformat(),
+                                    "ops_returned": len(all_ops),
+                                },
+                            )
                     if needs_fallback:
                         fallback_anchor = await self._get_max_executed_at()
                         if fallback_anchor is not None:
@@ -560,34 +563,38 @@ class SyncPipeline:
         if not missing:
             return 0
 
-        targets = missing[: self._max_instruments_per_run]
-        log.info(
-            f"enrich: {len(missing)} missing instruments, resolving {len(targets)}"
-        )
+        log.info(f"enrich: {len(missing)} missing instruments, resolving all in chunks")
 
-        async with client_factory.async_client(self._token) as services:
-            instruments_client = TinkoffInstrumentsClient(services)
-            resolved = []
-            for uid in targets:
-                try:
-                    inst = await instruments_client.get_instrument_by_uid(uid)
-                    resolved.append(inst)
-                except InstrumentNotFound:
-                    log.warning(f"enrich: instrument {uid} not found, skipping")
-                except BrokerError as exc:
-                    log.warning(f"enrich: {uid}: {type(exc).__name__} — {exc.message}")
+        total_resolved = 0
+        # S2-07: резолвим ВСЕ missing чанками по max_instruments_per_run —
+        # rate-limiter client_factory + IP-cooldown gate защищают RPS. Раньше
+        # брали только первый чанк → сделки по инструментам 51+ терялись навсегда.
+        for start in range(0, len(missing), self._max_instruments_per_run):
+            targets = missing[start : start + self._max_instruments_per_run]
+            async with client_factory.async_client(self._token) as services:
+                instruments_client = TinkoffInstrumentsClient(services)
+                resolved = []
+                for uid in targets:
+                    try:
+                        inst = await instruments_client.get_instrument_by_uid(uid)
+                        resolved.append(inst)
+                    except InstrumentNotFound:
+                        log.warning(f"enrich: instrument {uid} not found, skipping")
+                    except BrokerError as exc:
+                        log.warning(f"enrich: {uid}: {type(exc).__name__} — {exc.message}")
 
-        if resolved:
-            def _persist() -> None:
-                session = self._session_factory()
-                try:
-                    self._instrument_repo.upsert_many(session, resolved)
-                    session.commit()
-                finally:
-                    session.close()
+            if resolved:
+                def _persist(_resolved=resolved) -> None:
+                    session = self._session_factory()
+                    try:
+                        self._instrument_repo.upsert_many(session, _resolved)
+                        session.commit()
+                    finally:
+                        session.close()
 
-            await asyncio.to_thread(_persist)
-        return len(resolved)
+                await asyncio.to_thread(_persist)
+                total_resolved += len(resolved)
+        return total_resolved
 
     async def _stage_fifo_match(
         self, operations: Sequence[Operation]
@@ -687,9 +694,13 @@ class SyncPipeline:
                 positions_open = len(open_trades)
                 return len(result.closed_trades), positions_open, need_mae_ids
             except Exception:
+                # S2-08 / SYNC-08: транзиентная ошибка БД (deadlock, IntegrityError
+                # от конкурентного sync) НЕ должна молча возвращать 0 — иначе
+                # _stage_commit_cursor сдвинет курсор при протухших сделках.
+                # Осознанный skip выше — только для instrument is None.
                 session.rollback()
                 log.exception("fifo_match failed for uid=%s", uid)
-                return 0, 0, []
+                raise
             finally:
                 session.close()
 
@@ -1333,11 +1344,16 @@ class SyncPipeline:
                 inserted,
             )
         except Exception:
+            # S2-17: сбой вставки live-позиций (кривой quantity/валюта) — не
+            # осознанный degrade (тот только для BrokerError на fetch выше).
+            # Стадия идёт ДО _stage_commit_cursor → проброс сохраняет SYNC-08:
+            # курсор не двинется, sync репортит error, а не молчаливый success.
             log.exception("live_positions replace failed")
             try:
                 session.rollback()
             except Exception:
                 pass
+            raise
         finally:
             session.close()
 

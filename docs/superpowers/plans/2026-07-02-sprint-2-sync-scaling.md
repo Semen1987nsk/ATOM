@@ -576,6 +576,10 @@ def test_broker_roi_base_no_double_anchor(client_and_acc, monkeypatch):
 - [ ] **Step 4 — Запуск, ожидание PASS.** `cd backend && C:/Python314/python.exe -m pytest tests/integration/test_stats_roi_anchor_base.py -q` → passed. Регресс: `C:/Python314/python.exe -m pytest tests/test_stats_cache.py -q`. P&L-sanity: сверить с `/broker/portfolio` базой (89a1e33) — обе должны давать 107651 для acc#2 (см. PNL_PLAYBOOK).
 - [ ] **Step 5 — Commit.** `fix(stats): ROI base = anchor + net deposits from OperationORM, no double count (S2-06)`
 
+**Отклонения реализации от Step 3-сниппета (осознанные, не пропуски) — ревью-follow-up:**
+1. **Без date-фильтра.** Реализация НЕ применяет `executed_at <= period_start_date`: берётся полный Σ NET_DEPOSIT (весь deployed capital). Это даёт паритет с двумя другими abs-based baseline (`get_net_deposits_baseline_from_db` для ROI-базы `/broker/portfolio` и `drawdown_baseline` в этом же ответе) — у обоих тоже нет date-cut — и именно это даёт acc#2 = 107651. Сниппет Step 3 с date-фильтром — иллюстративный; каноничен full-Σ.
+2. **`abs()` на агрегате.** `net_dep_ops = abs(Σ payment)` — обязателен для sign-convention паритета: Tinkoff хранит OUTPUT/выводы отрицательным `payment_units`, а обе named baseline берут `abs()` (`_common_baseline.py:108`, `stats.py:562`). Без abs() счёт с выводами (signed Σ < 0) разошёлся бы и с ROI-базой `/broker/portfolio`, и внутренне с `drawdown_baseline`. Покрыто `test_broker_roi_base_parity_with_baseline_on_withdrawal` (OUTPUT −20000: signed 87651 vs abs-паритет 110539).
+
 ---
 
 ### S2-07 [HIGH] Лимит enrich 50 инструментов/прогон теряет сделки по инструментам 51+

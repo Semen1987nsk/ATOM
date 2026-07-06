@@ -189,3 +189,32 @@ def test_anchored_account_not_wiped_when_candidate_drops_below_min(session):
     session.refresh(acc)
     assert Decimal(str(acc.initial_balance)) == anchored_value
     assert acc.initial_balance_source == "inferred_anchor"
+
+
+def test_manual_via_sync_initial_balance_survives_autoset(session):
+    """S2-05: ручной initial_balance, установленный через sync_initial_balance
+    с source='manual', НЕ перетирается авто-якорем на следующем sync.
+    Раньше source не проставлялся → guard был мёртв → значение уничтожалось."""
+    from capital_service import sync_initial_balance
+
+    acc = _seed_acc2(session)
+    sync_initial_balance(session, acc.id, 150000, source="manual", commit=True)
+    session.refresh(acc)
+    assert acc.initial_balance_source == "manual"
+
+    autoset_inferred_anchor(session, acc.id)
+    session.refresh(acc)
+    assert Decimal(str(acc.initial_balance)) == Decimal("150000")
+    assert acc.initial_balance_source == "manual"
+
+
+def test_legacy_null_source_with_balance_treated_as_manual(session):
+    """S2-05: legacy-счёт (initial_balance>0, source=NULL) не перетирается."""
+    acc = _seed_acc2(session)
+    acc.initial_balance = Decimal("77000")
+    acc.initial_balance_source = None
+    session.commit()
+
+    autoset_inferred_anchor(session, acc.id)
+    session.refresh(acc)
+    assert Decimal(str(acc.initial_balance)) == Decimal("77000")

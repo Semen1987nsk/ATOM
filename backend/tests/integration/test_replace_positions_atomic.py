@@ -26,11 +26,10 @@ finally:
 Если этот тест зелёный без правок — атомарность гарантируется текущим
 кодом, и SYNC-09 finding закрыт по факту.
 
-Замечание про except: текущий код **проглатывает** исключение (нет `raise`).
-Поэтому тест НЕ оборачивает вызов в `pytest.raises` — мы проверяем
-исключительно state-инвариант (позиции не изменились), а не семантику
-proпагации исключения. Это отдельный finding (если нужен), здесь — only
-атомарность.
+Замечание про except: текущий код **пробрасывает** исключение (`raise` в
+except после rollback). Поэтому тест оборачивает вызов в `pytest.raises` —
+мы проверяем и семантику пропагации, и state-инвариант (позиции не
+изменились после отката).
 """
 
 from __future__ import annotations
@@ -213,9 +212,10 @@ def test_replace_positions_atomic_on_mid_insert_failure(
         return real_add(self_session, instance, *args, **kwargs)
 
     with patch.object(type(db_session_factory()), "add", failing_add):
-        # _replace_positions_from_live в текущем коде проглатывает exception
-        # (нет `raise` в except). Это ОК для теста: важен post-state.
-        pipeline._replace_positions_from_live(live_positions)
+        # _replace_positions_from_live пробрасывает exception (rollback + raise
+        # в except). Ловим его — важна и пропагация, и post-state после отката.
+        with pytest.raises(RuntimeError, match="simulated failure mid-INSERT"):
+            pipeline._replace_positions_from_live(live_positions)
 
     # Убеждаемся, что падение действительно произошло (2-й add упал).
     assert call_count["n"] == 2, (

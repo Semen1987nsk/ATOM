@@ -40,7 +40,10 @@ from adapters.security.token_encryption import (
 from adapters.tinkoff.client_factory import client_factory
 from adapters.tinkoff.operations_client import TinkoffOperationsClient
 from adapters.tinkoff.users_client import TinkoffAccountInfo, TinkoffUsersClient
-from application.sync.orchestrator import build_default_orchestrator
+from application.sync.orchestrator import (
+    SyncAlreadyRunning,
+    build_default_orchestrator,
+)
 from auth_service import get_current_user, get_user_account
 from capital_service import sync_initial_balance
 from config import settings
@@ -439,6 +442,8 @@ async def sync_now(
 
     try:
         report = await orchestrator.sync_one_account(connection_id)
+    except SyncAlreadyRunning:
+        raise HTTPException(status_code=409, detail="Синхронизация уже выполняется")
     except TokenInvalid:
         raise HTTPException(status_code=424, detail="Токен брокера невалиден или отозван")
     except RateLimitExceeded:
@@ -505,6 +510,27 @@ async def reset_connection(
     )
     if conn is None:
         raise HTTPException(status_code=404, detail="Подключение не найдено")
+
+    # S2-13: не сбрасывать при идущем sync — иначе pipeline дозапишет свой
+    # батч и закоммитит свежий курсор поверх обнулённого → полная история
+    # не перетянется, а UI покажет "success". In-flight признак — строка
+    # sync_events со status='running' и finished_at IS NULL (conn.last_sync_status
+    # хранит только success/error/partial, «running» туда не пишется).
+    running_sync = (
+        db.query(models.SyncEventORM.id)
+        .filter(
+            models.SyncEventORM.account_id == account.id,
+            models.SyncEventORM.broker_account_id == conn.broker_account_id,
+            models.SyncEventORM.status == "running",
+            models.SyncEventORM.finished_at.is_(None),
+        )
+        .first()
+    )
+    if running_sync is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Синхронизация выполняется, повторите reset позже",
+        )
 
     if not confirm_data_loss:
         raise HTTPException(

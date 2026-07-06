@@ -49,6 +49,10 @@ from utils.datetime_utils import utc_now_naive
 log = get_logger("sync.orchestrator")
 
 
+class SyncAlreadyRunning(Exception):
+    """Ручной sync запрошен, пока для этого connection уже идёт sync."""
+
+
 # ── data classes ──────────────────────────────────────────────────────
 
 
@@ -151,11 +155,26 @@ class TinkoffSyncOrchestrator:
         """
         Public API для ручного trigger'а (UI / админка). Принимает
         connection_id, сам разрешает context (расшифровка токена и т.п.).
+
+        SYNC-04: тот же bulkhead, что и плановый _guard_one — in-flight dedup
+        + семафор. Двойной клик / 50 одновременных Sync больше не запускают
+        параллельные pipeline с одного IP (IP-cooldown T-Bank).
         """
-        connection_data = await asyncio.to_thread(self._load_connection, connection_id)
-        if connection_data is None:
-            raise ValueError(f"BrokerConnection {connection_id} not found or inactive")
-        return await self._sync(connection_data)
+        if connection_id in self._in_flight:
+            raise SyncAlreadyRunning(connection_id)
+        self._in_flight.add(connection_id)
+        try:
+            async with self._semaphore:
+                connection_data = await asyncio.to_thread(
+                    self._load_connection, connection_id
+                )
+                if connection_data is None:
+                    raise ValueError(
+                        f"BrokerConnection {connection_id} not found or inactive"
+                    )
+                return await self._sync(connection_data)
+        finally:
+            self._in_flight.discard(connection_id)
 
     # ── внутренняя кухня ──────────────────────────────────────────────
 

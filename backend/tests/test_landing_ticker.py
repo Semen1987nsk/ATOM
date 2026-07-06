@@ -123,6 +123,22 @@ async def test_last_falls_back_when_null(service):
     assert by_symbol["IMOEX"]["last"] == pytest.approx(2420.56)
 
 
+@pytest.mark.asyncio
+async def test_partial_response_below_threshold_is_stale(service):
+    """S2-09: если TQBR marketdata пуст (анонимный доступ) и собрался только
+    IMOEX из индекс-блока — это НЕ успех: stale=True, tickers=[], НЕ кешируем.
+    Иначе гости лендинга видят бегущую строку из одного символа."""
+    shares_empty = {"marketdata": {"columns": ["SECID", "LAST"], "data": []}}
+    with patch.object(market_service, "_moex_get",
+                      _dispatcher(shares=shares_empty)):
+        result = await service.get_landing_ticker()
+
+    assert result["stale"] is True
+    assert result["tickers"] == []
+    # Кеш не заполнен — повторный вызов снова пойдёт в ISS.
+    assert market_service._ticker_cache.get("landing:ticker") is None
+
+
 def test_endpoint_is_public_and_returns_shape():
     """GET /api/landing/ticker — 200 без авторизации, форма {stale, tickers[]}."""
     from main import app
