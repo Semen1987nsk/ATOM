@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { ApiError } from '../apiClient';
+import { ApiError, getApiUrl } from '../apiClient';
 
 // Каждый тест ремонтирует apiClient, чтобы не делиться `refreshPromise` и
 // прочим module-state между сценариями. Иначе один тест с pending-refresh
@@ -297,5 +297,81 @@ describe('apiClient — S1-06c: detail dict (2FA) vs detail array (422 validatio
       detail: 'Некорректный запрос',
       totpRequired: undefined,
     });
+  });
+});
+
+// Блокер релиза B: getApiBase() решает, куда браузер шлёт ВСЕ запросы (request<T>,
+// refreshAccessToken, скриншоты, OAuth). В проде base зашивается на этапе
+// `npm run build`; если бы он остался 'http://localhost:8000', весь прод-фронт был
+// бы нерабочим. Целевая архитектура — same-origin: nginx проксирует /api/* →
+// backend, поэтому в развёрнутом окружении base обязан быть относительным '/api'.
+describe('getApiUrl — базовый URL по окружению (blocker B)', () => {
+  const realLocation = window.location;
+
+  // Явно задаём поля, которые реально читает getApiBase (hostname), плюс
+  // protocol/origin/href — чтобы стаб был самодостаточен, а не хрупкий
+  // {...realLocation} (jsdom кладёт члены Location на прототип, спред их не копирует).
+  function setHostname(hostname: string): void {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: {
+        hostname,
+        protocol: 'https:',
+        origin: `https://${hostname}`,
+        href: `https://${hostname}/`,
+      },
+    });
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: realLocation,
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('в проде (развёрнутый хост, base не задан) строит same-origin /api путь', () => {
+    setHostname('polistata.ru');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    expect(getApiUrl('/trades')).toBe('/api/trades');
+  });
+
+  it('same-origin работает и для другого prod-домена (домен-агностично)', () => {
+    setHostname('empirik.app');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    expect(getApiUrl('/payments/subscription')).toBe('/api/payments/subscription');
+  });
+
+  it('в dev (localhost) идёт напрямую на бэкенд :8000 — фронт и бэк на разных origin', () => {
+    setHostname('localhost');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    expect(getApiUrl('/trades')).toBe('http://localhost:8000/trades');
+  });
+
+  it('127.0.0.1 трактуется как dev, а не как прод', () => {
+    setHostname('127.0.0.1');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    expect(getApiUrl('/trades')).toBe('http://localhost:8000/trades');
+  });
+
+  it('NEXT_PUBLIC_API_URL переопределяет base в проде (напр. отдельный api-хост)', () => {
+    setHostname('polistata.ru');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://api.polistata.ru');
+    expect(getApiUrl('/trades')).toBe('https://api.polistata.ru/trades');
+  });
+
+  it('NEXT_PUBLIC_API_URL переопределяет base и на localhost (та же env-ветка)', () => {
+    setHostname('localhost');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://localhost:9000');
+    expect(getApiUrl('/trades')).toBe('http://localhost:9000/trades');
+  });
+
+  it('Codespaces маппит порт 3000→8000 (регресс не сломан)', () => {
+    setHostname('friendly-space-3000.app.github.dev');
+    vi.stubEnv('NEXT_PUBLIC_API_URL', '');
+    expect(getApiUrl('/trades')).toBe('https://friendly-space-8000.app.github.dev/trades');
   });
 });

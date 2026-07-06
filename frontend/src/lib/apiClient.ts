@@ -11,10 +11,32 @@
 import { fetchWithTimeout, TimeoutError } from './fetchWithTimeout';
 
 function getApiBase(): string {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('github.dev')) {
-    const codespaceName = window.location.hostname.split('-3000')[0];
-    return `https://${codespaceName}-8000.app.github.dev`;
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location;
+
+    // Codespaces: бэкенд живёт на соседнем порту 8000.
+    if (hostname.includes('github.dev')) {
+      const codespaceName = hostname.split('-3000')[0];
+      return `https://${codespaceName}-8000.app.github.dev`;
+    }
+
+    // Локальная разработка: фронт на :3000/:3001, бэкенд на :8000 — другой
+    // origin, поэтому нужен абсолютный URL.
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    }
+
+    // Прод / любой развёрнутый хост: same-origin. nginx проксирует /api/* на
+    // backend (см. nginx/conf.d), поэтому относительный '/api' уходит на origin
+    // страницы по её же схеме (https) — домен-агностично (переживает ребренд),
+    // без коллизий с фронт-роутами (/blog), с автоматической отправкой
+    // httpOnly-cookie. NEXT_PUBLIC_API_URL остаётся override (напр. api.*-хост).
+    return process.env.NEXT_PUBLIC_API_URL || '/api';
   }
+
+  // SSR / сборка (нет window): явный env, иначе localhost как последний резерв.
+  // Намеренно совпадает с dev-веткой выше — не «дедуплицировать» слиянием с
+  // прод-веткой: ветки различны по смыслу (dev/SSR-origin vs same-origin /api).
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 }
 
