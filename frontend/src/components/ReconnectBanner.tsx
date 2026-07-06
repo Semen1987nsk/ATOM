@@ -41,6 +41,8 @@ export function ReconnectBanner({ onOpenBrokerModal }: Props) {
       const list = connections || [];
       // Ищем первое broken-соединение
       const broken = list.find(c => {
+        // Намеренное отключение брокера самим юзером — не ошибка, баннер не нужен.
+        if (c.last_sync_error?.startsWith('deactivated: user_request')) return false;
         if (!c.is_active) return true;
         if ((c.consecutive_failures ?? 0) >= 3) return true;
         if (c.circuit_open_until && new Date(c.circuit_open_until) > new Date()) return true;
