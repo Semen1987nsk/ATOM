@@ -225,6 +225,19 @@ replicas × workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW) < max_connections
 
 ---
 
+## 3b. Singleton-воркер (scheduler + stream consumers) (S2-12)
+
+### Singleton-воркер (scheduler + stream consumers)
+Фоновые синглтоны крутятся ТОЛЬКО на сервисе `backend-scheduler`
+(IS_SCHEDULER_WORKER=true, --workers 1). API-реплики (`backend`) — false.
+Формула: ровно один процесс во всём деплое с true. Проверка после деплоя:
+`docker compose -f docker-compose.prod.yml config | grep -A2 IS_SCHEDULER_WORKER`.
+Кросс-процессную сериализацию sync одного аккаунта обеспечивает
+in-flight guard оркестратора (S2-04) в пределах процесса; для полной
+кросс-процессной защиты — pg_try_advisory_lock(account_id) (backlog).
+
+---
+
 <a id="token-leak"></a>
 ## 4. Security incident: token leak
 
