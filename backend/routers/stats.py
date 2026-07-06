@@ -413,14 +413,24 @@ async def get_stats(
         _dep_types2 = tuple(_op_types_in2(_CFC2.NET_DEPOSIT))
         net_dep_ops = 0.0
         if _dep_types2:
-            _r = db.query(
+            _q = db.query(
                 func.coalesce(func.sum(models.OperationORM.payment_units), 0),
                 func.coalesce(func.sum(models.OperationORM.payment_nano), 0),
             ).filter(
                 models.OperationORM.account_id == account_id,
                 models.OperationORM.operation_type.in_(_dep_types2),
                 models.OperationORM.state == "executed",
-            ).one()
+            )
+            # CR-1: числитель total_pnl period-scoped → знаменатель ROI тоже.
+            # Триггер — date_filter is not None (явный период today/week/…/custom),
+            # НЕ period_start_date (тот выставляется ВСЕГДА, для all = дата первой
+            # сделки). При явном окне учитываем только капитал, задеплоенный ДО
+            # старта окна: депозиты после начала периода = заводы посреди окна,
+            # инъекция которых иначе занижает ROI короткого периода. Для period=all
+            # (date_filter None) фильтра нет — полная Σ (deployed capital).
+            if date_filter is not None:
+                _q = _q.filter(models.OperationORM.executed_at <= date_filter)
+            _r = _q.one()
             net_dep_ops = float(_r[0] or 0) + float(_r[1] or 0) / 1e9
         public_period_start_balance = account_initial_balance + net_dep_ops
     else:
