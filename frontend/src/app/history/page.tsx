@@ -332,7 +332,7 @@ export default function HistoryPage() {
       // Скрываем результат через 5 секунд
       setTimeout(() => setMaeCalculationResult(null), 5000);
     } catch (error) {
-      console.error('Error calculating MAE/MFE:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось рассчитать MAE/MFE');
     } finally {
       setIsCalculatingMAE(false);
     }
