@@ -231,9 +231,14 @@ async function request<T>(
     // см. POST /auth/login при 2FA-required), а не строкой. Разворачиваем
     // message для отображения, totp_required — отдельным полем ApiError.
     const rawDetail = errorData.detail;
-    const isDetailObject = rawDetail !== null && typeof rawDetail === 'object' && !Array.isArray(rawDetail);
-    const detailMessage = isDetailObject ? rawDetail.message : rawDetail;
-    const totpRequired = isDetailObject ? rawDetail.totp_required === true : undefined;
+    // FastAPI 422 кладёт detail массивом [{loc,msg,type}] — иначе toUserMessage
+    // интерполирует его как "[object Object]" (S3-20).
+    const detailMessageRaw = Array.isArray(rawDetail)
+      ? rawDetail.map((d: { msg?: string }) => d?.msg ?? String(d)).join('; ')
+      : rawDetail;
+    const isDetailObject = detailMessageRaw !== null && typeof detailMessageRaw === 'object';
+    const detailMessage = isDetailObject ? detailMessageRaw.message : detailMessageRaw;
+    const totpRequired = isDetailObject ? detailMessageRaw.totp_required === true : undefined;
 
     const detail = detailMessage
       || (response.status === 401

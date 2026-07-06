@@ -263,7 +263,9 @@ describe('apiClient — S1-06c: detail dict (2FA) vs detail array (422 validatio
     expect(caught).toBeDefined();
     expect(caught?.status).toBe(422);
     expect(caught?.detail).not.toBe('HTTP 422');
-    expect(caught?.detail).toEqual(validationErrors);
+    // S3-20: массив pydantic-ошибок нормализуется в строку msg-ов (join '; '),
+    // а не пробрасывается сырым массивом (→ "[object Object]" при интерполяции).
+    expect(caught?.detail).toBe('field required');
     expect(caught?.totpRequired).toBeUndefined();
   });
 
