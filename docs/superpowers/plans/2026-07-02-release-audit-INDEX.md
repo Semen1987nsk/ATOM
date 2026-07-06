@@ -101,56 +101,56 @@
 
 | ✔ | ID | Severity | Файл | Проблема |
 |---|----|----------|------|----------|
-| [ ] | S2-01 | HIGH | `backend/routers/stats.py:264` | Синхронные DB-запросы и CPU-аналитика в async def блокируют event loop — p9 |
-| [ ] | S2-02 | HIGH | `backend/database.py:63` | Пул соединений 8×(5+10)=120 превышает дефолтный max_connections=100 Postgre |
-| [ ] | S2-03 | HIGH | `backend/main.py:149` | Singleton-гард IS_SCHEDULER_WORKER нереализуем в прод-топологии: stream con |
-| [ ] | S2-04 | HIGH | `backend/application/sync/orchestrator.py:150` | Ручной sync обходит semaphore и per-connection guard оркестратора — 50 одно |
-| [ ] | S2-05 | HIGH | `backend/services/opening_anchor_service.py:118` | source='manual' никогда не выставляется — авто-якорь перетирает ручной init |
-| [ ] | S2-06 | HIGH | `backend/routers/stats.py:399` | Двойной счёт якоря в ROI-базе /stats/ — total_roi занижен ~вдвое на anchore |
-| [ ] | S2-07 | HIGH | `backend/application/sync/pipeline.py:563` | Лимит enrich 50 инструментов/прогон: первый sync активного трейдера молча т |
-| [ ] | S2-08 | HIGH | `backend/application/sync/pipeline.py:689` | Generic except в per-uid FIFO глотает ЛЮБУЮ ошибку — курсор коммитится, syn |
-| [ ] | S2-09 | HIGH | `backend/market_service.py:306` | Лендинг-тикер живьём отдаёт 1 инструмент из 10 и кеширует это как stale=fal |
-| [ ] | S2-10 | MED | `backend/routers/trades.py:587` | GET /trades/positions грузит ВСЕ сделки аккаунта в память на каждый запрос, |
-| [ ] | S2-11 | MED | `backend/domain/pnl/opening_anchor.py:76` | G2-телескоп молча отключён для счетов без фьючерсов — якорь может поглотить |
-| [ ] | S2-12 | MED | `backend/Dockerfile:91` | Мульти-воркер прод: IS_SCHEDULER_WORKER не задан ни в одном деплой-конфиге, |
-| [ ] | S2-13 | MED | `backend/routers/broker.py:506` | Reset во время идущего sync: без account-lock БД остаётся полустёртой с про |
-| [ ] | S2-14 | MED | `backend/application/sync/pipeline.py:489` | Stale-cursor детект срабатывает только если stale-батч уместился в одну стр |
-| [ ] | S2-15 | LOW | `backend/auth_service.py:586` | get_current_user_optional не проверяет revocation, staleness и is_active |
-| [ ] | S2-16 | LOW | `backend/sync_scheduler.py:219` | Orchestrator, TokenRepository и Redis-клиент IpCooldownGate пересоздаются к |
-| [ ] | S2-17 | LOW | `backend/application/sync/pipeline.py:1335` | _replace_positions_from_live глотает ошибку вставки: sync репортит success  |
+| [x] | S2-01 | HIGH | `backend/routers/stats.py:264` | Синхронные DB-запросы и CPU-аналитика в async def блокируют event loop — p9 |
+| [x] | S2-02 | HIGH | `backend/database.py:63` | Пул соединений 8×(5+10)=120 превышает дефолтный max_connections=100 Postgre |
+| [x] | S2-03 | HIGH | `backend/main.py:149` | Singleton-гард IS_SCHEDULER_WORKER нереализуем в прод-топологии: stream con |
+| [x] | S2-04 | HIGH | `backend/application/sync/orchestrator.py:150` | Ручной sync обходит semaphore и per-connection guard оркестратора — 50 одно |
+| [x] | S2-05 | HIGH | `backend/services/opening_anchor_service.py:118` | source='manual' никогда не выставляется — авто-якорь перетирает ручной init |
+| [x] | S2-06 | HIGH | `backend/routers/stats.py:399` | Двойной счёт якоря в ROI-базе /stats/ — total_roi занижен ~вдвое на anchore |
+| [x] | S2-07 | HIGH | `backend/application/sync/pipeline.py:563` | Лимит enrich 50 инструментов/прогон: первый sync активного трейдера молча т |
+| [x] | S2-08 | HIGH | `backend/application/sync/pipeline.py:689` | Generic except в per-uid FIFO глотает ЛЮБУЮ ошибку — курсор коммитится, syn |
+| [x] | S2-09 | HIGH | `backend/market_service.py:306` | Лендинг-тикер живьём отдаёт 1 инструмент из 10 и кеширует это как stale=fal |
+| [x] | S2-10 | MED | `backend/routers/trades.py:587` | GET /trades/positions грузит ВСЕ сделки аккаунта в память на каждый запрос, |
+| [x] | S2-11 | MED | `backend/domain/pnl/opening_anchor.py:76` | G2-телескоп молча отключён для счетов без фьючерсов — якорь может поглотить |
+| [x] | S2-12 | MED | `backend/Dockerfile:91` | Мульти-воркер прод: IS_SCHEDULER_WORKER не задан ни в одном деплой-конфиге, |
+| [x] | S2-13 | MED | `backend/routers/broker.py:506` | Reset во время идущего sync: без account-lock БД остаётся полустёртой с про |
+| [x] | S2-14 | MED | `backend/application/sync/pipeline.py:489` | Stale-cursor детект срабатывает только если stale-батч уместился в одну стр |
+| [x] | S2-15 | LOW | `backend/auth_service.py:586` | get_current_user_optional не проверяет revocation, staleness и is_active |
+| [x] | S2-16 | LOW | `backend/sync_scheduler.py:219` | Orchestrator, TokenRepository и Redis-клиент IpCooldownGate пересоздаются к |
+| [x] | S2-17 | LOW | `backend/application/sync/pipeline.py:1335` | _replace_positions_from_live глотает ошибку вставки: sync репортит success  |
 
 ### Спринт 3 — UX-надёжность (кнопки/ошибки) + корректность индикаторов
 
 | ✔ | ID | Severity | Файл | Проблема |
 |---|----|----------|------|----------|
-| [ ] | S3-01 | HIGH | `backend/routers/stats.py:1580` | 500 на /stats/mae-mfe-analysis: сравнение None >= 1.5 когда в группе нет уб |
-| [ ] | S3-02 | HIGH | `backend/analytics/advanced.py:115` | Sterling Ratio: перевёрнутый знак 10%-буфера — завышение в 5-10 раз либо ве |
-| [ ] | S3-03 | HIGH | `backend/services/stats_filtering.py:93` | Ulcer Index, dd_episodes (→Sterling) и K-Ratio считаются на кривой кумуляти |
-| [ ] | S3-04 | HIGH | `frontend/src/components/ReconnectBanner.tsx:44` | После осознанного отключения брокера юзер навсегда получает ложный красный  |
-| [ ] | S3-05 | HIGH | `frontend/src/app/history/page.tsx:194` | Ошибка закрытия сделки проглатывается: модалка закрылась, юзер уверен что п |
-| [ ] | S3-06 | HIGH | `frontend/src/app/history/page.tsx:209` | Удаление sync-сделки: backend возвращает 409, фронт молчит — кнопка выгляди |
-| [ ] | S3-07 | HIGH | `frontend/src/app/history/page.tsx:214` | «Удалить все» обрывается на первой sync-сделке: часть журнала удалена, оста |
-| [ ] | S3-08 | HIGH | `frontend/src/components/PnLHealthBadge.tsx:244` | PnLHealthBadge маскирует бэкенд-статус 'investigate' (worst-of RED) зелёным |
-| [ ] | S3-09 | HIGH | `frontend/src/app/DashboardHome.tsx:228` | Вкладки «Продвинутая» и «Сравнение» игнорируют FilterPanel (период/тег/точк |
-| [ ] | S3-10 | MED | `frontend/src/app/history/_components/TradeRow.tsx:65` | Naive-UTC даты сериализуются без таймзоны — фронт парсит их как локальное в |
-| [ ] | S3-11 | MED | `backend/routers/stats_advanced.py:225` | Benchmark: profit_factor и r_expectancy читаются из словарей, где этих ключ |
-| [ ] | S3-12 | MED | `backend/analytics/advanced.py:344` | Часовая heatmap, time_patterns и календарный P&L считаются в UTC без конвер |
-| [ ] | S3-13 | MED | `backend/routers/stats_advanced.py:228` | Benchmark сравнивает per-trade Sortino и полный sqrt(N)-SQN юзера с baselin |
-| [ ] | S3-14 | MED | `backend/analytics/_common_baseline.py:108` | abs() на нетто-депозитах: ROI/drawdown-база ломается для счетов с чистым вы |
-| [ ] | S3-15 | MED | `frontend/src/components/SyncStatusIndicator.tsx:146` | SyncStatusIndicator.triggerSync: ошибка sync молча уходит в console, а spin |
-| [ ] | S3-16 | MED | `frontend/src/components/AddTradeModal.tsx:92` | Сбой загрузки скриншота после создания сделки: сделка создана, но модалка с |
-| [ ] | S3-17 | MED | `frontend/src/components/AddTradeModal.tsx:199` | Формы сделки принимают отрицательные цену/объём/плечо и будущую дату — back |
-| [ ] | S3-18 | MED | `frontend/src/components/CommandPalette.tsx:82` | CommandPalette: дублированный id пункта и 4 пункта-заглушки, ведущие на даш |
-| [ ] | S3-19 | MED | `frontend/src/components/SetupManagerModal.tsx:77` | SetupManagerModal: все мутации молча глотают ошибки и нет защиты от double- |
-| [ ] | S3-20 | MED | `frontend/src/lib/apiClient.ts:203` | 422-ошибка валидации показывается юзеру как «[object Object]» |
-| [ ] | S3-21 | MED | `frontend/src/components/PositionJournalView.tsx:855` | Ошибка второстепенного действия затирает основную таблицу (журнал / открыты |
-| [ ] | S3-22 | MED | `frontend/src/components/dashboard/EquityCurveCard.tsx:86` | IMOEX-оверлей нормируется на PnL первой сделки: отрицательное значение инве |
-| [ ] | S3-23 | MED | `frontend/src/app/review/page.tsx:87` | Сохранение Daily Review без обработки ошибок — молчаливая потеря написанног |
-| [ ] | S3-24 | LOW | `backend/routers/stats_tags.py:52` | /tags/ считает P&L по тегам GROSS (t.pnl), нарушая MATH-01 — цифры расходят |
-| [ ] | S3-25 | LOW | `backend/analytics/aggregator.py:61` | analytics.calculate_stats (aggregator.py) падает NameError на любом непусто |
-| [ ] | S3-26 | LOW | `backend/crypto_utils.py:80` | Unused legacy crypto_utils path deriving key from SECRET_KEY |
-| [ ] | S3-27 | LOW | `backend/services/reconciliation_service.py:323` | Reconciliation: выводы средств не учитываются в net_cash_flow (тип 'out' вм |
-| [ ] | S3-28 | LOW | `frontend/src/app/history/page.tsx:322` | Расчёт MAE/MFE молча глотает ошибку — кнопка крутится и «ничего не произошл |
+| [x] | S3-01 | HIGH | `backend/routers/stats.py:1580` | 500 на /stats/mae-mfe-analysis: сравнение None >= 1.5 когда в группе нет уб |
+| [x] | S3-02 | HIGH | `backend/analytics/advanced.py:115` | Sterling Ratio: перевёрнутый знак 10%-буфера — завышение в 5-10 раз либо ве |
+| [x] | S3-03 | HIGH | `backend/services/stats_filtering.py:93` | Ulcer Index, dd_episodes (→Sterling) и K-Ratio считаются на кривой кумуляти |
+| [x] | S3-04 | HIGH | `frontend/src/components/ReconnectBanner.tsx:44` | После осознанного отключения брокера юзер навсегда получает ложный красный  |
+| [x] | S3-05 | HIGH | `frontend/src/app/history/page.tsx:194` | Ошибка закрытия сделки проглатывается: модалка закрылась, юзер уверен что п |
+| [x] | S3-06 | HIGH | `frontend/src/app/history/page.tsx:209` | Удаление sync-сделки: backend возвращает 409, фронт молчит — кнопка выгляди |
+| [x] | S3-07 | HIGH | `frontend/src/app/history/page.tsx:214` | «Удалить все» обрывается на первой sync-сделке: часть журнала удалена, оста |
+| [x] | S3-08 | HIGH | `frontend/src/components/PnLHealthBadge.tsx:244` | PnLHealthBadge маскирует бэкенд-статус 'investigate' (worst-of RED) зелёным |
+| [x] | S3-09 | HIGH | `frontend/src/app/DashboardHome.tsx:228` | Вкладки «Продвинутая» и «Сравнение» игнорируют FilterPanel (период/тег/точк |
+| [x] | S3-10 | MED | `frontend/src/app/history/_components/TradeRow.tsx:65` | Naive-UTC даты сериализуются без таймзоны — фронт парсит их как локальное в |
+| [x] | S3-11 | MED | `backend/routers/stats_advanced.py:225` | Benchmark: profit_factor и r_expectancy читаются из словарей, где этих ключ |
+| [x] | S3-12 | MED | `backend/analytics/advanced.py:344` | Часовая heatmap, time_patterns и календарный P&L считаются в UTC без конвер |
+| [x] | S3-13 | MED | `backend/routers/stats_advanced.py:228` | Benchmark сравнивает per-trade Sortino и полный sqrt(N)-SQN юзера с baselin |
+| [x] | S3-14 | MED | `backend/analytics/_common_baseline.py:108` | abs() на нетто-депозитах: ROI/drawdown-база ломается для счетов с чистым вы |
+| [x] | S3-15 | MED | `frontend/src/components/SyncStatusIndicator.tsx:146` | SyncStatusIndicator.triggerSync: ошибка sync молча уходит в console, а spin |
+| [x] | S3-16 | MED | `frontend/src/components/AddTradeModal.tsx:92` | Сбой загрузки скриншота после создания сделки: сделка создана, но модалка с |
+| [x] | S3-17 | MED | `frontend/src/components/AddTradeModal.tsx:199` | Формы сделки принимают отрицательные цену/объём/плечо и будущую дату — back |
+| [x] | S3-18 | MED | `frontend/src/components/CommandPalette.tsx:82` | CommandPalette: дублированный id пункта и 4 пункта-заглушки, ведущие на даш |
+| [x] | S3-19 | MED | `frontend/src/components/SetupManagerModal.tsx:77` | SetupManagerModal: все мутации молча глотают ошибки и нет защиты от double- |
+| [x] | S3-20 | MED | `frontend/src/lib/apiClient.ts:203` | 422-ошибка валидации показывается юзеру как «[object Object]» |
+| [x] | S3-21 | MED | `frontend/src/components/PositionJournalView.tsx:855` | Ошибка второстепенного действия затирает основную таблицу (журнал / открыты |
+| [x] | S3-22 | MED | `frontend/src/components/dashboard/EquityCurveCard.tsx:86` | IMOEX-оверлей нормируется на PnL первой сделки: отрицательное значение инве |
+| [x] | S3-23 | MED | `frontend/src/app/review/page.tsx:87` | Сохранение Daily Review без обработки ошибок — молчаливая потеря написанног |
+| [x] | S3-24 | LOW | `backend/routers/stats_tags.py:52` | /tags/ считает P&L по тегам GROSS (t.pnl), нарушая MATH-01 — цифры расходят |
+| [x] | S3-25 | LOW | `backend/analytics/aggregator.py:61` | analytics.calculate_stats (aggregator.py) падает NameError на любом непусто |
+| [x] | S3-26 | LOW | `backend/crypto_utils.py:80` | Unused legacy crypto_utils path deriving key from SECRET_KEY |
+| [x] | S3-27 | LOW | `backend/services/reconciliation_service.py:323` | Reconciliation: выводы средств не учитываются в net_cash_flow (тип 'out' вм |
+| [x] | S3-28 | LOW | `frontend/src/app/history/page.tsx:322` | Расчёт MAE/MFE молча глотает ошибку — кнопка крутится и «ничего не произошл |
 
 ### Спринт 4 — Релизная гигиена (CI/миграции/PII/полировка)
 
