@@ -209,7 +209,7 @@ export default function HistoryPage() {
       await api.delete(`/trades/${tradeId}`);
       fetchTrades();
     } catch (error) {
-      console.error('Delete failed:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось удалить сделку');
     }
   };
 

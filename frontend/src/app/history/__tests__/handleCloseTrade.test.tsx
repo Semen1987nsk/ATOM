@@ -13,6 +13,15 @@ async function handleClose(patch: () => Promise<unknown>, refetch: () => void) {
   }
 }
 
+async function handleDelete(del: () => Promise<unknown>, refetch: () => void) {
+  try {
+    await del();
+    refetch();
+  } catch (error) {
+    toastError(error instanceof ApiError ? error.toUserMessage() : 'Не удалось удалить сделку');
+  }
+}
+
 describe('handleClose error surfacing', () => {
   beforeEach(() => toastError.mockClear());
 
@@ -28,5 +37,15 @@ describe('handleClose error surfacing', () => {
     await handleClose(() => Promise.resolve(), refetch);
     expect(refetch).toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('409 detail от sync-сделки уходит в toast', async () => {
+    const refetch = vi.fn();
+    await handleDelete(
+      () => Promise.reject(new ApiError(409, 'Синхронизированную сделку нельзя удалить.')),
+      refetch,
+    );
+    expect(toastError).toHaveBeenCalledWith('Синхронизированную сделку нельзя удалить.');
+    expect(refetch).not.toHaveBeenCalled();
   });
 });

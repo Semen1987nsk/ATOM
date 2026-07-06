@@ -355,7 +355,9 @@ export function TradeRow({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(trade.id); }}
-              className="text-red-500/50 hover:text-red-500 p-1"
+              disabled={trade.data_source === 'tinkoff_v2'}
+              title={trade.data_source === 'tinkoff_v2' ? 'Синхронизированную сделку нельзя удалить' : 'Удалить'}
+              className="text-red-500/50 hover:text-red-500 p-1 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-red-500/50"
             >
               <Trash2 size={14} />
             </button>
