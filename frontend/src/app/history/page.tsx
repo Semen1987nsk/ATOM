@@ -10,6 +10,7 @@ import { AppShell } from '@/components/AppShell';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
 import { PositionJournalView } from '@/components/PositionJournalView';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useToast } from '@/contexts/ToastContext';
 import { api, ApiError } from '@/lib/apiClient';
 import {
   Trade,
@@ -30,6 +31,7 @@ import { TradesTable } from './_components/TradesTable';
 
 export default function HistoryPage() {
   const { settings, updateSettings } = useSettings();
+  const toast = useToast();
   const [trades, setTrades] = useState<Trade[]>([]);
   // API-02: полное число сделок на счёте из X-Total-Count — бэкенд режет
   // выдачу limit'ом (500 по умолчанию), и без заголовка усечение невидимо.
@@ -192,7 +194,7 @@ export default function HistoryPage() {
       });
       fetchTrades();
     } catch (error) {
-      console.error('Failed to close trade:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось закрыть сделку');
     }
   };
 
