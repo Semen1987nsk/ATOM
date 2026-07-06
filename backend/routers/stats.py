@@ -1387,7 +1387,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
 
     # Реальные показатели
     real_rr = analysis.get("real_rr", 0)
-    profit_factor = analysis.get("profit_factor", 0)
+    profit_factor = analysis.get("profit_factor") or 0
     required_wr = analysis.get("required_winrate", 100)
     avg_win = analysis.get("avg_win", 0)
     avg_loss = analysis.get("avg_loss", 0)
