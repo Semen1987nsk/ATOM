@@ -1344,11 +1344,16 @@ class SyncPipeline:
                 inserted,
             )
         except Exception:
+            # S2-17: сбой вставки live-позиций (кривой quantity/валюта) — не
+            # осознанный degrade (тот только для BrokerError на fetch выше).
+            # Стадия идёт ДО _stage_commit_cursor → проброс сохраняет SYNC-08:
+            # курсор не двинется, sync репортит error, а не молчаливый success.
             log.exception("live_positions replace failed")
             try:
                 session.rollback()
             except Exception:
                 pass
+            raise
         finally:
             session.close()
 
