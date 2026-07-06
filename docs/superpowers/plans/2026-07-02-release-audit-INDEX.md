@@ -64,6 +64,10 @@
 
 **Финальный релиз-гейт:** полный `pytest` + `alembic upgrade head` на чистой Postgres 16 + `alembic check` + `vitest`+`tsc` + e2e + ручной сквозной проход register→verify→login→onboarding→broker→sync→edit→close→delete→logout.
 
+**Внесистемные блокеры релиза** (найдены на whole-branch review Спринта 1, вне таблиц S1–S4):
+- [x] **Task B — NEXT_PUBLIC_API_URL / прод-API-base** — ЗАКРЫТ 2026-07-06, commit `ef11ea5`. Был CRITICAL: прод-фронт запекал `http://localhost:8000` → полностью нерабочий. Фикс: same-origin `/api` base + nginx `/api/auth/` (строгий лимит) + `= /api/landing/ticker` → frontend. vitest 96/96, tsc чисто, 2 ревьюера 0 блокеров. Детали — в ledger `.superpowers/sdd/release-audit-progress.md`.
+- [ ] **Task A — admin_reset_broker data-loss** — Minor (admin-only + audit + double-confirm), тикет-бэклог, не блокер релиза.
+
 ---
 
 ## РЕЕСТР НАХОДОК (чекбоксы = прогресс)
