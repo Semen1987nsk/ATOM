@@ -197,3 +197,50 @@ def test_positions_pagination_skip_beyond_returns_empty(client_with_db):
     resp = client.get("/trades/positions?limit=10&skip=100", headers=h)
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def _seed_3_positions(db, account_id: int):
+    """3 закрытых round-trip'а с разными position_id + instrument_uid."""
+    base = datetime(2026, 5, 1, 10, 0)
+    for i in range(3):
+        entry = base + timedelta(hours=i)
+        db.add(
+            Trade(
+                account_id=account_id,
+                symbol=f"S3{i}",
+                direction=TradeDirection.LONG,
+                entry_price=Decimal("100"),
+                exit_price=Decimal("110"),
+                quantity=Decimal("10"),
+                entry_at=entry,
+                exit_at=entry + timedelta(hours=1),
+                currency="RUB",
+                data_source="tinkoff_v2",
+                instrument_uid=f"uid-s3-{i}",
+                position_id=3000 + i,
+                commission=Decimal("0"),
+                pnl=Decimal("100"),
+                net_pnl=Decimal("100"),
+            )
+        )
+    db.commit()
+
+
+def test_positions_pagination_returns_page_of_groups(client_with_db):
+    """S2-10: /trades/positions?limit=2 возвращает ровно 2 position-группы
+    (страница ключей в SQL), а не все. Регресс-гард на пагинацию по
+    (instrument_uid, position_id)."""
+    db = client_with_db["db"]
+    client = client_with_db["client"]
+    _, acc, token = _setup_user(db)
+    _seed_3_positions(db, acc.id)
+    h = {"Authorization": f"Bearer {token}"}
+
+    resp = client.get("/trades/positions?status=all&skip=0&limit=2", headers=h)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 2
+
+    resp2 = client.get("/trades/positions?status=all&skip=2&limit=2", headers=h)
+    assert resp2.status_code == 200, resp2.text
+    assert len(resp2.json()) == 1
