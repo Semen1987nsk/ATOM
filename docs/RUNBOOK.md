@@ -198,6 +198,33 @@ Email-алерт если падает.
 
 ---
 
+## 3a. Connection pool vs postgres max_connections (S2-02)
+
+**Инвариант:**
+
+```
+replicas × workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW) < max_connections
+```
+
+**Текущая топология:** `replicas(2) × workers(4) = 8` процессов backend.
+Каждый процесс держит собственный SQLAlchemy-пул `DB_POOL_SIZE + DB_MAX_OVERFLOW`
+соединений под пиком. Если сумма ≥ `max_connections`, postgres отвечает
+`FATAL: sorry, too many clients already` — падают и запросы, и healthcheck
+`/ready` (SELECT 1).
+
+**Защита (defense-in-depth, два независимых слоя):**
+
+1. `docker-compose.prod.yml` — `command: postgres -c max_connections=200`
+   (postgres:16-alpine иначе стартует с default `max_connections=100`).
+2. `.env.production.example` — `DB_POOL_SIZE=5`, `DB_MAX_OVERFLOW=5` →
+   `8 × (5 + 5) = 80 < 100`; запас держится даже без слоя (1).
+
+**При изменении replicas / --workers / пула — пересчитать неравенство.**
+Долгосрочно (при росте числа процессов) — вынести пул в pgbouncer
+(transaction pooling), тогда backend-процессы делят общий набор бэкенд-соединений.
+
+---
+
 <a id="token-leak"></a>
 ## 4. Security incident: token leak
 
