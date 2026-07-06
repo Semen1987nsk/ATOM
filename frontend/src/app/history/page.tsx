@@ -216,15 +216,26 @@ export default function HistoryPage() {
   const handleDeleteAllTrades = async () => {
     setIsDeleting(true);
     try {
-      // Удаляем все сделки по одной
-      for (const trade of trades) {
-        await api.delete(`/trades/${trade.id}`);
+      // Синхронизированные сделки удалить нельзя (backend 409) — пропускаем их,
+      // ручные удаляем по одной, не прерываясь на ошибках отдельного элемента.
+      const manual = trades.filter(t => t.data_source !== 'tinkoff_v2');
+      const skipped = trades.length - manual.length;
+      let deleted = 0;
+      for (const trade of manual) {
+        try {
+          await api.delete(`/trades/${trade.id}`);
+          deleted += 1;
+        } catch (error) {
+          console.error(`Delete failed for ${trade.id}:`, error);
+        }
       }
       setShowDeleteConfirm(false);
       fetchTrades();
-    } catch (error) {
-      console.error('Delete all failed:', error);
-      alert('Ошибка при удалении сделок');
+      toast.success(
+        skipped > 0
+          ? `Удалено ${deleted}, пропущено ${skipped} синхронизированных`
+          : `Удалено ${deleted}`,
+      );
     } finally {
       setIsDeleting(false);
     }
