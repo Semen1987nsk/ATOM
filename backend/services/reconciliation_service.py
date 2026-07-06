@@ -30,10 +30,16 @@ from sqlalchemy.orm import Session
 import models
 from domain.entities import BrokerReportSummary, BrokerReportTradeRow
 from domain.enums import OperationType
+from domain.pnl.cash_flow_classification import (
+    CashFlowCategory as _CFC,
+    operation_types_in as _op_types_in,
+)
 from logger import get_logger
 from utils.datetime_utils import utc_now_naive
 
 log = get_logger("reconciliation")
+
+_NET_DEPOSIT_TYPES = _op_types_in(_CFC.NET_DEPOSIT)
 
 
 # Tolerance константы (Phase 3 plan).
@@ -318,10 +324,13 @@ def compute_our_aggregates(
             dividends_gross += payment  # положительный знак для income
         elif op_type in {"benefit_tax", "tax", "ndfl"}:
             ndfl_withheld += abs(payment)
-        elif op_type in {"input", "pay_in", "deposit"}:
-            deposits += payment
-        elif op_type in {"out", "pay_out", "withdrawal"}:
-            withdrawals += abs(payment)
+        elif op_type in _NET_DEPOSIT_TYPES:
+            # Единый классификатор: INPUT/OUTPUT/*_swift/*_acquiring/*_multi.
+            # Знак payment различает ввод (>0) и вывод (<0) (S3-27).
+            if payment >= 0:
+                deposits += payment
+            else:
+                withdrawals += abs(payment)
 
     # 7. Net cash flow = deposits - withdrawals
     net_cash_flow = deposits - withdrawals

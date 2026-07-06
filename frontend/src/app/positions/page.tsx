@@ -15,7 +15,8 @@ import { useEffect, useState, useCallback, Fragment } from 'react';
 import Link from 'next/link';
 import { RefreshCw, Briefcase, TrendingUp, TrendingDown, Plug, ChevronDown, ChevronRight } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
+import { useToast } from '@/contexts/ToastContext';
 import {
   joinPositionsTrades,
   type EnrichedPosition,
@@ -115,6 +116,7 @@ const displayTicker = (p: PositionResponse): string => {
 };
 
 export default function PositionsPage() {
+  const toast = useToast();
   const [enriched, setEnriched] = useState<EnrichedPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -164,12 +166,12 @@ export default function PositionsPage() {
       await api.post(`/broker/connections/${activeConnectionId}/sync`, {});
       await fetchPositions();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Ошибка синхронизации';
-      setError(msg);
+      // Ошибка вторичного действия — через тост, чтобы не затирать таблицу (S3-21).
+      toast.error(err instanceof ApiError ? err.toUserMessage() : 'Ошибка синхронизации');
     } finally {
       setSyncing(false);
     }
-  }, [activeConnectionId, fetchPositions]);
+  }, [activeConnectionId, fetchPositions, toast]);
 
   // Сортировка локально на клиенте, ~7 позиций — это бесплатно.
   const sorted = [...enriched].sort((a, b) => {
@@ -430,8 +432,8 @@ export default function PositionsPage() {
                                   const full = await api.get<EditableTrade>(`/trades/${executionId}`);
                                   setEditingTrade(full);
                                 } catch (err: unknown) {
-                                  const msg = err instanceof Error ? err.message : 'Не удалось загрузить сделку';
-                                  setError(msg);
+                                  // Вторичное действие — тост, таблица остаётся (S3-21).
+                                  toast.error(err instanceof ApiError ? err.toUserMessage() : 'Не удалось загрузить сделку');
                                 }
                               }}
                             />

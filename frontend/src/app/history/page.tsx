@@ -10,6 +10,7 @@ import { AppShell } from '@/components/AppShell';
 import { TradeHistorySkeleton } from '@/components/Skeleton';
 import { PositionJournalView } from '@/components/PositionJournalView';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useToast } from '@/contexts/ToastContext';
 import { api, ApiError } from '@/lib/apiClient';
 import {
   Trade,
@@ -30,6 +31,7 @@ import { TradesTable } from './_components/TradesTable';
 
 export default function HistoryPage() {
   const { settings, updateSettings } = useSettings();
+  const toast = useToast();
   const [trades, setTrades] = useState<Trade[]>([]);
   // API-02: полное число сделок на счёте из X-Total-Count — бэкенд режет
   // выдачу limit'ом (500 по умолчанию), и без заголовка усечение невидимо.
@@ -192,7 +194,7 @@ export default function HistoryPage() {
       });
       fetchTrades();
     } catch (error) {
-      console.error('Failed to close trade:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось закрыть сделку');
     }
   };
 
@@ -207,22 +209,33 @@ export default function HistoryPage() {
       await api.delete(`/trades/${tradeId}`);
       fetchTrades();
     } catch (error) {
-      console.error('Delete failed:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось удалить сделку');
     }
   };
 
   const handleDeleteAllTrades = async () => {
     setIsDeleting(true);
     try {
-      // Удаляем все сделки по одной
-      for (const trade of trades) {
-        await api.delete(`/trades/${trade.id}`);
+      // Синхронизированные сделки удалить нельзя (backend 409) — пропускаем их,
+      // ручные удаляем по одной, не прерываясь на ошибках отдельного элемента.
+      const manual = trades.filter(t => t.data_source !== 'tinkoff_v2');
+      const skipped = trades.length - manual.length;
+      let deleted = 0;
+      for (const trade of manual) {
+        try {
+          await api.delete(`/trades/${trade.id}`);
+          deleted += 1;
+        } catch (error) {
+          console.error(`Delete failed for ${trade.id}:`, error);
+        }
       }
       setShowDeleteConfirm(false);
       fetchTrades();
-    } catch (error) {
-      console.error('Delete all failed:', error);
-      alert('Ошибка при удалении сделок');
+      toast.success(
+        skipped > 0
+          ? `Удалено ${deleted}, пропущено ${skipped} синхронизированных`
+          : `Удалено ${deleted}`,
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -319,7 +332,7 @@ export default function HistoryPage() {
       // Скрываем результат через 5 секунд
       setTimeout(() => setMaeCalculationResult(null), 5000);
     } catch (error) {
-      console.error('Error calculating MAE/MFE:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось рассчитать MAE/MFE');
     } finally {
       setIsCalculatingMAE(false);
     }

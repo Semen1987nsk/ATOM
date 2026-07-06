@@ -68,7 +68,7 @@ interface CommandContext {
   logout: () => void;
 }
 
-const ITEMS: CommandItem[] = [
+export const ITEMS: CommandItem[] = [
   // ── Навигация ──
   { id: "nav.dashboard", label: "Дашборд", Icon: BarChart3, group: "Навигация", keywords: ["главная", "home"], onSelect: ({ router }) => router.push("/") },
   { id: "nav.trades", label: "Дневник сделок", Icon: ListChecks, group: "Навигация", keywords: ["сделки", "журнал", "history"], onSelect: ({ router }) => router.push("/history") },
@@ -78,10 +78,8 @@ const ITEMS: CommandItem[] = [
   { id: "nav.postexit", label: "Post-Exit анализ", Icon: Clock, group: "Навигация", keywords: ["упущенная", "early exit"], onSelect: ({ router }) => router.push("/analysis/post-exit") },
   { id: "nav.tags", label: "По тегам", Icon: PieChart, group: "Навигация", keywords: ["теги", "статистика"], onSelect: ({ router }) => router.push("/analysis/tags") },
   { id: "nav.setups", label: "Сетапы", Icon: Layers, group: "Навигация", keywords: ["стратегии", "паттерны"], onSelect: ({ router }) => router.push("/analysis/setups") },
-  { id: "nav.notes", label: "Заметки", Icon: StickyNote, group: "Навигация", onSelect: ({ router }) => router.push("/") },
-  { id: "nav.setups", label: "Сетапы", Icon: Layers, group: "Навигация", onSelect: ({ router }) => router.push("/") },
-  { id: "nav.import", label: "Импорт сделок", Icon: Upload, group: "Навигация", onSelect: ({ router }) => router.push("/") },
-  { id: "nav.brokers", label: "Брокеры", Icon: Plug, group: "Навигация", onSelect: ({ router }) => router.push("/") },
+  { id: "nav.import", label: "Импорт сделок", Icon: Upload, group: "Навигация", keywords: ["загрузить", "csv"], onSelect: ({ closePalette }) => { closePalette(); window.dispatchEvent(new CustomEvent("empirik:import-trades")); } },
+  { id: "nav.brokers", label: "Брокеры", Icon: Plug, group: "Навигация", keywords: ["tinkoff", "подключить"], onSelect: ({ router }) => router.push("/profile?tab=brokers") },
   { id: "nav.manual", label: "Руководство", Icon: FileText, group: "Навигация", keywords: ["docs", "help"], onSelect: ({ router }) => router.push("/manual") },
   { id: "nav.blog", label: "Блог", Icon: FileText, group: "Навигация", onSelect: ({ router }) => router.push("/blog") },
   { id: "nav.pricing", label: "Тарифы", Icon: Wallet, group: "Навигация", keywords: ["цены", "оплата"], onSelect: ({ router }) => router.push("/pricing") },

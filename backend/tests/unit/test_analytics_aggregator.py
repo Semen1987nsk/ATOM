@@ -41,6 +41,7 @@ def _fake_trade(
     entry_at: datetime | None = None,
     exit_at: datetime | None = None,
     tags: list[str] | None = None,
+    entry_price: float | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         pnl=pnl,
@@ -49,6 +50,10 @@ def _fake_trade(
         entry_at=entry_at or datetime(2026, 1, 1, 10, 0),
         exit_at=exit_at or datetime(2026, 1, 1, 12, 0),
         tags=tags or [],
+        # analyze_mae_mfe читает .entry_price (guard: `not t.entry_price`
+        # → сделка пропускается). Без атрибута — AttributeError, поэтому
+        # задаём None по умолчанию: MAE/MFE-ветка не участвует в этих кейсах.
+        entry_price=entry_price,
     )
 
 
@@ -107,17 +112,6 @@ class TestCalculateStatsKnownBug:
     того, как его починят (вероятно — Batch 7 или новая фича).
     """
 
-    @pytest.mark.xfail(
-        raises=NameError,
-        reason=(
-            "Pre-existing bug: aggregator.py не импортирует helper-функции "
-            "(calculate_optimal_f, calculate_advanced_stats, ...). "
-            "Фикс: добавить `from .vince_tharp import ...`, "
-            "`from .risk import ...`, `from .distributions import ...`, "
-            "`from .mae_mfe import analyze_mae_mfe` в analytics/aggregator.py."
-        ),
-        strict=True,
-    )
     def test_single_winner_currently_raises_nameerror(self):
         trade = _fake_trade(pnl=1000.0, net_pnl=800.0, risk_amount=100.0)
         # После фикса этот тест станет PASS — нужно будет убрать xfail.
@@ -127,7 +121,6 @@ class TestCalculateStatsKnownBug:
         assert out["win_rate"] == 100.0
         assert out["total_pnl"] == 800.0  # net_pnl приоритетнее pnl
 
-    @pytest.mark.xfail(raises=NameError, strict=True)
     def test_mixed_winner_loser_currently_raises(self):
         trades = [
             _fake_trade(pnl=1000.0, net_pnl=800.0),
@@ -140,7 +133,6 @@ class TestCalculateStatsKnownBug:
         # net_pnl приоритетнее: 800 + (-600) = 200
         assert out["total_pnl"] == 200.0
 
-    @pytest.mark.xfail(raises=NameError, strict=True)
     def test_all_winners_profit_factor_undefined(self):
         """Sprint 4 MATH-05: все winners → profit_factor None/UNDEFINED."""
         trades = [
@@ -153,7 +145,6 @@ class TestCalculateStatsKnownBug:
         # MATH-05 contract: profit_factor None при отсутствии losses
         assert out.get("profit_factor") is None
 
-    @pytest.mark.xfail(raises=NameError, strict=True)
     def test_all_losers(self):
         trades = [
             _fake_trade(pnl=-1000.0, net_pnl=-1000.0),
@@ -164,7 +155,6 @@ class TestCalculateStatsKnownBug:
         assert out["profitable_trades"] == 0
         assert out["win_rate"] == 0.0
 
-    @pytest.mark.xfail(raises=NameError, strict=True)
     def test_equity_curve_built_chronologically(self):
         trades = [
             _fake_trade(
@@ -181,7 +171,6 @@ class TestCalculateStatsKnownBug:
         assert out["equity_curve"][0]["balance"] == 100.0
         assert out["equity_curve"][1]["balance"] == 300.0
 
-    @pytest.mark.xfail(raises=NameError, strict=True)
     def test_tag_stats_aggregated_by_tag(self):
         trades = [
             _fake_trade(pnl=100.0, net_pnl=100.0, tags=["plan", "stock"]),
@@ -194,7 +183,6 @@ class TestCalculateStatsKnownBug:
         assert plan_stat["pnl"] == 300.0
         assert plan_stat["win_rate"] == 100.0
 
-    @pytest.mark.xfail(raises=NameError, strict=True)
     def test_pnl_none_trades_excluded(self):
         """Trade с pnl=None не должен участвовать в расчётах."""
         trades = [
@@ -204,21 +192,3 @@ class TestCalculateStatsKnownBug:
         out = calculate_stats(trades)
         assert out["total_trades"] == 1
         assert out["total_pnl"] == 100.0
-
-
-# ─────────────────────────────────────────────────────────────────
-# Lightweight sanity: проверка, что bug действительно ловится
-# (если ВДРУГ модуль починят, xfail strict=True зафейлят билд →
-# нужно будет снять xfail и заменить на реальные assert'ы).
-# ─────────────────────────────────────────────────────────────────
-
-class TestCalculateStatsBugReproducer:
-    def test_nameerror_on_nonempty_input(self):
-        """Прямой репро: одна сделка → NameError на calculate_optimal_f.
-
-        Когда баг починят, этот тест нужно удалить, а xfail-тесты выше
-        перевести в обычные assert'ы.
-        """
-        trade = _fake_trade(pnl=100.0, net_pnl=100.0)
-        with pytest.raises(NameError, match="calculate_optimal_f"):
-            calculate_stats([trade])

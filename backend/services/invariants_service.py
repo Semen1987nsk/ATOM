@@ -24,9 +24,15 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 import models
+from domain.pnl.cash_flow_classification import (
+    CashFlowCategory as _CFC,
+    operation_types_in as _op_types_in,
+)
 from logger import get_logger
 from services.reconciliation_service import classify_diff
 from utils.datetime_utils import utc_now_naive
+
+_NET_DEPOSIT_TYPES = _op_types_in(_CFC.NET_DEPOSIT)
 
 log = get_logger("invariants")
 
@@ -315,10 +321,13 @@ def _cash_invariant(
         op_type = (op.operation_type or "").lower()
         payment = _money_decimal(op.payment_units, op.payment_nano)
         commission = _money_decimal(op.commission_units, op.commission_nano)
-        if op_type in {"input", "pay_in", "deposit"}:
-            deposits += payment
-        elif op_type in {"out", "pay_out", "withdrawal"}:
-            withdrawals += abs(payment)
+        if op_type in _NET_DEPOSIT_TYPES:
+            # Единый классификатор: INPUT/OUTPUT/*_swift/*_acquiring/*_multi.
+            # Знак payment различает ввод (>0) и вывод (<0) (S3-27).
+            if payment >= 0:
+                deposits += payment
+            else:
+                withdrawals += abs(payment)
         elif op_type == "dividend":
             dividends_net += payment
         elif op_type in {"buy", "buy_card", "buy_margin", "sell", "sell_card", "sell_margin"}:

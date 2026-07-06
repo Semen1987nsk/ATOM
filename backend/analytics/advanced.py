@@ -17,8 +17,19 @@ from collections import defaultdict
 import math
 
 import numpy as np
+import pytz
 
 from ._common import UNDEFINED, _sanitize
+
+
+_MSK_TZ = pytz.timezone("Europe/Moscow")
+
+
+def _to_msk(dt: datetime) -> datetime:
+    """naive → трактуем как UTC → в МСК (паттерн market_service._to_msk)."""
+    if dt.tzinfo is None:
+        return pytz.utc.localize(dt).astimezone(_MSK_TZ)
+    return dt.astimezone(_MSK_TZ)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -102,17 +113,17 @@ def calculate_k_ratio(equity_curve: Sequence[float]) -> Optional[float]:
 
 def calculate_sterling_ratio(annual_return_pct: float, drawdowns_pct: List[float]) -> Optional[float]:
     """
-    Sterling Ratio = Annual Return / (avg(top-3 worst DD) − 10%)
+    Sterling Ratio = Annual Return / (avg(top-3 worst DD) + 10%)
 
-    Классическая формула отнимает 10% (риск-free buffer). Для крипто/Forex
-    можно использовать без вычитания, но академический стандарт с −10%.
+    Классическая формула прибавляет 10% (DD хранятся положительными). Буфер
+    сглаживает малые просадки, чтобы знаменатель не занижался.
     """
     if not drawdowns_pct or annual_return_pct is None:
         return UNDEFINED
 
     sorted_dd = sorted(drawdowns_pct, reverse=True)[:3]
     avg_worst_dd = float(np.mean(sorted_dd)) if sorted_dd else 0.0
-    denom = avg_worst_dd - 10.0
+    denom = avg_worst_dd + 10.0
     if denom <= 0:
         return UNDEFINED
     return _sanitize(round(annual_return_pct / denom, 2))
@@ -341,6 +352,7 @@ def calculate_hour_dow_heatmap(trades_with_dates: List[Dict]) -> List[List[Dict]
         if not isinstance(dt, datetime):
             continue
         pnl = float(t.get("pnl") or 0)
+        dt = _to_msk(dt)
         cell = matrix[dt.weekday()][dt.hour]
         cell["count"] += 1
         cell["total_pnl"] += pnl
@@ -667,7 +679,7 @@ def calculate_daily_pnl(trades_with_dates: List[Dict]) -> List[Dict]:
         dt = t.get("entry_at")
         if not isinstance(dt, datetime):
             continue
-        key = dt.strftime("%Y-%m-%d")
+        key = _to_msk(dt).strftime("%Y-%m-%d")
         pnl = float(t.get("pnl") or 0)
         by_day[key]["pnl"] += pnl
         by_day[key]["count"] += 1

@@ -285,8 +285,8 @@ class TradeBase(BaseModel):
     asset_name: Optional[str] = None
     asset_type: Optional[str] = None
     direction: models.TradeDirection
-    entry_price: float
-    quantity: float
+    entry_price: float = Field(gt=0)
+    quantity: float = Field(gt=0)
     leverage: Optional[float] = 1.0
     entry_at: datetime
     stop_loss: Optional[float] = None
@@ -333,8 +333,8 @@ class TradeUpdate(BaseModel):
     asset_name: Optional[str] = None
     asset_type: Optional[str] = None
     direction: Optional[models.TradeDirection] = None
-    entry_price: Optional[float] = None
-    quantity: Optional[float] = None
+    entry_price: Optional[float] = Field(None, gt=0)
+    quantity: Optional[float] = Field(None, gt=0)
     leverage: Optional[float] = None
     entry_at: Optional[datetime] = None
     stop_loss: Optional[float] = None

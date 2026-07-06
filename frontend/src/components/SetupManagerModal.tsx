@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Edit2, Target, Save } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
+import { useToast } from '@/contexts/ToastContext';
 
 interface Setup {
   id: number;
@@ -31,7 +32,9 @@ export const SetupManagerModal: React.FC<SetupManagerModalProps> = ({ isOpen, on
   const [loading, setLoading] = useState(false);
   const [editingSetup, setEditingSetup] = useState<Setup | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const toast = useToast();
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -59,23 +62,22 @@ export const SetupManagerModal: React.FC<SetupManagerModalProps> = ({ isOpen, on
   }, [isOpen]);
 
   const handleSave = async () => {
-    if (!formData.name.trim()) return;
-    
+    if (!formData.name.trim() || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       if (editingSetup) {
-        // Update existing
         await api.put(`/setups/${editingSetup.id}`, { body: formData });
-        fetchSetups();
         setEditingSetup(null);
       } else {
-        // Create new
         await api.post('/setups/', { body: formData });
-        fetchSetups();
         setIsAddingNew(false);
       }
+      fetchSetups();
       resetForm();
     } catch (e) {
-      console.error('Failed to save setup:', e);
+      toast.error(e instanceof ApiError ? e.toUserMessage() : 'Не удалось сохранить сетап');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -86,7 +88,7 @@ export const SetupManagerModal: React.FC<SetupManagerModalProps> = ({ isOpen, on
       await api.delete(`/setups/${id}`);
       fetchSetups();
     } catch (e) {
-      console.error('Failed to delete setup:', e);
+      toast.error(e instanceof ApiError ? e.toUserMessage() : 'Не удалось удалить сетап');
     }
   };
 
@@ -113,7 +115,7 @@ export const SetupManagerModal: React.FC<SetupManagerModalProps> = ({ isOpen, on
       await api.post('/setups/init-presets');
       fetchSetups();
     } catch (e) {
-      console.error('Failed to init presets:', e);
+      toast.error(e instanceof ApiError ? e.toUserMessage() : 'Не удалось инициализировать пресеты');
     }
   };
 
@@ -214,7 +216,8 @@ export const SetupManagerModal: React.FC<SetupManagerModalProps> = ({ isOpen, on
             
             <button
               onClick={handleSave}
-              className="btn-primary w-full justify-center"
+              disabled={isSubmitting || !formData.name.trim()}
+              className="btn-primary w-full justify-center disabled:opacity-50"
             >
               <Save size={14} />
               {editingSetup ? 'Сохранить изменения' : 'Создать сетап'}

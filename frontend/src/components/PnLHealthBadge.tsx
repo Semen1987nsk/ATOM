@@ -17,7 +17,7 @@
 import { useMemo } from "react";
 import { ShieldCheck, AlertTriangle, AlertCircle, Loader2 } from "lucide-react";
 
-export type PnLHealthStatus = "ok" | "warning" | "mismatch" | "na" | "stale";
+export type PnLHealthStatus = "ok" | "warning" | "mismatch" | "investigate" | "na" | "stale";
 
 export interface PnLHealthData {
   status: PnLHealthStatus;
@@ -58,6 +58,15 @@ function styleFor(status: PnLHealthStatus): BadgeStyle {
         label: "Внимание",
       };
     case "mismatch":
+      return {
+        dotColor: "bg-rose-400",
+        textColor: "text-rose-400",
+        bgColor: "bg-rose-500/10",
+        borderColor: "border-rose-500/30",
+        icon: <AlertCircle size={14} />,
+        label: "Расхождение",
+      };
+    case "investigate":
       return {
         dotColor: "bg-rose-400",
         textColor: "text-rose-400",
@@ -243,9 +252,13 @@ export function PnLHealthBadge({
   // же должен мгновенно отражать текущий threshold (1%/5%) без round-trip.
   const status: PnLHealthStatus = useMemo(() => {
     if (!data) return "stale";
+    // Серьёзные статусы backend'а (worst-of RED любого контрольного слоя)
+    // имеют приоритет над band'ом по diff_pct — иначе маленький diff при
+    // RED-слое ложно окрашивается зелёным (S3-08).
+    if (data.status === "investigate") return "investigate";
+    if (data.status === "na") return "na";
     if (data.diff_pct === null || data.diff_pct === undefined) return data.status || "stale";
     const pct = Math.abs(data.diff_pct);
-    if (data.status === "na") return "na";  // sentinel для пустых счетов
     if (pct < 1.0) return "ok";
     if (pct < 5.0) return "warning";
     return "mismatch";

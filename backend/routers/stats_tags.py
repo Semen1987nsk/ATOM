@@ -48,9 +48,12 @@ async def get_all_tags(
             tag_lower = tag.lower()
             if tag_lower not in tag_stats:
                 tag_stats[tag_lower] = {"tag": tag_lower, "count": 0, "pnl": 0, "wins": 0}
+            # MATH-01: NET (после комиссий) приоритетнее GROSS — иначе цифры
+            # расходятся с tag_performance на дашборде (S3-24).
+            _pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
             tag_stats[tag_lower]["count"] += 1
-            tag_stats[tag_lower]["pnl"] += float(t.pnl or 0)
-            if t.pnl and t.pnl > 0:
+            tag_stats[tag_lower]["pnl"] += _pnl
+            if _pnl > 0:
                 tag_stats[tag_lower]["wins"] += 1
 
     result = []

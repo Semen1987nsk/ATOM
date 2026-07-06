@@ -563,7 +563,7 @@ async def get_stats(
                 models.OperationORM.operation_type.in_(_dep_types),
                 models.OperationORM.state == "executed",
             ).one()
-            drawdown_baseline = abs(float(_row[0] or 0) + float(_row[1] or 0) / 1e9)
+            drawdown_baseline = float(_row[0] or 0) + float(_row[1] or 0) / 1e9
         if drawdown_baseline <= 0 and starting_net_deposit > 0:
             drawdown_baseline = starting_net_deposit
         # ADR-0010: включаем восстановленный баланс открытия в развёрнутый капитал
@@ -1413,7 +1413,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
 
     # Реальные показатели
     real_rr = analysis.get("real_rr", 0)
-    profit_factor = analysis.get("profit_factor", 0)
+    profit_factor = analysis.get("profit_factor") or 0
     required_wr = analysis.get("required_winrate", 100)
     avg_win = analysis.get("avg_win", 0)
     avg_loss = analysis.get("avg_loss", 0)

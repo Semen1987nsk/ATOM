@@ -88,14 +88,24 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
         }
       });
 
-      // Загружаем скриншот если есть
+      // Скриншот — вторичен: сделка уже создана. Его сбой НЕ должен блокировать
+      // onSuccess/onClose, иначе повторный сабмит даёт дубликат/409 (S3-16).
+      let screenshotFailed = false;
       if (screenshotFile && createdTrade.id) {
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', screenshotFile);
-        await api.upload(`/trades/${createdTrade.id}/screenshot`, formDataUpload);
+        try {
+          const formDataUpload = new FormData();
+          formDataUpload.append('file', screenshotFile);
+          await api.upload(`/trades/${createdTrade.id}/screenshot`, formDataUpload);
+        } catch {
+          screenshotFailed = true;
+        }
       }
-      
-      toast.success('Сделка добавлена');
+
+      if (screenshotFailed) {
+        toast.error('Сделка сохранена, но скриншот не загрузился');
+      } else {
+        toast.success('Сделка добавлена');
+      }
       onSuccess();
       onClose();
       // Сбрасываем скриншот
@@ -198,7 +208,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Цена входа</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.entry_price}
                 onChange={e => setFormData({...formData, entry_price: e.target.value})}
@@ -208,7 +218,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Количество</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
@@ -220,7 +230,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Плечо</label>
               <input 
-                type="number" step="any"
+                type="number" step="any" min="1"
                 className="input-cyber"
                 value={formData.leverage}
                 onChange={e => setFormData({...formData, leverage: e.target.value})}

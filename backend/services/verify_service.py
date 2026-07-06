@@ -31,7 +31,6 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 import models
-from crypto_utils import decrypt_token, TokenDecryptionError
 from logger import get_logger
 from utils.datetime_utils import utc_now_naive
 

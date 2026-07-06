@@ -75,8 +75,9 @@ def get_net_deposits_baseline_from_db(db, account_id: int) -> Decimal:
     мы напрямую агрегируем OperationORM payment_units + payment_nano по
     `operation_type IN net_deposit_types`.
 
-    Возвращает ``Decimal`` (абсолютная сумма — withdrawals already subtract
-    через сами знаки payment_units).
+    Возвращает знаковый ``Decimal`` (INPUT > 0 / OUTPUT < 0 — withdrawals
+    subtract через сами знаки payment_units), согласованный с
+    ``pnl_health_service.effective_deposits = net_deposits + initial_balance``.
     """
     from sqlalchemy import func
     from domain.pnl.cash_flow_classification import (
@@ -100,9 +101,8 @@ def get_net_deposits_baseline_from_db(db, account_id: int) -> Decimal:
         )
         .one()
     )
-    # Σ NET_DEPOSITS — INPUT > 0 / OUTPUT < 0 (по знакам payment_units), но
-    # для CAGR baseline нужна абсолютная "сколько вложено суммарно". Это и
-    # есть то, что считает stats.py L526 через `abs(...)`. Для согласованности
-    # делаем то же.
+    # Знаковая сумма (INPUT>0 / OUTPUT<0). abs() переворачивал базу для счетов
+    # с чистым выводом средств → ROI/DD считались от завышенного знаменателя,
+    # расходясь с pnl_health (знаковая effective_deposits) (S3-14).
     total = Decimal(row[0] or 0) + Decimal(row[1] or 0) / Decimal(10**9)
-    return abs(total)
+    return total
