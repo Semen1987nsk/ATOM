@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/apiClient';
+import { parseApiDate } from '@/lib/dateUtils';
 
 interface Portfolio {
   success: boolean;
@@ -220,7 +221,7 @@ export default function PortfolioCard() {
             <div>
               <h3 className="text-lg font-semibold">Портфель</h3>
               <p className="text-xs text-slate-500">
-                Обновлено: {new Date(portfolio.updated_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                Обновлено: {parseApiDate(portfolio.updated_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>

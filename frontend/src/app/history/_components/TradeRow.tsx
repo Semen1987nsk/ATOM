@@ -4,6 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import { Trash2, Edit2, ChevronDown, ChevronRight, Lock, Loader2, BarChart2, StickyNote, ImageIcon } from 'lucide-react';
 import { getApiUrl } from '@/lib/apiClient';
+import { parseApiDate } from '@/lib/dateUtils';
 import { AssetTypeIcon } from './AssetTypeIcon';
 import type { Trade } from './types';
 import { formatHoldingTime } from './types';
@@ -60,18 +61,18 @@ export function TradeRow({
             <div className="flex flex-col gap-1 leading-tight">
               <div>
                 <span className="text-[9px] uppercase tracking-wide text-slate-500 mr-1">ВХ</span>
-                <span>{new Date(trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span>
+                <span>{parseApiDate(trade.entry_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span>
                 <span className="text-slate-500 ml-1 text-[10px]">
-                  {new Date(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {parseApiDate(trade.entry_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                 </span>
               </div>
               <div>
                 <span className="text-[9px] uppercase tracking-wide text-slate-500 mr-1">ВЫХ</span>
                 {trade.exit_at ? (
                   <>
-                    <span>{new Date(trade.exit_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span>
+                    <span>{parseApiDate(trade.exit_at).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: '2-digit'})}</span>
                     <span className="text-slate-500 ml-1 text-[10px]">
-                      {new Date(trade.exit_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {parseApiDate(trade.exit_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </span>
                   </>
                 ) : (
