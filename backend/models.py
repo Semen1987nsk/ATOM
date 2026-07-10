@@ -807,6 +807,8 @@ class AccessLogORM(Base):
     __table_args__ = (
         Index("ix_access_log_user_time", "user_id", "created_at"),
         Index("ix_access_log_status", "status_code"),
+        # 0027_perf_indexes: composite под /admin/errors/recent (status_code, created_at).
+        Index("ix_access_log_status_created", "status_code", "created_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -961,6 +963,8 @@ class OperationORM(Base):
         Index("ix_operations_account_executed_at", "account_id", "executed_at"),
         Index("ix_operations_instrument_uid", "instrument_uid"),
         Index("ix_operations_type", "operation_type"),
+        # 0027_perf_indexes: composite под варм-маржу (state, operation_type, executed_at).
+        Index("ix_operations_state_type_executed", "state", "operation_type", "executed_at"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
