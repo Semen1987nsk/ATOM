@@ -515,12 +515,12 @@ def totp_verify(
     db: Session = Depends(database.get_db),
 ):
     """PR 26 Phase 2: подтвердить 2FA активацию вводом первого кода."""
-    from services.totp_service import verify_code
+    from services.totp_service import verify_code_for_user
 
     if not current_user.totp_secret:
         raise HTTPException(status_code=400, detail="Сначала вызовите /2fa/enable")
 
-    if not verify_code(current_user.totp_secret, payload.code):
+    if not verify_code_for_user(current_user, payload.code):
         raise HTTPException(status_code=400, detail="Неверный код. Попробуйте ещё раз.")
 
     current_user.totp_enabled = True
@@ -537,12 +537,12 @@ def totp_disable(
 ):
     """PR 26 Phase 2: отключить 2FA. Требует валидный TOTP код (чтобы
     атакующий с угнанным cookie не отключил защиту)."""
-    from services.totp_service import verify_code
+    from services.totp_service import verify_code_for_user
 
     if not current_user.totp_enabled:
         raise HTTPException(status_code=400, detail="2FA не активирована")
 
-    if not verify_code(current_user.totp_secret, payload.code):
+    if not verify_code_for_user(current_user, payload.code):
         raise HTTPException(status_code=400, detail="Неверный код")
 
     current_user.totp_enabled = False

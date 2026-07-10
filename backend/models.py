@@ -42,6 +42,7 @@ class User(Base):
     # вводить 6-digit код от authenticator app.
     totp_secret = Column(String(64), nullable=True)
     totp_enabled = Column(Boolean, default=False, server_default="0")
+    totp_last_used_step = Column(Integer, nullable=True)  # replay-guard: последний принятый TOTP-шаг
 
     # PR 26 (Phase 3): email confirmation flow.
     # При регистрации юзер получает письмо с magic-link. До подтверждения

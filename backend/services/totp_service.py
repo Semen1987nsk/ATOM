@@ -60,3 +60,29 @@ def verify_code(secret: Optional[str], code: str) -> bool:
     except Exception:
         log.exception("TOTP verify failed")
         return False
+
+
+def verify_code_for_user(user, code: str) -> bool:
+    """Replay-safe проверка: отклоняет повторное использование того же TOTP-шага.
+    Требует у user поля totp_secret и totp_last_used_step (int|None)."""
+    secret = getattr(user, "totp_secret", None)
+    if not secret or not code:
+        return False
+    if not PYOTP_AVAILABLE:
+        log.error("verify_code_for_user called but pyotp not installed")
+        return False
+    try:
+        totp = pyotp.TOTP(secret)
+        import time as _time
+        for offset in (-1, 0, 1):
+            step = int(_time.time()) // 30 + offset
+            if totp.verify(code, for_time=step * 30, valid_window=0):
+                last = getattr(user, "totp_last_used_step", None)
+                if last is not None and step <= last:
+                    return False  # replay/старый шаг
+                user.totp_last_used_step = step
+                return True
+        return False
+    except Exception:
+        log.exception("TOTP verify_code_for_user failed")
+        return False
