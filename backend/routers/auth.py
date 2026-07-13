@@ -1,7 +1,7 @@
 """
 Auth Router — регистрация, вход, профиль, OAuth
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -596,6 +596,7 @@ def totp_disable(
 def password_reset_request(
     request: Request,
     payload: schemas.PasswordResetRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(database.get_db),
 ):
     """PR 26: запросить ссылку для сброса пароля.
@@ -655,14 +656,14 @@ def password_reset_request(
     # Шлём письмо (best-effort).
     from config import settings as _settings
     reset_url = f"{_settings.PUBLIC_URL}/auth/reset-password?token={token}"
-    try:
-        send_password_reset_email(
-            to_email=user.email,
-            reset_url=reset_url,
-            user_name=getattr(user, "name", None),
-        )
-    except Exception:
-        log.exception("password_reset email send failed for user_id=%s", user.id)
+    # Отправка в фоне: response не должен зависеть от времени SMTP-round-trip
+    # (иначе timing-oracle отличает существующий email от несуществующего).
+    background_tasks.add_task(
+        send_password_reset_email,
+        to_email=user.email,
+        reset_url=reset_url,
+        user_name=getattr(user, "name", None),
+    )
 
     log.info("password_reset_request: token issued user_id=%s ip=%s", user.id, ip)
     return response_payload
