@@ -37,6 +37,10 @@ const currencySymbols: Record<Currency, string> = {
   BTC: '₿',
 };
 
+// Theme — device-preference, не user-scoped: живёт в отдельном ключе вне
+// tradingSettings, чтобы clearUserScopedState() (logout/смена юзера) её не стирал.
+const THEME_DEVICE_KEY = 'empirik.theme';
+
 // Полистата таргетится на трейдеров MOEX — все сделки приходят из Tinkoff API
 // в рублях. Дефолтная валюта = RUB. USD/EUR/USDT/BTC доступны для тех
 // кто торгует не на MOEX (опциональный override в настройках).
@@ -77,7 +81,8 @@ function getInitialSettings(): Settings {
       ...parsedWithoutLegacy,
       currency: currency || defaultSettings.currency,
       currencySymbol: currency ? currencySymbols[currency] || '₽' : defaultSettings.currencySymbol,
-      theme: parsed.theme || defaultSettings.theme,
+      theme: (typeof window !== 'undefined' && (localStorage.getItem(THEME_DEVICE_KEY) as Theme))
+        || parsed.theme || defaultSettings.theme,
     };
   } catch {
     return defaultSettings;
@@ -115,6 +120,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       };
       try {
         localStorage.setItem('tradingSettings', JSON.stringify(updated));
+        if (newSettings.theme) {
+          localStorage.setItem(THEME_DEVICE_KEY, newSettings.theme);
+        }
       } catch (e) {
         console.error('Failed to persist settings to localStorage:', e);
       }
