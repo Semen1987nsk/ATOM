@@ -14,6 +14,7 @@ import { DepositManagerModal } from '@/components/DepositManagerModal';
 import { SetupManagerModal } from '@/components/SetupManagerModal';
 import BrokerConnectModal from '@/components/BrokerConnectModal';
 import { ReconnectBanner } from '@/components/ReconnectBanner';
+import { ReconciliationBanner } from '@/components/ReconciliationBanner';
 import SyncStatusIndicator from '@/components/SyncStatusIndicator';
 import { FilterPanel, Filters } from '@/components/FilterPanel';
 import { DashboardSkeleton } from '@/components/Skeleton';
@@ -665,6 +666,8 @@ export default function DashboardHome() {
           onOpenBrokerModal={() => setIsBrokerModalOpen(true)}
         />
       )}
+
+      {user && <ReconciliationBanner />}
 
       {/* FE-01: error-баннер главного дашборда. Показывается только когда
           /stats/ или /trades/ упали — даёт юзеру кнопку retry с request_id. */}
