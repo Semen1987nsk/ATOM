@@ -181,6 +181,25 @@ def finalize_deletion(db: Session, user: models.User) -> None:
         )
     ).rowcount
 
+    db.commit()
+
+    # Удаляем физические файлы скриншотов ДО анонимизации email. Пока email
+    # юзера ещё не переписан на "deleted-%@anon.empirik", run_pending_deletions
+    # продолжит выбирать этого юзера в pending — значит если процесс упадёт
+    # посреди unlink-цикла, следующий прогон повторит finalize_deletion и
+    # доудалит оставшиеся файлы (unlink идемпотентен, missing_ok=True).
+    # Без этого порядка юзер после commit email навсегда выпадает из
+    # pending-фильтра, и недоудалённые файлы становятся вечными сиротами.
+    for url in screenshot_urls:
+        try:
+            fpath = _SCREENSHOT_DIR / Path(url).name
+            # SEC: тот же containment-барьер, что в trades.py get_screenshot/
+            # delete_screenshot — defense-in-depth сверх basename-strip.
+            if fpath.resolve().is_relative_to(_SCREENSHOT_DIR.resolve()):
+                fpath.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning(f"Failed to unlink screenshot {url}: {exc}")
+
     # Анонимизируем User последним.
     user.email = f"deleted-{user_id}@anon.empirik"
     user.name = None
@@ -196,14 +215,6 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     # deletion_requested_at оставляем — это аудит, когда был выполнен запрос.
 
     db.commit()
-
-    # Удаляем физические файлы скриншотов (после успешного commit анонимизации).
-    for url in screenshot_urls:
-        try:
-            fpath = _SCREENSHOT_DIR / Path(url).name
-            fpath.unlink(missing_ok=True)
-        except OSError as exc:
-            log.warning(f"Failed to unlink screenshot {url}: {exc}")
 
     # PR 26 Scenario #78: инвалидация stats cache + revoke всех активных JWT
     # юзера. Без этого после анонимизации старый кэш может всё ещё содержать
