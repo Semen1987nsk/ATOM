@@ -382,7 +382,7 @@ class TestPasswordReset:
 
 class TestEmailVerification:
     def test_register_issues_verification_token(self, test_app):
-        """После register у юзера должен быть verification_token."""
+        """После register у юзера должен быть verification_token (B1: 202, без сессии)."""
         r = test_app["client"].post(
             "/auth/register",
             json={
@@ -392,7 +392,7 @@ class TestEmailVerification:
                 "pd_consent": True,
             },
         )
-        assert r.status_code == 200
+        assert r.status_code == 202
 
         db = test_app["db"]
         user = db.query(User).filter(User.email == "newuser@test.com").first()

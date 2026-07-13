@@ -30,34 +30,33 @@ oauth_store = get_state_store()
 
 # ==================== AUTH ENDPOINTS ====================
 
-def _neutral_register_response(password: str, notify_email: str) -> JSONResponse:
-    """SEC (S4-11): нейтральный ответ на дубль/гонку, неотличимый от happy-path.
-
-    Уравниваем не только код/тело, но и ТАЙМИНГ: happy-path платит bcrypt-цену
-    в create_user → get_password_hash (rounds=BCRYPT_ROUNDS). Здесь прогоняем
-    дамми-хеш той же стоимости и отбрасываем — иначе латентность выдаёт, что
-    email существует (образец: auth_service.authenticate_user дамми-check).
-    Best-effort уведомляем реального владельца письмом.
-    """
-    auth_service.get_password_hash(password)
-    log.info("register: duplicate email attempt email=%s", mask_email(notify_email))
-    try:
-        from services.email_service import send_duplicate_registration_notice
-        send_duplicate_registration_notice(notify_email)
-    except Exception:
-        log.exception("register: duplicate-notice email send failed (non-blocking)")
-    return JSONResponse(
-        status_code=202,
-        content={"message": "Если email свободен — аккаунт создан. Проверьте почту."},
-    )
+# B1: единый нейтральный ответ для обеих веток register (fresh + existing).
+# Байт-идентичен: атакующий не отличает свободный email от занятого ни по
+# коду, ни по телу, ни по наличию Set-Cookie (CWE-204).
+_NEUTRAL_REGISTER_BODY = {
+    "message": "Если email свободен — аккаунт создан. Проверьте почту для подтверждения.",
+}
 
 
-@router.post("/register", response_model=schemas.AuthSuccess)
+def _neutral_register_response() -> JSONResponse:
+    """B1: нейтральный 202 без Set-Cookie — общий для fresh и existing email."""
+    return JSONResponse(status_code=202, content=_NEUTRAL_REGISTER_BODY)
+
+
+@router.post("/register", status_code=202)
 @limiter.limit(REGISTER_LIMIT)
-def register(request: Request, response: Response, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
+def register(
+    request: Request,
+    user_data: schemas.UserCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(database.get_db),
+):
     """
-    Регистрация нового пользователя.
-    Возвращает пару JWT токенов (access + refresh) для авторизации.
+    Регистрация нового пользователя (VERIFICATION-FIRST, B1).
+
+    Обе ветки — свободный и занятый email — возвращают байт-идентичный
+    нейтральный 202 БЕЗ авто-логина и БЕЗ Set-Cookie (защита от enumeration,
+    CWE-204). Сессия НЕ выдаётся: юзер сначала подтверждает email по ссылке.
     Rate limit: 3 запроса в минуту.
 
     152-ФЗ: требуется явное согласие на обработку ПД (поле pd_consent=true).
@@ -74,16 +73,23 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
 
     existing_user = auth_service.get_user_by_email(db, user_data.email)
     if existing_user:
-        return _neutral_register_response(user_data.password, existing_user.email)
+        # SEC: занятый email → тот же нейтральный 202. Best-effort уведомляем
+        # реального владельца письмом (в фоне, чтобы SMTP-латентность не выдавала
+        # существование email через timing-oracle — паттерн S4-25 password-reset).
+        auth_service.get_password_hash(user_data.password)  # timing-parity с create_user
+        log.info("register: duplicate email attempt email=%s", mask_email(existing_user.email))
+        from services.email_service import send_duplicate_registration_notice
+        background_tasks.add_task(send_duplicate_registration_notice, existing_user.email)
+        return _neutral_register_response()
 
     try:
         user = auth_service.create_user(db, user_data)
     except IntegrityError:
-        # SEC (S4-11): конкурентная регистрация нового email — второй commit
-        # ловит UNIQUE(users.email). Откатываем и отвечаем тем же нейтральным
-        # 202, что и для дубля, чтобы гонка не приоткрывала enumeration через 500.
+        # SEC: конкурентная регистрация нового email — второй commit ловит
+        # UNIQUE(users.email). Откатываем и отвечаем тем же нейтральным 202,
+        # чтобы гонка не приоткрывала enumeration через 500.
         db.rollback()
-        return _neutral_register_response(user_data.password, user_data.email)
+        return _neutral_register_response()
 
     # Записываем согласие в журнал — версионируем по политике конфиденциальности.
     # При смене текста политики версия инкрементируется, и юзер должен подтвердить заново.
@@ -96,35 +102,27 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
     )
     db.add(consent)
 
-    # PR 26 Phase 3: выпускаем email verification token + шлём письмо.
-    # Юзер может пользоваться сервисом сразу (email_verified=False, но JWT
-    # выдан), но некоторые фичи могут потребовать verified email — это
-    # решается на frontend через `user.email_verified` флаг.
+    # PR 26 Phase 3 / B1: выпускаем email verification token + шлём письмо в фоне.
+    # Сессию НЕ выдаём (verification-first): юзер логинится только после клика
+    # по ссылке подтверждения. Письмо в фоне — timing-parity с existing-веткой.
     verification_token = secrets.token_urlsafe(32)
     user.email_verification_token = verification_token
     user.email_verification_sent_at = utc_now_naive()
     db.commit()
 
-    try:
-        from services.email_service import send_email_verification
-        from config import settings as _settings
-        verify_url = f"{_settings.PUBLIC_URL}/auth/verify-email?token={verification_token}"
-        send_email_verification(user.email, verify_url, user_name=getattr(user, "name", None))
-    except Exception:
-        log.exception("register: email verification send failed (non-blocking)")
+    from services.email_service import send_email_verification
+    from config import settings as _settings
+    verify_url = f"{_settings.PUBLIC_URL}/auth/verify-email?token={verification_token}"
+    background_tasks.add_task(
+        send_email_verification,
+        user.email,
+        verify_url,
+        user_name=getattr(user, "name", None),
+    )
 
-    # Создаём пару токенов
-    access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
-    auth_service.set_auth_cookies(response, request, access_token, refresh_token)
+    log.info("✅ Зарегистрирован новый пользователь: user_id=%s (consent v1, verification-first)", user.id)
 
-    log.info("✅ Зарегистрирован новый пользователь: user_id=%s (consent v1)", user.id)
-
-    # SEC-08: токены отдаём только в httpOnly cookies, не в теле ответа.
-    return {
-        "token_type": "bearer",
-        "expires_in": auth_service.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "authenticated": True,
-    }
+    return _neutral_register_response()
 
 
 @router.post("/login", response_model=schemas.AuthSuccess)

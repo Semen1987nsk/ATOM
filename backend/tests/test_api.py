@@ -148,7 +148,10 @@ class TestAuth:
         return {auth_service.CSRF_HEADER_NAME: csrf_token}
     
     def test_register_success(self, test_app):
-        """Should register new user successfully (password ≥ 12 chars per OWASP 2024)."""
+        """B1 verification-first: register создаёт юзера, но НЕ логинит.
+
+        Ответ — нейтральный 202 без Set-Cookie (защита от enumeration);
+        сессия выдаётся только после подтверждения email."""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "newuser@example.com",
@@ -156,13 +159,11 @@ class TestAuth:
             "name": "New User",
             "pd_consent": True,  # 152-ФЗ ст. 9: обязательное согласие
         })
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
-        # SEC-08: токены теперь только в httpOnly cookies, не в теле ответа.
+        # Токены не выдаются вообще — ни в теле, ни в cookies.
         assert "access_token" not in data and "refresh_token" not in data
-        assert data["authenticated"] is True
-        assert data["token_type"] == "bearer"
-        assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME)
+        assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME) is None
 
     def test_register_duplicate_email(self, test_app, test_user):
         """S4-11: duplicate email must be indistinguishable from a fresh one

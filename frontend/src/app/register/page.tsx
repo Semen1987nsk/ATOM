@@ -23,6 +23,7 @@ export default function RegisterPage() {
   const [pdConsent, setPdConsent] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -54,8 +55,10 @@ export default function RegisterPage() {
 
     setIsLoading(true);
     try {
+      // B1 verification-first: register НЕ логинит. На успешный (нейтральный)
+      // ответ показываем «проверьте почту» и НЕ редиректим на дашборд.
       await register(email, password, name || undefined, pdConsent);
-      router.push('/');
+      setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка регистрации');
     } finally {
@@ -81,6 +84,28 @@ export default function RegisterPage() {
 
         {/* Card */}
         <div className="cyber-card p-8">
+          {submitted ? (
+            <div className="text-center py-4" role="status">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--success-soft,var(--accent-soft))] text-[var(--success,var(--accent))] mb-5">
+                <Mail size={28} />
+              </div>
+              <h1 className="text-2xl font-bold leading-tight mb-2">Проверьте почту</h1>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Если email свободен — мы создали аккаунт и отправили письмо со
+                ссылкой для подтверждения. Перейдите по ней, чтобы завершить
+                регистрацию и войти.
+              </p>
+              <div className="mt-6 pt-5 border-t border-[var(--border)]">
+                <Link
+                  href="/login"
+                  className="text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium transition-colors"
+                >
+                  Перейти ко входу
+                </Link>
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="mb-6">
             <h1 className="text-2xl font-bold leading-tight">Регистрация</h1>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
@@ -245,6 +270,8 @@ export default function RegisterPage() {
               </Link>
             </p>
           </div>
+          </>
+          )}
         </div>
 
         <div className="mt-6 text-center">

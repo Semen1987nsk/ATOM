@@ -142,16 +142,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: string | undefined,
       pdConsent: boolean,
     ) => {
+      // B1 verification-first: register БОЛЬШЕ НЕ логинит. Backend отвечает
+      // нейтральным 202 без сессии — юзер подтверждает email по ссылке, а
+      // вход делает потом через /auth/login. Поэтому здесь нет refetch /auth/me
+      // и нет инвалидации trades/stats (сессии ещё нет).
       // 152-ФЗ: pd_consent обязателен — backend отклонит запрос без него.
       await api.post('/auth/register', {
         body: { email, password, name, pd_consent: pdConsent },
         noAuth: true,
       });
-      await refetchCurrentUser();
-      queryClient.invalidateQueries({ queryKey: ['trades'] });
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
     },
-    [refetchCurrentUser, queryClient],
+    [],
   );
 
   useEffect(() => {
