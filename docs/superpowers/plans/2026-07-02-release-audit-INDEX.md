@@ -156,41 +156,41 @@
 
 | ✔ | ID | Severity | Файл | Проблема |
 |---|----|----------|------|----------|
-| [ ] | S4-01 | HIGH | `backend/services/pd_deletion.py:146` | Trade screenshot files not deleted on account anonymization (152-FZ incompl |
-| [ ] | S4-02 | HIGH | `frontend/src/lib/apiClient.ts:176` | Глобальный 15с таймаут apiClient обрубает первый sync и onboarding-reconcil |
-| [ ] | S4-03 | HIGH | `.github/workflows/ci.yml:3` | CI мёртв с 2026-05-06 — миграции 0005–0029 никогда не проверялись против Po |
-| [ ] | S4-04 | MED | `backend/routers/broker.py:788` | /broker/portfolio не отдаёт unrealized_pnl (top-level) и name позиций, кото |
-| [ ] | S4-05 | MED | `backend/routers/stats.py:580` | Calmar на /stats/ аннуализирует доходность любой, даже недельной, истории ( |
-| [ ] | S4-06 | MED | `backend/analytics/advanced.py:639` | tax_visibility использует устаревшую шкалу НДФЛ (13% до 5 млн) — с 2025 пор |
-| [ ] | S4-07 | MED | `backend/routers/trades.py:1332` | POST /trades/calculate-mae-mfe force_all: неограниченный фан-аут в MOEX ISS |
-| [ ] | S4-08 | MED | `nginx/conf.d/empirik.conf:110` | Новый /api/landing/ticker в проде получает 404 через nginx: location /api/  |
-| [ ] | S4-09 | MED | `backend/services/invariants_service.py:341` | invariants_service обращается к несуществующим колонкам BalanceSnapshot — у |
-| [ ] | S4-10 | MED | `backend/services/totp_service.py:50` | TOTP-код можно переиспользовать (replay) в пределах окна — нет счётчика las |
-| [ ] | S4-11 | MED | `backend/routers/auth.py:57` | User enumeration на /auth/register: разный ответ для существующего и нового |
-| [ ] | S4-12 | MED | `frontend/src/components/TrialEndedDialog.tsx:35` | Весь триал-UI (TrialEndedDialog, TrialCountdownBanner, SubscriptionProvider |
-| [ ] | S4-13 | MED | `frontend/src/components/ReconciliationBanner.tsx:39` | Onboarding-визард /onboarding/reconcile недостижим из UI: единственная ссыл |
-| [ ] | S4-14 | MED | `frontend/src/app/auth/verify-email/page.tsx:89` | Флоу верификации email оборван: /auth/me не отдаёт email_verified, resend-э |
-| [ ] | S4-15 | MED | `frontend/src/app/profile/page.tsx:88` | Logout со страницы профиля — гонка: window.location.href сразу после fire-a |
-| [ ] | S4-16 | MED | `backend/routers/admin.py:746` | impersonate-токен: нет запрета имперсонации админов, нет отзыва токена, нет |
-| [ ] | S4-17 | MED | `frontend/src/app/layout.tsx:105` | Один глобальный ErrorBoundary на всё приложение — упавший виджет роняет вес |
-| [ ] | S4-18 | MED | `backend/models.py:960` | Дрейф моделей: индексы ix_operations_state_type_executed и ix_access_log_st |
-| [ ] | S4-19 | MED | `backend/models.py:338` | Обратный дрейф: ix_trades_account_entry_exit добавлен в models.py (коммит 8 |
-| [ ] | S4-20 | LOW | `frontend/src/types/api.generated.ts:1` | api.generated.ts не перегенерирован после незакоммиченных правок роутеров — |
-| [ ] | S4-21 | LOW | `frontend/src/components/OAuthButtons.tsx:107` | Raw fetch без таймаута в обход apiClient/fetchWithTimeout (4 места) |
-| [ ] | S4-22 | LOW | `backend/moex_service.py:102` | _index_cache в MoexService — неограниченный рост словаря (ключ = произвольн |
-| [ ] | S4-23 | LOW | `backend/routers/stats_advanced.py:166` | GET /stats/benchmark без кэша и без явного rate-limit — полная загрузка сде |
-| [ ] | S4-24 | LOW | `backend/services/pd_deletion.py:169` | Anonymization does not clear totp_secret and email_verification_token |
-| [ ] | S4-25 | LOW | `backend/routers/auth.py:600` | Timing-enumeration на /password-reset/request из-за синхронной отправки SMT |
-| [ ] | S4-26 | LOW | `frontend/src/lib/userScopedStorage.ts:18` | Тема сбрасывается на тёмную при каждом логине/логауте: theme лежит в user-s |
-| [ ] | S4-27 | LOW | `frontend/src/app/global-error.tsx:27` | global-error.tsx рендерит собственный <html>/<body> без CSS: экран критичес |
-| [ ] | S4-28 | LOW | `frontend/src/app/help/page.tsx:167` | Контакты поддержки разъезжаются между доменами и старым брендом: support@em |
-| [ ] | S4-29 | LOW | `backend/routers/admin.py:1544` | admin feature-flags PATCH принимает произвольные имена флагов без whitelist |
-| [ ] | S4-30 | LOW | `frontend/src/components/PeriodSelector.tsx:16` | Мёртвый дубликат PeriodSelector.tsx с hardcoded русскими строками |
-| [ ] | S4-31 | LOW | `frontend/src/components/ReconciliationBanner.tsx:81` | Три разных саппорт-адреса после ребренда: empirik.app, empirik.io, бренд «П |
-| [ ] | S4-32 | LOW | `frontend/src/components/dashboard/RecentTrades.tsx:116` | Часть виджетов хардкодит «₽» и ru-RU-формат в обход настройки валюты |
-| [ ] | S4-33 | LOW | `frontend/src/components/dashboard/ActivityCalendar.tsx:154` | Остатки dark-hardcode в светлой теме: text-green-300/red-300 и белые rgba в |
-| [ ] | S4-34 | LOW | `backend/routers/trades.py:214` | Любой IntegrityError при создании сделки маскируется под 409 «дубликат» |
-| [ ] | S4-35 | LOW | `backend/models.py:936` | password_reset_tokens / feature_flags / revoked_tokens.user_id без FK — сир |
+| [x] | S4-01 | HIGH | `backend/services/pd_deletion.py:146` | Trade screenshot files not deleted on account anonymization (152-FZ incompl |
+| [x] | S4-02 | HIGH | `frontend/src/lib/apiClient.ts:176` | Глобальный 15с таймаут apiClient обрубает первый sync и onboarding-reconcil |
+| [x] | S4-03 | HIGH | `.github/workflows/ci.yml:3` | CI мёртв с 2026-05-06 — миграции 0005–0029 никогда не проверялись против Po |
+| [x] | S4-04 | MED | `backend/routers/broker.py:788` | /broker/portfolio не отдаёт unrealized_pnl (top-level) и name позиций, кото |
+| [x] | S4-05 | MED | `backend/routers/stats.py:580` | Calmar на /stats/ аннуализирует доходность любой, даже недельной, истории ( |
+| [x] | S4-06 | MED | `backend/analytics/advanced.py:639` | tax_visibility использует устаревшую шкалу НДФЛ (13% до 5 млн) — с 2025 пор |
+| [x] | S4-07 | MED | `backend/routers/trades.py:1332` | POST /trades/calculate-mae-mfe force_all: неограниченный фан-аут в MOEX ISS |
+| [x] | S4-08 | MED | `nginx/conf.d/empirik.conf:110` | Новый /api/landing/ticker в проде получает 404 через nginx: location /api/  |
+| [x] | S4-09 | MED | `backend/services/invariants_service.py:341` | invariants_service обращается к несуществующим колонкам BalanceSnapshot — у |
+| [x] | S4-10 | MED | `backend/services/totp_service.py:50` | TOTP-код можно переиспользовать (replay) в пределах окна — нет счётчика las |
+| [x] | S4-11 | MED | `backend/routers/auth.py:57` | User enumeration на /auth/register: разный ответ для существующего и нового |
+| [x] | S4-12 | MED | `frontend/src/components/TrialEndedDialog.tsx:35` | Весь триал-UI (TrialEndedDialog, TrialCountdownBanner, SubscriptionProvider |
+| [x] | S4-13 | MED | `frontend/src/components/ReconciliationBanner.tsx:39` | Onboarding-визард /onboarding/reconcile недостижим из UI: единственная ссыл |
+| [x] | S4-14 | MED | `frontend/src/app/auth/verify-email/page.tsx:89` | Флоу верификации email оборван: /auth/me не отдаёт email_verified, resend-э |
+| [x] | S4-15 | MED | `frontend/src/app/profile/page.tsx:88` | Logout со страницы профиля — гонка: window.location.href сразу после fire-a |
+| [x] | S4-16 | MED | `backend/routers/admin.py:746` | impersonate-токен: нет запрета имперсонации админов, нет отзыва токена, нет |
+| [x] | S4-17 | MED | `frontend/src/app/layout.tsx:105` | Один глобальный ErrorBoundary на всё приложение — упавший виджет роняет вес |
+| [x] | S4-18 | MED | `backend/models.py:960` | Дрейф моделей: индексы ix_operations_state_type_executed и ix_access_log_st |
+| [x] | S4-19 | MED | `backend/models.py:338` | Обратный дрейф: ix_trades_account_entry_exit добавлен в models.py (коммит 8 |
+| [x] | S4-20 | LOW | `frontend/src/types/api.generated.ts:1` | api.generated.ts не перегенерирован после незакоммиченных правок роутеров — |
+| [x] | S4-21 | LOW | `frontend/src/components/OAuthButtons.tsx:107` | Raw fetch без таймаута в обход apiClient/fetchWithTimeout (4 места) |
+| [x] | S4-22 | LOW | `backend/moex_service.py:102` | _index_cache в MoexService — неограниченный рост словаря (ключ = произвольн |
+| [x] | S4-23 | LOW | `backend/routers/stats_advanced.py:166` | GET /stats/benchmark без кэша и без явного rate-limit — полная загрузка сде |
+| [x] | S4-24 | LOW | `backend/services/pd_deletion.py:169` | Anonymization does not clear totp_secret and email_verification_token |
+| [x] | S4-25 | LOW | `backend/routers/auth.py:600` | Timing-enumeration на /password-reset/request из-за синхронной отправки SMT |
+| [x] | S4-26 | LOW | `frontend/src/lib/userScopedStorage.ts:18` | Тема сбрасывается на тёмную при каждом логине/логауте: theme лежит в user-s |
+| [x] | S4-27 | LOW | `frontend/src/app/global-error.tsx:27` | global-error.tsx рендерит собственный <html>/<body> без CSS: экран критичес |
+| [x] | S4-28 | LOW | `frontend/src/app/help/page.tsx:167` | Контакты поддержки разъезжаются между доменами и старым брендом: support@em |
+| [x] | S4-29 | LOW | `backend/routers/admin.py:1544` | admin feature-flags PATCH принимает произвольные имена флагов без whitelist |
+| [x] | S4-30 | LOW | `frontend/src/components/PeriodSelector.tsx:16` | Мёртвый дубликат PeriodSelector.tsx с hardcoded русскими строками |
+| [x] | S4-31 | LOW | `frontend/src/components/ReconciliationBanner.tsx:81` | Три разных саппорт-адреса после ребренда: empirik.app, empirik.io, бренд «П |
+| [x] | S4-32 | LOW | `frontend/src/components/dashboard/RecentTrades.tsx:116` | Часть виджетов хардкодит «₽» и ru-RU-формат в обход настройки валюты |
+| [x] | S4-33 | LOW | `frontend/src/components/dashboard/ActivityCalendar.tsx:154` | Остатки dark-hardcode в светлой теме: text-green-300/red-300 и белые rgba в |
+| [x] | S4-34 | LOW | `backend/routers/trades.py:214` | Любой IntegrityError при создании сделки маскируется под 409 «дубликат» |
+| [x] | S4-35 | LOW | `backend/models.py:936` | password_reset_tokens / feature_flags / revoked_tokens.user_id без FK — сир |
 
 ---
 
