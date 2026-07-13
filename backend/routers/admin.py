@@ -4,6 +4,7 @@ Admin Router — управление пользователями, аналит
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import case, func
+from sqlalchemy.exc import IntegrityError
 from typing import Optional
 
 import database
@@ -1550,6 +1551,14 @@ def admin_set_feature_flags(
     unknown = set(flags) - ALLOWED_FEATURE_FLAGS
     if unknown:
         log.warning("admin_set_feature_flags: unknown flags rejected: %s", unknown)
+        audit_admin_action(
+            db,
+            actor_user_id=admin.id,
+            action="set_feature_flags_rejected",
+            target_user_id=user_id,
+            details={"unknown_flags": sorted(unknown)},
+            request=request,
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Неизвестные feature-флаги: {', '.join(sorted(unknown))}",
@@ -1568,6 +1577,17 @@ def admin_set_feature_flags(
                 flag_name=flag_name[:64],
                 enabled=bool(enabled),
             ))
+            try:
+                db.commit()
+            except IntegrityError:
+                # TOCTOU: concurrent PATCH инсертнул ту же (user_id, flag_name)
+                # между нашим SELECT и INSERT — откатываемся и делаем UPDATE.
+                db.rollback()
+                existing = db.query(models.FeatureFlagORM).filter(
+                    models.FeatureFlagORM.user_id == user_id,
+                    models.FeatureFlagORM.flag_name == flag_name,
+                ).first()
+                existing.enabled = bool(enabled)
     db.commit()
 
     audit_admin_action(
