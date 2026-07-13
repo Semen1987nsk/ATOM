@@ -164,7 +164,7 @@ export default function PositionsPage() {
     if (!activeConnectionId) return;
     setSyncing(true);
     try {
-      await api.post(`/broker/connections/${activeConnectionId}/sync`, {});
+      await api.post(`/broker/connections/${activeConnectionId}/sync`, { timeoutMs: 120000 });
       await fetchPositions();
     } catch (err: unknown) {
       // Ошибка вторичного действия — через тост, чтобы не затирать таблицу (S3-21).
