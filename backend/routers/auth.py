@@ -549,11 +549,15 @@ def totp_enable(
 
 @router.post("/2fa/verify", status_code=200)
 def totp_verify(
+    request: Request,
     payload: schemas.TotpVerifyRequest,
     current_user: models.User = Depends(auth_service.get_current_user),
     db: Session = Depends(database.get_db),
 ):
     """PR 26 Phase 2: подтвердить 2FA активацию вводом первого кода."""
+    # I2 (CWE-285): активация 2FA под impersonation-токеном запрещена.
+    auth_service.assert_not_impersonation(request)
+
     from services.totp_service import verify_code_for_user
 
     if not current_user.totp_secret:

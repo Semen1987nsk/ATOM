@@ -158,3 +158,15 @@ def test_2fa_disable_blocked_under_impersonation(test_app):
     )
     assert resp.status_code == 403
     assert "имперсонац" in resp.json()["detail"].lower()
+
+
+def test_2fa_verify_blocked_under_impersonation(test_app):
+    # I2 (CWE-285): активация 2FA (totp_enabled=True) под impersonation-токеном запрещена.
+    headers = _impersonation_headers(test_app["db"])
+    resp = test_app["client"].post(
+        "/auth/2fa/verify",
+        headers=headers,
+        json={"code": "000000"},
+    )
+    assert resp.status_code == 403
+    assert "имперсонац" in resp.json()["detail"].lower()
