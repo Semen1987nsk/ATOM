@@ -809,21 +809,39 @@ async def get_portfolio(
                 roi = (total_balance - roi_base) / roi_base * 100
 
         positions_raw = list(getattr(raw, "positions", []) or [])
+        # Резолв name/ticker пачкой по instrument_uid — FIGI-коды бесполезны в UI.
+        uids = [getattr(p, "instrument_uid", None) for p in positions_raw]
+        uids = [u for u in uids if u]
+        instr_map = {}
+        if uids:
+            for inst in (
+                db.query(models.InstrumentORM)
+                .filter(models.InstrumentORM.uid.in_(uids))
+                .all()
+            ):
+                instr_map[inst.uid] = inst
         positions = []
+        unrealized_total = 0.0
         for p in positions_raw:
-            ticker = getattr(p, "figi", None) or ""
-            qty = _money_decimal(getattr(p, "quantity", None))
-            if ticker == "RUB000UTSTOM":
+            figi = getattr(p, "figi", None) or ""
+            if figi == "RUB000UTSTOM":
                 continue  # рубли отдельно
+            qty = _money_decimal(getattr(p, "quantity", None))
+            uid = getattr(p, "instrument_uid", None)
+            inst = instr_map.get(uid)
+            upl = _money_decimal(getattr(p, "expected_yield_fifo", None))
+            unrealized_total += float(upl or 0)
             positions.append(
                 {
-                    "ticker": ticker,
-                    "instrument_uid": getattr(p, "instrument_uid", None),
+                    "ticker": (inst.ticker if inst and inst.ticker else figi),
+                    "name": (inst.name if inst and inst.name else figi),
+                    "figi": figi,
+                    "instrument_uid": uid,
                     "instrument_type": getattr(p, "instrument_type", None),
                     "quantity": qty,
                     "average_price": _money_decimal(getattr(p, "average_position_price", None)),
                     "current_price": _money_decimal(getattr(p, "current_price", None)),
-                    "unrealized_pnl": _money_decimal(getattr(p, "expected_yield_fifo", None)),
+                    "unrealized_pnl": upl,
                 }
             )
     except TokenInvalid:
@@ -846,6 +864,7 @@ async def get_portfolio(
         "etf_value": etf_value,
         "futures_value": futures_value,
         "options_value": options_value,
+        "unrealized_pnl": unrealized_total,
         "initial_balance": initial,
         "roi_percent": roi,
         "positions": positions,
