@@ -138,8 +138,8 @@ def login(request: Request, response: Response, user_data: schemas.UserLogin, db
     # вынужден был бы matchить строку detail по языку — brittle и небезопасно
     # при локализации.
     if user.totp_enabled:
-        from services.totp_service import verify_code
-        if not user_data.totp_code or not verify_code(user.totp_secret, user_data.totp_code):
+        from services.totp_service import verify_code_for_user
+        if not user_data.totp_code or not verify_code_for_user(user, user_data.totp_code):
             raise HTTPException(
                 status_code=401,
                 detail={
@@ -147,6 +147,9 @@ def login(request: Request, response: Response, user_data: schemas.UserLogin, db
                     "totp_required": True,
                 },
             )
+        # S4-10: персистим totp_last_used_step ДО выдачи токенов — иначе
+        # replay-guard бесполезен (шаг не сохранится между запросами).
+        db.commit()
 
     # Создаём пару токенов
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
@@ -864,7 +867,7 @@ def oauth_2fa_verify(
     6-значный TOTP код. При успехе — полная сессия (cookies), как обычный
     OAuth-вход. Rate limit: 5 запросов в минуту (защита от brute-force кода).
     """
-    from services.totp_service import verify_code
+    from services.totp_service import verify_code_for_user
 
     user_id = auth_service.decode_2fa_pending_token(payload.pending_token)
     if user_id is None:
@@ -874,8 +877,11 @@ def oauth_2fa_verify(
     if user is None or user.is_active != 1:
         raise HTTPException(status_code=401, detail="Сессия истекла. Войдите заново.")
 
-    if not user.totp_enabled or not verify_code(user.totp_secret, payload.code):
+    if not user.totp_enabled or not verify_code_for_user(user, payload.code):
         raise HTTPException(status_code=401, detail="Неверный код двухфакторной аутентификации")
+
+    # S4-10: персистим totp_last_used_step ДО выдачи токенов (см. login).
+    db.commit()
 
     access_token, refresh_token = auth_service.create_token_pair(user.id, user.email)
     auth_service.set_auth_cookies(response, request, access_token, refresh_token)

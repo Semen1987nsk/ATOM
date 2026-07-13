@@ -64,7 +64,9 @@ def verify_code(secret: Optional[str], code: str) -> bool:
 
 def verify_code_for_user(user, code: str) -> bool:
     """Replay-safe проверка: отклоняет повторное использование того же TOTP-шага.
-    Требует у user поля totp_secret и totp_last_used_step (int|None)."""
+    Требует у user поля totp_secret и totp_last_used_step (int|None).
+    Guard эффективен ТОЛЬКО при немедленном db.commit() после успеха; полный
+    row-lock/атомарный UPDATE против TOCTOU — follow-up (см. S4-10 бэклог)."""
     secret = getattr(user, "totp_secret", None)
     if not secret or not code:
         return False

@@ -459,6 +459,44 @@ class TestTotp:
         )
         assert r.status_code == 400
 
+    def test_code_replay_rejected_and_step_persisted(self, test_app):
+        """S4-10: один и тот же TOTP-код принимается один раз, повтор → 400.
+
+        Проверяет полный replay-вектор через эндпоинт (не только unit): шаг
+        сохраняется в БД (db.refresh), поэтому второй запрос видит guard.
+        """
+        import pyotp
+
+        db = test_app["db"]
+        user, _ = _make_user(db, "replay@test.com")
+        # Сеем секрет напрямую через ORM — так знаем код для генерации.
+        secret = pyotp.random_base32()
+        user.totp_secret = secret
+        user.totp_last_used_step = None
+        db.commit()
+
+        code = pyotp.TOTP(secret).now()
+
+        # Первый ввод — принят, 2FA активирована.
+        r1 = test_app["client"].post(
+            "/auth/2fa/verify",
+            json={"code": code},
+            headers=_auth_headers(user),
+        )
+        assert r1.status_code == 200
+
+        # totp_last_used_step персистнут в БД.
+        db.refresh(user)
+        assert user.totp_last_used_step is not None
+
+        # Повтор того же кода — replay, отклонён.
+        r2 = test_app["client"].post(
+            "/auth/2fa/verify",
+            json={"code": code},
+            headers=_auth_headers(user),
+        )
+        assert r2.status_code == 400
+
 
 # ==================== SECURITY HEADERS ====================
 
