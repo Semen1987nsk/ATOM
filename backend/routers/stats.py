@@ -27,6 +27,23 @@ from config import settings
 from utils.downsample import lttb
 
 
+def _calmar_with_history_gate(pnls_sorted, calmar_initial_balance, period_years, trading_days):
+    """Calmar с гейтом 90 дней (консистентно со stats_advanced.py:101).
+    На короткой истории аннуализированная доходность взрывается → не показываем."""
+    if trading_days < 90:
+        return {
+            "calmar_ratio": None,
+            "cagr_pct": None,
+            "max_drawdown_pct": None,
+            "rating": "Недостаточно истории",
+        }
+    return analytics.calculate_calmar_ratio(
+        pnls_sorted,
+        initial_balance=calmar_initial_balance,
+        period_years=period_years,
+    )
+
+
 def _downsample_equity_curve(curve: list[dict], max_points: int) -> list[dict]:
     """PERF-10: LTTB-сжатие equity_curve к max_points точкам.
 
@@ -628,10 +645,14 @@ async def get_stats(
     # а Calmar fallback на account.initial_balance — давали разный max_drawdown_pct
     # в двух карточках. Теперь оба читают drawdown_baseline.
     calmar_initial_balance = drawdown_baseline if drawdown_baseline > 0 else base_initial_balance
-    calmar_data = analytics.calculate_calmar_ratio(
+    _calmar_trading_days = (
+        (sorted_trades[-1].exit_at or sorted_trades[-1].entry_at) - sorted_trades[0].entry_at
+    ).days if len(sorted_trades) >= 2 else 0
+    calmar_data = _calmar_with_history_gate(
         pnls_sorted,
-        initial_balance=calmar_initial_balance,
+        calmar_initial_balance=calmar_initial_balance,
         period_years=period_years,
+        trading_days=_calmar_trading_days,
     )
 
     # Risk of Ruin
