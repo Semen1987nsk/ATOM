@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select, update
@@ -139,6 +140,20 @@ def finalize_deletion(db: Session, user: models.User) -> None:
         .join(models.Account, models.Account.id == models.Trade.account_id)
         .where(models.Account.user_id == user_id)
     )
+
+    # 152-ФЗ ст.21 п.5: физически удаляем файлы скриншотов (PII/финданные),
+    # а не только зануляем ссылку в БД.
+    from routers.trades import UPLOAD_DIR as _SCREENSHOT_DIR
+
+    screenshot_urls = [
+        row[0]
+        for row in db.execute(
+            select(models.Trade.screenshot_url)
+            .where(models.Trade.id.in_(trade_ids_subq))
+            .where(models.Trade.screenshot_url.isnot(None))
+        ).all()
+    ]
+
     trades_cleaned = db.execute(
         update(models.Trade)
         .where(models.Trade.id.in_(trade_ids_subq))
@@ -181,6 +196,14 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     # deletion_requested_at оставляем — это аудит, когда был выполнен запрос.
 
     db.commit()
+
+    # Удаляем физические файлы скриншотов (после успешного commit анонимизации).
+    for url in screenshot_urls:
+        try:
+            fpath = _SCREENSHOT_DIR / Path(url).name
+            fpath.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning(f"Failed to unlink screenshot {url}: {exc}")
 
     # PR 26 Scenario #78: инвалидация stats cache + revoke всех активных JWT
     # юзера. Без этого после анонимизации старый кэш может всё ещё содержать
