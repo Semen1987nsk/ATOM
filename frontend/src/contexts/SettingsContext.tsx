@@ -60,9 +60,11 @@ function getInitialSettings(): Settings {
     return defaultSettings;
   }
 
+  const deviceTheme = localStorage.getItem(THEME_DEVICE_KEY) as Theme | null;
+
   const saved = localStorage.getItem('tradingSettings');
   if (!saved) {
-    return defaultSettings;
+    return { ...defaultSettings, theme: deviceTheme || defaultSettings.theme };
   }
 
   try {
@@ -81,11 +83,10 @@ function getInitialSettings(): Settings {
       ...parsedWithoutLegacy,
       currency: currency || defaultSettings.currency,
       currencySymbol: currency ? currencySymbols[currency] || '₽' : defaultSettings.currencySymbol,
-      theme: (typeof window !== 'undefined' && (localStorage.getItem(THEME_DEVICE_KEY) as Theme))
-        || parsed.theme || defaultSettings.theme,
+      theme: deviceTheme || parsed.theme || defaultSettings.theme,
     };
   } catch {
-    return defaultSettings;
+    return { ...defaultSettings, theme: deviceTheme || defaultSettings.theme };
   }
 }
 

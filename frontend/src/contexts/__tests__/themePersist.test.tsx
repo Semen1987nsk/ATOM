@@ -20,4 +20,14 @@ describe('theme persistence (device-scoped)', () => {
     clearUserScopedState();
     expect(localStorage.getItem('empirik.theme')).toBe('light');
   });
+
+  it('свежий mount SettingsProvider после logout остаётся светлым (не откатывается на dark)', () => {
+    const { result, unmount } = renderHook(() => useSettings(), { wrapper });
+    act(() => { result.current.updateSettings({ theme: 'light' }); });
+    clearUserScopedState();
+    unmount();
+
+    const { result: result2 } = renderHook(() => useSettings(), { wrapper });
+    expect(result2.current.settings.theme).toBe('light');
+  });
 });
