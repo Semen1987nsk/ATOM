@@ -965,6 +965,10 @@ from pathlib import Path
 UPLOAD_DIR = Path("uploads/screenshots")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Кап на батч MAE/MFE: каждый расчёт = до 6 ISS-запросов на тикер; без капа
+# force_all у активного трейдера = тысячи ISS-запросов в одном HTTP-запросе.
+MAE_MFE_BATCH_CAP = 200
+
 
 @router.get("/{trade_id}/screenshot")
 async def get_screenshot(
@@ -1404,8 +1408,10 @@ async def calculate_mae_mfe_bulk(
             (models.Trade.mae_price == None) | (models.Trade.mfe_price == None)
         )
     
-    trades = query.all()
-    
+    # Ограничиваем батч: остальное юзер добьёт повторным вызовом (курсор — по
+    # сделкам без MAE/MFE, force_all обрабатывает по 200 за раз).
+    trades = query.order_by(models.Trade.id).limit(MAE_MFE_BATCH_CAP).all()
+
     if not trades:
         return {
             "message": "Нет сделок для расчёта MAE/MFE",
@@ -1463,7 +1469,8 @@ async def calculate_mae_mfe_bulk(
         "processed": len(trades),
         "updated": updated,
         "failed": failed,
-        "errors": errors[:10] if errors else []  # Первые 10 ошибок
+        "errors": errors[:10] if errors else [],  # Первые 10 ошибок
+        "has_more": len(trades) == MAE_MFE_BATCH_CAP,
     }
 
 
