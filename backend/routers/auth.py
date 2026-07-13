@@ -3,6 +3,7 @@ Auth Router — регистрация, вход, профиль, OAuth
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from datetime import datetime
 import secrets
@@ -29,6 +30,28 @@ oauth_store = get_state_store()
 
 # ==================== AUTH ENDPOINTS ====================
 
+def _neutral_register_response(password: str, notify_email: str) -> JSONResponse:
+    """SEC (S4-11): нейтральный ответ на дубль/гонку, неотличимый от happy-path.
+
+    Уравниваем не только код/тело, но и ТАЙМИНГ: happy-path платит bcrypt-цену
+    в create_user → get_password_hash (rounds=BCRYPT_ROUNDS). Здесь прогоняем
+    дамми-хеш той же стоимости и отбрасываем — иначе латентность выдаёт, что
+    email существует (образец: auth_service.authenticate_user дамми-check).
+    Best-effort уведомляем реального владельца письмом.
+    """
+    auth_service.get_password_hash(password)
+    log.info("register: duplicate email attempt email=%s", mask_email(notify_email))
+    try:
+        from services.email_service import send_duplicate_registration_notice
+        send_duplicate_registration_notice(notify_email)
+    except Exception:
+        log.exception("register: duplicate-notice email send failed (non-blocking)")
+    return JSONResponse(
+        status_code=202,
+        content={"message": "Если email свободен — аккаунт создан. Проверьте почту."},
+    )
+
+
 @router.post("/register", response_model=schemas.AuthSuccess)
 @limiter.limit(REGISTER_LIMIT)
 def register(request: Request, response: Response, user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
@@ -51,20 +74,16 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
 
     existing_user = auth_service.get_user_by_email(db, user_data.email)
     if existing_user:
-        # SEC (S4-11): не раскрываем факт существования email (enumeration).
-        # Отвечаем нейтрально 202 и best-effort уведомляем реального владельца.
-        log.info("register: duplicate email attempt email=%s", mask_email(user_data.email))
-        try:
-            from services.email_service import send_duplicate_registration_notice
-            send_duplicate_registration_notice(existing_user.email)
-        except Exception:
-            log.exception("register: duplicate-notice email send failed (non-blocking)")
-        return JSONResponse(
-            status_code=202,
-            content={"message": "Если email свободен — аккаунт создан. Проверьте почту."},
-        )
+        return _neutral_register_response(user_data.password, existing_user.email)
 
-    user = auth_service.create_user(db, user_data)
+    try:
+        user = auth_service.create_user(db, user_data)
+    except IntegrityError:
+        # SEC (S4-11): конкурентная регистрация нового email — второй commit
+        # ловит UNIQUE(users.email). Откатываем и отвечаем тем же нейтральным
+        # 202, что и для дубля, чтобы гонка не приоткрывала enumeration через 500.
+        db.rollback()
+        return _neutral_register_response(user_data.password, user_data.email)
 
     # Записываем согласие в журнал — версионируем по политике конфиденциальности.
     # При смене текста политики версия инкрементируется, и юзер должен подтвердить заново.
