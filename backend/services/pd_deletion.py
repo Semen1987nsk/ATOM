@@ -212,6 +212,10 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     user.referrer = None
     user.settings = {}
     user.last_login = None
+    # 152-ФЗ: секреты 2FA и токен верификации — тоже подлежат уничтожению.
+    user.totp_secret = None
+    user.totp_enabled = False
+    user.email_verification_token = None
     # deletion_requested_at оставляем — это аудит, когда был выполнен запрос.
 
     db.commit()
