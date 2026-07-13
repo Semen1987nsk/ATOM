@@ -19,6 +19,7 @@ import SyncStatusIndicator from '@/components/SyncStatusIndicator';
 import { FilterPanel, Filters } from '@/components/FilterPanel';
 import { DashboardSkeleton } from '@/components/Skeleton';
 import { AppShell } from '@/components/AppShell';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -684,17 +685,19 @@ export default function DashboardHome() {
               4. Streak + Activity — behavioral hooks
               5. Recent Trades + Setup — drill-down контекст
               6. Portfolio — снимок счёта */}
-          <EquityCurveCard
-            data={settings.pnlDisplayMode === 'gross' ? stats?.equity_curve_gross : stats?.equity_curve}
-            benchmark={stats?.imoex_curve}
-            benchmarkLabel="IMOEX"
-            initialBalance={effectiveInitialDeposit ?? undefined}
-            formatCurrency={formatCurrency}
-            isBrokerCumulative={isBrokerUser}
-            pctBaseline={(stats as { drawdown_baseline?: number })?.drawdown_baseline ?? 0}
-            peakDate={stats?.max_drawdown_peak_date ?? null}
-            troughDate={stats?.max_drawdown_trough_date ?? null}
-          />
+          <ErrorBoundary fallback={<div className="card p-6 text-sm text-[var(--text-secondary)]">График недоступен</div>}>
+            <EquityCurveCard
+              data={settings.pnlDisplayMode === 'gross' ? stats?.equity_curve_gross : stats?.equity_curve}
+              benchmark={stats?.imoex_curve}
+              benchmarkLabel="IMOEX"
+              initialBalance={effectiveInitialDeposit ?? undefined}
+              formatCurrency={formatCurrency}
+              isBrokerCumulative={isBrokerUser}
+              pctBaseline={(stats as { drawdown_baseline?: number })?.drawdown_baseline ?? 0}
+              peakDate={stats?.max_drawdown_peak_date ?? null}
+              troughDate={stats?.max_drawdown_trough_date ?? null}
+            />
+          </ErrorBoundary>
 
           {/* Core KPI — сразу после Equity, для daily-scan */}
           <div className="mt-6">
@@ -733,7 +736,9 @@ export default function DashboardHome() {
 
           {/* Portfolio widget — текущее состояние счёта */}
           <div className="mt-6">
-            <PortfolioCard />
+            <ErrorBoundary fallback={<div className="card p-6 text-sm text-[var(--text-secondary)]">Виджет недоступен</div>}>
+              <PortfolioCard />
+            </ErrorBoundary>
           </div>
         </>
       )}
@@ -742,10 +747,12 @@ export default function DashboardHome() {
         advancedError ? (
           <DataError error={advancedError} onRetry={retryAdvanced} />
         ) : (
-          <AdvancedMetricsGrid
-            data={advancedData as React.ComponentProps<typeof AdvancedMetricsGrid>['data']}
-            loading={advancedLoading}
-          />
+          <ErrorBoundary fallback={<div className="card p-6 text-sm text-[var(--text-secondary)]">Виджет недоступен</div>}>
+            <AdvancedMetricsGrid
+              data={advancedData as React.ComponentProps<typeof AdvancedMetricsGrid>['data']}
+              loading={advancedLoading}
+            />
+          </ErrorBoundary>
         )
       )}
 
@@ -753,10 +760,12 @@ export default function DashboardHome() {
         benchmarkError ? (
           <DataError error={benchmarkError} onRetry={retryBenchmark} />
         ) : (
-          <BenchmarkingView
-            data={benchmarkData as React.ComponentProps<typeof BenchmarkingView>['data']}
-            loading={benchmarkLoading}
-          />
+          <ErrorBoundary fallback={<div className="card p-6 text-sm text-[var(--text-secondary)]">Виджет недоступен</div>}>
+            <BenchmarkingView
+              data={benchmarkData as React.ComponentProps<typeof BenchmarkingView>['data']}
+              loading={benchmarkLoading}
+            />
+          </ErrorBoundary>
         )
       )}
 
