@@ -165,7 +165,8 @@ class TestAuth:
         assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME)
 
     def test_register_duplicate_email(self, test_app, test_user):
-        """Should reject duplicate email"""
+        """S4-11: duplicate email must be indistinguishable from a fresh one
+        (no enumeration oracle) — neutral 202 without the old 400 message."""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "test@example.com",
@@ -173,8 +174,8 @@ class TestAuth:
             "name": "Duplicate",
             "pd_consent": True,
         })
-        assert response.status_code == 400
-        assert "зарегистрирован" in response.json()["detail"].lower()
+        assert response.status_code in (200, 202)
+        assert "зарегистрирован" not in response.text.lower()
 
     def test_register_weak_password(self, test_app):
         """Should reject weak password"""

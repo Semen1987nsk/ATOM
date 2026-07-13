@@ -144,6 +144,16 @@ def send_already_registered_notice(to_email: str, reset_url: str) -> bool:
     return _send_sync(to_email=to_email, subject=subject, body_text=body_text)
 
 
+def send_duplicate_registration_notice(to_email: str) -> bool:
+    """S4-11: тонкая обёртка над send_already_registered_notice для register-флоу.
+
+    При попытке регистрации на занятый email отвечаем нейтрально и best-effort
+    уведомляем реального владельца (закрывает enumeration по коду ответа)."""
+    from config import settings
+    reset_url = f"{settings.PUBLIC_URL}/auth/reset-password"
+    return send_already_registered_notice(to_email, reset_url)
+
+
 def send_password_reset_email(
     to_email: str,
     reset_url: str,

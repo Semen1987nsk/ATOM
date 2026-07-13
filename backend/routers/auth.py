@@ -2,6 +2,7 @@
 Auth Router — регистрация, вход, профиль, OAuth
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from datetime import datetime
 import secrets
@@ -48,17 +49,19 @@ def register(request: Request, response: Response, user_data: schemas.UserCreate
             detail="Требуется согласие на обработку персональных данных (152-ФЗ)"
         )
 
-    # PR 26 Phase 2 Scenario #22: email enumeration risk.
-    # Прямой ответ «Email уже зарегистрирован» теоретически позволяет
-    # перечислить почты юзеров. Защита — rate-limit 3/min (REGISTER_LIMIT)
-    # уже достаточен для small-scale; для massive-scale нужен email
-    # confirmation flow (TODO Phase 3). Логируем подозрительный паттерн.
     existing_user = auth_service.get_user_by_email(db, user_data.email)
     if existing_user:
-        log.info("register: email already exists email=%s", mask_email(user_data.email))
-        raise HTTPException(
-            status_code=400,
-            detail="Email уже зарегистрирован"
+        # SEC (S4-11): не раскрываем факт существования email (enumeration).
+        # Отвечаем нейтрально 202 и best-effort уведомляем реального владельца.
+        log.info("register: duplicate email attempt email=%s", mask_email(user_data.email))
+        try:
+            from services.email_service import send_duplicate_registration_notice
+            send_duplicate_registration_notice(existing_user.email)
+        except Exception:
+            log.exception("register: duplicate-notice email send failed (non-blocking)")
+        return JSONResponse(
+            status_code=202,
+            content={"message": "Если email свободен — аккаунт создан. Проверьте почту."},
         )
 
     user = auth_service.create_user(db, user_data)
