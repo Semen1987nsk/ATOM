@@ -239,6 +239,15 @@ def finalize_deletion(db: Session, user: models.User) -> None:
         models.RevokedTokenORM.user_id == user_id
     ).delete(synchronize_session=False)
 
+    # 152-ФЗ: access_log хранит ip_address/user_agent — зануляем (не удаляем
+    # строки), т.к. счётчики/статусы нужны для агрегатной аналитики.
+    db.query(models.AccessLogORM).filter(
+        models.AccessLogORM.user_id == user_id
+    ).update({
+        models.AccessLogORM.ip_address: None,
+        models.AccessLogORM.user_agent: None,
+    }, synchronize_session=False)
+
     db.commit()
 
     # PR 26 Scenario #78: инвалидация stats cache + revoke всех активных JWT
