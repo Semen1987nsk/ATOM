@@ -91,7 +91,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
 
   useEffect(() => {
     // Получаем список доступных провайдеров
-    fetch(getApiUrl('/auth/oauth/providers'), { credentials: 'include' })
+    fetchWithTimeout(getApiUrl('/auth/oauth/providers'), { credentials: 'include' })
       .then(res => res.json())
       .then(data => setProviders(data))
       .catch(() => setProviders([]));
@@ -179,7 +179,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
     setVerifying(true);
 
     try {
-      const response = await fetch(getApiUrl('/auth/oauth/2fa/verify'), {
+      const response = await fetchWithTimeout(getApiUrl('/auth/oauth/2fa/verify'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
