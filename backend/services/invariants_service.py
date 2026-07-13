@@ -347,24 +347,24 @@ def _cash_invariant(
         db.query(models.BalanceSnapshot)
         .filter(
             models.BalanceSnapshot.account_id == account_id,
-            models.BalanceSnapshot.snapshot_date <= period_start,
+            models.BalanceSnapshot.date <= period_start,
         )
-        .order_by(models.BalanceSnapshot.snapshot_date.desc())
+        .order_by(models.BalanceSnapshot.date.desc())
         .first()
     )
     snap_end = (
         db.query(models.BalanceSnapshot)
         .filter(
             models.BalanceSnapshot.account_id == account_id,
-            models.BalanceSnapshot.snapshot_date <= period_end,
+            models.BalanceSnapshot.date <= period_end,
         )
-        .order_by(models.BalanceSnapshot.snapshot_date.desc())
+        .order_by(models.BalanceSnapshot.date.desc())
         .first()
     )
     rhs = Decimal(0)
     note = ""
     if snap_start is not None and snap_end is not None:
-        rhs = Decimal(str(snap_end.total_value or 0)) - Decimal(str(snap_start.total_value or 0))
+        rhs = Decimal(str(snap_end.balance or 0)) - Decimal(str(snap_start.balance or 0))
     else:
         note = "Нет BalanceSnapshot до/после периода — проверка только на consistency self"
 
