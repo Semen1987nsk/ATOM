@@ -133,7 +133,8 @@ class UserResponse(BaseModel):
     settings: dict = {}
     oauth_provider: Optional[str] = None
     registration_source: Optional[str] = None
-    
+    email_verified: bool = False
+
     model_config = ConfigDict(from_attributes=True)
 
 class UserUpdate(BaseModel):

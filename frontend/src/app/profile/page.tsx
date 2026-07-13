@@ -240,8 +240,27 @@ function ProfileContent() {
               </div>
             </div>
           </div>
+
+          {user.email_verified === false && (
+            <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm">
+              <p className="mb-2 text-orange-200">Email не подтверждён.</p>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.post('/auth/resend-verification');
+                    setMessage({ type: 'success', text: 'Письмо отправлено повторно' });
+                  } catch (err) {
+                    setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Не удалось отправить' });
+                  }
+                }}
+                className="btn-secondary text-sm"
+              >
+                Отправить письмо повторно
+              </button>
+            </div>
+          )}
         </div>
-        
+
         {/* Subscription Card */}
         {subscription && (
           <div className={`cyber-card p-6 mb-6 border-l-4 ${

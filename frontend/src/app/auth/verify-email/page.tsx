@@ -86,7 +86,7 @@ function VerifyEmailContent() {
               <p className="text-slate-400 mb-6 text-sm">{message}</p>
               {state === 'expired' && (
                 <p className="text-xs text-slate-500 mb-4">
-                  Войдите в аккаунт и нажмите «Отправить повторно» на странице профиля.
+                  Войдите в аккаунт — на странице профиля будет кнопка «Отправить письмо повторно».
                 </p>
               )}
               <Link

@@ -22,6 +22,7 @@ export interface User {
   settings: Record<string, unknown>;
   oauth_provider?: string | null;
   registration_source?: string | null;
+  email_verified?: boolean;
 }
 
 interface AuthContextType {
