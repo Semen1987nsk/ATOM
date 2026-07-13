@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import { getApiUrl } from '@/lib/apiClient';
 import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
+import { SUPPORT_EMAIL } from '@/lib/contact';
 
 interface ReadyResponse {
   status: 'ready' | 'not_ready';
@@ -118,7 +119,7 @@ export default function StatusPage() {
 
         <div className="mt-12 text-sm text-slate-400 border-t border-slate-800 pt-6">
           Если что-то не работает — напишите в{' '}
-          <a href="mailto:support@empirik.app" className="text-blue-400 hover:underline">support@empirik.app</a>.
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-blue-400 hover:underline">{SUPPORT_EMAIL}</a>.
           Мы ответим в течение 24 часов.
         </div>
       </div>
