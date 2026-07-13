@@ -62,11 +62,20 @@ def verify_code(secret: Optional[str], code: str) -> bool:
         return False
 
 
-def verify_code_for_user(user, code: str) -> bool:
+def verify_code_for_user(user, code: str, db=None) -> bool:
     """Replay-safe проверка: отклоняет повторное использование того же TOTP-шага.
     Требует у user поля totp_secret и totp_last_used_step (int|None).
-    Guard эффективен ТОЛЬКО при немедленном db.commit() после успеха; полный
-    row-lock/атомарный UPDATE против TOCTOU — follow-up (см. S4-10 бэклог)."""
+
+    Когда передан `db` (ORM-сессия), replay-guard закрывается атомарным
+    compare-and-swap: UPDATE ... WHERE totp_last_used_step IS NULL OR < :step,
+    код принимается только при rowcount==1. На Postgres конкурентная транзакция
+    блокируется на row-lock до commit первой, затем её WHERE не проходит → 0
+    строк → replay в окне гонки исключён (TOCTOU-safe). Вызывающий обязан
+    сделать db.commit() после успеха (иначе шаг не персистится между запросами).
+
+    Без `db` (unit-тесты, объекты без сессии) — деградирует к in-memory
+    read-then-write: guard эффективен только при немедленном commit и не
+    защищён от гонки."""
     secret = getattr(user, "totp_secret", None)
     if not secret or not code:
         return False
@@ -78,13 +87,38 @@ def verify_code_for_user(user, code: str) -> bool:
         import time as _time
         for offset in (-1, 0, 1):
             step = int(_time.time()) // 30 + offset
-            if totp.verify(code, for_time=step * 30, valid_window=0):
-                last = getattr(user, "totp_last_used_step", None)
-                if last is not None and step <= last:
-                    return False  # replay/старый шаг
-                user.totp_last_used_step = step
-                return True
+            if not totp.verify(code, for_time=step * 30, valid_window=0):
+                continue
+            if db is not None and getattr(user, "id", None) is not None:
+                return _claim_step_atomic(db, user, step)
+            last = getattr(user, "totp_last_used_step", None)
+            if last is not None and step <= last:
+                return False  # replay/старый шаг
+            user.totp_last_used_step = step
+            return True
         return False
     except Exception:
         log.exception("TOTP verify_code_for_user failed")
         return False
+
+
+def _claim_step_atomic(db, user, step: int) -> bool:
+    """Атомарный CAS на users.totp_last_used_step. Возвращает True ровно один
+    раз для данного шага — конкурентный replay в окне гонки получит rowcount==0."""
+    import models
+
+    result = db.execute(
+        models.User.__table__.update()
+        .where(models.User.id == user.id)
+        .where(
+            (models.User.totp_last_used_step.is_(None))
+            | (models.User.totp_last_used_step < step)
+        )
+        .values(totp_last_used_step=step)
+    )
+    if result.rowcount != 1:
+        return False  # replay/старый шаг или проиграл гонку
+    # Синхронизируем in-memory атрибут: db.refresh до commit увидит значение,
+    # а SQLAlchemy не перечитает строку из-за expire.
+    user.totp_last_used_step = step
+    return True

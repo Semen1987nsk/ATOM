@@ -86,6 +86,25 @@ def test_login_with_2fa_valid_code_succeeds(app_db):
     assert r.status_code == 200, r.text
 
 
+def test_login_with_2fa_code_replay_rejected(app_db):
+    # S4-10 regression: login-эндпоинт обязан персистить totp_last_used_step
+    # между запросами (db.commit). Тот же валидный код второй раз → 401
+    # totp_required. RED без db.commit() в /auth/login (шаг не сохранился бы).
+    client, db = app_db
+    secret = pyotp.random_base32()
+    _user(db, enabled=True, secret=secret)
+    code = pyotp.TOTP(secret).now()
+
+    r1 = client.post("/auth/login", json={"email": "a@b.com", "password": "password12345", "totp_code": code})
+    assert r1.status_code == 200, r1.text
+
+    r2 = client.post("/auth/login", json={"email": "a@b.com", "password": "password12345", "totp_code": code})
+    assert r2.status_code == 401, r2.text
+    body = r2.json()
+    assert isinstance(body.get("detail"), dict), r2.text
+    assert body["detail"].get("totp_required") is True, r2.text
+
+
 def test_login_with_2fa_wrong_code_rejected(app_db):
     client, db = app_db
     secret = pyotp.random_base32()

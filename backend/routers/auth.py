@@ -139,7 +139,7 @@ def login(request: Request, response: Response, user_data: schemas.UserLogin, db
     # при локализации.
     if user.totp_enabled:
         from services.totp_service import verify_code_for_user
-        if not user_data.totp_code or not verify_code_for_user(user, user_data.totp_code):
+        if not user_data.totp_code or not verify_code_for_user(user, user_data.totp_code, db=db):
             raise HTTPException(
                 status_code=401,
                 detail={
@@ -523,7 +523,7 @@ def totp_verify(
     if not current_user.totp_secret:
         raise HTTPException(status_code=400, detail="Сначала вызовите /2fa/enable")
 
-    if not verify_code_for_user(current_user, payload.code):
+    if not verify_code_for_user(current_user, payload.code, db=db):
         raise HTTPException(status_code=400, detail="Неверный код. Попробуйте ещё раз.")
 
     current_user.totp_enabled = True
@@ -545,7 +545,7 @@ def totp_disable(
     if not current_user.totp_enabled:
         raise HTTPException(status_code=400, detail="2FA не активирована")
 
-    if not verify_code_for_user(current_user, payload.code):
+    if not verify_code_for_user(current_user, payload.code, db=db):
         raise HTTPException(status_code=400, detail="Неверный код")
 
     current_user.totp_enabled = False
@@ -877,7 +877,7 @@ def oauth_2fa_verify(
     if user is None or user.is_active != 1:
         raise HTTPException(status_code=401, detail="Сессия истекла. Войдите заново.")
 
-    if not user.totp_enabled or not verify_code_for_user(user, payload.code):
+    if not user.totp_enabled or not verify_code_for_user(user, payload.code, db=db):
         raise HTTPException(status_code=401, detail="Неверный код двухфакторной аутентификации")
 
     # S4-10: персистим totp_last_used_step ДО выдачи токенов (см. login).

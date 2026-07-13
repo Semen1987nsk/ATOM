@@ -155,6 +155,33 @@ def test_oauth_2fa_verify_with_valid_code_grants_full_session(app_db):
     assert me.json()["id"] == user.id
 
 
+# ==================== (б2) РЕГРЕСС S4-10: replay того же кода отклонён ====================
+
+def test_oauth_2fa_verify_code_replay_rejected(app_db):
+    # S4-10 regression: oauth/2fa/verify обязан персистить totp_last_used_step
+    # между запросами (db.commit). Один pending_token + тот же код дважды →
+    # первый 200, второй 401. RED без db.commit() в /auth/oauth/2fa/verify.
+    client, db = app_db
+    secret = pyotp.random_base32()
+    _oauth_user(db, email="2fa-replay@b.com", enabled=True, secret=secret)
+
+    r = _do_oauth_callback(client, "2fa-replay@b.com")
+    pending_token = r.json()["pending_token"]
+    code = pyotp.TOTP(secret).now()
+
+    first = client.post(
+        "/auth/oauth/2fa/verify",
+        json={"pending_token": pending_token, "code": code},
+    )
+    assert first.status_code == 200, first.text
+
+    second = client.post(
+        "/auth/oauth/2fa/verify",
+        json={"pending_token": pending_token, "code": code},
+    )
+    assert second.status_code == 401, second.text
+
+
 # ==================== (в) verify с неверным кодом — 401, сессии нет ====================
 
 def test_oauth_2fa_verify_with_invalid_code_rejected(app_db):
