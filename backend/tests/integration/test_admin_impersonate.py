@@ -138,3 +138,23 @@ def test_change_password_blocked_under_impersonation(test_app):
     )
     assert resp.status_code == 403
     assert "имперсонац" in resp.json()["detail"].lower()
+
+
+def test_2fa_enable_blocked_under_impersonation(test_app):
+    # I2 (CWE-285): имперсонирующий админ не должен менять 2FA чужого аккаунта.
+    headers = _impersonation_headers(test_app["db"])
+    resp = test_app["client"].post("/auth/2fa/enable", headers=headers)
+    assert resp.status_code == 403
+    assert "имперсонац" in resp.json()["detail"].lower()
+
+
+def test_2fa_disable_blocked_under_impersonation(test_app):
+    # I2 (CWE-285): отключение 2FA под impersonation-токеном запрещено.
+    headers = _impersonation_headers(test_app["db"])
+    resp = test_app["client"].post(
+        "/auth/2fa/disable",
+        headers=headers,
+        json={"code": "000000"},
+    )
+    assert resp.status_code == 403
+    assert "имперсонац" in resp.json()["detail"].lower()

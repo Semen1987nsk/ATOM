@@ -518,6 +518,7 @@ def resend_verification(
 
 @router.post("/2fa/enable", response_model=schemas.TotpEnableResponse)
 def totp_enable(
+    request: Request,
     current_user: models.User = Depends(auth_service.get_current_user),
     db: Session = Depends(database.get_db),
 ):
@@ -527,6 +528,9 @@ def totp_enable(
     до verify — юзер должен подтвердить что секрет успешно добавлен в
     authenticator app.
     """
+    # I2 (CWE-285): смена 2FA-состояния под impersonation-токеном запрещена.
+    auth_service.assert_not_impersonation(request)
+
     from services.totp_service import generate_secret, provisioning_uri
 
     if current_user.totp_enabled:
@@ -566,12 +570,16 @@ def totp_verify(
 
 @router.post("/2fa/disable", status_code=200)
 def totp_disable(
+    request: Request,
     payload: schemas.TotpVerifyRequest,
     current_user: models.User = Depends(auth_service.get_current_user),
     db: Session = Depends(database.get_db),
 ):
     """PR 26 Phase 2: отключить 2FA. Требует валидный TOTP код (чтобы
     атакующий с угнанным cookie не отключил защиту)."""
+    # I2 (CWE-285): смена 2FA-состояния под impersonation-токеном запрещена.
+    auth_service.assert_not_impersonation(request)
+
     from services.totp_service import verify_code_for_user
 
     if not current_user.totp_enabled:
