@@ -184,6 +184,7 @@ export default function BrokerConnectModal({ isOpen, onClose, onConnectionChange
         error?: string | null;
       }>(`/broker/connections/${connectionId}/sync`, {
         params: { full: forceFullSync },
+        timeoutMs: 120000,
       });
 
       const hasNewData = data.operations_synced > 0 || data.trades_built > 0;

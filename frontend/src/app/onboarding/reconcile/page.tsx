@@ -95,7 +95,7 @@ export default function OnboardingReconcilePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.post<{ runs: Run[] }>(`/onboarding/reconcile?days=30`);
+      const data = await api.post<{ runs: Run[] }>(`/onboarding/reconcile?days=30`, { timeoutMs: 120000 });
       setRuns(data.runs);
     } catch (e) {
       const err = e as ApiError;

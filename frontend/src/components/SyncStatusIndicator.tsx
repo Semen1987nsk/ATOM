@@ -150,7 +150,7 @@ export default function SyncStatusIndicator({
     try {
       // Блокирующий endpoint (10-90с) — держим spinner до фактического ответа,
       // затем сразу рефетчим статус (ERR-303: фикс-таймеры вводили в заблуждение).
-      await api.post(`/broker/trigger-sync/${connectionId}`);
+      await api.post(`/broker/trigger-sync/${connectionId}`, { timeoutMs: 120000 });
       refetchStatus();
       onTradesUpdated?.();
     } catch (error) {

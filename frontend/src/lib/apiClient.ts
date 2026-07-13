@@ -123,6 +123,9 @@ export interface ApiRequestOptions {
   noAuth?: boolean;
   rawResponse?: boolean;
   signal?: AbortSignal;
+  /** Переопределение таймаута (мс). Для долгих операций (первый sync/reconcile
+   *  до 60–90с) передавать 120000, иначе default 15с обрубит запрос. */
+  timeoutMs?: number;
 }
 
 export class ApiError extends Error {
@@ -159,7 +162,7 @@ async function request<T>(
   path: string,
   options: ApiRequestOptions = {}
 ): Promise<T> {
-  const { body, headers: extraHeaders, params, noAuth, rawResponse, signal } = options;
+  const { body, headers: extraHeaders, params, noAuth, rawResponse, signal, timeoutMs } = options;
 
   let url = `${getApiBase()}${path}`;
   if (params) {
@@ -200,7 +203,7 @@ async function request<T>(
   // ожидание (страница покажет ошибку/повтор вместо бесконечного скелетона).
   const doFetch = async (): Promise<Response> => {
     try {
-      return await fetchWithTimeout(url, fetchOptions);
+      return await fetchWithTimeout(url, fetchOptions, timeoutMs);
     } catch (e) {
       if (e instanceof TimeoutError) {
         throw new ApiError(408, 'Сервер не отвечает. Попробуйте ещё раз.');
