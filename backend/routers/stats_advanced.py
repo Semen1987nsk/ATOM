@@ -168,7 +168,9 @@ def get_advanced_stats(
 
 
 @router.get("/benchmark")
+@limiter.limit(API_LIMIT)
 async def get_benchmark(
+    request: Request,
     period: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
