@@ -12,6 +12,7 @@
 
 import { useMemo } from 'react';
 import { Flame, Snowflake } from 'lucide-react';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface Trade {
   pnl?: number | null;
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export function StreakIndicator({ trades }: Props) {
+  const { formatCurrency } = useSettings();
   const { streak, type, last10 } = useMemo(() => {
     // Берём закрытые сделки в порядке от свежих к старым.
     const closed = trades
@@ -94,7 +96,7 @@ export function StreakIndicator({ trades }: Props) {
                 className={`w-3 h-3 rounded-sm ${
                   pnl > 0 ? 'bg-green-500/70' : 'bg-red-500/70'
                 }`}
-                title={`${pnl >= 0 ? '+' : ''}${pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`}
+                title={`${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}`}
               />
             ))}
           </div>

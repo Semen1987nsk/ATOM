@@ -13,6 +13,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Tag as TagIcon } from 'lucide-react';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface TagStat {
   tag: string;
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function SetupPerformance({ tagStats }: Props) {
+  const { formatCurrency } = useSettings();
   const top = useMemo(() => {
     if (!tagStats || tagStats.length === 0) return [];
     return tagStats
@@ -80,7 +82,7 @@ export function SetupPerformance({ tagStats }: Props) {
                     }`}
                   >
                     {isWin ? '+' : ''}
-                    {t.pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
+                    {formatCurrency(t.pnl)}
                   </span>
                 </div>
               </Link>

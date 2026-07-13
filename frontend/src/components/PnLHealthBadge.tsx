@@ -103,7 +103,7 @@ function formatPct(pct: number | null): string {
   return `${pct.toFixed(2)}%`;
 }
 
-function formatCurrency(value: number | null): string {
+function defaultFormatCurrency(value: number | null): string {
   if (value === null || value === undefined) return "—";
   return `${value.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`;
 }
@@ -126,6 +126,7 @@ interface PnLHealthBadgeProps {
   size?: "sm" | "md";
   onRefresh?: () => void;
   refreshing?: boolean;
+  formatCurrency?: (value: number | null) => string;
 }
 
 interface HealthBreakdown {
@@ -158,10 +159,11 @@ function PopoverRow({ label, value, strong = false, accent }: {
  * Объясняет ОБЕ цифры по компонентам + причину расхождения + шкалу.
  * Данные из breakdown (journal_pnl/cash_pnl/components) — приходят в /stats/.
  */
-function HealthPopover({ data, status, style }: {
+function HealthPopover({ data, status, style, formatCurrency }: {
   data: PnLHealthData;
   status: PnLHealthStatus;
   style: BadgeStyle;
+  formatCurrency: (value: number | null) => string;
 }) {
   const bd = (data.breakdown ?? null) as HealthBreakdown | null;
   const comp = bd?.components ?? null;
@@ -246,6 +248,7 @@ export function PnLHealthBadge({
   size = "md",
   onRefresh,
   refreshing = false,
+  formatCurrency = defaultFormatCurrency,
 }: PnLHealthBadgeProps) {
   // Пересчитываем status по diff_pct на фронте — БД хранит status строкой,
   // и пока user не нажал ↻, там может лежать старое значение. Frontend
@@ -294,7 +297,7 @@ export function PnLHealthBadge({
       {/* Богатый popover при наведении */}
       {data && (
         <div className="absolute left-0 top-full mt-2 z-50 w-[340px] max-w-[90vw] rounded-xl border border-slate-700 bg-slate-900/98 backdrop-blur-sm p-4 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity duration-150 pointer-events-none">
-          <HealthPopover data={data} status={status} style={style} />
+          <HealthPopover data={data} status={status} style={style} formatCurrency={formatCurrency} />
         </div>
       )}
     </div>
@@ -305,10 +308,12 @@ export function PnLHealthCard({
   data,
   onRefresh,
   refreshing = false,
+  formatCurrency = defaultFormatCurrency,
 }: {
   data: PnLHealthData | null;
   onRefresh?: () => void;
   refreshing?: boolean;
+  formatCurrency?: (value: number | null) => string;
 }) {
   const status: PnLHealthStatus = data?.status || "stale";
   const style = styleFor(status);

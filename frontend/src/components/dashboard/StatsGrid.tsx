@@ -164,6 +164,11 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
     return `${value.toFixed(decimals)}%`;
   };
 
+  const formatHealthCurrency = (value: number | null): string => {
+    if (value === null || value === undefined) return '—';
+    return formatCurrency(value);
+  };
+
   const formatStatCurrency = (value: number | null | undefined): string => {
     if (!hasData) return noData;
     if (value === null || value === undefined || isNaN(value) || !isFinite(value)) return noData;
@@ -182,6 +187,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
             size="md"
             onRefresh={handleRefreshHealth}
             refreshing={refreshingHealth}
+            formatCurrency={formatHealthCurrency}
           />
           <span className="text-xs text-slate-500">
             Сравнение журнала с банковским балансом
@@ -432,7 +438,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
       <StatsCard 
         title={t.stats.avgWinLoss.title} 
         value={formatStatCurrency(stats?.avg_win)} 
-        description={hasData ? `${settings.currencySymbol}${Math.abs(stats?.avg_loss || 0).toFixed(0)}` : ''}
+        description={hasData ? formatCurrency(Math.abs(stats?.avg_loss || 0)) : ''}
         icon={<Scale size={18} />}
         tooltipText={t.stats.avgWinLoss.tooltip}
         manualAnchor="avg-win-loss"

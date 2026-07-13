@@ -13,6 +13,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface Trade {
   id: number;
@@ -48,6 +49,7 @@ function formatHolding(minutes: number | null | undefined): string {
 }
 
 export function RecentTrades({ trades }: Props) {
+  const { formatCurrency } = useSettings();
   const recent = useMemo(() => {
     return trades
       .filter((t) => t.exit_at)
@@ -113,7 +115,7 @@ export function RecentTrades({ trades }: Props) {
                     }`}
                   >
                     {isWin ? '+' : ''}
-                    {pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽
+                    {formatCurrency(pnl)}
                   </span>
                 </div>
               </Link>

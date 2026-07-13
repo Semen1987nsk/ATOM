@@ -13,6 +13,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { parseApiDate } from '@/lib/dateUtils';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface Trade {
   id: number;
@@ -53,6 +54,7 @@ function colorFor(pnl: number, maxAbs: number): string {
 
 export function ActivityCalendar({ trades, monthOffset = 0 }: Props) {
   const router = useRouter();
+  const { formatCurrency } = useSettings();
 
   const { buckets, year, month, maxAbs, totalPnl, tradingDays } = useMemo(() => {
     const now = new Date();
@@ -113,7 +115,7 @@ export function ActivityCalendar({ trades, monthOffset = 0 }: Props) {
           <h3 className="font-semibold text-base mb-0.5">Активность за {MONTH_NAMES[month]} {year}</h3>
           <p className="text-xs text-[var(--text-secondary)]">
             {tradingDays > 0
-              ? `${tradingDays} торговых дн., итого ${totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽`
+              ? `${tradingDays} торговых дн., итого ${totalPnl >= 0 ? '+' : ''}${formatCurrency(totalPnl)}`
               : 'В этом месяце нет закрытых сделок'}
           </p>
         </div>
@@ -139,7 +141,7 @@ export function ActivityCalendar({ trades, monthOffset = 0 }: Props) {
               disabled={!clickable}
               title={
                 b.count > 0
-                  ? `${b.date}: ${b.pnl >= 0 ? '+' : ''}${b.pnl.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽ (${b.count} сделок)`
+                  ? `${b.date}: ${b.pnl >= 0 ? '+' : ''}${formatCurrency(b.pnl)} (${b.count} сделок)`
                   : `${b.date}: нет сделок`
               }
               className={`aspect-square rounded-md flex flex-col items-center justify-center text-[10px] font-mono transition ${colorCls} ${

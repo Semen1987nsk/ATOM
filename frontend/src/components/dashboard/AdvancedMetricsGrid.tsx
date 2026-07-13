@@ -22,6 +22,7 @@ import {
   TrendingDown,
   Repeat,
 } from "lucide-react";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface AdvancedMetricsResponse {
   total_trades: number;
@@ -95,6 +96,7 @@ interface Props {
 }
 
 export function AdvancedMetricsGrid({ data, loading }: Props) {
+  const { formatCurrency } = useSettings();
   if (loading) {
     return <GridSkeleton />;
   }
@@ -204,9 +206,9 @@ export function AdvancedMetricsGrid({ data, loading }: Props) {
         <>
           <SectionHeader title="Лучшие и худшие периоды" subtitle="Когда система работает / когда её ломает." />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <PeriodCard label="Неделя" data={m.period_breakdown.weekly} />
-            <PeriodCard label="Месяц" data={m.period_breakdown.monthly} />
-            <PeriodCard label="Год" data={m.period_breakdown.yearly} />
+            <PeriodCard label="Неделя" data={m.period_breakdown.weekly} formatCurrency={formatCurrency} />
+            <PeriodCard label="Месяц" data={m.period_breakdown.monthly} formatCurrency={formatCurrency} />
+            <PeriodCard label="Год" data={m.period_breakdown.yearly} formatCurrency={formatCurrency} />
           </div>
         </>
       )}
@@ -223,7 +225,7 @@ export function AdvancedMetricsGrid({ data, loading }: Props) {
       <SectionHeader title="Поведение" subtitle="Дисциплина, повторяющиеся ошибки, частота торговли." />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <PlanAdherenceCard data={m.plan_adherence} />
-        <MistakesCard data={m.mistake_categories} />
+        <MistakesCard data={m.mistake_categories} formatCurrency={formatCurrency} />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricTile
@@ -288,7 +290,7 @@ export function AdvancedMetricsGrid({ data, loading }: Props) {
       {m.exit_breakdown && (
         <>
           <SectionHeader title="SL / TP и причины выхода" subtitle="Соблюдаешь ли ты свой план: где SL, где TP, а где руками." />
-          <ExitBreakdownCard data={m.exit_breakdown} />
+          <ExitBreakdownCard data={m.exit_breakdown} formatCurrency={formatCurrency} />
         </>
       )}
 
@@ -296,7 +298,7 @@ export function AdvancedMetricsGrid({ data, loading }: Props) {
       {m.news_event_stats && (m.news_event_stats.with_news.count > 0 || m.news_event_stats.without_news.count > 0) && (
         <>
           <SectionHeader title="Сделки рядом с новостями" subtitle="Помогает понять — отчётности и выступления ЦБ работают на тебя или против." />
-          <NewsEventCard data={m.news_event_stats} />
+          <NewsEventCard data={m.news_event_stats} formatCurrency={formatCurrency} />
         </>
       )}
 
@@ -304,7 +306,7 @@ export function AdvancedMetricsGrid({ data, loading }: Props) {
       {m.tax_visibility && (
         <>
           <SectionHeader title="Налоговая видимость" subtitle="Брокер удержит автоматически — но полезно знать заранее." />
-          <TaxCard data={m.tax_visibility} />
+          <TaxCard data={m.tax_visibility} formatCurrency={formatCurrency} />
         </>
       )}
     </div>
@@ -395,9 +397,11 @@ function HoldTimeBar({
 function PeriodCard({
   label,
   data,
+  formatCurrency,
 }: {
   label: string;
   data?: { best?: { period: string; pnl: number; trades: number }; worst?: { period: string; pnl: number; trades: number } };
+  formatCurrency: (amount: number) => string;
 }) {
   if (!data?.best && !data?.worst) {
     return (
@@ -414,7 +418,7 @@ function PeriodCard({
           <div className="text-[11px] text-[var(--text-tertiary)]">Лучший</div>
           <div className="flex items-baseline justify-between">
             <span className="text-[14px] font-mono font-medium">{data.best.period}</span>
-            <span className="text-[14px] font-bold text-[var(--success)]">+{data.best.pnl.toFixed(0)} ₽</span>
+            <span className="text-[14px] font-bold text-[var(--success)]">{formatCurrency(data.best.pnl)}</span>
           </div>
           <div className="text-[10px] text-[var(--text-tertiary)]">{data.best.trades} сделок</div>
         </div>
@@ -424,7 +428,7 @@ function PeriodCard({
           <div className="text-[11px] text-[var(--text-tertiary)]">Худший</div>
           <div className="flex items-baseline justify-between">
             <span className="text-[14px] font-mono font-medium">{data.worst.period}</span>
-            <span className="text-[14px] font-bold text-[var(--danger)]">{data.worst.pnl.toFixed(0)} ₽</span>
+            <span className="text-[14px] font-bold text-[var(--danger)]">{formatCurrency(data.worst.pnl)}</span>
           </div>
           <div className="text-[10px] text-[var(--text-tertiary)]">{data.worst.trades} сделок</div>
         </div>
@@ -499,7 +503,13 @@ function PlanAdherenceCard({ data }: { data?: { avg_score: number | null; good_p
   );
 }
 
-function MistakesCard({ data }: { data?: Array<{ tag: string; total_pnl: number; count: number; loss_count: number; loss_rate: number }> }) {
+function MistakesCard({
+  data,
+  formatCurrency,
+}: {
+  data?: Array<{ tag: string; total_pnl: number; count: number; loss_count: number; loss_rate: number }>;
+  formatCurrency: (amount: number) => string;
+}) {
   if (!data || data.length === 0) {
     return (
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-1)] p-4">
@@ -524,7 +534,7 @@ function MistakesCard({ data }: { data?: Array<{ tag: string; total_pnl: number;
               </span>
             </div>
             <span className={`text-[13px] font-mono font-semibold ${m.total_pnl < 0 ? "text-[var(--danger)]" : "text-[var(--success)]"}`}>
-              {m.total_pnl >= 0 ? "+" : ""}{m.total_pnl.toFixed(0)} ₽
+              {m.total_pnl >= 0 ? "+" : ""}{formatCurrency(m.total_pnl)}
             </span>
           </div>
         ))}
@@ -689,8 +699,10 @@ function PsychoCard({
 
 function ExitBreakdownCard({
   data,
+  formatCurrency,
 }: {
   data: { by_reason: Array<{ reason: string; count: number; pct: number; win_rate: number; total_pnl: number }>; sl_set_pct: number; tp_set_pct: number };
+  formatCurrency: (amount: number) => string;
 }) {
   return (
     <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-1)] p-4">
@@ -714,7 +726,7 @@ function ExitBreakdownCard({
             <span className="text-[var(--text-tertiary)]">{r.count} ({r.pct}%)</span>
             <span className="text-[var(--text-tertiary)]">WR {r.win_rate}%</span>
             <span className={`font-mono font-semibold w-24 text-right ${r.total_pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
-              {r.total_pnl >= 0 ? "+" : ""}{r.total_pnl.toFixed(0)} ₽
+              {r.total_pnl >= 0 ? "+" : ""}{formatCurrency(r.total_pnl)}
             </span>
           </div>
         ))}
@@ -725,12 +737,14 @@ function ExitBreakdownCard({
 
 function NewsEventCard({
   data,
+  formatCurrency,
 }: {
   data: {
     with_news: { count: number; win_rate: number; avg_pnl: number; total_pnl: number };
     without_news: { count: number; win_rate: number; avg_pnl: number; total_pnl: number };
     top_events: Array<{ event: string; count: number; win_rate: number; total_pnl: number }>;
   };
+  formatCurrency: (amount: number) => string;
 }) {
   const wrDelta = data.with_news.win_rate - data.without_news.win_rate;
   const verdict =
@@ -744,8 +758,8 @@ function NewsEventCard({
   return (
     <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-1)] p-4">
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <ExitMiniStat label="С новостями" stats={data.with_news} />
-        <ExitMiniStat label="Без новостей" stats={data.without_news} />
+        <ExitMiniStat label="С новостями" stats={data.with_news} formatCurrency={formatCurrency} />
+        <ExitMiniStat label="Без новостей" stats={data.without_news} formatCurrency={formatCurrency} />
       </div>
       <div className="text-[12px] text-[var(--text-secondary)] py-2">{verdict}</div>
       {data.top_events.length > 0 && (
@@ -756,7 +770,7 @@ function NewsEventCard({
               <span className="font-medium truncate">{e.event}</span>
               <span className="text-[var(--text-tertiary)]">{e.count} · WR {e.win_rate}%</span>
               <span className={`font-mono font-semibold w-24 text-right ${e.total_pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
-                {e.total_pnl >= 0 ? "+" : ""}{e.total_pnl.toFixed(0)} ₽
+                {e.total_pnl >= 0 ? "+" : ""}{formatCurrency(e.total_pnl)}
               </span>
             </div>
           ))}
@@ -766,7 +780,15 @@ function NewsEventCard({
   );
 }
 
-function ExitMiniStat({ label, stats }: { label: string; stats: { count: number; win_rate: number; avg_pnl: number; total_pnl: number } }) {
+function ExitMiniStat({
+  label,
+  stats,
+  formatCurrency,
+}: {
+  label: string;
+  stats: { count: number; win_rate: number; avg_pnl: number; total_pnl: number };
+  formatCurrency: (amount: number) => string;
+}) {
   return (
     <div className="rounded-[var(--radius-md)] bg-[var(--surface-2)] p-3">
       <div className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
@@ -776,7 +798,7 @@ function ExitMiniStat({ label, stats }: { label: string; stats: { count: number;
         <span className="font-medium">{stats.win_rate}%</span>
         {" · "}
         <span className={`font-mono ${stats.total_pnl >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
-          {stats.total_pnl >= 0 ? "+" : ""}{stats.total_pnl.toFixed(0)} ₽
+          {stats.total_pnl >= 0 ? "+" : ""}{formatCurrency(stats.total_pnl)}
         </span>
       </div>
     </div>
@@ -785,6 +807,7 @@ function ExitMiniStat({ label, stats }: { label: string; stats: { count: number;
 
 function TaxCard({
   data,
+  formatCurrency,
 }: {
   data: {
     year: number;
@@ -794,6 +817,7 @@ function TaxCard({
     after_tax: number;
     tax_rate_applied: number;
   };
+  formatCurrency: (amount: number) => string;
 }) {
   const isPositive = data.realized_ytd > 0;
   return (
@@ -802,21 +826,21 @@ function TaxCard({
         <div className="rounded-[var(--radius-md)] bg-[var(--surface-2)] p-3">
           <div className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">Реализовано в {data.year}</div>
           <div className={`text-[22px] font-bold mt-1 tabular-nums ${isPositive ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
-            {data.realized_ytd >= 0 ? "+" : ""}{data.realized_ytd.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽
+            {data.realized_ytd >= 0 ? "+" : ""}{formatCurrency(data.realized_ytd)}
           </div>
           <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">{data.trades_ytd} сделок</div>
         </div>
         <div className="rounded-[var(--radius-md)] bg-[var(--surface-2)] p-3">
           <div className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">Удержит брокер</div>
           <div className="text-[22px] font-bold mt-1 tabular-nums text-[var(--warning)]">
-            −{data.estimated_tax.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽
+            {formatCurrency(-Math.abs(data.estimated_tax))}
           </div>
           <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">по ставке {(data.tax_rate_applied * 100).toFixed(0)}%</div>
         </div>
         <div className="rounded-[var(--radius-md)] bg-[var(--accent-soft)] p-3">
           <div className="text-[11px] text-[var(--accent)] uppercase tracking-wider font-medium">После налога</div>
           <div className="text-[22px] font-bold mt-1 tabular-nums">
-            {data.after_tax >= 0 ? "+" : ""}{data.after_tax.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽
+            {data.after_tax >= 0 ? "+" : ""}{formatCurrency(data.after_tax)}
           </div>
           <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">в карман</div>
         </div>
