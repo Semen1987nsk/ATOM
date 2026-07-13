@@ -342,6 +342,10 @@ def delete_account(
 
     Возвращает 202 Accepted — операция принята, но финализируется через 30 дней.
     """
+    # S4-16: под impersonation-токеном удаление аккаунта запрещено (non-repudiation).
+    # Follow-up: применить тот же гвард к /auth/change-password и платёжным операциям.
+    auth_service.assert_not_impersonation(request)
+
     # OAuth-аккаунты могут не иметь пароля — пропускаем проверку, иначе требуем
     if current_user.hashed_password:
         if not auth_service.verify_password(payload.password, current_user.hashed_password):

@@ -762,6 +762,8 @@ def admin_impersonate(
         raise HTTPException(status_code=404, detail="user not found")
     if target.id == admin.id:
         raise HTTPException(status_code=400, detail="cannot impersonate yourself")
+    if target.is_admin:
+        raise HTTPException(status_code=403, detail="cannot impersonate an admin user")
 
     audit_admin_action(
         db,

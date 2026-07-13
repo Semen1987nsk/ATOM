@@ -185,6 +185,9 @@ class TokenData(BaseModel):
     # API-07: Unix timestamp выпуска (iat) — сверяется с User.tokens_valid_after
     # для инвалидации сессий при reset/change-password.
     iat_ts: Optional[int] = None
+    # S4-16: id админа, выпустившего impersonation-токен (claim impersonated_by).
+    # Наличие → сессия имперсонации, деструктивные операции блокируются.
+    impersonated_by: Optional[int] = None
 
 
 class TotpEnableResponse(BaseModel):

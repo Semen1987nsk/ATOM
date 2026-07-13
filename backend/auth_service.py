@@ -303,6 +303,7 @@ def decode_access_token(token: str) -> Optional[schemas.TokenData]:
             jti=payload.get("jti"),
             exp_ts=payload.get("exp"),
             iat_ts=payload.get("iat"),
+            impersonated_by=payload.get("impersonated_by"),
         )
     except InvalidTokenError:
         return None
@@ -616,7 +617,20 @@ async def get_current_user(
             detail="Аккаунт деактивирован"
         )
 
+    # S4-16: помечаем impersonation-сессию, чтобы деструктивные операции
+    # могли отказать (non-repudiation) через assert_not_impersonation.
+    request.state.is_impersonation = token_data.impersonated_by is not None
+
     return user
+
+
+def assert_not_impersonation(request: Request) -> None:
+    """Блокирует деструктивные операции под impersonation-сессией (non-repudiation)."""
+    if getattr(request.state, "is_impersonation", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Операция недоступна в режиме имперсонации",
+        )
 
 
 async def get_current_user_optional(
