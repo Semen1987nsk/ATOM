@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '@/lib/apiClient';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 interface OAuthProvider {
   id: string;
@@ -110,7 +111,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
         
         try {
           const redirectUri = `${window.location.origin}${window.location.pathname}`;
-          const response = await fetch(
+          const response = await fetchWithTimeout(
             getApiUrl(`/auth/oauth/${provider}/callback?code=${code}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`),
             { method: 'POST', credentials: 'include' }
           );
@@ -149,7 +150,7 @@ export function OAuthButtons({ onSuccess, onError }: OAuthButtonsProps) {
     
     try {
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         getApiUrl(`/auth/oauth/${providerId}/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`),
         { credentials: 'include' }
       );

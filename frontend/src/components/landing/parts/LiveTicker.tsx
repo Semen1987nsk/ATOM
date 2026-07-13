@@ -1,11 +1,12 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { tickerFallback, type TickerItem } from "../data/ticker-fallback";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 type Response = { stale: boolean; tickers: TickerItem[]; fallback?: boolean };
 
 async function fetchTicker(): Promise<TickerItem[]> {
-  const r = await fetch("/api/landing/ticker");
+  const r = await fetchWithTimeout("/api/landing/ticker");
   if (!r.ok) throw new Error("ticker fetch failed");
   const body: Response = await r.json();
   if (body.fallback || body.tickers.length === 0) return [...tickerFallback];

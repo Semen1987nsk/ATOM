@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import { getApiUrl } from '@/lib/apiClient';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 interface ReadyResponse {
   status: 'ready' | 'not_ready';
@@ -33,7 +34,7 @@ export default function StatusPage() {
       setChecking(true);
       setError(null);
       try {
-        const r = await fetch(getApiUrl('/ready'), { cache: 'no-store' });
+        const r = await fetchWithTimeout(getApiUrl('/ready'), { cache: 'no-store' });
         const data = await r.json().catch(() => null);
         if (!r.ok) {
           setError(`HTTP ${r.status}`);

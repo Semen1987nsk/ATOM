@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { getApiUrl } from '@/lib/apiClient';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 type Status = 'ok' | 'degraded' | 'down' | 'unknown';
 
@@ -20,7 +21,7 @@ export function SystemStatusBadge() {
 
     const check = async () => {
       try {
-        const r = await fetch(getApiUrl('/ready'), {
+        const r = await fetchWithTimeout(getApiUrl('/ready'), {
           method: 'GET',
           cache: 'no-store',
           signal: AbortSignal.timeout(5000),
