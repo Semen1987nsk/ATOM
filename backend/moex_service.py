@@ -101,7 +101,22 @@ class MoexService:
         # Дневные свечи индекса меняются раз в день — TTL 1 час с запасом.
         self._index_cache: Dict[Tuple[str, str, str], Tuple[List[Dict], datetime]] = {}
         self._index_cache_ttl = timedelta(hours=1)
-    
+        self._INDEX_CACHE_MAX = 256
+
+    def _store_index_cache(self, cache_key, rows) -> None:
+        now = datetime.utcnow()
+        # Чистим протухшие записи.
+        expired = [k for k, (_, ts) in self._index_cache.items() if now - ts >= self._index_cache_ttl]
+        for k in expired:
+            self._index_cache.pop(k, None)
+        # Жёсткий кап: если всё ещё переполнено — выкидываем самые старые.
+        if len(self._index_cache) >= self._INDEX_CACHE_MAX:
+            for k in sorted(self._index_cache, key=lambda kk: self._index_cache[kk][1])[
+                : len(self._index_cache) - self._INDEX_CACHE_MAX + 1
+            ]:
+                self._index_cache.pop(k, None)
+        self._index_cache[cache_key] = (rows, now)
+
     def get_futures_spec(self, ticker: str) -> Optional[Dict]:
         """
         Получение спецификации фьючерса с MOEX ISS API.
@@ -410,7 +425,7 @@ class MoexService:
             if start_offset > 5000:  # защита от бесконечного цикла
                 break
 
-        self._index_cache[cache_key] = (all_rows, datetime.utcnow())
+        self._store_index_cache(cache_key, all_rows)
         return all_rows
 
     def is_futures_ticker(self, ticker: str) -> bool:
