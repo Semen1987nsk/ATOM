@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/**']
 
 # Кенселим предыдущий run на той же ветке — экономим минуты CI.
 concurrency:
@@ -73,6 +73,19 @@ jobs:
           MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
         run: |
           alembic upgrade head
+
+      - name: Alembic check (schema drift gate)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://atom:atom@localhost:5432/atom_test
+          DEBUG: 'false'
+          SECRET_KEY: ci-test-secret-key-1234567890abcdefghijklmnopqrstuvwxyz
+          REFRESH_SECRET_KEY: ci-test-refresh-key-fedcba0987654321zyxwvutsrqp
+          MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+        # S4-18 + S4-19 закрыли дрейф индексов → gate без continue-on-error:
+        # ловит рассинхрон models.py ↔ миграций до мержа.
+        run: |
+          alembic check
 
       - name: Run pytest with coverage
         working-directory: backend
