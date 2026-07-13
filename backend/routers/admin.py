@@ -19,6 +19,10 @@ log = get_logger("admin")
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+# Допустимый набор feature-flag имён. Неизвестные отклоняются, чтобы опечатка
+# или будущий код-путь не активировал гейтинг платных фич молча.
+ALLOWED_FEATURE_FLAGS = frozenset({"mae-mfe-beta", "trade-replay-beta", "ai-insights-beta"})
+
 
 def require_admin(current_user: models.User = Depends(auth_service.get_current_user)):
     """Dependency для проверки прав администратора"""
@@ -1542,6 +1546,14 @@ def admin_set_feature_flags(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=404, detail="user not found")
+
+    unknown = set(flags) - ALLOWED_FEATURE_FLAGS
+    if unknown:
+        log.warning("admin_set_feature_flags: unknown flags rejected: %s", unknown)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестные feature-флаги: {', '.join(sorted(unknown))}",
+        )
 
     for flag_name, enabled in flags.items():
         existing = db.query(models.FeatureFlagORM).filter(
