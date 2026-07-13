@@ -29,6 +29,22 @@ from subscription_service import enforce_trade_limit, require_pro
 
 log = get_logger("trades")
 
+
+_DEDUP_SQLITE_COLUMNS = (
+    "trades.account_id, trades.symbol, trades.entry_at, trades.exit_at, "
+    "trades.direction, trades.data_source"
+)
+
+
+def _is_duplicate_trade_error(exc) -> bool:
+    """True только для dedup-констрейнта — прочие IntegrityError не маскируем под 409.
+
+    Postgres включает имя констрейнта в текст ошибки, SQLite — нет (только
+    список колонок), поэтому проверяем оба варианта.
+    """
+    text = str(getattr(exc, "orig", exc))
+    return "uq_trades_dedup_v2" in text or _DEDUP_SQLITE_COLUMNS in text
+
 router = APIRouter(prefix="/trades", tags=["trades"])
 
 
@@ -211,9 +227,12 @@ async def create_trade(
 
         try:
             db.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
-            raise HTTPException(status_code=409, detail="Такая сделка уже существует")
+            if _is_duplicate_trade_error(exc):
+                raise HTTPException(status_code=409, detail="Такая сделка уже существует")
+            log.exception("create_trade: unexpected IntegrityError")
+            raise HTTPException(status_code=500, detail="Ошибка сохранения сделки")
         if last_modified_trade:
             db.refresh(last_modified_trade)
             return last_modified_trade
@@ -227,9 +246,12 @@ async def create_trade(
         db.add(db_trade)
         try:
             db.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
-            raise HTTPException(status_code=409, detail="Такая сделка уже существует")
+            if _is_duplicate_trade_error(exc):
+                raise HTTPException(status_code=409, detail="Такая сделка уже существует")
+            log.exception("create_trade: unexpected IntegrityError")
+            raise HTTPException(status_code=500, detail="Ошибка сохранения сделки")
         db.refresh(db_trade)
         return db_trade
 
