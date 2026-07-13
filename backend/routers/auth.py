@@ -392,6 +392,10 @@ def export_my_data(
     Rate-limit 5/hour — операция тяжёлая (читает несколько таблиц), смысла
     спамить нет.
     """
+    # S4-16: экспорт раскрывает полный PII (152-ФЗ) — под impersonation-токеном
+    # запрещён (non-repudiation), выше по риску, чем удаление аккаунта.
+    auth_service.assert_not_impersonation(request)
+
     from services import pd_export
 
     request_id = request.headers.get("x-request-id")
@@ -407,6 +411,7 @@ def export_my_data(
 
 @router.post("/change-password")
 def change_password(
+    request: Request,
     password_data: schemas.ChangePasswordRequest,
     current_user: models.User = Depends(auth_service.get_current_user),
     db: Session = Depends(database.get_db)
@@ -414,6 +419,9 @@ def change_password(
     """
     Изменить пароль текущего пользователя.
     """
+    # S4-16: смена пароля под impersonation-токеном запрещена (non-repudiation).
+    auth_service.assert_not_impersonation(request)
+
     if not current_user.hashed_password:
         raise HTTPException(
             status_code=400,

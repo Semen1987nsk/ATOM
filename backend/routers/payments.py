@@ -130,6 +130,9 @@ def create_checkout_link(
     чтобы фронт мог пройти весь happy path. В env есть YOOKASSA_SHOP_ID —
     переключаемся на реальный YooKassa SDK.
     """
+    # S4-16: платёж под impersonation-токеном запрещён (non-repudiation).
+    auth_service.assert_not_impersonation(request)
+
     if payload.plan not in PLAN_PRICES:
         raise HTTPException(status_code=400, detail="Неизвестный план")
 

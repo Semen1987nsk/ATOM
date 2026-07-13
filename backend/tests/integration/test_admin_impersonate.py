@@ -3,6 +3,8 @@
 Покрытие:
 - Нельзя имперсонировать пользователя с is_admin=True (403).
 - Под impersonation-токеном деструктивная DELETE /auth/me запрещена (403, non-repudiation).
+- Под impersonation-токеном запрещён PII-экспорт GET /auth/me/export (403).
+- Под impersonation-токеном запрещена смена пароля POST /auth/change-password (403).
 """
 
 import os
@@ -102,6 +104,37 @@ def test_destructive_op_blocked_under_impersonation(test_app):
         "/auth/me",
         headers={"Authorization": f"Bearer {imp_token}"},
         json={"password": "pass1234", "reason": "test"},
+    )
+    assert resp.status_code == 403
+    assert "имперсонац" in resp.json()["detail"].lower()
+
+
+def _impersonation_headers(db, target_email="target@test.com"):
+    admin, _ = _make_user(db, "admin@test.com", is_admin=True)
+    target, _ = _make_user(db, target_email)
+    imp_token = auth_service.create_access_token(
+        data={
+            "sub": str(target.id),
+            "email": target.email,
+            "impersonated_by": admin.id,
+        }
+    )
+    return {"Authorization": f"Bearer {imp_token}"}
+
+
+def test_pii_export_blocked_under_impersonation(test_app):
+    headers = _impersonation_headers(test_app["db"])
+    resp = test_app["client"].get("/auth/me/export", headers=headers)
+    assert resp.status_code == 403
+    assert "имперсонац" in resp.json()["detail"].lower()
+
+
+def test_change_password_blocked_under_impersonation(test_app):
+    headers = _impersonation_headers(test_app["db"])
+    resp = test_app["client"].post(
+        "/auth/change-password",
+        headers=headers,
+        json={"old_password": "pass1234", "new_password": "newpass123456"},
     )
     assert resp.status_code == 403
     assert "имперсонац" in resp.json()["detail"].lower()
