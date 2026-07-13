@@ -457,7 +457,7 @@ function Heatmap({ matrix }: { matrix: Array<Array<{ count: number; win_rate: nu
               const intensity = Math.abs(cell.total_pnl) / maxPnl;
               const bg =
                 cell.count === 0
-                  ? "rgba(255,255,255,0.03)"
+                  ? "var(--surface-2)"
                   : cell.total_pnl >= 0
                   ? `rgba(34, 197, 94, ${0.15 + intensity * 0.6})`
                   : `rgba(239, 68, 68, ${0.15 + intensity * 0.6})`;

@@ -153,9 +153,8 @@ export function ActivityCalendar({ trades, monthOffset = 0 }: Props) {
               <div className="text-[var(--foreground)] font-medium">{b.dayOfMonth}</div>
               {b.count > 0 && (
                 <div
-                  className={`text-[8px] font-mono leading-none mt-0.5 ${
-                    b.pnl >= 0 ? 'text-green-300' : 'text-red-300'
-                  }`}
+                  className="text-[8px] font-mono leading-none mt-0.5"
+                  style={{ color: b.pnl >= 0 ? 'var(--success)' : 'var(--danger)' }}
                 >
                   {b.pnl >= 0 ? '+' : ''}
                   {Math.abs(b.pnl) >= 1000
