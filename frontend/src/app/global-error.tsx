@@ -25,15 +25,21 @@ export default function GlobalError({
 
   return (
     <html lang="ru">
-      <body>
-        <div className="min-h-screen flex items-center justify-center p-8">
-          <div className="max-w-md text-center">
-            <h2 className="text-2xl font-bold mb-2">Критическая ошибка</h2>
-            <p className="mb-4">Перезагрузите страницу.</p>
+      <body style={{ margin: 0, background: '#0b0b0d', color: '#f5f5f5', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <div style={{ maxWidth: 420, textAlign: 'center' }}>
+            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>Критическая ошибка</h2>
+            <p style={{ marginBottom: 16, opacity: 0.85 }}>Перезагрузите страницу.</p>
             {error.digest && (
-              <p className="text-xs mb-4">ID: {error.digest}</p>
+              <p style={{ fontSize: 12, marginBottom: 16, opacity: 0.6 }}>ID: {error.digest}</p>
             )}
-            <button onClick={reset} className="btn-primary">
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                background: '#E2521C', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '10px 20px', fontSize: 14, cursor: 'pointer',
+              }}
+            >
               Перезагрузить
             </button>
           </div>
