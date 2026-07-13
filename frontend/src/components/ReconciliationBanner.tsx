@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, X } from 'lucide-react';
 import { api } from '@/lib/apiClient';
+import { SUPPORT_EMAIL } from '@/lib/contact';
 
 type BannerState = {
   show: boolean;
@@ -78,7 +79,7 @@ export function ReconciliationBanner() {
           </Link>
           <span className="text-orange-300/60 mx-1">·</span>
           <a
-            href="mailto:support@empirik.app?subject=Расхождение%20в%20reconciliation"
+            href={`mailto:${SUPPORT_EMAIL}?subject=Расхождение%20в%20reconciliation`}
             className="text-orange-300 hover:text-orange-200 underline"
           >
             написать поддержке

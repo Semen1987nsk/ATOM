@@ -18,6 +18,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CheckCircle, AlertTriangle, XCircle, Loader2, ArrowRight, Mail } from 'lucide-react';
+import { SUPPORT_EMAIL } from '@/lib/contact';
 import { api, ApiError } from '@/lib/apiClient';
 
 type MetricStatus = 'ok' | 'soft' | 'hard';
@@ -168,10 +169,10 @@ export default function OnboardingReconcilePage() {
                       отличаются — свяжитесь с поддержкой, мы разберёмся.
                     </p>
                     <a
-                      href="mailto:support@empirik.app?subject=Расхождение%20в%20reconciliation"
+                      href={`mailto:${SUPPORT_EMAIL}?subject=Расхождение%20в%20reconciliation`}
                       className="inline-flex items-center gap-1 text-sm text-orange-300 hover:text-orange-200"
                     >
-                      <Mail size={14} /> support@empirik.app
+                      <Mail size={14} /> {SUPPORT_EMAIL}
                     </a>
                   </div>
                 </div>

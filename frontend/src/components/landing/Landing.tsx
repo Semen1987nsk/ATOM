@@ -7,6 +7,7 @@
  */
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/contact";
 import { LiveTicker } from "./parts/LiveTicker";
 import { HeroEquityCurve } from "./parts/HeroEquityCurve";
 import { InteractiveCandleChart } from "./parts/InteractiveCandleChart";
@@ -577,7 +578,7 @@ export function Landing() {
               <div className="editorial-eyebrow mb-4" style={{ color: "var(--paper-on-dark-3)" }}>Контакты</div>
               <nav className="flex flex-col gap-2.5">
                 <a href="mailto:hello@empirik.io" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>hello@empirik.io</a>
-                <a href="mailto:support@empirik.io" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>support@empirik.io</a>
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>{SUPPORT_EMAIL}</a>
                 <Link href="/privacy" className="no-underline transition-colors" style={{ color: "var(--paper-on-dark-2)" }}>Политика · 152-ФЗ</Link>
               </nav>
             </div>
