@@ -218,6 +218,27 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     user.email_verification_token = None
     # deletion_requested_at оставляем — это аудит, когда был выполнен запрос.
 
+    # Revoke active sessions (insert into revoked_tokens) — мы не знаем jti
+    # активных токенов, но т.к. user.hashed_password стал NULL, decode_access_token
+    # будет валиден до expiry. Безопасно если user.is_active=0.
+    user.is_active = 0
+
+    # 152-ФЗ: удаляем PII-сироты в таблицах без FK на users (user_id/requester_ip).
+    # В ОДНОМ commit с анонимизацией email (см. рассуждение выше про
+    # unlink-цикл): если процесс упадёт до этого commit, юзер всё ещё в
+    # pending-фильтре и retry безопасно повторит всё (DELETE по пустым
+    # таблицам — no-op); если упадёт после — анонимизация и purge уже
+    # случились атомарно вместе.
+    db.query(models.PasswordResetTokenORM).filter(
+        models.PasswordResetTokenORM.user_id == user_id
+    ).delete(synchronize_session=False)
+    db.query(models.FeatureFlagORM).filter(
+        models.FeatureFlagORM.user_id == user_id
+    ).delete(synchronize_session=False)
+    db.query(models.RevokedTokenORM).filter(
+        models.RevokedTokenORM.user_id == user_id
+    ).delete(synchronize_session=False)
+
     db.commit()
 
     # PR 26 Scenario #78: инвалидация stats cache + revoke всех активных JWT
@@ -232,24 +253,6 @@ def finalize_deletion(db: Session, user: models.User) -> None:
             stats_cache.clear()  # fallback: чистим весь кэш
         except Exception:
             pass
-
-    # Revoke active sessions (insert into revoked_tokens) — мы не знаем jti
-    # активных токенов, но т.к. user.hashed_password стал NULL, decode_access_token
-    # будет валиден до expiry. Безопасно если user.is_active=0.
-    user.is_active = 0
-
-    # 152-ФЗ: удаляем PII-сироты в таблицах без FK на users (user_id/requester_ip).
-    db.query(models.PasswordResetTokenORM).filter(
-        models.PasswordResetTokenORM.user_id == user_id
-    ).delete(synchronize_session=False)
-    db.query(models.FeatureFlagORM).filter(
-        models.FeatureFlagORM.user_id == user_id
-    ).delete(synchronize_session=False)
-    db.query(models.RevokedTokenORM).filter(
-        models.RevokedTokenORM.user_id == user_id
-    ).delete(synchronize_session=False)
-
-    db.commit()
 
     log.info(
         f"🗑 Phase 2: account user_id={user_id} anonymized at {now}. "
