@@ -648,11 +648,12 @@ def calculate_tax_visibility(trades: List[Dict], tax_rate: float = 0.13) -> Dict
         if t.get("exit_at") and isinstance(t["exit_at"], datetime) and t["exit_at"].year == current_year
     ]
     realized = sum(float(t.get("pnl") or 0) for t in ytd_trades)
-    # Прогрессивная шкала: до 5M ₽ — 13%, выше — 15%
-    if realized <= 5_000_000:
+    # ФЗ-176 (с 01.01.2025): доход от ЦБ облагается 13% до 2.4 млн ₽/год, 15% свыше.
+    NDFL_SECURITIES_THRESHOLD_2025 = 2_400_000
+    if realized <= NDFL_SECURITIES_THRESHOLD_2025:
         tax = max(realized, 0) * tax_rate
     else:
-        tax = 5_000_000 * tax_rate + (realized - 5_000_000) * 0.15
+        tax = NDFL_SECURITIES_THRESHOLD_2025 * tax_rate + (realized - NDFL_SECURITIES_THRESHOLD_2025) * 0.15
     after_tax = realized - tax
 
     return {
@@ -661,7 +662,7 @@ def calculate_tax_visibility(trades: List[Dict], tax_rate: float = 0.13) -> Dict
         "trades_ytd": len(ytd_trades),
         "estimated_tax": round(tax, 2),
         "after_tax": round(after_tax, 2),
-        "tax_rate_applied": tax_rate if realized <= 5_000_000 else 0.15,
+        "tax_rate_applied": tax_rate if realized <= NDFL_SECURITIES_THRESHOLD_2025 else 0.15,
     }
 
 
