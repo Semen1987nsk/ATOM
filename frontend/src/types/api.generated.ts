@@ -428,6 +428,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/oauth/2fa/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Oauth 2Fa Verify
+         * @description S1-06b: завершить OAuth-вход для юзера с включённым 2FA.
+         *
+         *     Принимает pending-токен (выданный /auth/oauth/{provider}/callback) +
+         *     6-значный TOTP код. При успехе — полная сессия (cookies), как обычный
+         *     OAuth-вход. Rate limit: 5 запросов в минуту (защита от brute-force кода).
+         */
+        post: operations["oauth_2fa_verify_auth_oauth_2fa_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trades/": {
         parameters: {
             query?: never;
@@ -516,6 +540,13 @@ export interface paths {
          *     - `all` — все позиции (default)
          *     - `open` — только активные (есть Trade с exit_at=None)
          *     - `closed` — только полностью закрытые (все Trade имеют exit_at)
+         *
+         *     S2-10: пагинация групп выполняется в SQL (страница ключей
+         *     (instrument_uid, position_id) через offset/limit), затем Trade
+         *     загружаются только для страницы. Legacy/manual round-trips без
+         *     position_id/instrument_uid (напр. POST /trades/) НЕ группируются —
+         *     каждый такой Trade сам себе позиция (ключ по id) и участвует в той же
+         *     странице ключей, поэтому из выдачи не выпадает.
          */
         get: operations["read_position_trades_trades_positions_get"];
         put?: never;
@@ -747,7 +778,7 @@ export interface paths {
         };
         /**
          * Get Balance
-         * @description РџРѕР»СѓС‡РёС‚СЊ С‚РµРєСѓС‰РёР№ Р±Р°Р»Р°РЅСЃ Рё СЃС‚Р°С‚РёСЃС‚РёРєСѓ РґРµРїРѕР·РёС‚Р°
+         * @description Получить текущий баланс и статистику депозита
          */
         get: operations["get_balance_deposits_balance_get"];
         put?: never;
@@ -769,7 +800,7 @@ export interface paths {
         put?: never;
         /**
          * Set Initial Balance
-         * @description РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РЅР°С‡Р°Р»СЊРЅС‹Р№ РґРµРїРѕР·РёС‚
+         * @description Установить начальный депозит
          */
         post: operations["set_initial_balance_deposits_initial_post"];
         delete?: never;
@@ -789,7 +820,7 @@ export interface paths {
         put?: never;
         /**
          * Add Deposit
-         * @description Р”РѕР±Р°РІРёС‚СЊ РїРѕРїРѕР»РЅРµРЅРёРµ РґРµРїРѕР·РёС‚Р°
+         * @description Добавить пополнение депозита
          */
         post: operations["add_deposit_deposits_add_post"];
         delete?: never;
@@ -809,7 +840,7 @@ export interface paths {
         put?: never;
         /**
          * Add Withdrawal
-         * @description Р”РѕР±Р°РІРёС‚СЊ СЃРЅСЏС‚РёРµ СЃ РґРµРїРѕР·РёС‚Р°
+         * @description Добавить снятие с депозита
          */
         post: operations["add_withdrawal_deposits_withdraw_post"];
         delete?: never;
@@ -827,7 +858,7 @@ export interface paths {
         };
         /**
          * Get Deposit History
-         * @description РџРѕР»СѓС‡РёС‚СЊ РёСЃС‚РѕСЂРёСЋ РѕРїРµСЂР°С†РёР№ СЃ РґРµРїРѕР·РёС‚РѕРј
+         * @description Получить историю операций с депозитом
          */
         get: operations["get_deposit_history_deposits_history_get"];
         put?: never;
@@ -887,7 +918,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Deposit Operation
-         * @description РЈРґР°Р»РёС‚СЊ РѕРїРµСЂР°С†РёСЋ СЃ РґРµРїРѕР·РёС‚РѕРј
+         * @description Удалить операцию с депозитом
          */
         delete: operations["delete_deposit_operation_deposits__operation_id__delete"];
         options?: never;
@@ -904,8 +935,8 @@ export interface paths {
         };
         /**
          * Get Equity Curve
-         * @description РџРѕР»СѓС‡РёС‚СЊ РєСЂРёРІСѓСЋ РєР°РїРёС‚Р°Р»Р° СЃ СѓС‡С‘С‚РѕРј РґРµРїРѕР·РёС‚РѕРІ.
-         *     Р’РѕР·РІСЂР°С‰Р°РµС‚ РµР¶РµРґРЅРµРІРЅС‹Р№ Р±Р°Р»Р°РЅСЃ = initial + deposits - withdrawals + cumulative_pnl
+         * @description Получить кривую капитала с учётом депозитов.
+         *     Возвращает ежедневный баланс = initial + deposits - withdrawals + cumulative_pnl
          */
         get: operations["get_equity_curve_deposits_equity_curve_get"];
         put?: never;
@@ -925,7 +956,7 @@ export interface paths {
         };
         /**
          * Get Balance Snapshots
-         * @description РџРѕР»СѓС‡РёС‚СЊ РІСЃРµ СЃРЅРёРјРєРё Р±Р°Р»Р°РЅСЃР° РёР· РѕС‚С‡С‘С‚РѕРІ Р±СЂРѕРєРµСЂР°
+         * @description Получить все снимки баланса из отчётов брокера
          */
         get: operations["get_balance_snapshots_deposits_snapshots_get"];
         put?: never;
@@ -948,7 +979,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Balance Snapshot
-         * @description РЈРґР°Р»РёС‚СЊ СЃРЅРёРјРѕРє Р±Р°Р»Р°РЅСЃР°
+         * @description Удалить снимок баланса
          */
         delete: operations["delete_balance_snapshot_deposits_snapshots__snapshot_id__delete"];
         options?: never;
@@ -1076,7 +1107,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Connections */
+        /**
+         * List Connections
+         * @description Список подключений юзера, ВКЛЮЧАЯ неактивные.
+         *
+         *     SYNC-01: orchestrator деактивирует подключение при отозванном токене
+         *     (is_active=False, api_token=""). Раньше фильтр is_active=True молча
+         *     прятал его из UI — юзер видел «подключение исчезло» вместо баннера
+         *     «переподключите брокера». Теперь неактивные возвращаются с
+         *     needs_reconnect=true + last_sync_error; фронт сам решает что показывать.
+         */
         get: operations["list_connections_broker_connections_get"];
         put?: never;
         post?: never;
@@ -1142,6 +1182,10 @@ export interface paths {
          *     Следующий sync будет полным (с начала истории).
          *
          *     Сохраняет: legacy/manual сделки, само подключение и токен.
+         *
+         *     S1-08: требует явного confirm_data_loss=true — удаление sync-сделок
+         *     безвозвратно стирает их ручные аннотации (notes/tags/mood/discipline/
+         *     confidence/setup_id/screenshot_url).
          */
         post: operations["reset_connection_broker_connections__connection_id__reset_post"];
         delete?: never;
@@ -3066,6 +3110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/landing/ticker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Landing Ticker
+         * @description Биржевая строка MOEX для лендинга. {stale, tickers:[{symbol,last,change_pct}]}.
+         */
+        get: operations["landing_ticker_api_landing_ticker_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -3372,6 +3436,13 @@ export interface components {
             last_sync_at: string | null;
             /** Last Sync Status */
             last_sync_status: string | null;
+            /** Last Sync Error */
+            last_sync_error?: string | null;
+            /**
+             * Needs Reconnect
+             * @default false
+             */
+            needs_reconnect: boolean;
             /** Total Synced Trades */
             total_synced_trades: number;
             /**
@@ -3926,6 +3997,16 @@ export interface components {
             message: string;
             /** Detail */
             detail?: string | null;
+        };
+        /**
+         * OAuth2faVerifyRequest
+         * @description S1-06b: подтверждение TOTP-кода после OAuth-входа юзера с 2FA.
+         */
+        OAuth2faVerifyRequest: {
+            /** Pending Token */
+            pending_token: string;
+            /** Code */
+            code: string;
         };
         /**
          * PasswordResetConfirm
@@ -4687,7 +4768,7 @@ export interface components {
              */
             operations: unknown[] | null;
             /** Account Id */
-            account_id: number;
+            account_id?: number | null;
         };
         /**
          * TradeDirection
@@ -4812,8 +4893,6 @@ export interface components {
             timeframe?: string | null;
             /** News Event */
             news_event?: string | null;
-            /** Screenshot Url */
-            screenshot_url?: string | null;
             /** Entry Reason */
             entry_reason?: string | null;
             /** Exit Reason */
@@ -4962,6 +5041,8 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+            /** Totp Code */
+            totp_code?: string | null;
         };
         /**
          * UserResponse
@@ -5002,6 +5083,11 @@ export interface components {
             oauth_provider?: string | null;
             /** Registration Source */
             registration_source?: string | null;
+            /**
+             * Email Verified
+             * @default false
+             */
+            email_verified: boolean;
         };
         /**
          * UserUpdate
@@ -5591,6 +5677,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_2fa_verify_auth_oauth_2fa_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuth2faVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSuccess"];
                 };
             };
             /** @description Validation Error */
@@ -6778,7 +6897,9 @@ export interface operations {
     };
     reset_connection_broker_connections__connection_id__reset_post: {
         parameters: {
-            query?: never;
+            query?: {
+                confirm_data_loss?: boolean;
+            };
             header?: never;
             path: {
                 connection_id: number;
@@ -9558,6 +9679,26 @@ export interface operations {
         };
     };
     get_reconciliation_banner_status_onboarding_reconciliation_banner_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    landing_ticker_api_landing_ticker_get: {
         parameters: {
             query?: never;
             header?: never;
