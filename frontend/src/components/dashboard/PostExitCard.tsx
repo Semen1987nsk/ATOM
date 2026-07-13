@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Clock, AlertTriangle, CheckCircle, Eye, X, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/apiClient';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface PeriodStats {
   label: string;
@@ -67,6 +68,7 @@ interface PostExitCardProps {
 }
 
 export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) {
+  const { formatCurrency } = useSettings();
   const [calculating, setCalculating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -465,7 +467,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                     <div className="p-4 bg-white/10 rounded-lg">
                       <div className="text-xs text-slate-400 uppercase mb-1">P&L</div>
                       <div className={`text-2xl font-bold ${(selectedTrade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {selectedTrade.pnl?.toLocaleString('ru-RU')} ₽
+                        {formatCurrency(selectedTrade.pnl || 0)}
                       </div>
                       {(selectedTrade.pnl || 0) < 0 ? (
                         <div className="text-red-400 text-base font-semibold">
@@ -569,7 +571,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                         {trade.direction}
                       </div>
                       <div className={`font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {trade.pnl?.toLocaleString('ru-RU')} ₽
+                        {formatCurrency(trade.pnl || 0)}
                       </div>
                       <div className={`font-semibold ${
                         (trade.pnl || 0) < 0 

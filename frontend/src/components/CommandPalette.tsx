@@ -65,7 +65,7 @@ interface CommandContext {
   router: ReturnType<typeof useRouter>;
   closePalette: () => void;
   toggleTheme: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const ITEMS: CommandItem[] = [
