@@ -761,7 +761,7 @@ class RevokedTokenORM(Base):
     )
 
     jti = Column(String(64), primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)  # без FK: чистится в pd_deletion.finalize_deletion (152-ФЗ)
     revoked_at = Column(DateTime, nullable=False, default=utc_now_naive)
     expires_at = Column(DateTime, nullable=False)  # после этой даты можно удалить
     reason = Column(String(64), nullable=True)  # 'logout' | 'admin_revoke' | 'incident'
@@ -788,7 +788,7 @@ class FeatureFlagORM(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)  # без FK: чистится в pd_deletion.finalize_deletion (152-ФЗ)
     flag_name = Column(String(64), nullable=False)
     enabled = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, nullable=False, default=utc_now_naive)
@@ -932,7 +932,7 @@ class PasswordResetTokenORM(Base):
     )
 
     token = Column(String(64), primary_key=True)  # urlsafe_b64encode(secrets.token_bytes(32))
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)  # без FK: чистится в pd_deletion.finalize_deletion (152-ФЗ)
     created_at = Column(DateTime, nullable=False, default=utc_now_naive)
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)

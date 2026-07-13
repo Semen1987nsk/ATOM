@@ -237,6 +237,18 @@ def finalize_deletion(db: Session, user: models.User) -> None:
     # активных токенов, но т.к. user.hashed_password стал NULL, decode_access_token
     # будет валиден до expiry. Безопасно если user.is_active=0.
     user.is_active = 0
+
+    # 152-ФЗ: удаляем PII-сироты в таблицах без FK на users (user_id/requester_ip).
+    db.query(models.PasswordResetTokenORM).filter(
+        models.PasswordResetTokenORM.user_id == user_id
+    ).delete(synchronize_session=False)
+    db.query(models.FeatureFlagORM).filter(
+        models.FeatureFlagORM.user_id == user_id
+    ).delete(synchronize_session=False)
+    db.query(models.RevokedTokenORM).filter(
+        models.RevokedTokenORM.user_id == user_id
+    ).delete(synchronize_session=False)
+
     db.commit()
 
     log.info(
