@@ -84,8 +84,8 @@ function ProfileContent() {
     }
   };
   
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     window.location.href = '/';
   };
 
@@ -129,7 +129,7 @@ function ProfileContent() {
     setDeleteError(null);
     try {
       await api.delete('/auth/me', { body: { password: deletePassword } });
-      logout();
+      await logout();
       window.location.href = '/';
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Не удалось удалить аккаунт');

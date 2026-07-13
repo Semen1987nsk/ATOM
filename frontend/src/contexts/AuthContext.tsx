@@ -32,7 +32,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string, totpCode?: string) => Promise<void>;
   register: (email: string, password: string, name: string | undefined, pdConsent: boolean) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (data: { name?: string; settings?: Record<string, unknown> }) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -103,16 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Logout-mutation как функция (не useMutation — нет инвалидации UI-плана,
   // и сам по себе logout это «сброс кеша»; tanstack-мутация тут избыточна).
-  const logout = useCallback(() => {
-    void api.post('/auth/logout', { noAuth: true }).catch(() => undefined).finally(() => {
-      clearAuthTokens();
-      // Явно ставим user=null в кеш — компоненты, которые подписаны на
-      // useCurrentUserQuery, мгновенно увидят гостевое состояние без сетевого
-      // round-trip. Дальше invalidateQueries даст refetch при следующем mount.
-      queryClient.setQueryData(queryKeys.auth.me(), null);
-      queryClient.removeQueries({ queryKey: ['trades'] });
-      queryClient.removeQueries({ queryKey: ['stats'] });
-    });
+  const logout = useCallback(async (): Promise<void> => {
+    await api.post('/auth/logout', { noAuth: true }).catch(() => undefined);
+    clearAuthTokens();
+    // Явно ставим user=null в кеш — компоненты, которые подписаны на
+    // useCurrentUserQuery, мгновенно увидят гостевое состояние без сетевого
+    // round-trip. Дальше invalidateQueries даст refetch при следующем mount.
+    queryClient.setQueryData(queryKeys.auth.me(), null);
+    queryClient.removeQueries({ queryKey: ['trades'] });
+    queryClient.removeQueries({ queryKey: ['stats'] });
   }, [queryClient]);
 
   const refetchCurrentUser = useCallback(async () => {
