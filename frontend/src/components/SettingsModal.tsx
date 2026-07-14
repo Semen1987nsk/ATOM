@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Settings, DollarSign, TrendingDown } from 'lucide-react';
-import { useSettings, Currency, MAECalculationMethod } from '@/contexts/SettingsContext';
+import { X, Settings, DollarSign, TrendingDown, Wallet } from 'lucide-react';
+import { useSettings, Currency, MAECalculationMethod, PnLDisplayMode } from '@/contexts/SettingsContext';
 import { useLanguage } from '@/i18n/LanguageContext';
 
 interface SettingsModalProps {
@@ -26,10 +26,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   return (
     <SettingsModalContent
-      key={`settings-${settings.currency}-${settings.maeCalculationMethod}`}
+      key={`settings-${settings.currency}-${settings.maeCalculationMethod}-${settings.pnlDisplayMode}`}
       onClose={onClose}
       initialCurrency={settings.currency}
       initialMaeMethod={settings.maeCalculationMethod}
+      initialPnlDisplayMode={settings.pnlDisplayMode}
       updateSettings={updateSettings}
       language={language}
     />
@@ -40,7 +41,8 @@ interface SettingsModalContentProps {
   onClose: () => void;
   initialCurrency: Currency;
   initialMaeMethod: MAECalculationMethod;
-  updateSettings: (newSettings: { currency: Currency; maeCalculationMethod: MAECalculationMethod }) => void;
+  initialPnlDisplayMode: PnLDisplayMode;
+  updateSettings: (newSettings: { currency: Currency; maeCalculationMethod: MAECalculationMethod; pnlDisplayMode: PnLDisplayMode }) => void;
   language: 'ru' | 'en';
 }
 
@@ -48,16 +50,19 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
   onClose,
   initialCurrency,
   initialMaeMethod,
+  initialPnlDisplayMode,
   updateSettings,
   language,
 }) => {
   const [currency, setCurrency] = useState<Currency>(initialCurrency);
   const [maeMethod, setMaeMethod] = useState<MAECalculationMethod>(initialMaeMethod);
+  const [pnlDisplayMode, setPnlDisplayMode] = useState<PnLDisplayMode>(initialPnlDisplayMode);
 
   const handleSave = () => {
     updateSettings({
       currency: currency,
       maeCalculationMethod: maeMethod,
+      pnlDisplayMode: pnlDisplayMode,
     });
     onClose();
   };
@@ -73,6 +78,12 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
       maeFirst: 'Первый вход',
       maeWeightedDesc: 'От средней цены всех входов',
       maeFirstDesc: 'От цены первой сделки',
+      pnlMode: 'Главный PnL на дашборде',
+      pnlModeHint: 'Влияет только на главную цифру дашборда. В журнале всегда показан P&L от цен открытия/закрытия.',
+      pnlNet: 'Итоговый',
+      pnlGross: 'По сделкам',
+      pnlNetDesc: 'С учётом комиссий, сборов и налогов',
+      pnlGrossDesc: 'Только от цены (без расходов)',
       save: 'Сохранить',
       cancel: 'Отмена',
     },
@@ -86,6 +97,12 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
       maeFirst: 'First Entry',
       maeWeightedDesc: 'From average of all entries',
       maeFirstDesc: 'From first trade price',
+      pnlMode: 'Main dashboard P&L',
+      pnlModeHint: 'Affects dashboard headline only. Journal always shows price-based P&L.',
+      pnlNet: 'Final',
+      pnlGross: 'Trades only',
+      pnlNetDesc: 'After commissions, fees, taxes',
+      pnlGrossDesc: 'From prices only (no costs)',
       save: 'Save',
       cancel: 'Cancel',
     },
@@ -95,10 +112,7 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-        
+      <div className="cyber-card w-full max-w-md bg-[var(--surface-1)] p-6 relative animate-scaleIn overflow-hidden">
         <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
           <X size={20} />
         </button>
@@ -168,6 +182,41 @@ const SettingsModalContent: React.FC<SettingsModalContentProps> = ({
               </button>
             </div>
             <p className="text-[10px] opacity-40 mt-1">{text.maeMethodHint}</p>
+          </div>
+
+          {/* Phase 11 (2026-05-17): P&L Display Mode toggle */}
+          <div>
+            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1 flex items-center gap-1">
+              <Wallet size={12} />
+              {text.pnlMode}
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setPnlDisplayMode('net')}
+                className={`p-3 border text-center transition-colors ${
+                  pnlDisplayMode === 'net'
+                    ? 'border-accent bg-accent/10 text-accent'
+                    : 'border-border hover:border-accent/50'
+                }`}
+              >
+                <div className="text-sm font-bold">{text.pnlNet}</div>
+                <div className="text-[9px] opacity-50 mt-1">{text.pnlNetDesc}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPnlDisplayMode('gross')}
+                className={`p-3 border text-center transition-colors ${
+                  pnlDisplayMode === 'gross'
+                    ? 'border-accent bg-accent/10 text-accent'
+                    : 'border-border hover:border-accent/50'
+                }`}
+              >
+                <div className="text-sm font-bold">{text.pnlGross}</div>
+                <div className="text-[9px] opacity-50 mt-1">{text.pnlGrossDesc}</div>
+              </button>
+            </div>
+            <p className="text-[10px] opacity-40 mt-1">{text.pnlModeHint}</p>
           </div>
 
           {/* Actions */}

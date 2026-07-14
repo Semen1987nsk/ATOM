@@ -9,7 +9,7 @@ from typing import Generator
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool, QueuePool
+from sqlalchemy.pool import StaticPool, QueuePool, NullPool
 
 # Импорт моделей для создания таблиц
 import models
@@ -23,18 +23,35 @@ SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 IS_SQLITE = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
 IS_POSTGRES = SQLALCHEMY_DATABASE_URL.startswith("postgresql")
 
+
+def _assert_db_safe_for_env(url: str, debug: bool) -> None:
+    """PERF-01: SQLite не годится для прод-нагрузки (single writer, нет WAL
+    durability под конкуренцией). В проде (DEBUG=false) требуем Postgres."""
+    if url.startswith("sqlite") and not debug:
+        raise RuntimeError(
+            "\n🚨 FATAL: SQLite запрещён в production (DEBUG=false).\n"
+            "   SQLite = один писатель → 'database is locked' под нагрузкой.\n"
+            "   Установите DATABASE_URL=postgresql://user:pass@host:5432/db"
+        )
+
+
 # ==================== НАСТРОЙКА ENGINE ====================
 
 def create_db_engine():
     """
     Создаёт engine с оптимальными настройками для типа БД.
     """
+    _assert_db_safe_for_env(SQLALCHEMY_DATABASE_URL, settings.DEBUG)
     if IS_SQLITE:
-        # SQLite: single-thread режим для FastAPI
+        # SQLite + FastAPI + background tasks: NullPool (connection per checkout).
+        # StaticPool разделяет ОДНУ connection между всеми потоками →
+        # sqlite3.InterfaceError при race между HTTP requests и scheduler/stream_manager.
+        # Для in-memory SQLite (тесты) StaticPool оставляем через ?cache=shared.
+        is_memory = ":memory:" in SQLALCHEMY_DATABASE_URL
         return create_engine(
             SQLALCHEMY_DATABASE_URL,
             connect_args={"check_same_thread": False},
-            poolclass=StaticPool,  # Один коннект для SQLite
+            poolclass=StaticPool if is_memory else NullPool,
             echo=os.getenv("SQL_ECHO", "false").lower() == "true",
         )
     
@@ -90,10 +107,17 @@ def init_db():
 
 # Для SQLite: включаем foreign keys (регистрируем ОДИН раз на уровне модуля)
 if IS_SQLITE:
+    _sqlite_is_memory = ":memory:" in SQLALCHEMY_DATABASE_URL
+
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        if not _sqlite_is_memory:
+            # WAL снижает писатель-блокировки в dev; busy_timeout вместо мгновенного
+            # 'database is locked'. Для :memory: (тесты) WAL неприменим.
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
 

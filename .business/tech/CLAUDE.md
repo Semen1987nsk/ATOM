@@ -1,0 +1,26 @@
+# tech/ — техническая база знаний
+
+Здесь живёт архитектурный контекст: как устроен код, что решено, какие найдены проблемы, какие инструменты используем.
+
+## Карта папки
+
+- `audit-report.md` — независимый аудит на 33 метрики (от 07.05.2026). При вопросах «что у нас сильно/слабо» — отсюда.
+- `stack.md` — MCP-серверы, скиллы, VS Code расширения. При установке/настройке окружения.
+- `architecture.md` — схема компонентов (backend / frontend / интеграции).
+- `api-contracts.md` — ключевые ендпоинты и их форматы.
+- `decisions/` — Architecture Decision Records (ADR). Не переписываются, добавляются новые с пометкой `supersedes`.
+
+## Когда обращаться
+
+| Триггер | Файл |
+|---|---|
+| «как устроено», «архитектура», «N+1», «рефакторинг», «god-router» | `architecture.md` + `audit-report.md` |
+| «MCP», «скилл», «расширение VS Code», «новая среда» | `stack.md` |
+| «почему так сделано», «почему SQLite», «почему Server Components» | `decisions/NNNN-*.md` |
+| **«P&L», «журнал», «cash», «reconcile», «futures formula», «varmargin», «phantom_sweep», «point_value»** | **`decisions/0007-pnl-methodology-invariants.md`** (8 инвариантов, immutable) + `../../docs/PNL_PLAYBOOK.md` (практический cheatsheet) |
+| «контракт API», «формат ответа /stats» | `api-contracts.md` |
+
+## Дисциплина ADR
+
+Любое нетривиальное архитектурное решение → новый ADR. Шаблон в `decisions/0001-sqlite-as-dev-db.md`.
+Если решение пересмотрено — создать новый ADR со ссылкой `Supersedes: 0001`.

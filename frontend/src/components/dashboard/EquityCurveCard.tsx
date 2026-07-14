@@ -19,7 +19,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-} from "recharts";
+  ReferenceArea,
+  ReferenceDot,
+} from "@/lib/lazy-recharts";
 
 // recharts v3 убрал стабильный экспорт TooltipProps — используем локальный shape
 // под content-callback'а, чтобы не пытаться угадать generic параметры.
@@ -47,6 +49,16 @@ interface Props {
   benchmarkLabel?: string;
   initialBalance?: number;
   formatCurrency?: (n: number) => string;
+  // PR 23: для broker-юзера кривая = кумулятивный realized PnL (стартует от 0),
+  // а не «капитал по времени». Точный исторический баланс при margin/futures
+  // Tinkoff API не даёт реконструировать.
+  isBrokerCumulative?: boolean;
+  // pctBaseline — для broker_user (isBrokerCumulative=true) используется как
+  // знаменатель в % изменения капитала. Σ NET_DEPOSIT = вся capital deployed
+  // на счёт за историю. Без baseline % в шапке не отрисуется.
+  pctBaseline?: number;
+  peakDate?: string | null;
+  troughDate?: string | null;
 }
 
 export function EquityCurveCard({
@@ -54,7 +66,11 @@ export function EquityCurveCard({
   benchmark,
   benchmarkLabel = "IMOEX",
   initialBalance = 0,
+  isBrokerCumulative = false,
   formatCurrency = (n) => `${n.toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`,
+  pctBaseline,
+  peakDate,
+  troughDate,
 }: Props) {
   // Объединяем equity + benchmark в общий dataset для recharts ComposedChart.
   // equity_curve может быть intraday ("YYYY-MM-DD HH:MM"), IMOEX — daily ("YYYY-MM-DD").
@@ -65,35 +81,59 @@ export function EquityCurveCard({
     if (benchmark) {
       for (const b of benchmark) benchByDate[b.date.slice(0, 10)] = b.value;
     }
-    // Нормализуем benchmark к стартовому balance, чтобы линии были сравнимы
+    // Нормализуем benchmark к базе капитала. Для broker (кумулятивный PnL от 0)
+    // база = pctBaseline (Σ NET_DEPOSIT), НЕ PnL первой сделки — иначе убыточный
+    // старт инвертирует линию, а нулевой — ломает масштаб (S3-22).
     const firstBenchmark = benchmark?.[0]?.value;
-    const ratio = firstBenchmark && data[0]?.balance ? data[0].balance / firstBenchmark : 1;
+    const normBase = isBrokerCumulative ? pctBaseline : data[0]?.balance;
+    const ratio = firstBenchmark && normBase && normBase > 0 ? normBase / firstBenchmark : null;
     return data.map((p) => {
       const dayKey = p.date.slice(0, 10);
       const benchValue = benchByDate[dayKey];
       return {
         date: p.date,
         balance: p.balance,
-        benchmark: benchValue !== undefined ? benchValue * ratio : null,
+        benchmark: ratio !== null && benchValue !== undefined ? benchValue * ratio : null,
       };
     });
-  }, [data, benchmark]);
+  }, [data, benchmark, isBrokerCumulative, pctBaseline]);
 
-  const stats = useMemo(() => {
+  const stats = useMemo<{
+    start: number;
+    end: number;
+    change: number;
+    changePct: number | null;
+  } | null>(() => {
     if (!data || data.length === 0) return null;
-    const start = initialBalance || data[0].balance;
     const end = data[data.length - 1].balance;
+
+    if (isBrokerCumulative) {
+      // Кривая начинается от 0 → cumulative PnL. % считаем относительно
+      // Σ NET_DEPOSIT (реальный historical baseline). data[0] для broker_user
+      // ≈ PnL первой сделки (часто близко к 0), деление давало мусор -113188%.
+      if (!pctBaseline || pctBaseline <= 0) {
+        return { start: 0, end, change: end, changePct: null };
+      }
+      return {
+        start: 0,
+        end,
+        change: end,
+        changePct: (end / pctBaseline) * 100,
+      };
+    }
+
+    const start = initialBalance || data[0].balance;
     const change = end - start;
     const changePct = start !== 0 ? (change / Math.abs(start)) * 100 : 0;
     return { start, end, change, changePct };
-  }, [data, initialBalance]);
+  }, [data, initialBalance, isBrokerCumulative, pctBaseline]);
 
   if (!data || data.length === 0) {
     return (
       <div className="rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface-1)] p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-semibold tracking-tight">Кривая капитала</h3>
+            <h3 className="text-base font-semibold tracking-tight">{isBrokerCumulative ? "Кумулятивный PnL" : "Кривая капитала"}</h3>
             <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">
               Появится после первой закрытой сделки.
             </p>
@@ -116,7 +156,9 @@ export function EquityCurveCard({
         <div>
           <h3 className="text-base font-semibold tracking-tight">Кривая капитала</h3>
           <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">
-            Кумулятивный баланс счёта по времени{benchmark && benchmark.length > 0 ? ` · ${benchmarkLabel} для сравнения` : ""}.
+            {isBrokerCumulative
+              ? <>Сумма реализованной прибыли/убытка по закрытым сделкам (от 0 на дате первой сделки). Точный исторический баланс счёта при margin/futures Tinkoff API не даёт реконструировать.</>
+              : <>Кумулятивный баланс счёта по времени{benchmark && benchmark.length > 0 ? ` · ${benchmarkLabel} для сравнения` : ""}.</>}
           </p>
         </div>
         {stats && (
@@ -131,9 +173,11 @@ export function EquityCurveCard({
             >
               {tone === "success" ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
               {stats.change >= 0 ? "+" : ""}{formatCurrency(stats.change)}
-              <span className="opacity-70">
-                ({stats.changePct >= 0 ? "+" : ""}{stats.changePct.toFixed(1)}%)
-              </span>
+              {stats.changePct !== null && stats.changePct !== undefined && (
+                <span className="opacity-70">
+                  ({stats.changePct >= 0 ? "+" : ""}{stats.changePct.toFixed(1)}%)
+                </span>
+              )}
             </span>
           </div>
         )}
@@ -149,6 +193,47 @@ export function EquityCurveCard({
                 <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
               </linearGradient>
             </defs>
+            {peakDate && troughDate && (() => {
+              // Найти точку в data по date prefix (YYYY-MM-DD) чтобы Recharts
+              // matched по точному значению XAxis dataKey.
+              const findClosest = (target: string) => {
+                if (!target || !data) return null;
+                const prefix = target.slice(0, 10);
+                return data.find((p) => p.date.startsWith(prefix)) ?? null;
+              };
+              const peakPt = findClosest(peakDate);
+              const troughPt = findClosest(troughDate);
+              if (!peakPt || !troughPt) return null;
+              return (
+                <>
+                  <ReferenceArea
+                    x1={peakPt.date}
+                    x2={troughPt.date}
+                    fill="var(--danger)"
+                    fillOpacity={0.15}
+                    ifOverflow="extendDomain"
+                  />
+                  <ReferenceDot
+                    x={peakPt.date}
+                    y={peakPt.balance}
+                    r={5}
+                    fill="var(--success)"
+                    stroke="var(--surface-1)"
+                    strokeWidth={2}
+                    label={{ value: "пик", position: "top", fill: "var(--success)", fontSize: 10, offset: 8 }}
+                  />
+                  <ReferenceDot
+                    x={troughPt.date}
+                    y={troughPt.balance}
+                    r={5}
+                    fill="var(--danger)"
+                    stroke="var(--surface-1)"
+                    strokeWidth={2}
+                    label={{ value: "дно", position: "bottom", fill: "var(--danger)", fontSize: 10, offset: 8 }}
+                  />
+                </>
+              );
+            })()}
             <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="date"

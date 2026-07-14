@@ -1,15 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth, RequireAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/apiClient';
 import Link from 'next/link';
 import {
   User, Mail, Calendar, Settings, LogOut, Save,
   ArrowLeft, Loader2, CheckCircle, AlertCircle,
-  TrendingUp, BarChart3, Target, Shield, Crown, Zap, Building2, ArrowUpRight, HelpCircle
+  TrendingUp, BarChart3, Target, Shield, Crown, Zap, Building2, ArrowUpRight, HelpCircle,
+  Download, Trash2, X
 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
+import BrokerConnectModal from '@/components/BrokerConnectModal';
 
 interface Subscription {
   plan: 'free' | 'pro' | 'corporate';
@@ -32,7 +35,24 @@ function ProfileContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  
+  const [isExporting, setIsExporting] = useState(false);
+  // 152-ФЗ ст. 14: право на удаление. Диалог требует пароль + явное согласие.
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // BUG-008: footer-sidebar «Брокеры» ведёт на /profile?tab=brokers, но
+  // tab-system на странице не реализована. Открываем BrokerConnectModal
+  // напрямую при наличии параметра.
+  const searchParams = useSearchParams();
+  const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.get('tab') === 'brokers') {
+      setIsBrokerModalOpen(true);
+    }
+  }, [searchParams]);
+
   // Синхронизация с user
   useEffect(() => {
     if (user) {
@@ -64,11 +84,59 @@ function ProfileContent() {
     }
   };
   
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     window.location.href = '/';
   };
-  
+
+  // 152-ФЗ ст. 14: право на доступ. Скачиваем JSON-снапшот всех ПД пользователя.
+  const handleExportData = async () => {
+    setIsExporting(true);
+    setMessage(null);
+    try {
+      const data = await api.get<unknown>('/auth/me/export');
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `empirik-export-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Экспорт скачан' });
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'Не удалось скачать экспорт';
+      setMessage({ type: 'error', text });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const closeDeleteDialog = () => {
+    if (isDeleting) return;
+    setIsDeleteDialogOpen(false);
+    setDeletePassword('');
+    setDeleteError(null);
+  };
+
+  // 152-ФЗ ст. 14: запрос на удаление аккаунта. Бэкенд ставит soft-delete
+  // (grace period 30 дней) и сам сбрасывает auth-cookies → разлогиниваемся локально.
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete('/auth/me', { body: { password: deletePassword } });
+      await logout();
+      window.location.href = '/';
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Не удалось удалить аккаунт');
+      setIsDeleting(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -86,11 +154,6 @@ function ProfileContent() {
   return (
     <AppShell pageTitle="Профиль">
     <main className="p-6 md:p-8 max-w-7xl mx-auto">
-      {/* Background Effects */}
-      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-accent/5" />
-      <div className="absolute top-20 right-20 w-80 h-80 bg-accent/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-20 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
-      
       <div className="relative max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -177,8 +240,27 @@ function ProfileContent() {
               </div>
             </div>
           </div>
+
+          {user.email_verified === false && (
+            <div className="mt-4 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4 text-sm">
+              <p className="mb-2 text-orange-200">Email не подтверждён.</p>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.post('/auth/resend-verification');
+                    setMessage({ type: 'success', text: 'Письмо отправлено повторно' });
+                  } catch (err) {
+                    setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Не удалось отправить' });
+                  }
+                }}
+                className="btn-secondary text-sm"
+              >
+                Отправить письмо повторно
+              </button>
+            </div>
+          )}
         </div>
-        
+
         {/* Subscription Card */}
         {subscription && (
           <div className={`cyber-card p-6 mb-6 border-l-4 ${
@@ -187,16 +269,16 @@ function ProfileContent() {
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${
-                  subscription.plan === 'pro' 
-                    ? 'bg-gradient-to-br from-purple-500 to-indigo-600' 
+                <div className={`p-3 rounded-[var(--radius-md)] border ${
+                  subscription.plan === 'pro'
+                    ? 'bg-[var(--accent-soft)] border-[var(--accent)]/30'
                     : subscription.plan === 'corporate'
-                    ? 'bg-gradient-to-br from-amber-500 to-orange-600'
-                    : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                    ? 'bg-[var(--surface-2)] border-[var(--border-strong)]'
+                    : 'bg-[var(--surface-2)] border-[var(--border)]'
                 }`}>
-                  {subscription.plan === 'pro' && <Crown size={24} className="text-white" />}
-                  {subscription.plan === 'corporate' && <Building2 size={24} className="text-white" />}
-                  {subscription.plan === 'free' && <Zap size={24} className="text-white" />}
+                  {subscription.plan === 'pro' && <Crown size={24} className="text-[var(--accent)]" />}
+                  {subscription.plan === 'corporate' && <Building2 size={24} className="text-[var(--ink)]" />}
+                  {subscription.plan === 'free' && <Zap size={24} className="text-[var(--text-secondary)]" />}
                 </div>
                 <div>
                   <h3 className="font-bold text-lg">
@@ -364,6 +446,34 @@ function ProfileContent() {
           </div>
         </div>
         
+        {/* Персональные данные (152-ФЗ ст. 14 — право доступа) */}
+        <div className="mt-6 cyber-card p-6">
+          <h3 className="text-lg font-bold mb-1">Персональные данные</h3>
+          <p className="text-sm text-[var(--text-secondary)] mb-4">
+            Согласно ст. 14 152-ФЗ вы можете получить копию всех своих данных в JSON.
+          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Скачать мои данные</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Профиль, сделки, согласия, платежи — всё в одном файле.
+              </p>
+            </div>
+            <button
+              onClick={handleExportData}
+              disabled={isExporting}
+              className="px-4 py-2 bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--foreground)] rounded-lg transition-colors flex items-center gap-2 disabled:opacity-60"
+            >
+              {isExporting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              {isExporting ? 'Готовим…' : 'Скачать JSON'}
+            </button>
+          </div>
+        </div>
+
         {/* Danger Zone */}
         <div className="mt-6 cyber-card p-6 border-red-500/20">
           <h3 className="text-lg font-bold text-red-400 mb-4">Опасная зона</h3>
@@ -379,9 +489,121 @@ function ProfileContent() {
               Выйти
             </button>
           </div>
+
+          {/* 152-ФЗ ст. 14 — право на удаление */}
+          <div className="mt-4 pt-4 border-t border-red-500/20 flex items-center justify-between">
+            <div>
+              <p className="font-medium">Удалить аккаунт</p>
+              <p className="text-sm text-muted-foreground">
+                Аккаунт и все данные будут безвозвратно удалены через 30 дней
+              </p>
+            </div>
+            <button
+              onClick={() => setIsDeleteDialogOpen(true)}
+              className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <Trash2 size={16} />
+              Удалить аккаунт
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Диалог подтверждения удаления аккаунта */}
+      {isDeleteDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={closeDeleteDialog}
+        >
+          <div
+            className="cyber-card w-full max-w-md p-6 border-red-500/30"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-lg font-bold text-red-400 flex items-center gap-2">
+                <Trash2 size={20} />
+                Удалить аккаунт
+              </h3>
+              <button
+                onClick={closeDeleteDialog}
+                disabled={isDeleting}
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                aria-label="Закрыть"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <p>
+                Это действие необратимо. Через 30 дней ваш аккаунт, сделки, согласия
+                и все персональные данные будут удалены без возможности восстановления.
+                До этого момента вы сможете отменить удаление, войдя снова.
+              </p>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              <label className="text-sm font-medium text-foreground">
+                Введите пароль для подтверждения
+              </label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Ваш пароль"
+                autoComplete="current-password"
+                className="w-full px-4 py-3 bg-secondary/50 border border-white/10 rounded-lg
+                         text-foreground placeholder:text-muted-foreground
+                         focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500
+                         transition-all"
+              />
+            </div>
+
+            {deleteError && (
+              <div className="flex items-center gap-2 p-3 mb-4 rounded-lg text-sm bg-red-500/10 border border-red-500/20 text-red-400">
+                <AlertCircle size={16} />
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={closeDeleteDialog}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-secondary/50 hover:bg-secondary text-foreground rounded-lg transition-colors disabled:opacity-50"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={isDeleting || !deletePassword}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg
+                         flex items-center gap-2 transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Удаление…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Удалить навсегда
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
+    <BrokerConnectModal
+      isOpen={isBrokerModalOpen}
+      onClose={() => setIsBrokerModalOpen(false)}
+      onConnectionChange={() => { /* nothing to refresh on profile */ }}
+    />
     </AppShell>
   );
 }
@@ -389,7 +611,9 @@ function ProfileContent() {
 export default function ProfilePage() {
   return (
     <RequireAuth>
-      <ProfileContent />
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>}>
+        <ProfileContent />
+      </Suspense>
     </RequireAuth>
   );
 }

@@ -1,0 +1,55 @@
+# PR 26 Phase 3 — Pre-commit hooks для безопасности и качества.
+#
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Что проверяется:
+# 1. Secrets — detect-secrets не пропустит token / API key / private key
+# 2. EOL: trailing whitespace, end-of-file, не-LF endings
+# 3. Python: ruff (быстрый lint), pyright optional
+# 4. Big files (>500KB) — защита от случайного коммита dump'а БД
+# 5. Token leak grep (наш CI test)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: |
+          (?x)^(
+            backend/tests/.*|
+            frontend/node_modules/.*|
+            \.git/.*
+          )$
+
+  - repo: local
+    hooks:
+      - id: no-tinkoff-token-in-code
+        name: 'Block hardcoded Tinkoff tokens (t.XXX format)'
+        entry: |
+          bash -c 'if git diff --cached --diff-filter=ACM | grep -E "^\+.*\bt\.[A-Za-z0-9_-]{30,}"; then echo "ERROR: hardcoded Tinkoff token detected. Use env var."; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      - id: no-debug-print
+        name: 'Block leftover debug prints / breakpoint() in Python'
+        entry: |
+          bash -c 'if git diff --cached --diff-filter=ACM --name-only | grep -E "\.py$" | xargs -r grep -nE "(^|\s)(breakpoint\(\)|print\(.*DEBUG)" 2>/dev/null; then echo "ERROR: breakpoint() or DEBUG print left."; exit 1; fi'
+        language: system
+        pass_filenames: false

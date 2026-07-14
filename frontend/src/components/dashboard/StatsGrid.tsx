@@ -1,10 +1,14 @@
 'use client';
 
-import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle, 
+import { useState } from 'react';
+import { Activity, TrendingUp, TrendingDown, Target, Zap, AlertTriangle,
          GitGraph, BarChart3, Flame, Scale, Shield, Wallet, Gauge } from 'lucide-react';
 import { StatsCard } from '@/components/StatsCard';
+import { CostsBreakdownCard } from '@/components/dashboard/CostsBreakdownCard';
+import { PnLHealthBadge } from '@/components/PnLHealthBadge';
 import { useLanguage, interpolate } from '@/i18n/LanguageContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import { api } from '@/lib/apiClient';
 
 interface OptimalFMethod {
   optimal_f: number;
@@ -30,7 +34,31 @@ interface OptimalFData {
 interface DashboardData {
   total_pnl: number;
   unrealized_pnl?: number;
+  account_level_adjustments?: number;  // Phase 6.4: natural_residual (cash_truth − headline, info-only)
+  cash_truth_pnl?: number;  // Phase 6.4: broker reconciliation для PnLHealthBadge
+  varmargin_total?: number;  // TR1.2: account-level varmargin (futures)
   total_pnl_with_unrealized?: number;
+  // Phase 11 (2026-05-17): gross variants — для settings.pnlDisplayMode='gross'
+  total_pnl_gross?: number;
+  total_pnl_with_unrealized_gross?: number;
+  account_level_adjustments_gross?: number;
+  // Phase 12 (2026-05-17): отдельная карточка «Расходы» (best practices).
+  total_costs?: number;
+  total_costs_breakdown?: {
+    broker_commission?: number;
+    margin_fees?: number;
+    service_fees?: number;
+    taxes?: number;
+  };
+  // Phase 10 (2026-05-17): P&L Health Check status — двойная проверка корректности
+  pnl_health?: {
+    status: "ok" | "warning" | "mismatch" | "na" | "stale";
+    diff_pct: number | null;
+    diff_rub: number | null;
+    checked_at: string | null;
+    breakdown?: Record<string, unknown> | null;
+    message?: string;
+  } | null;
   win_rate: number;
   total_trades: number;
   profitable_trades: number;
@@ -46,6 +74,11 @@ interface DashboardData {
   sortino_ratio: number;
   max_drawdown_pct: number;
   max_drawdown_abs: number;
+  max_drawdown_peak_date?: string | null;
+  max_drawdown_trough_date?: string | null;
+  max_drawdown_duration_days?: number | null;
+  max_drawdown_peak_value?: number | null;     // cumulative PnL в момент пика
+  max_drawdown_trough_value?: number | null;   // cumulative PnL в момент дна
   current_drawdown_pct: number;
   tail_ratio: number;
   max_win_streak: number;
@@ -65,9 +98,58 @@ interface StatsGridProps {
 }
 
 export function StatsGrid({ stats, hasData }: StatsGridProps) {
+  // Phase 10 (2026-05-17): локальное состояние для refresh кнопки бейджа.
+  const [refreshingHealth, setRefreshingHealth] = useState(false);
+  const [localHealth, setLocalHealth] = useState<DashboardData["pnl_health"] | undefined>(undefined);
+  const healthData = localHealth !== undefined ? localHealth : stats?.pnl_health;
+
+  const handleRefreshHealth = async () => {
+    setRefreshingHealth(true);
+    try {
+      const fresh = await api.post<{
+        status: "ok" | "warning" | "mismatch" | "na" | "stale";
+        diff_pct: number | null;
+        diff_rub: number | null;
+        computed_at: string;
+        components: Record<string, number>;
+      }>('/stats/pnl-health/refresh', {});
+      setLocalHealth({
+        status: fresh.status,
+        diff_pct: fresh.diff_pct,
+        diff_rub: fresh.diff_rub,
+        checked_at: fresh.computed_at,
+        breakdown: fresh as unknown as Record<string, unknown>,
+      });
+    } catch (e) {
+      console.error('PnL health refresh failed', e);
+    } finally {
+      setRefreshingHealth(false);
+    }
+  };
   const { t } = useLanguage();
   const { settings, formatCurrency } = useSettings();
   const noData = t.emptyState?.noData || '—';
+
+  const formatShortDate = (iso: string | null | undefined): string => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch { return ''; }
+  };
+
+  // Phase 11 (2026-05-17): выбираем gross vs net по настройке.
+  //   net (default) — реальный финансовый результат (matches broker, includes commissions).
+  //   gross         — только body P&L (от движения цены), без costs.
+  const isGross = settings.pnlDisplayMode === 'gross';
+  const displayTotalPnl = isGross ? stats?.total_pnl_gross : stats?.total_pnl;
+  const displayTotalPnlWithUnrealized = (displayTotalPnl ?? 0) + (stats?.unrealized_pnl ?? 0);
+  const displayAdjustments = isGross
+    ? stats?.account_level_adjustments_gross
+    : stats?.account_level_adjustments;
 
   const formatStat = (value: number | string | null | undefined, suffix: string = ''): string => {
     if (!hasData) return noData;
@@ -82,6 +164,11 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
     return `${value.toFixed(decimals)}%`;
   };
 
+  const formatHealthCurrency = (value: number | null): string => {
+    if (value === null || value === undefined) return '—';
+    return formatCurrency(value);
+  };
+
   const formatStatCurrency = (value: number | null | undefined): string => {
     if (!hasData) return noData;
     if (value === null || value === undefined || isNaN(value) || !isFinite(value)) return noData;
@@ -89,20 +176,90 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
   };
 
   return (
+    <>
+      {/* Phase 10 (2026-05-17): P&L Health Check badge — двойная сверка корректности.
+          Видна сверху для быстрого визуального сигнала пользователю.
+          Tooltip + кнопка refresh для перерасчёта on-demand. */}
+      {hasData && healthData && (
+        <div className="mb-4 flex items-center gap-2">
+          <PnLHealthBadge
+            data={healthData}
+            size="md"
+            onRefresh={handleRefreshHealth}
+            refreshing={refreshingHealth}
+            formatCurrency={formatHealthCurrency}
+          />
+          <span className="text-xs text-slate-500">
+            Сравнение журнала с банковским балансом
+          </span>
+        </div>
+      )}
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <StatsCard 
-        title={t.stats.totalPnl.title} 
-        value={formatStatCurrency(stats?.total_pnl_with_unrealized ?? stats?.total_pnl)} 
-        description={hasData ? (
-          stats?.unrealized_pnl && stats.unrealized_pnl !== 0 
-            ? `Реализ.: ${formatCurrency(stats.total_pnl)} | Нереализ.: ${formatCurrency(stats.unrealized_pnl)}`
-            : t.stats.totalPnl.description
-        ) : ''}
-        trend={hasData && (stats?.total_pnl_with_unrealized ?? stats?.total_pnl ?? 0) > 0 ? 'up' : hasData && (stats?.total_pnl_with_unrealized ?? stats?.total_pnl ?? 0) < 0 ? 'down' : undefined}
+      {/* Phase 12 (2026-05-17): headline title динамически меняется в зависимости
+          от режима, явно сообщая пользователю что показывается:
+          - net  → «Общий PnL» (итоговый с учётом всех расходов, как у брокера)
+          - gross → «Общий PnL по сделкам» (только body, без расходов) */}
+      <StatsCard
+        title={isGross ? 'Общий PnL по сделкам' : t.stats.totalPnl.title}
+        value={formatStatCurrency(displayTotalPnlWithUnrealized ?? displayTotalPnl)}
+        description={hasData ? (() => {
+          // Subtitle = компоненты headline. Расходы НЕ показываем здесь:
+          // в net-режиме они уже зашиты в displayTotalPnl через Trade.net_pnl,
+          // и параллельная строка «Расходы» читается как visual double-count.
+          // Отдельная карточка <CostsBreakdownCard /> ниже даёт разбивку расходов.
+          // Компактный формат (-174K) — StatsCard description обрезает длинные
+          // строки через `truncate`, и полные значения в трёх частях не помещаются.
+          // Точные числа доступны в tooltip.
+          const compact = (n: number) => {
+            const abs = Math.abs(n);
+            const sign = n < 0 ? '-' : '';
+            if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M ${settings.currencySymbol}`;
+            if (abs >= 1_000)     return `${sign}${(abs / 1_000).toFixed(1)}K ${settings.currencySymbol}`;
+            return `${sign}${abs.toFixed(0)} ${settings.currencySymbol}`;
+          };
+          const parts: string[] = [];
+          if (displayTotalPnl !== undefined && displayTotalPnl !== 0) {
+            parts.push(`Реализ. ${compact(displayTotalPnl)}`);
+          }
+          if ((stats?.unrealized_pnl ?? 0) !== 0) {
+            parts.push(`Нереализ. ${compact(stats?.unrealized_pnl ?? 0)}`);
+          }
+          if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
+            parts.push(`Прочие ${compact(displayAdjustments)}`);
+          }
+          return parts.length > 0 ? parts.join(' · ') : t.stats.totalPnl.description;
+        })() : ''}
+        trend={hasData && (displayTotalPnlWithUnrealized ?? displayTotalPnl ?? 0) > 0 ? 'up' : hasData && (displayTotalPnlWithUnrealized ?? displayTotalPnl ?? 0) < 0 ? 'down' : undefined}
         icon={<TrendingUp size={18} />}
-        tooltipText={stats?.unrealized_pnl ? `Реализованный PnL: ${formatCurrency(stats.total_pnl)}\nНереализованный: ${formatCurrency(stats.unrealized_pnl)}` : t.stats.totalPnl.tooltip}
+        tooltipText={(() => {
+          const lines: string[] = [];
+          lines.push(
+            isGross
+              ? 'Режим: По сделкам (только движение цены, без расходов)'
+              : 'Режим: Итоговый (с учётом комиссий, сборов, налогов)'
+          );
+          if (displayTotalPnl !== undefined) {
+            lines.push(`Реализованный (закрытые, P&L от цен): ${formatCurrency(displayTotalPnl)}`);
+          }
+          if (stats?.unrealized_pnl ?? 0) {
+            lines.push(`Нереализованный (открытые позиции): ${formatCurrency(stats?.unrealized_pnl ?? 0)}`);
+          }
+          if (displayAdjustments && Math.abs(displayAdjustments) > 1) {
+            lines.push(`Прочие сборы и корректировки счёта: ${formatCurrency(displayAdjustments)}`);
+          }
+          return lines.length > 0 ? lines.join('\n') : t.stats.totalPnl.tooltip;
+        })()}
         manualAnchor="total-pnl"
       />
+      {/* Карточка «Расходы» с детальной разбивкой (брокер/маржа/сервис/налоги)
+          и hint'ом «Уже включены в Общий PnL» для устранения визуального double-count. */}
+      {hasData && stats?.total_costs !== undefined && stats.total_costs !== 0 && (
+        <CostsBreakdownCard
+          total={stats.total_costs}
+          breakdown={stats.total_costs_breakdown ?? {}}
+          formatCurrency={formatCurrency}
+        />
+      )}
       <StatsCard 
         title={t.stats.winRate.title} 
         value={formatStatPercent(stats?.win_rate)} 
@@ -204,13 +361,44 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         tooltipText={t.stats.sortinoRatio.tooltip}
         manualAnchor="sortino"
       />
-      <StatsCard 
-        title={t.stats.maxDrawdown.title} 
-        value={formatStatPercent(stats?.max_drawdown_pct)} 
-        description={hasData ? formatCurrency(stats?.max_drawdown_abs || 0) : ''}
+      <StatsCard
+        title={t.stats.maxDrawdown.title}
+        value={formatStatPercent(stats?.max_drawdown_pct)}
+        description={hasData ? (() => {
+          // Компактный формат — description truncate'нится. Показываем размах
+          // в виде «пик → дно» чтобы было ясно, что max_drawdown_abs это
+          // расстояние между двумя точками на curve, а не одна точка.
+          const compact = (n: number) => {
+            const abs = Math.abs(n);
+            const sign = n < 0 ? '-' : (n > 0 ? '+' : '');
+            if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+            if (abs >= 1_000)     return `${sign}${(abs / 1_000).toFixed(1)}K`;
+            return `${sign}${abs.toFixed(0)}`;
+          };
+          const parts: string[] = [formatCurrency(stats?.max_drawdown_abs || 0)];
+          const peakV = stats?.max_drawdown_peak_value;
+          const troughV = stats?.max_drawdown_trough_value;
+          if (peakV !== null && peakV !== undefined && troughV !== null && troughV !== undefined) {
+            parts.push(`пик ${compact(peakV)} → дно ${compact(troughV)}`);
+          }
+          return parts.join(' · ');
+        })() : ''}
         trend={hasData ? 'down' : undefined}
         icon={<TrendingDown size={18} />}
-        tooltipText={t.stats.maxDrawdown.tooltip}
+        tooltipText={hasData ? (() => {
+          const lines: string[] = [t.stats.maxDrawdown.tooltip];
+          if (stats?.max_drawdown_peak_date && stats?.max_drawdown_trough_date) {
+            const peakStr   = formatShortDate(stats.max_drawdown_peak_date);
+            const troughStr = formatShortDate(stats.max_drawdown_trough_date);
+            const days = stats.max_drawdown_duration_days ?? 0;
+            lines.push('');
+            lines.push(`Пик капитала: ${formatCurrency(stats?.max_drawdown_peak_value ?? 0)} (${peakStr})`);
+            lines.push(`Дно просадки: ${formatCurrency(stats?.max_drawdown_trough_value ?? 0)} (${troughStr})`);
+            lines.push(`Длительность: ${days} дн.`);
+            lines.push(`Размах (пик − дно): ${formatCurrency(stats?.max_drawdown_abs ?? 0)}`);
+          }
+          return lines.join('\n');
+        })() : t.stats.maxDrawdown.tooltip}
         manualAnchor="drawdown"
       />
       <StatsCard 
@@ -250,7 +438,7 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
       <StatsCard 
         title={t.stats.avgWinLoss.title} 
         value={formatStatCurrency(stats?.avg_win)} 
-        description={hasData ? `${settings.currencySymbol}${Math.abs(stats?.avg_loss || 0).toFixed(0)}` : ''}
+        description={hasData ? formatCurrency(Math.abs(stats?.avg_loss || 0)) : ''}
         icon={<Scale size={18} />}
         tooltipText={t.stats.avgWinLoss.tooltip}
         manualAnchor="avg-win-loss"
@@ -265,5 +453,6 @@ export function StatsGrid({ stats, hasData }: StatsGridProps) {
         manualAnchor="calmar-ratio"
       />
     </div>
+    </>
   );
 }

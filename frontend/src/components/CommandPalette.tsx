@@ -65,24 +65,21 @@ interface CommandContext {
   router: ReturnType<typeof useRouter>;
   closePalette: () => void;
   toggleTheme: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
-const ITEMS: CommandItem[] = [
+export const ITEMS: CommandItem[] = [
   // ── Навигация ──
   { id: "nav.dashboard", label: "Дашборд", Icon: BarChart3, group: "Навигация", keywords: ["главная", "home"], onSelect: ({ router }) => router.push("/") },
-  { id: "nav.trades", label: "Сделки", Icon: ListChecks, group: "Навигация", keywords: ["журнал", "history"], onSelect: ({ router }) => router.push("/history") },
+  { id: "nav.trades", label: "Дневник сделок", Icon: ListChecks, group: "Навигация", keywords: ["сделки", "журнал", "history"], onSelect: ({ router }) => router.push("/history") },
   { id: "nav.calendar", label: "Календарь P&L", Icon: CalendarDays, group: "Навигация", keywords: ["heatmap", "месяц"], onSelect: ({ router }) => router.push("/analysis/calendar") },
-  { id: "nav.calc", label: "Калькулятор позиции", Icon: Briefcase, group: "Навигация", keywords: ["лот", "размер", "риск"], onSelect: ({ router }) => router.push("/calculator") },
   { id: "nav.insights", label: "AI-инсайты", Icon: Brain, group: "Навигация", keywords: ["ai", "рекомендации", "инсайты"], onSelect: ({ router }) => router.push("/analysis/insights") },
   { id: "nav.maemfe", label: "MAE / MFE анализ", Icon: Target, group: "Навигация", keywords: ["excursion", "стоп", "тейк"], onSelect: ({ router }) => router.push("/analysis/mae-mfe") },
   { id: "nav.postexit", label: "Post-Exit анализ", Icon: Clock, group: "Навигация", keywords: ["упущенная", "early exit"], onSelect: ({ router }) => router.push("/analysis/post-exit") },
   { id: "nav.tags", label: "По тегам", Icon: PieChart, group: "Навигация", keywords: ["теги", "статистика"], onSelect: ({ router }) => router.push("/analysis/tags") },
   { id: "nav.setups", label: "Сетапы", Icon: Layers, group: "Навигация", keywords: ["стратегии", "паттерны"], onSelect: ({ router }) => router.push("/analysis/setups") },
-  { id: "nav.notes", label: "Заметки", Icon: StickyNote, group: "Навигация", onSelect: ({ router }) => router.push("/") },
-  { id: "nav.setups", label: "Сетапы", Icon: Layers, group: "Навигация", onSelect: ({ router }) => router.push("/") },
-  { id: "nav.import", label: "Импорт сделок", Icon: Upload, group: "Навигация", onSelect: ({ router }) => router.push("/") },
-  { id: "nav.brokers", label: "Брокеры", Icon: Plug, group: "Навигация", onSelect: ({ router }) => router.push("/") },
+  { id: "nav.import", label: "Импорт сделок", Icon: Upload, group: "Навигация", keywords: ["загрузить", "csv"], onSelect: ({ closePalette }) => { closePalette(); window.dispatchEvent(new CustomEvent("empirik:import-trades")); } },
+  { id: "nav.brokers", label: "Брокеры", Icon: Plug, group: "Навигация", keywords: ["tinkoff", "подключить"], onSelect: ({ router }) => router.push("/profile?tab=brokers") },
   { id: "nav.manual", label: "Руководство", Icon: FileText, group: "Навигация", keywords: ["docs", "help"], onSelect: ({ router }) => router.push("/manual") },
   { id: "nav.blog", label: "Блог", Icon: FileText, group: "Навигация", onSelect: ({ router }) => router.push("/blog") },
   { id: "nav.pricing", label: "Тарифы", Icon: Wallet, group: "Навигация", keywords: ["цены", "оплата"], onSelect: ({ router }) => router.push("/pricing") },
@@ -99,7 +96,7 @@ const ITEMS: CommandItem[] = [
     onSelect: ({ closePalette }) => {
       closePalette();
       // Хук-эвент — Home/History страницы слушают и открывают AddTradeModal
-      window.dispatchEvent(new CustomEvent("eqio:add-trade"));
+      window.dispatchEvent(new CustomEvent("empirik:add-trade"));
     },
   },
   {
@@ -110,7 +107,7 @@ const ITEMS: CommandItem[] = [
     keywords: ["загрузить", "csv", "excel"],
     onSelect: ({ closePalette }) => {
       closePalette();
-      window.dispatchEvent(new CustomEvent("eqio:import-trades"));
+      window.dispatchEvent(new CustomEvent("empirik:import-trades"));
     },
   },
   {
@@ -166,8 +163,8 @@ export function CommandPalette() {
   // Внешний триггер из header search-кнопки.
   useEffect(() => {
     const handler = () => setOpen(true);
-    window.addEventListener("eqio:open-palette", handler);
-    return () => window.removeEventListener("eqio:open-palette", handler);
+    window.addEventListener("empirik:open-palette", handler);
+    return () => window.removeEventListener("empirik:open-palette", handler);
   }, []);
 
   // Body scroll lock пока палитра открыта.

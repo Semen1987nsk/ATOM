@@ -8,6 +8,7 @@ Trade Replay — свечи MOEX вокруг сделки + маркеры entr
 from datetime import datetime, timedelta
 from typing import List, Optional
 
+import pytz
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -19,6 +20,19 @@ from logger import get_logger
 from moex_service import get_moex_service
 
 log = get_logger("replay")
+
+MSK_TZ = pytz.timezone("Europe/Moscow")
+
+
+def _utc_to_msk_naive(dt: datetime) -> datetime:
+    """UTC-naive (конвенция БД) → naive-МСК — та же шкала, что строки свечей ISS.
+
+    MAE-02: свечи MOEX приходят в МСК, а времена сделок в БД — UTC. Если отдать
+    маркеры/окно как есть, фронт строит ось по new Date() для обеих величин и
+    маркер входа встаёт на 3 часа левее реальной свечи."""
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(MSK_TZ).replace(tzinfo=None)
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 
@@ -63,13 +77,14 @@ def _to_float(value) -> Optional[float]:
 
 
 @router.get("/{trade_id}/replay", response_model=ReplayResponse)
-def get_trade_replay(
+async def get_trade_replay(
     trade_id: int,
     interval: Optional[str] = Query(None, description="1m/10m/1h/1d/1w/1mo. Пусто = авто."),
     pad_minutes: int = Query(60, ge=0, le=1440, description="Сколько минут до/после сделки добавить в окно."),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user),
 ):
+    # SYNC-04 (Task 1.3): handler async, потому что moex.get_candles теперь async.
     account_id = auth_service.get_account_id(db, current_user)
     trade = (
         db.query(models.Trade)
@@ -85,17 +100,21 @@ def get_trade_replay(
     moex = get_moex_service()
 
     # Окно: entry_at - pad ... exit_at + pad (или now, если открыта).
+    # Всё окно и маркеры — в naive-МСК (шкала свечей ISS), см. _utc_to_msk_naive.
     is_open = trade.exit_at is None
     end_anchor = trade.exit_at if trade.exit_at else datetime.utcnow()
-    range_start = trade.entry_at - timedelta(minutes=pad_minutes)
-    range_end = end_anchor + timedelta(minutes=pad_minutes)
+    entry_msk = _utc_to_msk_naive(trade.entry_at)
+    end_anchor_msk = _utc_to_msk_naive(end_anchor)
+    exit_msk = _utc_to_msk_naive(trade.exit_at) if trade.exit_at else None
+    range_start = entry_msk - timedelta(minutes=pad_minutes)
+    range_end = end_anchor_msk + timedelta(minutes=pad_minutes)
     span = range_end - range_start
 
     # Авто-разрешение свечей под длину окна.
     interval_auto = interval is None
     chosen = interval or moex.auto_interval(span)
 
-    candles_raw = moex.get_candles(
+    candles_raw = await moex.get_candles(
         ticker=trade.symbol,
         interval=chosen,
         start=range_start,
@@ -118,11 +137,11 @@ def get_trade_replay(
 
     entry_price = _to_float(trade.entry_price)
     if entry_price is not None:
-        markers.append(Marker(type="entry", t=trade.entry_at, price=entry_price, label="Вход"))
+        markers.append(Marker(type="entry", t=entry_msk, price=entry_price, label="Вход"))
 
     exit_price = _to_float(trade.exit_price)
-    if exit_price is not None and trade.exit_at:
-        markers.append(Marker(type="exit", t=trade.exit_at, price=exit_price, label="Выход"))
+    if exit_price is not None and exit_msk is not None:
+        markers.append(Marker(type="exit", t=exit_msk, price=exit_price, label="Выход"))
 
     sl = _to_float(trade.stop_loss)
     if sl is not None:

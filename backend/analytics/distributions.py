@@ -8,6 +8,7 @@ from typing import List, Dict
 from decimal import Decimal
 
 from ._common import UNDEFINED, _sanitize
+from .advanced import _to_msk
 
 def calculate_win_loss_stats(trades_pnl: List[float]) -> Dict:
     """
@@ -275,7 +276,7 @@ def analyze_time_patterns(trades) -> Dict:
             continue
 
         pnl = float(t.net_pnl if t.net_pnl is not None else t.pnl)
-        entry_time = t.entry_at
+        entry_time = _to_msk(t.entry_at)
 
         day_pnl[entry_time.weekday()].append(pnl)
         hour_pnl[entry_time.hour].append(pnl)

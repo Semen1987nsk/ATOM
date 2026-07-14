@@ -19,6 +19,10 @@ import threading
 from datetime import datetime
 from typing import Any, Iterable, Optional
 
+from logger import get_logger
+
+log = get_logger("stats_cache")
+
 
 class StatsCache:
     """Thread-safe TTL cache с LRU-подобной эвикцией по timestamp."""
@@ -105,9 +109,85 @@ def build_trades_state_fingerprint(trades: Iterable) -> str:
     return hashlib.sha256(state.encode()).hexdigest()
 
 
+class RedisStatsCache:
+    """Redis-backed кэш с тем же интерфейсом, что StatsCache.
+
+    JSON-сериализация (безопасно для общего Redis). Кэшируются только
+    JSON-сериализуемые значения; несериализуемое set() молча пропускает.
+    При любой ошибке Redis деградируем в cache-miss (stats пересчитаются),
+    эндпойнт не падает.
+    """
+
+    _PREFIX = "stats:"
+
+    def __init__(self, redis_client, ttl_seconds: int = 30) -> None:
+        self._redis = redis_client
+        self._ttl = ttl_seconds
+
+    def _k(self, key: str) -> str:
+        return f"{self._PREFIX}{key}"
+
+    def get(self, key: str) -> Optional[Any]:
+        try:
+            raw = self._redis.get(self._k(key))
+        except Exception:
+            return None
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
+    def set(self, key: str, value: Any) -> None:
+        try:
+            payload = json.dumps(value)
+        except (TypeError, ValueError):
+            return  # несериализуемо — просто не кэшируем
+        try:
+            self._redis.set(self._k(key), payload, ex=self._ttl)
+        except Exception:
+            pass
+
+    def invalidate(self, key: str) -> None:
+        try:
+            self._redis.delete(self._k(key))
+        except Exception:
+            pass
+
+    def clear(self) -> None:
+        try:
+            keys = list(self._redis.scan_iter(match=f"{self._PREFIX}*"))
+            if keys:
+                self._redis.delete(*keys)
+        except Exception:
+            pass
+
+
+def build_stats_cache(ttl_seconds: int = 30, max_size: int = 100):
+    """Фабрика: Redis-backed если задан REDIS_URL, иначе in-memory.
+
+    Под gunicorn N воркеров in-memory даёт ¼ hit-rate (каждый свой словарь).
+    """
+    try:
+        from config import settings
+        if settings.REDIS_URL:
+            import redis
+            client = redis.from_url(settings.REDIS_URL)
+            return RedisStatsCache(client, ttl_seconds=ttl_seconds)
+    except Exception as exc:
+        # REDIS_URL задан, но Redis-инициализация упала → не молчим: иначе
+        # прод незаметно деградирует в per-process кэш (¼ hit-rate).
+        log.warning(
+            "stats_cache: REDIS_URL задан, но Redis init упал (%s) — fallback in-memory",
+            exc,
+        )
+    return StatsCache(ttl_seconds=ttl_seconds, max_size=max_size)
+
+
 # ──────────────────────────────────────────────
 #  Module-global instance
 # ──────────────────────────────────────────────
 
 # Дефолтный кеш для роутера /stats/. Тесты могут создать собственный экземпляр.
-stats_cache = StatsCache(ttl_seconds=30, max_size=100)
+stats_cache = build_stats_cache(ttl_seconds=30, max_size=100)

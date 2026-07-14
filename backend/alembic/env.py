@@ -12,6 +12,8 @@ from alembic import context
 
 # Добавляем backend в путь для импорта моделей
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# Каталог alembic/ — для импорта _guards из version-скриптов (DATA-01).
+sys.path.insert(0, os.path.dirname(__file__))
 
 # Импортируем модели и метаданные
 from models import Base

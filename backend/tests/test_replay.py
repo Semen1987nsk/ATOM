@@ -118,7 +118,9 @@ class _FakeMoex:
         # Не используем — endpoint всё равно вызовет get_candles напрямую.
         return "10m"
 
-    def get_candles(self, ticker, interval, start, end):
+    async def get_candles(self, ticker, interval, start, end):
+        # SYNC-04 (Task 1.3): MoexService.get_candles стал async.
+        # Fake тоже async, чтобы await в роутере не падал.
         self.last_call = (ticker, interval, start, end)
         if self.fail:
             raise RuntimeError("network down")
@@ -254,3 +256,29 @@ class TestReplay:
         client = test_app["client"]
         r = client.get(f"/trades/{user_with_trade['trade'].id}/replay")
         assert r.status_code in (401, 403)
+
+    def test_replay_markers_in_msk_scale(self, test_app, user_with_trade, auth_headers):
+        """MAE-02: маркеры и окно — в шкале свечей ISS (naive-МСК).
+
+        В БД entry_at = 2026-04-01 10:30 UTC. Свечи MOEX в МСК, фронт строит
+        ось по new Date() для обеих величин → маркер обязан прийти как
+        13:30 (МСК), иначе он встаёт на 3 часа левее свечи входа."""
+        client = test_app["client"]
+        trade_id = user_with_trade["trade"].id
+        fake = _FakeMoex(candles=_sample_candles(5))
+        with patch("routers.replay.get_moex_service", return_value=fake):
+            r = client.get(f"/trades/{trade_id}/replay", headers=auth_headers)
+        assert r.status_code == 200
+        body = r.json()
+
+        entry_marker = next(m for m in body["markers"] if m["type"] == "entry")
+        # 10:30 UTC = 13:30 МСК
+        assert entry_marker["t"].startswith("2026-04-01T13:30"), entry_marker["t"]
+        exit_marker = next(m for m in body["markers"] if m["type"] == "exit")
+        # 14:00 UTC = 17:00 МСК
+        assert exit_marker["t"].startswith("2026-04-01T17:00"), exit_marker["t"]
+
+        # Окно запроса свечей к ISS — тоже МСК (pad 60 минут от 13:30/17:00)
+        _, _, start, end = fake.last_call
+        assert start.hour == 12 and start.minute == 30, start
+        assert end.hour == 18 and end.minute == 0, end

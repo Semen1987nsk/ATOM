@@ -71,6 +71,19 @@ def create_account(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user),
 ):
+    # Защита от дубликатов: один юзер — одно имя счёта.
+    # Без этой проверки случайный double-click создавал дубль
+    # «Основной счёт» при подключении брокера / онбординге.
+    existing = db.query(models.Account).filter(
+        models.Account.user_id == current_user.id,
+        models.Account.name == payload.name,
+    ).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"У вас уже есть счёт с именем «{payload.name}». Выберите другое имя.",
+        )
+
     acc = models.Account(
         user_id=current_user.id,
         name=payload.name,

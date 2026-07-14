@@ -1,0 +1,488 @@
+{
+  "account_id": "2135909232",
+  "total_amount_shares": {
+    "value": 0.0,
+    "currency": "rub",
+    "units": 0,
+    "nano": 0
+  },
+  "total_amount_bonds": {
+    "value": 0.0,
+    "currency": "rub",
+    "units": 0,
+    "nano": 0
+  },
+  "total_amount_etf": {
+    "value": 0.0,
+    "currency": "rub",
+    "units": 0,
+    "nano": 0
+  },
+  "total_amount_currencies": {
+    "value": 59483.22,
+    "currency": "rub",
+    "units": 59483,
+    "nano": 220000000
+  },
+  "total_amount_futures": {
+    "value": 542487.38,
+    "currency": "rub",
+    "units": 542487,
+    "nano": 380000000
+  },
+  "total_amount_options": {
+    "value": 0.0,
+    "currency": "rub",
+    "units": 0,
+    "nano": 0
+  },
+  "total_amount_sp": {
+    "value": 0.0,
+    "currency": "rub",
+    "units": 0,
+    "nano": 0
+  },
+  "total_amount_portfolio": {
+    "value": 59483.22,
+    "currency": "rub",
+    "units": 59483,
+    "nano": 220000000
+  },
+  "expected_yield": {
+    "value": -31.12,
+    "units": -32,
+    "nano": 880000000
+  },
+  "daily_yield": {
+    "value": -1415.45,
+    "currency": "rub",
+    "units": -1415,
+    "nano": -450000000
+  },
+  "daily_yield_relative": {
+    "value": -2.32,
+    "units": -3,
+    "nano": 680000000
+  },
+  "positions": [
+    {
+      "figi": "FUTSOFL06260",
+      "ticker": "S0M6",
+      "instrument_type": "futures",
+      "instrument_uid": "0a840860-a9d1-4472-9531-9be11758edf6",
+      "position_uid": "2489ed5b-b982-4dc6-9bbb-3aa87c27a414",
+      "quantity": {
+        "value": 170.0,
+        "units": 170,
+        "nano": 0
+      },
+      "quantity_lots": {
+        "value": 170.0,
+        "units": 170,
+        "nano": 0
+      },
+      "average_position_price": {
+        "value": 794.0,
+        "currency": "pt.",
+        "units": 794,
+        "nano": 0
+      },
+      "average_position_price_fifo": {
+        "value": 794.0,
+        "currency": "pt.",
+        "units": 794,
+        "nano": 0
+      },
+      "current_price": {
+        "value": 656.0,
+        "currency": "pt.",
+        "units": 656,
+        "nano": 0
+      },
+      "current_nkd": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield": {
+        "value": -25671.0,
+        "units": -25671,
+        "nano": 0
+      },
+      "expected_yield_fifo": {
+        "value": -25671.0,
+        "units": -25671,
+        "nano": 0
+      },
+      "var_margin": {
+        "value": 0.0,
+        "currency": "rub",
+        "units": 0,
+        "nano": 0
+      },
+      "daily_yield": {
+        "value": 0.0,
+        "currency": "rub",
+        "units": 0,
+        "nano": 0
+      },
+      "blocked": false,
+      "blocked_lots": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      }
+    },
+    {
+      "figi": "FUTXIA062600",
+      "ticker": "XIM6",
+      "instrument_type": "futures",
+      "instrument_uid": "120e00cb-7d28-4a4d-8376-6c85c59b342b",
+      "position_uid": "171a283b-8b95-4251-81c6-028dc4b05345",
+      "quantity": {
+        "value": 3.0,
+        "units": 3,
+        "nano": 0
+      },
+      "quantity_lots": {
+        "value": 3.0,
+        "units": 3,
+        "nano": 0
+      },
+      "average_position_price": {
+        "value": 35.5,
+        "currency": "pt.",
+        "units": 35,
+        "nano": 500000000
+      },
+      "average_position_price_fifo": {
+        "value": 35.5,
+        "currency": "pt.",
+        "units": 35,
+        "nano": 500000000
+      },
+      "current_price": {
+        "value": 30.94,
+        "currency": "pt.",
+        "units": 30,
+        "nano": 940000000
+      },
+      "current_nkd": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield": {
+        "value": -16662.3,
+        "units": -16663,
+        "nano": 700000000
+      },
+      "expected_yield_fifo": {
+        "value": -16662.3,
+        "units": -16663,
+        "nano": 700000000
+      },
+      "var_margin": {
+        "value": 0.0,
+        "currency": "rub",
+        "units": 0,
+        "nano": 0
+      },
+      "daily_yield": {
+        "value": 0.0,
+        "currency": "rub",
+        "units": 0,
+        "nano": 0
+      },
+      "blocked": false,
+      "blocked_lots": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      }
+    },
+    {
+      "figi": "FUTGL0626000",
+      "ticker": "GLM6",
+      "instrument_type": "futures",
+      "instrument_uid": "47764ec3-7f02-48de-8c6c-e719ed06df16",
+      "position_uid": "e6db5444-d141-40db-bd63-636052d47ace",
+      "quantity": {
+        "value": 7.0,
+        "units": 7,
+        "nano": 0
+      },
+      "quantity_lots": {
+        "value": 7.0,
+        "units": 7,
+        "nano": 0
+      },
+      "average_position_price": {
+        "value": 11843.7,
+        "currency": "pt.",
+        "units": 11843,
+        "nano": 700000000
+      },
+      "average_position_price_fifo": {
+        "value": 11843.7,
+        "currency": "pt.",
+        "units": 11843,
+        "nano": 700000000
+      },
+      "current_price": {
+        "value": 10700.2,
+        "currency": "pt.",
+        "units": 10700,
+        "nano": 200000000
+      },
+      "current_nkd": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield": {
+        "value": -10965.1,
+        "units": -10966,
+        "nano": 900000000
+      },
+      "expected_yield_fifo": {
+        "value": -10965.1,
+        "units": -10966,
+        "nano": 900000000
+      },
+      "var_margin": {
+        "value": -162.4,
+        "currency": "rub",
+        "units": -162,
+        "nano": -400000000
+      },
+      "daily_yield": {
+        "value": -162.4,
+        "currency": "rub",
+        "units": -162,
+        "nano": -400000000
+      },
+      "blocked": false,
+      "blocked_lots": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      }
+    },
+    {
+      "figi": "FUTRENI06260",
+      "ticker": "RDM6",
+      "instrument_type": "futures",
+      "instrument_uid": "84233ca1-9331-4055-ad52-bc773f3083e9",
+      "position_uid": "4e2da75e-0525-43ee-ab42-4dae02b69171",
+      "quantity": {
+        "value": 19.0,
+        "units": 19,
+        "nano": 0
+      },
+      "quantity_lots": {
+        "value": 19.0,
+        "units": 19,
+        "nano": 0
+      },
+      "average_position_price": {
+        "value": 9117.0,
+        "currency": "pt.",
+        "units": 9117,
+        "nano": 0
+      },
+      "average_position_price_fifo": {
+        "value": 9117.0,
+        "currency": "pt.",
+        "units": 9117,
+        "nano": 0
+      },
+      "current_price": {
+        "value": 8739.0,
+        "currency": "pt.",
+        "units": 8739,
+        "nano": 0
+      },
+      "current_nkd": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield": {
+        "value": -8476.0,
+        "units": -8476,
+        "nano": 0
+      },
+      "expected_yield_fifo": {
+        "value": -8476.0,
+        "units": -8476,
+        "nano": 0
+      },
+      "var_margin": {
+        "value": 798.0,
+        "currency": "rub",
+        "units": 798,
+        "nano": 0
+      },
+      "daily_yield": {
+        "value": 798.0,
+        "currency": "rub",
+        "units": 798,
+        "nano": 0
+      },
+      "blocked": false,
+      "blocked_lots": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      }
+    },
+    {
+      "figi": "RUB000UTSTOM",
+      "ticker": "RUB000UTSTOM",
+      "instrument_type": "currency",
+      "instrument_uid": "a92e2e25-a698-45cc-a781-167cf465257c",
+      "position_uid": "33e24a92-aab0-409c-88b8-f2d57415b920",
+      "quantity": {
+        "value": 59483.22,
+        "units": 59483,
+        "nano": 220000000
+      },
+      "quantity_lots": {
+        "value": 59483.22,
+        "units": 59483,
+        "nano": 220000000
+      },
+      "average_position_price": {
+        "value": 1.0,
+        "currency": "rub",
+        "units": 1,
+        "nano": 0
+      },
+      "average_position_price_fifo": {
+        "value": 1.0,
+        "currency": "rub",
+        "units": 1,
+        "nano": 0
+      },
+      "current_price": {
+        "value": 1.0,
+        "currency": "rub",
+        "units": 1,
+        "nano": 0
+      },
+      "current_nkd": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield_fifo": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      },
+      "var_margin": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "daily_yield": {
+        "value": 0.0,
+        "currency": "rub",
+        "units": 0,
+        "nano": 0
+      },
+      "blocked": false,
+      "blocked_lots": {
+        "value": 74034.48,
+        "units": 74034,
+        "nano": 480000000
+      }
+    },
+    {
+      "figi": "FUTETHA06260",
+      "ticker": "ETM6",
+      "instrument_type": "futures",
+      "instrument_uid": "d792fee0-9339-4105-aae6-89ab9c4289d0",
+      "position_uid": "0e38b76f-fa44-4799-a682-67710a0d3a66",
+      "quantity": {
+        "value": 85.0,
+        "units": 85,
+        "nano": 0
+      },
+      "quantity_lots": {
+        "value": 85.0,
+        "units": 85,
+        "nano": 0
+      },
+      "average_position_price": {
+        "value": 17.27,
+        "currency": "pt.",
+        "units": 17,
+        "nano": 270000000
+      },
+      "average_position_price_fifo": {
+        "value": 17.27,
+        "currency": "pt.",
+        "units": 17,
+        "nano": 270000000
+      },
+      "current_price": {
+        "value": 16.63,
+        "currency": "pt.",
+        "units": 16,
+        "nano": 630000000
+      },
+      "current_nkd": {
+        "value": 0.0,
+        "currency": "",
+        "units": 0,
+        "nano": 0
+      },
+      "expected_yield": {
+        "value": -7444.96,
+        "units": -7445,
+        "nano": 40000000
+      },
+      "expected_yield_fifo": {
+        "value": -7444.96,
+        "units": -7445,
+        "nano": 40000000
+      },
+      "var_margin": {
+        "value": -2051.05,
+        "currency": "rub",
+        "units": -2051,
+        "nano": -50000000
+      },
+      "daily_yield": {
+        "value": -2051.05,
+        "currency": "rub",
+        "units": -2051,
+        "nano": -50000000
+      },
+      "blocked": false,
+      "blocked_lots": {
+        "value": 0.0,
+        "units": 0,
+        "nano": 0
+      }
+    }
+  ],
+  "_meta": {
+    "account_id": 4,
+    "broker_account_id": "2135909232",
+    "dumped_at": "2026-05-17T17:47:10.028001"
+  }
+}

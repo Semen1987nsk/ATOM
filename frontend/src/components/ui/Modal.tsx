@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -41,6 +41,8 @@ export function Modal({
   size = "md",
   blockBackdropClose = false,
 }: ModalProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
 
@@ -58,6 +60,51 @@ export function Modal({
     };
   }, [open, onClose]);
 
+  // Focus trap: lock Tab/Shift+Tab внутри карточки + восстановление focus после закрытия.
+  useEffect(() => {
+    if (!open) return;
+    const card = cardRef.current;
+    if (!card) return;
+
+    const previousFocus = document.activeElement as HTMLElement | null;
+
+    const getFocusables = () =>
+      Array.from(
+        card.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+
+    // Focus на первый интерактивный элемент при открытии.
+    const initial = getFocusables();
+    initial[0]?.focus();
+
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusables = getFocusables();
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !card.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !card.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    card.addEventListener("keydown", trap);
+    return () => {
+      card.removeEventListener("keydown", trap);
+      previousFocus?.focus?.();
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
@@ -73,8 +120,9 @@ export function Modal({
 
       {/* Card */}
       <div
+        ref={cardRef}
         className={clsx(
-          "relative w-full",
+          "relative w-full max-h-[90vh] flex flex-col overflow-hidden",
           sizeClass[size],
           "bg-[var(--surface-2)] rounded-[var(--radius-xl)] border border-[var(--border)] shadow-[var(--shadow-xl)] animate-scaleIn",
         )}
@@ -82,6 +130,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
+        tabIndex={-1}
       >
         {/* Header */}
         {(title || true) && (
@@ -108,11 +157,11 @@ export function Modal({
         )}
 
         {/* Body */}
-        <div className="px-6 py-4">{children}</div>
+        <div className="px-6 py-4 overflow-y-auto flex-1">{children}</div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--border)]">
+          <div className="flex-shrink-0 flex items-center justify-end gap-2 px-6 py-4 border-t border-[var(--border)]">
             {footer}
           </div>
         )}

@@ -2,6 +2,7 @@
 Stats Router — статистика торговли, аналитика, теги
 """
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional
@@ -11,24 +12,55 @@ import models
 import schemas
 import analytics
 import auth_service
-from capital_service import get_capital_flow_events, get_net_deposit_as_of, has_broker_capital_operations
+from capital_service import compute_balance_at, get_capital_flow_events, get_net_deposit_as_of, has_broker_capital_operations
 from utils import utc_now_naive
 from logger import get_logger
 from rate_limiter import limiter, API_LIMIT
-from tinkoff_service import TinkoffService
-from crypto_utils import decrypt_token
+# tinkoff_service удалён в PR 0 (greenfield rewrite). Unrealized PnL пока
+# не считается из портфеля — вернётся в PR 11 через positions repository.
 from moex_service import get_moex_service
 from services.stats_cache import (
     stats_cache,
     build_request_key as _get_cache_key,
-    build_trades_state_fingerprint as _get_trades_state_fingerprint,
 )
-import asyncio
+from config import settings
+from utils.downsample import lttb
+
+
+def _calmar_with_history_gate(pnls_sorted, calmar_initial_balance, period_years, trading_days):
+    """Calmar с гейтом 90 дней (консистентно со stats_advanced.py:101).
+    На короткой истории аннуализированная доходность взрывается → не показываем."""
+    if trading_days < 90:
+        return {
+            "calmar_ratio": None,
+            "cagr_pct": None,
+            "max_drawdown_pct": None,
+            "rating": "Недостаточно истории",
+        }
+    return analytics.calculate_calmar_ratio(
+        pnls_sorted,
+        initial_balance=calmar_initial_balance,
+        period_years=period_years,
+    )
+
+
+def _downsample_equity_curve(curve: list[dict], max_points: int) -> list[dict]:
+    """PERF-10: LTTB-сжатие equity_curve к max_points точкам.
+
+    Сохраняет первую и последнюю точку (важно для UI: стартовый и текущий
+    баланс). Работает по индексу события, чтобы вернуть оригинальные dict'ы
+    (а не интерполированные значения), включая поле `date`.
+    """
+    if len(curve) <= max_points or max_points < 3:
+        return curve
+    indexed = [(float(i), float(p.get("balance", 0))) for i, p in enumerate(curve)]
+    kept_indices = {int(p[0]) for p in lttb(indexed, max_points)}
+    return [p for i, p in enumerate(curve) if i in kept_indices]
+
 
 log = get_logger("stats")
 
 router = APIRouter(tags=["stats"])
-tags_router = APIRouter(tags=["stats"])
 
 
 # Thin wrappers поверх services.stats_cache — сохраняют существующий
@@ -42,15 +74,42 @@ def _set_cached(key, value):
     stats_cache.set(key, value)
 
 
+def _get_trades_state_fingerprint(db: Session, account_id: int) -> str:
+    """PERF-07: дешёвый fingerprint без загрузки всех Trade-rows.
+
+    Один aggregate-SQL: `max(id) || count(id)`. Меняется при любом
+    INSERT/DELETE сделок аккаунта. UPDATE-only без изменения id/count
+    fingerprint не ловит — но это редкий путь (re-attribution делает
+    update в рамках того же sync, где также происходят inserts/deletes),
+    а TTL stats_cache (30с) даёт страховку.
+
+    Поднимается ДО загрузки трейдов в `get_stats`: при cache hit роутер
+    не делает heavy `query.all()` (5k+ rows).
+
+    Note: модель Trade не имеет `updated_at` — используем `max(id)` как
+    proxy для «последний INSERT'нутый trade». `count(id)` детектит DELETE.
+    """
+    row = db.query(
+        func.coalesce(func.max(models.Trade.id), 0),
+        func.count(models.Trade.id),
+    ).filter(models.Trade.account_id == account_id).one()
+    max_id, total = row
+    return f"{int(max_id or 0)}|{int(total or 0)}"
+
+
+def _count_open_positions(db: Session, account_id: int) -> int:
+    """Сколько открытых позиций в `positions` ORM (после mark-to-market)."""
+    return (
+        db.query(models.PositionORM)
+        .filter(
+            models.PositionORM.account_id == account_id,
+            models.PositionORM.quantity != 0,
+        )
+        .count()
+    )
+
+
 async def _build_imoex_overlay_async(equity_curve: list) -> list:
-    """
-    Async-обёртка вокруг sync `MoexService.get_index_history`. Без неё блокирует
-    event loop на ~0.3-2 сек на холодном кэше — для async-handler это убийственно.
-    """
-    return await asyncio.to_thread(_build_imoex_overlay, equity_curve)
-
-
-def _build_imoex_overlay(equity_curve: list) -> list:
     """
     IMOEX overlay для сравнения equity счёта с индексом MOEX.
 
@@ -60,6 +119,9 @@ def _build_imoex_overlay(equity_curve: list) -> list:
     под точки equity_curve, чтобы фронт мог матчить по дате.
 
     Если кривая пуста или MOEX недоступен — пустой список (фронт скрывает overlay).
+
+    SYNC-04 (Task 1.3): `MoexService.get_index_history` стал async — to_thread
+    обёртка больше не нужна, await напрямую.
     """
     if not equity_curve:
         return []
@@ -72,7 +134,7 @@ def _build_imoex_overlay(equity_curve: list) -> list:
     # Расширяем окно на день в каждую сторону, чтобы поймать ближайшую
     # торговую сессию в случае выходных на границах.
     try:
-        return get_moex_service().get_index_history(
+        return await get_moex_service().get_index_history(
             "IMOEX",
             start=first_date - timedelta(days=2),
             end=last_date + timedelta(days=2),
@@ -85,42 +147,35 @@ def _build_imoex_overlay(equity_curve: list) -> list:
 # get_account_id is now centralized in auth_service
 
 
-@tags_router.get("/tags/")
-@router.get("/tags/")
-async def get_all_tags(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user)
-):
-    """Get all unique tags used in trades with their statistics."""
-    account_id = auth_service.get_account_id(db, current_user)
-    trades = db.query(models.Trade).filter(
-        models.Trade.account_id == account_id,
-        models.Trade.pnl != None
-    ).all()
+def _build_pnl_health_dict(account) -> dict:
+    """Phase 10: dict для UI badge из cached `Account.last_pnl_health_*`.
 
-    tag_stats = {}
-    for t in trades:
-        if not t.tags:
-            continue
-        for tag in t.tags:
-            tag_lower = tag.lower()
-            if tag_lower not in tag_stats:
-                tag_stats[tag_lower] = {"tag": tag_lower, "count": 0, "pnl": 0, "wins": 0}
-            tag_stats[tag_lower]["count"] += 1
-            tag_stats[tag_lower]["pnl"] += float(t.pnl or 0)
-            if t.pnl and t.pnl > 0:
-                tag_stats[tag_lower]["wins"] += 1
+    Если cached данные старше 7 дней — переопределяем status='stale' (UI
+    показывает серый бейдж с подсказкой "запустить проверку"). Если NULL —
+    status='stale' до первого backfill.
+    """
+    from services.pnl_health_service import is_stale
 
-    result = []
-    for tag, data in tag_stats.items():
-        result.append({
-            "tag": data["tag"],
-            "count": data["count"],
-            "pnl": round(data["pnl"], 2),
-            "win_rate": round((data["wins"] / data["count"]) * 100, 1) if data["count"] > 0 else 0
-        })
+    if account.last_pnl_health_at is None:
+        return {
+            "status": "stale",
+            "diff_pct": None,
+            "diff_rub": None,
+            "checked_at": None,
+            "breakdown": None,
+            "message": "Проверка ещё не выполнялась",
+        }
 
-    return sorted(result, key=lambda x: x["count"], reverse=True)
+    raw_status = account.last_pnl_health_status or "stale"
+    effective_status = "stale" if is_stale(account) else raw_status
+
+    return {
+        "status": effective_status,
+        "diff_pct": float(account.last_pnl_health_diff_pct) if account.last_pnl_health_diff_pct is not None else None,
+        "diff_rub": float(account.last_pnl_health_diff_rub) if account.last_pnl_health_diff_rub is not None else None,
+        "checked_at": account.last_pnl_health_at.isoformat() if account.last_pnl_health_at else None,
+        "breakdown": account.last_pnl_health_breakdown,
+    }
 
 
 @router.get("/", response_model=schemas.DashboardStats)
@@ -174,7 +229,24 @@ async def get_stats(
         except ValueError:
             pass
 
-    # Query trades with filter
+    # PERF-07: fingerprint считаем ДО загрузки trades. Aggregate-SQL
+    # (max(id)+count(id)) — дешевле, чем грузить все Trade-rows. На cache hit
+    # тяжёлый `query.all()` ниже вообще не выполняется. Сам fingerprint
+    # покрывает все трейды аккаунта; tag/period/limit участвуют в cache_key
+    # как отдельные параметры — разный фильтр → разный ключ → раздельный кэш.
+    trades_fingerprint = _get_trades_state_fingerprint(db, account_id)
+    cache_key = _get_cache_key(account_id, period=period, start_date=start_date,
+                               end_date=end_date, start_trade_id=start_trade_id,
+                               tag=tag, limit=limit, mae_method=mae_method,
+                               initial_deposit=initial_deposit,
+                               account_initial_balance=account_initial_balance,
+                               trades_fingerprint=trades_fingerprint)
+    cached = _get_cached(cache_key)
+    if cached:
+        log.debug(f"Stats cache hit for key {cache_key[:8]}")
+        return cached
+
+    # Query trades with filter (выполняется только при cache miss)
     query = db.query(models.Trade).filter(
         models.Trade.account_id == account_id,
         models.Trade.pnl != None
@@ -196,10 +268,20 @@ async def get_stats(
         except ValueError:
             pass
 
+    # PERF-08b (2026-05-26): tag-фильтр dialect-aware.
+    # Postgres: `tags @> '["FOMO"]'` через JSONB + GIN-индекс
+    #   (миграция 0028) — фильтрует в БД, не тянет лишние строки.
+    # SQLite (dev/tests): JSON `contains`-оператора нет → оставляем
+    #   Python-loop fallback после `.all()`. Также fallback сохраняет
+    #   case-insensitive семантику (legacy-поведение).
+    is_postgres = db.bind.dialect.name == "postgresql"
+    if tag and is_postgres:
+        query = query.filter(models.Trade.tags.contains([tag]))
+
     all_trades = query.order_by(models.Trade.exit_at.desc()).all()
 
-    # Filter by tag if specified
-    if tag:
+    # SQLite-fallback: фильтр в Python (case-insensitive, legacy).
+    if tag and not is_postgres:
         tag_lower = tag.lower()
         all_trades = [t for t in all_trades if t.tags and any(tg.lower() == tag_lower for tg in t.tags)]
 
@@ -209,33 +291,33 @@ async def get_stats(
 
     trades = all_trades
 
-    trades_fingerprint = _get_trades_state_fingerprint(trades)
-    cache_key = _get_cache_key(account_id, period=period, start_date=start_date,
-                               end_date=end_date, start_trade_id=start_trade_id,
-                               tag=tag, limit=limit, mae_method=mae_method,
-                               initial_deposit=initial_deposit,
-                               account_initial_balance=account_initial_balance,
-                               trades_fingerprint=trades_fingerprint)
-    cached = _get_cached(cache_key)
-    if cached:
-        log.debug(f"Stats cache hit for key {cache_key[:8]}")
-        return cached
-
     total_trades = len(trades)
     if total_trades == 0:
+        # PR 22: для broker-юзера baseline = portfolio snapshot back-calculated;
+        # для остальных fallback на account.initial_balance.
+        empty_baseline = None
+        if account is not None and account.last_portfolio_value is not None:
+            empty_baseline = compute_balance_at(db, account_id, date_filter) if date_filter else float(account.last_portfolio_value)
+        if empty_baseline is None:
+            empty_baseline = account_initial_balance
         return {
             "total_pnl": 0,
             "unrealized_pnl": 0,
+            "varmargin_total": 0,
             "total_pnl_with_unrealized": 0,
-            "initial_balance": account_initial_balance,
-            "current_balance": account_initial_balance,
-            "period_start_balance": account_initial_balance,
-            "period_end_balance": account_initial_balance,
+            "initial_balance": empty_baseline,
+            "current_balance": empty_baseline,
+            "period_start_balance": empty_baseline,
+            "period_end_balance": empty_baseline,
             "period_start_date": date_filter.isoformat() if date_filter else None,
             "period_start_net_deposit": get_net_deposit_as_of(db, account_id, date_filter) if date_filter else account_initial_balance,
             "period_start_realized_pnl": 0,
             "period_start_balance_reliable": True,
-            "period_start_balance_source": "account_initial_balance",
+            "period_start_balance_source": (
+                "portfolio_snapshot_backtrack"
+                if account is not None and account.last_portfolio_value is not None
+                else "account_initial_balance"
+            ),
             "period_start_balance_reason": None,
             "win_rate": 0,
             "total_trades": 0,
@@ -247,7 +329,13 @@ async def get_stats(
     def get_pnl(t):
         return float(t.net_pnl if t.net_pnl is not None else t.pnl)
 
+    # Phase 11 (2026-05-17): gross variant — только body P&L без commissions/fees.
+    # Используется когда settings.pnl_display_mode == 'gross' на фронте.
+    def get_pnl_gross(t):
+        return float(t.pnl if t.pnl is not None else 0)
+
     total_pnl = sum(get_pnl(t) for t in trades)
+    total_pnl_gross = sum(get_pnl_gross(t) for t in trades)
     profitable_trades = len([t for t in trades if get_pnl(t) > 0])
     win_rate = (profitable_trades / total_trades) * 100
 
@@ -289,17 +377,85 @@ async def get_stats(
         ).all()
         pnl_before = sum(float(t.net_pnl if t.net_pnl is not None else t.pnl) for t in trades_before_filter)
 
+    # PR 23: для broker-юзера НЕ пытаемся реконструировать «стартовый капитал»
+    # — у Tinkoff API нет надёжного источника для margin/futures-трейдинга
+    # (operation payments не отражают margin-кредиты, а historical snapshots
+    # отсутствуют без GetBrokerReport). Показываем честно:
+    #   - текущий баланс счёта = last_portfolio_value (cash)
+    #   - equity curve = кумулятивный realized PnL (стартует от 0)
+    #   - ROI/RoR не считаем (нет baseline)
+    is_broker_user = account is not None and account.last_portfolio_value is not None
+    current_cash_balance = float(account.last_portfolio_value) if is_broker_user else None
+
+    # Всегда вычисляем для совместимости с response-полем period_start_net_deposit.
     starting_net_deposit = get_net_deposit_as_of(db, account_id, period_start_date) if period_start_date else get_net_deposit_as_of(db, account_id)
-    starting_balance = starting_net_deposit + pnl_before
-    if not period_start_date:
-        starting_balance = base_initial_balance if base_initial_balance > 0 else starting_balance
 
-    period_start_balance_reliable = True
-    period_start_balance_source = "derived"
+    if is_broker_user:
+        if account_initial_balance > 0:
+            # ADR-0010: есть опорная база капитала (anchor или manual) → ROI честен.
+            # Equity curve по-прежнему от 0 (cumulative PnL); ROI-знаменатель отдельный.
+            starting_balance = 0.0
+            period_start_balance_source = "anchored_capital_base"
+            period_start_balance_reliable = True
+        else:
+            # Без якоря базы нет — ROI по-прежнему скрыт.
+            starting_balance = 0.0
+            period_start_balance_source = "broker_cumulative_pnl"
+            period_start_balance_reliable = False
+    else:
+        starting_balance = starting_net_deposit + pnl_before
+        if not period_start_date:
+            starting_balance = base_initial_balance if base_initial_balance > 0 else starting_balance
+        period_start_balance_source = "derived"
+        period_start_balance_reliable = True
+
     period_start_balance_reason = None
-    public_period_start_balance = starting_balance
+    if is_broker_user and period_start_balance_reliable and account_initial_balance > 0:
+        # ADR-0010 / S2-06: anchored broker → ROI-знаменатель = anchor +
+        # Σ NET_DEPOSIT из OperationORM (реальные завозы). ADR-0010 §"Реализующие
+        # модули": stats.py база % = initial_balance + net_deposits (total).
+        # get_net_deposit_as_of при пустой DepositHistory возвращал сам
+        # initial_balance → база = anchor+anchor (double count). Берём depozits
+        # из того же источника и по той же формуле, что drawdown_baseline ниже
+        # и get_net_deposits_baseline_from_db — ЗНАКОВАЯ Σ NET_DEPOSIT (S3-14),
+        # без date-фильтра: полный deployed capital. OUTPUT хранятся с
+        # отрицательным payment_units → вывод средств УМЕНЬШАЕТ базу (signed),
+        # согласовано с pnl_health effective_deposits и drawdown_baseline в этом
+        # же ответе. acc#2 (только заводы): 99095 + 8556 = 107651; при выводе
+        # −20000 сверх завода +8556: 99095 + (8556−20000) = 87651.
+        from domain.pnl.cash_flow_classification import (
+            CashFlowCategory as _CFC2,
+            operation_types_in as _op_types_in2,
+        )
+        _dep_types2 = tuple(_op_types_in2(_CFC2.NET_DEPOSIT))
+        net_dep_ops = 0.0
+        if _dep_types2:
+            _q = db.query(
+                func.coalesce(func.sum(models.OperationORM.payment_units), 0),
+                func.coalesce(func.sum(models.OperationORM.payment_nano), 0),
+            ).filter(
+                models.OperationORM.account_id == account_id,
+                models.OperationORM.operation_type.in_(_dep_types2),
+                models.OperationORM.state == "executed",
+            )
+            # CR-1: числитель total_pnl period-scoped → знаменатель ROI тоже.
+            # Триггер — date_filter is not None (явный период today/week/…/custom),
+            # НЕ period_start_date (тот выставляется ВСЕГДА, для all = дата первой
+            # сделки). При явном окне учитываем только капитал, задеплоенный ДО
+            # старта окна: депозиты после начала периода = заводы посреди окна,
+            # инъекция которых иначе занижает ROI короткого периода. Для period=all
+            # (date_filter None) фильтра нет — полная Σ (deployed capital).
+            if date_filter is not None:
+                _q = _q.filter(models.OperationORM.executed_at <= date_filter)
+            _r = _q.one()
+            net_dep_ops = float(_r[0] or 0) + float(_r[1] or 0) / 1e9
+        public_period_start_balance = account_initial_balance + net_dep_ops
+    else:
+        public_period_start_balance = (
+            starting_balance if (not is_broker_user or period_start_balance_reliable) else None
+        )
 
-    if broker_backed and period_start_date:
+    if not is_broker_user and broker_backed and period_start_date:
         first_snapshot = db.query(models.BalanceSnapshot).filter(
             models.BalanceSnapshot.account_id == account_id,
         ).order_by(models.BalanceSnapshot.date.asc()).first()
@@ -351,26 +507,36 @@ async def get_stats(
             equity_events.append({
                 "date": flow["date"],
                 "amount": float(flow["amount"]),
+                "amount_gross": float(flow["amount"]),  # capital flows одинаковы в обоих режимах
                 "kind": "capital",
             })
     for trade in sorted_trades:
         equity_events.append({
             "date": trade.exit_at if trade.exit_at else trade.entry_at,
             "amount": get_pnl(trade),
+            "amount_gross": get_pnl_gross(trade),
             "kind": "trade",
         })
 
     equity_events.sort(key=lambda event: (event["date"], 0 if event["kind"] == "capital" else 1))
     equity_curve = []
+    equity_curve_gross = []
     current_balance = starting_balance
+    current_balance_gross = starting_balance
     for event in equity_events:
         current_balance += event["amount"]
+        current_balance_gross += event["amount_gross"]
         event_date = event["date"]
         if event_date is None:
             continue
+        date_str = event_date.strftime("%Y-%m-%d %H:%M")
         equity_curve.append({
-            "date": event_date.strftime("%Y-%m-%d %H:%M"),
+            "date": date_str,
             "balance": round(current_balance, 2)
+        })
+        equity_curve_gross.append({
+            "date": date_str,
+            "balance": round(current_balance_gross, 2)
         })
 
     if period_start_date:
@@ -402,9 +568,53 @@ async def get_stats(
         })
     tag_stats = sorted(tag_stats, key=lambda x: x["pnl"], reverse=True)
 
+    # Baseline для %-метрик (просадка, Calmar, % изменения капитала).
+    # Для broker_user используем Σ NET_DEPOSIT через OperationORM (то что реально
+    # завёл через Tinkoff API) — это deployed capital. cash_truth_pnl формула:
+    # last_portfolio_value - Σ NET_DEPOSIT — даёт реальную потерю, и % к Σ deposits
+    # = "сколько % от вложенного потерял". Если из CapitalOperation посчитать
+    # 1.05M (включая выведенные деньги), %-метрики занижаются в ~3 раза.
+    drawdown_baseline = 0.0
+    if is_broker_user:
+        from domain.pnl.cash_flow_classification import (
+            CashFlowCategory as _CFC,
+            operation_types_in as _op_types_in,
+        )
+        _dep_types = tuple(_op_types_in(_CFC.NET_DEPOSIT))
+        if _dep_types:
+            _row = db.query(
+                func.coalesce(func.sum(models.OperationORM.payment_units), 0),
+                func.coalesce(func.sum(models.OperationORM.payment_nano), 0),
+            ).filter(
+                models.OperationORM.account_id == account_id,
+                models.OperationORM.operation_type.in_(_dep_types),
+                models.OperationORM.state == "executed",
+            ).one()
+            drawdown_baseline = float(_row[0] or 0) + float(_row[1] or 0) / 1e9
+        if drawdown_baseline <= 0 and starting_net_deposit > 0:
+            drawdown_baseline = starting_net_deposit
+        # ADR-0010: включаем восстановленный баланс открытия в развёрнутый капитал
+        # → drawdown%/Calmar считаются от реальной базы (acc#2: 8556 → 107651).
+        if account_initial_balance > 0:
+            drawdown_baseline += account_initial_balance
+    elif starting_balance > 0:
+        drawdown_baseline = starting_balance
+    if drawdown_baseline <= 0:
+        drawdown_baseline = float(base_initial_balance) if base_initial_balance > 0 else 0
+
     # Расчет дополнительных метрик
     sortino_data = analytics.calculate_sharpe_sortino(pnls)
-    drawdown_data = analytics.calculate_drawdown_stats(pnls_sorted, initial_balance=starting_balance)
+    trade_dates_sorted = [
+        (t.exit_at or t.entry_at)
+        for t in sorted_trades
+        if (t.exit_at or t.entry_at) is not None
+    ]
+    dates_arg = trade_dates_sorted if len(trade_dates_sorted) == len(pnls_sorted) else None
+    drawdown_data = analytics.calculate_drawdown_stats(
+        pnls_sorted,
+        initial_balance=drawdown_baseline,
+        dates=dates_arg,
+    )
     win_loss_data = analytics.calculate_win_loss_stats(pnls)
     streaks_data = analytics.calculate_streaks(pnls_sorted)
     tail_ratio_data = analytics.calculate_tail_ratio(pnls)
@@ -430,11 +640,19 @@ async def get_stats(
         period_start_balance_source = "manual_override"
         period_start_balance_reason = None
 
-    calmar_initial_balance = starting_balance if starting_balance > 0 else base_initial_balance
-    calmar_data = analytics.calculate_calmar_ratio(
+    # Calmar baseline = drawdown_baseline (consistency: одна метрика «пик капитала»
+    # для просадки И для CAGR). Раньше drawdown использовал starting_balance=0,
+    # а Calmar fallback на account.initial_balance — давали разный max_drawdown_pct
+    # в двух карточках. Теперь оба читают drawdown_baseline.
+    calmar_initial_balance = drawdown_baseline if drawdown_baseline > 0 else base_initial_balance
+    _calmar_trading_days = (
+        (sorted_trades[-1].exit_at or sorted_trades[-1].entry_at) - sorted_trades[0].entry_at
+    ).days if len(sorted_trades) >= 2 else 0
+    calmar_data = _calmar_with_history_gate(
         pnls_sorted,
-        initial_balance=calmar_initial_balance,
+        calmar_initial_balance=calmar_initial_balance,
         period_years=period_years,
+        trading_days=_calmar_trading_days,
     )
 
     # Risk of Ruin
@@ -443,22 +661,196 @@ async def get_stats(
     payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 1
     risk_of_ruin_data = analytics.calculate_risk_of_ruin(win_rate / 100, payoff_ratio)
 
-    # Get unrealized PnL from open positions
-    unrealized_pnl = 0.0
-    try:
-        if broker_conn:
-            service = TinkoffService(decrypt_token(broker_conn.api_token))
-            portfolio = await asyncio.to_thread(service.get_portfolio, broker_conn.broker_account_id)
-            if portfolio and portfolio.get('positions'):
-                for pos in portfolio['positions']:
-                    unrealized_pnl += float(pos.get('unrealized_pnl', 0) or 0)
-    except Exception as e:
-        log.warning(f"Failed to get unrealized PnL: {e}")
+    # PR 21: возвращаем unrealized PnL из PositionORM (заполняется pipeline'ом
+    # в _stage_mark_to_market из live Tinkoff get_portfolio). Это сумма всех
+    # открытых позиций — то что у юзера «нереализованно болтается» прямо сейчас.
+    from models import PositionORM, OperationORM
+    unrealized_sum = (
+        db.query(func.sum(PositionORM.unrealized_pnl))
+        .filter(PositionORM.account_id == account_id)
+        .scalar()
+    )
+    unrealized_pnl_position_based = float(unrealized_sum) if unrealized_sum is not None else 0.0
+
+    # TR1.3: varmargin теперь attributed к Trade.net_pnl через
+    # pipeline._stage_attribute_fees (proportional split). Поэтому
+    # total_pnl (= Σ Trade.net_pnl закрытых) уже включает varmargin.
+    # Здесь surface отдельной info-метрикой для admin debug/диагностики.
+    varmargin_units = func.coalesce(func.sum(OperationORM.payment_units), 0)
+    varmargin_nano = func.coalesce(func.sum(OperationORM.payment_nano), 0)
+    vm_row = (
+        db.query(varmargin_units, varmargin_nano)
+        .filter(
+            OperationORM.account_id == account_id,
+            OperationORM.operation_type.in_(
+                ["accruing_varmargin", "writing_off_varmargin"]
+            ),
+            OperationORM.state == "executed",
+        )
+        .one()
+    )
+    varmargin_total = float(vm_row[0] or 0) + float(vm_row[1] or 0) / 1e9
+
+    # Phase 6.4 (2026-05-18): journal-style headline matches Дневник сделок
+    # (realized + unrealized). cash_truth_pnl surface'ится отдельным полем для
+    # PnLHealthBadge / broker reconciliation. account_level_adjustments теперь
+    # = natural_residual (cash_truth − headline, info-only).
+    # См. domain/pnl/dashboard_pnl.py + tests/unit/test_dashboard_pnl_headline.py.
+    if is_broker_user and account is not None:
+        from domain.pnl.cash_flow_classification import (
+            CashFlowCategory,
+            operation_types_in,
+        )
+        from domain.pnl.dashboard_pnl import compute_pnl_headline
+        from domain.pnl.fee_attribution import (
+            MARGIN_LIKE_FEE_TYPES,
+            SERVICE_LIKE_FEE_TYPES,
+        )
+        from decimal import Decimal
+
+        def _sum_category(cat: CashFlowCategory) -> float:
+            types = tuple(operation_types_in(cat))
+            if not types:
+                return 0.0
+            row = db.query(
+                func.coalesce(func.sum(OperationORM.payment_units), 0),
+                func.coalesce(func.sum(OperationORM.payment_nano), 0),
+            ).filter(
+                OperationORM.account_id == account_id,
+                OperationORM.operation_type.in_(types),
+                OperationORM.state == "executed",
+            ).one()
+            return float(row[0] or 0) + float(row[1] or 0) / 1e9
+
+        def _sum_op_types(op_types: frozenset[str]) -> float:
+            """Сумма payment по конкретным OperationType.value (для подкатегорий
+            внутри ATTRIBUTABLE_FEE — margin vs service)."""
+            if not op_types:
+                return 0.0
+            row = db.query(
+                func.coalesce(func.sum(OperationORM.payment_units), 0),
+                func.coalesce(func.sum(OperationORM.payment_nano), 0),
+            ).filter(
+                OperationORM.account_id == account_id,
+                OperationORM.operation_type.in_(tuple(op_types)),
+                OperationORM.state == "executed",
+            ).one()
+            return float(row[0] or 0) + float(row[1] or 0) / 1e9
+
+        raw_attr_fee   = _sum_category(CashFlowCategory.ATTRIBUTABLE_FEE)
+        raw_margin     = _sum_op_types(MARGIN_LIKE_FEE_TYPES)
+        raw_service    = _sum_op_types(SERVICE_LIKE_FEE_TYPES)
+        raw_tax        = _sum_category(CashFlowCategory.TAX)
+        raw_income_tax = _sum_category(CashFlowCategory.INCOME_TAX)
+        raw_broker     = _sum_category(CashFlowCategory.BROKER_COMMISSION)
+        raw_deposits   = _sum_category(CashFlowCategory.NET_DEPOSIT)
+
+        last_portfolio_value = float(account.last_portfolio_value or 0)
+
+        headline = compute_pnl_headline(
+            realized_closed=Decimal(str(total_pnl)),
+            realized_closed_gross=Decimal(str(total_pnl_gross)),
+            unrealized_position_based=Decimal(str(unrealized_pnl_position_based)),
+            last_portfolio_value=Decimal(str(last_portfolio_value)),
+            # ADR-0010: эффективные депозиты = реальные + восстановленный баланс открытия.
+            net_deposits=Decimal(str(raw_deposits + account_initial_balance)),
+            broker_commission_raw=Decimal(str(raw_broker)),
+            attributable_fee_raw=Decimal(str(raw_attr_fee)),
+            tax_raw=Decimal(str(raw_tax)),
+            income_tax_raw=Decimal(str(raw_income_tax)),
+        )
+
+        unrealized_pnl                  = unrealized_pnl_position_based
+        total_pnl_with_unrealized       = float(headline["total_pnl_with_unrealized"])
+        total_pnl_with_unrealized_gross = float(headline["total_pnl_with_unrealized_gross"])
+        cash_truth_pnl                  = float(headline["cash_truth_pnl"])
+        total_costs                     = float(headline["total_costs"])
+
+        # natural_residual = cash_truth − headline (orphan delta: post-clearing
+        # varmargin, dividends на закрытых позициях). Info-only — surface через
+        # account_level_adjustments для UI breakdown card. НЕ влияет на headline.
+        account_level_adjustments       = float(headline["natural_residual"])
+        # gross headline не имеет cash-truth-эквивалента (gross != broker view).
+        account_level_adjustments_gross = 0.0
+
+        total_costs_breakdown = {
+            "broker_commission": float(raw_broker),
+            "margin_fees":       float(raw_margin),
+            "service_fees":      float(raw_service),
+            "taxes":             float(raw_tax + raw_income_tax),
+        }
+    else:
+        unrealized_pnl                  = unrealized_pnl_position_based
+        total_pnl_with_unrealized       = total_pnl + unrealized_pnl
+        total_pnl_with_unrealized_gross = total_pnl_gross + unrealized_pnl
+        cash_truth_pnl                  = 0.0
+        account_level_adjustments       = 0.0
+        account_level_adjustments_gross = 0.0
+        total_costs                     = 0.0
+        total_costs_breakdown = {
+            "broker_commission": 0.0,
+            "margin_fees":       0.0,
+            "service_fees":      0.0,
+            "taxes":             0.0,
+        }
+
+    # Phase 6.4 (2026-05-18): equity_curve tail = realized cumulative + unrealized
+    # (matches journal-style headline). account_level_adjustments не добавляем —
+    # они info-only residual, не часть headline. Frontend опционально override'ит
+    # tail с live unrealized из /trades/unrealized-pnl.
+    _curve_tail_adjustment = unrealized_pnl
+    if equity_curve and _curve_tail_adjustment != 0:
+        last = equity_curve[-1]
+        equity_curve = equity_curve[:-1] + [
+            {
+                "date": last["date"],
+                "balance": round(last["balance"] + _curve_tail_adjustment, 2),
+            }
+        ]
+
+    _curve_tail_adjustment_gross = unrealized_pnl
+    if equity_curve_gross and _curve_tail_adjustment_gross != 0:
+        last = equity_curve_gross[-1]
+        equity_curve_gross = equity_curve_gross[:-1] + [
+            {
+                "date": last["date"],
+                "balance": round(last["balance"] + _curve_tail_adjustment_gross, 2),
+            }
+        ]
+
+    # PERF-10: LTTB-downsample equity_curve / equity_curve_gross.
+    # ~5000 трейдов → 5000+ JSON-точек ломали фронт-чарт; LTTB даёт
+    # визуально неотличимую кривую при N≤EQUITY_CURVE_MAX_POINTS точках.
+    # Сохраняются первая и последняя точки (стартовый и текущий баланс).
+    _max_points = settings.EQUITY_CURVE_MAX_POINTS
+    equity_curve = _downsample_equity_curve(equity_curve, _max_points)
+    equity_curve_gross = _downsample_equity_curve(equity_curve_gross, _max_points)
 
     result = {
         "total_pnl": total_pnl,
         "unrealized_pnl": unrealized_pnl,
-        "total_pnl_with_unrealized": total_pnl + unrealized_pnl,
+        "unrealized_pnl_position_based": unrealized_pnl_position_based,  # info: Σ Position.unrealized (predictive)
+        "account_level_adjustments": account_level_adjustments,  # orphan cash flows (varmargin/fees not attributed)
+        "varmargin_total": varmargin_total,  # info-only, не суммируем
+        "total_pnl_with_unrealized": total_pnl_with_unrealized,
+        # Phase 6.4: broker cash truth для PnLHealthBadge.
+        "cash_truth_pnl": cash_truth_pnl,
+        # Phase 11 (2026-05-17): gross variants — для пользовательской настройки
+        # `settings.pnl_display_mode = 'gross'`. Frontend сам выбирает что показывать.
+        # gross = только body P&L (от движения цены) без commissions/fees/taxes.
+        # net = реальный финансовый результат (default, matches broker).
+        "total_pnl_gross": total_pnl_gross,
+        "total_pnl_with_unrealized_gross": total_pnl_with_unrealized_gross,
+        "account_level_adjustments_gross": account_level_adjustments_gross,
+        # Phase 12 (2026-05-17): separate «Расходы» card (best practices).
+        # total_costs = разница net vs gross headline = broker + fees + taxes
+        # (sum может слегка отличаться от breakdown из-за orphan/attributed split).
+        "total_costs": total_costs,
+        "total_costs_breakdown": total_costs_breakdown,
+        # Phase 10 (2026-05-17): P&L Health Check status (cached на Account).
+        # status: ok|warning|mismatch|na — UI показывает badge соответствующего цвета.
+        # Если last_pnl_health_at старше 7 дней → status переопределяется на 'stale'.
+        "pnl_health": _build_pnl_health_dict(account) if account else None,
         "win_rate": win_rate,
         "total_trades": total_trades,
         "profitable_trades": profitable_trades,
@@ -475,6 +867,12 @@ async def get_stats(
         "max_drawdown_pct": drawdown_data.get("max_drawdown_pct", 0),
         "max_drawdown_abs": drawdown_data.get("max_drawdown_abs", 0),
         "current_drawdown_pct": drawdown_data.get("current_drawdown_pct", 0),
+        "max_drawdown_peak_date":   drawdown_data.get("peak_date"),
+        "max_drawdown_trough_date": drawdown_data.get("trough_date"),
+        "max_drawdown_duration_days": drawdown_data.get("dd_duration_days"),
+        "max_drawdown_peak_value":   drawdown_data.get("peak_value_on_curve"),
+        "max_drawdown_trough_value": drawdown_data.get("trough_value_on_curve"),
+        "drawdown_baseline":         float(drawdown_baseline),
         "avg_win": win_loss_data.get("avg_win", 0),
         "avg_loss": win_loss_data.get("avg_loss", 0),
         "largest_win": win_loss_data.get("largest_win", 0),
@@ -492,9 +890,17 @@ async def get_stats(
         "time_patterns": time_patterns_data,
         "mae_mfe_analysis": mae_mfe_data,
         "equity_curve": equity_curve,
+        "equity_curve_gross": equity_curve_gross,  # Phase 11: gross variant
         "imoex_curve": await _build_imoex_overlay_async(equity_curve),
         "tag_stats": tag_stats,
         "initial_balance": base_initial_balance,
+        "initial_balance_source": getattr(account, "initial_balance_source", None),
+        # PR 23: для broker-юзера current_cash_balance — это
+        # `portfolio.total_amount_portfolio` от Тинькова (cash на счёте,
+        # без учёта фьючерсов в пунктах). Это единственная честная цифра,
+        # которой можно доверять при margin/futures-трейдинге.
+        "current_cash_balance": current_cash_balance,
+        "open_positions_count": _count_open_positions(db, account_id) if is_broker_user else None,
         "current_balance": current_balance if equity_curve else base_initial_balance,
         "period_start_balance": period_start_balance,
         "period_end_balance": current_balance if equity_curve else period_start_balance,
@@ -515,268 +921,15 @@ async def get_stats(
 #  Helper: общая загрузка сделок для /advanced и /benchmark
 # ──────────────────────────────────────────────────────────────────
 
-def _load_filtered_trades(
-    db: Session,
-    account_id: int,
-    period: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
-    start_trade_id: Optional[int],
-    tag: Optional[str],
-    limit: Optional[int],
-):
-    """Повторяет фильтр-логику /stats/ — единственный источник правды для
-    периода/тега/лимита. Возвращает список Trade с непустым PnL."""
-    date_filter: Optional[datetime] = None
-    now = utc_now_naive()
-
-    if start_trade_id:
-        st = db.query(models.Trade).filter(
-            models.Trade.id == start_trade_id,
-            models.Trade.account_id == account_id,
-        ).first()
-        if st:
-            date_filter = st.entry_at
-    elif period == "today":
-        date_filter = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    elif period == "week":
-        date_filter = now - timedelta(days=7)
-    elif period == "month":
-        date_filter = now - timedelta(days=30)
-    elif period == "3months":
-        date_filter = now - timedelta(days=90)
-    elif period == "year":
-        date_filter = now - timedelta(days=365)
-    elif period == "custom" and start_date:
-        try:
-            date_filter = datetime.strptime(start_date, "%Y-%m-%d")
-        except ValueError:
-            pass
-
-    q = db.query(models.Trade).filter(
-        models.Trade.account_id == account_id,
-        models.Trade.pnl != None,
-    )
-    if date_filter:
-        q = q.filter(
-            (models.Trade.exit_at >= date_filter)
-            | ((models.Trade.exit_at == None) & (models.Trade.entry_at >= date_filter))
-        )
-    if period == "custom" and end_date:
-        try:
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
-            q = q.filter(
-                (models.Trade.exit_at < end_dt)
-                | ((models.Trade.exit_at == None) & (models.Trade.entry_at < end_dt))
-            )
-        except ValueError:
-            pass
-
-    trades = q.order_by(models.Trade.entry_at.asc()).all()
-    if tag:
-        tl = tag.lower()
-        trades = [t for t in trades if t.tags and any(tg.lower() == tl for tg in t.tags)]
-    if limit and limit > 0:
-        trades = trades[-limit:]
-    return trades
+# Helpers вынесены в services/stats_filtering для переиспользования
+# в stats_advanced и других sub-роутерах (см. ADR-0005 если будет).
+from services.stats_filtering import (  # noqa: E402
+    load_filtered_trades as _load_filtered_trades,
+    build_equity_curve as _build_equity_curve,
+)
 
 
-def _build_equity_curve(trades) -> list:
-    """Кумулятивный баланс по PnL (без учёта депозитов — для DD-метрик это и нужно)."""
-    eq: list = []
-    running = 0.0
-    for t in trades:
-        pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
-        running += pnl
-        eq.append(running)
-    return eq
-
-
-# ──────────────────────────────────────────────────────────────────
-#  /advanced — продвинутые quant-метрики (Ulcer, K-Ratio, ...)
-# ──────────────────────────────────────────────────────────────────
-
-@router.get("/advanced")
-@limiter.limit(API_LIMIT)
-async def get_advanced_stats(
-    request: Request,
-    period: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    start_trade_id: Optional[int] = Query(None),
-    tag: Optional[str] = Query(None),
-    limit: Optional[int] = Query(None),
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user),
-):
-    """Quant-метрики «второго уровня» — для отдельной вкладки на дашборде."""
-    account_id = auth_service.get_account_id(db, current_user)
-    trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
-                                   start_trade_id, tag, limit)
-
-    if not trades:
-        return {"total_trades": 0, "items": {}}
-
-    equity = _build_equity_curve(trades)
-    pnls = [float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0)) for t in trades]
-    commissions = [float(t.commission or 0) for t in trades]
-    gross_pnl = sum(p for p in pnls if p > 0)
-    holding_minutes = [
-        (t.holding_time_minutes if t.holding_time_minutes is not None else None)
-        for t in trades
-    ]
-    entry_dates = [t.entry_at for t in trades if t.entry_at]
-    disciplines = [t.discipline for t in trades]
-
-    trades_for_period = [{"entry_at": t.entry_at, "pnl": float(t.pnl or 0)} for t in trades]
-    trades_with_tags = [{"tags": t.tags or [], "pnl": float(t.pnl or 0)} for t in trades]
-
-    # Drawdown статистика — нужна для Sterling/MAR
-    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
-    dd_episodes = analytics.collect_drawdown_episodes(equity)
-
-    # CAGR требует достаточной истории (3+ месяца) и реального стартового баланса.
-    # На короткой выборке аннуализированная доходность взрывается математически и
-    # становится бессмысленной (например, +20% за 30 дней → CAGR > 700%/год).
-    cagr_pct = None
-    account = db.query(models.Account).filter(models.Account.id == account_id).first()
-    initial_balance = float(account.initial_balance or 0) if account else 0
-    if entry_dates and len(entry_dates) >= 2 and equity and initial_balance > 0:
-        days = max((entry_dates[-1] - entry_dates[0]).days, 1)
-        if days >= 90:  # минимум 3 месяца, иначе CAGR не показываем
-            years = days / 365.0
-            final_balance = initial_balance + equity[-1]
-            if final_balance > 0:
-                cagr_pct = round((pow(final_balance / initial_balance, 1 / years) - 1) * 100, 2)
-
-    return {
-        "total_trades": len(trades),
-        "items": {
-            "ulcer_index": analytics.calculate_ulcer_index(equity),
-            "k_ratio": analytics.calculate_k_ratio(equity),
-            "sterling_ratio": analytics.calculate_sterling_ratio(cagr_pct or 0, dd_episodes),
-            "omega_ratio": analytics.calculate_omega_ratio(pnls, threshold=0),
-            "mar_ratio": analytics.calculate_mar_ratio(cagr_pct, dd_stats.get("max_drawdown_pct")),
-            "drawdown_duration": analytics.calculate_drawdown_duration(equity),
-            "hold_time_distribution": analytics.calculate_hold_time_distribution(holding_minutes, pnls),
-            "period_breakdown": analytics.calculate_period_breakdown(trades_for_period),
-            "hour_dow_heatmap": analytics.calculate_hour_dow_heatmap(trades_for_period),
-            "plan_adherence": analytics.calculate_plan_adherence(disciplines),
-            "mistake_categories": analytics.calculate_mistake_categories(trades_with_tags),
-            "commission_ratio_pct": analytics.calculate_commission_ratio(gross_pnl, commissions),
-            "trade_frequency": analytics.calculate_trade_frequency(entry_dates),
-            "rr_realized": analytics.calculate_rr_realized([
-                {
-                    "entry_price": t.entry_price,
-                    "stop_loss": t.stop_loss,
-                    "take_profit": t.take_profit,
-                    "direction": t.direction,
-                    "risk_amount": t.risk_amount,
-                    "pnl": t.pnl,
-                }
-                for t in trades
-            ]),
-            "psycho_correlations": analytics.calculate_psycho_correlations([
-                {"mood": t.mood, "confidence": t.confidence, "discipline": t.discipline, "pnl": t.pnl}
-                for t in trades
-            ]),
-            "news_event_stats": analytics.calculate_news_event_stats([
-                {"news_event": t.news_event, "pnl": t.pnl}
-                for t in trades
-            ]),
-            "exit_breakdown": analytics.calculate_exit_reason_breakdown([
-                {
-                    "exit_reason": t.exit_reason,
-                    "pnl": t.pnl,
-                    "stop_loss": t.stop_loss,
-                    "take_profit": t.take_profit,
-                }
-                for t in trades
-            ]),
-            "r_distribution": analytics.calculate_r_distribution_histogram([
-                {"r_multiple": t.r_multiple, "pnl": t.pnl}
-                for t in trades
-            ]),
-            "tax_visibility": analytics.calculate_tax_visibility([
-                {"pnl": t.pnl, "exit_at": t.exit_at}
-                for t in trades
-            ]),
-            "cagr_pct": round(cagr_pct, 2) if cagr_pct is not None else None,
-            "dd_episodes": dd_episodes,
-        },
-    }
-
-
-# ──────────────────────────────────────────────────────────────────
-#  /benchmark — анонимное сравнение с когортой
-# ──────────────────────────────────────────────────────────────────
-
-@router.get("/benchmark")
-async def get_benchmark(
-    period: Optional[str] = Query(None),
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user),
-):
-    """
-    Сравнение метрик пользователя с когортой Eqio. Пока живых юзеров мало —
-    база синтетическая (academic baselines). При росте — переключается на real.
-    """
-    account_id = auth_service.get_account_id(db, current_user)
-    trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
-                                   None, None, None)
-
-    if not trades:
-        return {
-            "cohort_size": 0,
-            "is_synthetic": True,
-            "items": [],
-            "disclaimer": "Добавьте сделки, чтобы увидеть сравнение с когортой.",
-        }
-
-    pnls = [float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0)) for t in trades]
-    risks = [float(t.risk_amount) if t.risk_amount else 0 for t in trades]
-    equity = _build_equity_curve(trades)
-
-    # Считаем те метрики, по которым у нас есть baseline
-    win_loss = analytics.calculate_win_loss_stats(pnls)
-    opt_f = analytics.calculate_optimal_f(pnls, risks)
-    sqn = analytics.calculate_sqn(pnls, risks)
-    dd_stats = analytics.calculate_drawdown_stats(pnls, initial_balance=equity[0] if equity else 0)
-    sharpe_sortino = analytics.calculate_sharpe_sortino(pnls)
-
-    cagr_pct = None
-    entry_dates = [t.entry_at for t in trades if t.entry_at]
-    account = db.query(models.Account).filter(models.Account.id == account_id).first()
-    initial_balance = float(account.initial_balance or 0) if account else 0
-    if entry_dates and len(entry_dates) >= 2 and equity and initial_balance > 0:
-        days = max((entry_dates[-1] - entry_dates[0]).days, 1)
-        if days >= 90:
-            years = days / 365.0
-            final_balance = initial_balance + equity[-1]
-            if final_balance > 0:
-                cagr_pct = (pow(final_balance / initial_balance, 1 / years) - 1) * 100
-    calmar = analytics.calculate_calmar_ratio(cagr_pct or 0, dd_stats.get("max_drawdown_pct") or 0)
-    freq = analytics.calculate_trade_frequency(entry_dates)
-
-    user_metrics = {
-        "win_rate": win_loss.get("win_rate"),
-        "profit_factor": win_loss.get("profit_factor"),
-        "r_expectancy": opt_f.get("r_expectancy") if isinstance(opt_f, dict) else None,
-        "optimal_f": opt_f.get("optimal_f") if isinstance(opt_f, dict) else None,
-        "sqn": sqn.get("sqn") if isinstance(sqn, dict) else None,
-        "sortino": sharpe_sortino.get("sortino_ratio") if isinstance(sharpe_sortino, dict) else None,
-        "calmar": calmar.get("calmar_ratio") if isinstance(calmar, dict) else None,
-        "max_drawdown_pct": dd_stats.get("max_drawdown_pct"),
-        "ulcer_index": analytics.calculate_ulcer_index(equity),
-        "k_ratio": analytics.calculate_k_ratio(equity),
-        "trades_per_week": freq.get("per_week"),
-    }
-
-    # TODO Phase 5: реальная когорта берётся из агрегированной таблицы
-    #   user_metric_snapshots, обновляемой ночным джобом. Пока cohort_size=0.
-    return analytics.build_benchmark_response(user_metrics, cohort_size=0)
+# /advanced и /benchmark вынесены в routers/stats_advanced.py
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -867,8 +1020,9 @@ async def get_calendar_pnl(
     account_id = auth_service.get_account_id(db, current_user)
     trades = _load_filtered_trades(db, account_id, period, start_date, end_date,
                                    None, None, None)
+    # MATH-01: дневной P&L для календарной heatmap — NET (после комиссий).
     trades_for_calendar = [
-        {"entry_at": t.entry_at, "pnl": float(t.pnl or 0)}
+        {"entry_at": t.entry_at, "pnl": float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))}
         for t in trades
     ]
     return {
@@ -990,6 +1144,7 @@ async def get_mae_mfe_analysis(
                 result["group_by"] = "tag"
                 result["filter_value"] = filter_value
                 result["recommendations"] = _generate_strategy_recommendations(result)
+                result["trades"] = _trades_brief(groups[filter_value])
                 return result
             return {"group_by": "tag", "filter_value": filter_value, "items": [], "total_trades": 0}
 
@@ -1028,6 +1183,7 @@ async def get_mae_mfe_analysis(
                 result["asset_name"] = sample.asset_name
                 result["asset_type"] = sample.asset_type
                 result["recommendations"] = _generate_strategy_recommendations(result)
+                result["trades"] = _trades_brief(groups[filter_value])
                 return result
             return {"group_by": "symbol", "filter_value": filter_value, "items": [], "total_trades": 0}
 
@@ -1070,6 +1226,7 @@ async def get_mae_mfe_analysis(
                 result["group_by"] = "setup"
                 result["filter_value"] = filter_value
                 result["recommendations"] = _generate_strategy_recommendations(result)
+                result["trades"] = _trades_brief(groups[filter_value])
                 return result
             return {"group_by": "setup", "filter_value": filter_value, "items": [], "total_trades": 0}
 
@@ -1093,6 +1250,37 @@ async def get_mae_mfe_analysis(
         }
 
     return {"error": "Invalid group_by parameter"}
+
+
+def _trades_brief(trades, cap: int = 100) -> list[dict]:
+    """Пер-сделочный список для drill-down в MAE/MFE панели.
+
+    Даёт юзеру путь от агрегата группы к конкретной сделке и её Trade Replay
+    (аудит 2026-06-10: строка таблицы выглядела кликабельной, но вела в никуда).
+    Cap 100 — защита payload'а; сортировка по exit_at desc.
+    """
+    rows = sorted(trades, key=lambda t: t.exit_at or t.entry_at, reverse=True)[:cap]
+    out = []
+    for t in rows:
+        entry = float(t.entry_price) if t.entry_price is not None else None
+
+        def _pct(price):
+            if price is None or not entry:
+                return None
+            return round(abs((float(price) - entry) / entry) * 100, 2)
+
+        direction = t.direction.value if hasattr(t.direction, "value") else str(t.direction)
+        out.append({
+            "id": t.id,
+            "symbol": t.symbol,
+            "direction": direction,
+            "entry_at": t.entry_at.isoformat() if t.entry_at else None,
+            "exit_at": t.exit_at.isoformat() if t.exit_at else None,
+            "pnl": float(t.pnl) if t.pnl is not None else None,
+            "mae_pct": _pct(t.mae_price),
+            "mfe_pct": _pct(t.mfe_price),
+        })
+    return out
 
 
 def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dict:
@@ -1129,7 +1317,9 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
             continue
 
         is_long = t.direction.value == 'long' if hasattr(t.direction, 'value') else t.direction == 'long'
-        pnl = float(t.pnl) if t.pnl else 0
+        # MATH-01: NET-pnl (после комиссий) приоритетнее GROSS. GROSS-fallback
+        # только если net_pnl ещё не посчитан (legacy / manual ввод без fees).
+        pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
         pnl_sum += pnl
         if pnl > 0:
             wins += 1
@@ -1176,7 +1366,11 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
     avg_win = float(np.mean(win_pnls)) if win_pnls else 0
     avg_loss = float(np.mean(loss_pnls)) if loss_pnls else 0
     real_rr = avg_win / avg_loss if avg_loss > 0 else 0
-    profit_factor = sum(win_pnls) / sum(loss_pnls) if loss_pnls and sum(loss_pnls) > 0 else 0
+    # MATH-05: profit_factor = None (UNDEFINED) при отсутствии лузеров.
+    # Семантически 0 = "плохой PF"; all-winners = ∞, представляется как UNDEFINED
+    # (так же, как в analytics.calculate_advanced_stats).
+    total_losses = sum(loss_pnls)
+    profit_factor = (sum(win_pnls) / total_losses) if total_losses > 0 else None
     required_winrate = 1 / (1 + real_rr) * 100 if real_rr > 0 else 100
 
     return {
@@ -1193,7 +1387,7 @@ def _analyze_trades_mae_mfe(trades, mae_method: str = 'weighted_average') -> dic
         "avg_win": round(avg_win, 2),
         "avg_loss": round(avg_loss, 2),
         "real_rr": round(real_rr, 2),
-        "profit_factor": round(profit_factor, 2),
+        "profit_factor": round(profit_factor, 2) if profit_factor is not None else None,
         "required_winrate": round(required_winrate, 1),
         "mae_percentiles": {
             "p25": round(float(np.percentile(mae_arr, 25)), 2),
@@ -1250,7 +1444,7 @@ def _generate_strategy_recommendations(analysis: dict) -> list:
 
     # Реальные показатели
     real_rr = analysis.get("real_rr", 0)
-    profit_factor = analysis.get("profit_factor", 0)
+    profit_factor = analysis.get("profit_factor") or 0
     required_wr = analysis.get("required_winrate", 100)
     avg_win = analysis.get("avg_win", 0)
     avg_loss = analysis.get("avg_loss", 0)
@@ -1538,7 +1732,8 @@ async def get_mae_mfe_by_symbol(
             continue
 
         is_long = t.direction.value == 'long' if hasattr(t.direction, 'value') else t.direction == 'long'
-        pnl = float(t.pnl) if t.pnl else 0
+        # MATH-01: NET-pnl (после комиссий) приоритетнее GROSS.
+        pnl = float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
 
         # Рассчитываем MAE/MFE в процентах
         mae_price = float(t.mae_price) if t.mae_price else entry_price
@@ -1633,9 +1828,22 @@ async def get_mae_mfe_by_symbol(
         short_trades = [t for t in symbol_data[symbol]["trades"]
                         if (t.direction.value if hasattr(t.direction, 'value') else t.direction) == 'short']
 
+        # MATH-01: NET-pnl суммы в by-direction breakdown.
         sym_data["by_direction"] = {
-            "long": {"count": len(long_trades), "pnl": sum(float(t.pnl or 0) for t in long_trades)},
-            "short": {"count": len(short_trades), "pnl": sum(float(t.pnl or 0) for t in short_trades)}
+            "long": {
+                "count": len(long_trades),
+                "pnl": sum(
+                    float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
+                    for t in long_trades
+                ),
+            },
+            "short": {
+                "count": len(short_trades),
+                "pnl": sum(
+                    float(t.net_pnl if t.net_pnl is not None else (t.pnl or 0))
+                    for t in short_trades
+                ),
+            },
         }
 
     # Добавляем общую статистику
@@ -1765,6 +1973,27 @@ def _generate_symbol_recommendations(sym_data: dict) -> list:
         })
 
     return recommendations
+
+
+@router.post("/pnl-health/refresh")
+async def refresh_pnl_health(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """Phase 10 (2026-05-17): принудительный пересчёт P&L Health Check.
+
+    Кнопка "Проверить сейчас" на дашборде. ~50-150ms на средние счета,
+    до 500ms на очень большие (10k+ trades).
+
+    Возвращает свежий PnLHealthResult в JSON формате.
+    """
+    from services import pnl_health_service
+
+    account_id = auth_service.get_account_id(db, current_user)
+    if not account_id:
+        raise HTTPException(status_code=404, detail="Account not found")
+    result = pnl_health_service.compute_and_persist(db, account_id)
+    return result.to_breakdown_json()
 
 
 @router.get("/audit")

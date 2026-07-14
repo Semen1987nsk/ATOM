@@ -14,16 +14,17 @@ import {
   Zap, TrendingDown, Repeat, FileText, Plus, Edit, Trash2, Eye, 
   EyeOff, Save, X, Image as ImageIcon
 } from 'lucide-react';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, 
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart as RechartsPie, Pie, Cell,
   BarChart, Bar
-} from 'recharts';
+} from '@/lib/lazy-recharts';
+import { PnLHealthTab } from './PnLHealthTab';
 
 // Цвета для графиков
-const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+const COLORS = ['#d4a13a', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 const SOURCE_COLORS: Record<string, string> = {
-  email: '#6366f1',
+  email: '#d4a13a',
   google: '#ea4335',
   yandex: '#fc3f1d',
   sber: '#21a038',
@@ -86,12 +87,13 @@ interface FunnelStep {
 
 type ChartDatum = Record<string, string | number>;
 
-type ActiveTab = 'overview' | 'users' | 'revenue' | 'analytics' | 'blog';
+type ActiveTab = 'overview' | 'users' | 'revenue' | 'analytics' | 'blog' | 'pnl-health';
 
 const ADMIN_TABS = [
   { id: 'overview', label: 'Обзор', icon: BarChart3 },
   { id: 'revenue', label: 'Выручка', icon: DollarSign },
   { id: 'users', label: 'Пользователи', icon: Users },
+  { id: 'pnl-health', label: 'P&L Health', icon: Shield },
   { id: 'blog', label: 'Блог', icon: FileText },
   { id: 'analytics', label: 'Аналитика', icon: PieChart },
 ] as const satisfies ReadonlyArray<{ id: ActiveTab; label: string; icon: typeof BarChart3 }>;
@@ -499,6 +501,28 @@ function AdminDashboard() {
             {/* Overview Tab */}
             {activeTab === 'overview' && stats && (
               <div className="space-y-6">
+                {/* PR 26 Phase 2: Quick links на новые admin pages */}
+                <div className="cyber-card p-4">
+                  <div className="text-xs uppercase text-muted-foreground mb-3">Operations</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <a href="/admin/health" className="px-3 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded text-sm flex items-center gap-2 transition-colors">
+                      <span className="text-blue-400">●</span> Sync Health
+                    </a>
+                    <a href="/admin/api-health" className="px-3 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded text-sm flex items-center gap-2 transition-colors">
+                      <span className="text-purple-400">●</span> API Health
+                    </a>
+                    <a href="/admin/audit" className="px-3 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded text-sm flex items-center gap-2 transition-colors">
+                      <span className="text-yellow-400">●</span> Audit Log
+                    </a>
+                    <a href="/admin/infra" className="px-3 py-2 bg-slate-800/50 hover:bg-slate-700/50 rounded text-sm flex items-center gap-2 transition-colors">
+                      <span className="text-green-400">●</span> Infra
+                    </a>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-2">
+                    Tip: на странице «Пользователи» → клик по строке → User 360 / Verify / Force resync
+                  </div>
+                </div>
+
                 {/* KPI Cards - Row 1 */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="cyber-card p-4">
@@ -600,7 +624,7 @@ function AdminDashboard() {
                         <Line 
                           type="monotone" 
                           dataKey="new_users" 
-                          stroke="#6366f1" 
+                          stroke="#d4a13a" 
                           strokeWidth={2}
                           dot={false}
                           name="Новых"
@@ -645,7 +669,7 @@ function AdminDashboard() {
                           <div key={s.source} className="flex items-center gap-2 text-sm">
                             <div 
                               className="w-3 h-3 rounded-full" 
-                              style={{ background: SOURCE_COLORS[s.source] || '#6366f1' }}
+                              style={{ background: SOURCE_COLORS[s.source] || '#d4a13a' }}
                             />
                             <span>{getSourceLabel(s.source)}</span>
                             <span className="text-muted-foreground">
@@ -782,7 +806,7 @@ function AdminDashboard() {
                     <div className="space-y-4">
                       {[
                         { key: 'free', label: 'Free', color: '#6b7280', price: 0 },
-                        { key: 'pro', label: 'Pro', color: '#8b5cf6', price: 399 },
+                        { key: 'pro', label: 'Pro', color: '#d4a13a', price: 399 },
                         { key: 'corporate', label: 'Corporate', color: '#f59e0b', price: null },
                       ].map(plan => {
                         const count = revenue.plans[plan.key as keyof typeof revenue.plans];
@@ -1028,8 +1052,8 @@ function AdminDashboard() {
                               <span 
                                 className="px-2 py-1 rounded text-xs font-medium"
                                 style={{ 
-                                  background: `${SOURCE_COLORS[u.registration_source] || '#6366f1'}20`,
-                                  color: SOURCE_COLORS[u.registration_source] || '#6366f1'
+                                  background: `${SOURCE_COLORS[u.registration_source] || '#d4a13a'}20`,
+                                  color: SOURCE_COLORS[u.registration_source] || '#d4a13a'
                                 }}
                               >
                                 {getSourceLabel(u.registration_source)}
@@ -1055,11 +1079,19 @@ function AdminDashboard() {
                             </td>
                             <td className="p-3 text-right">
                               <div className="flex gap-1 justify-end">
+                                {/* PR 26 Phase 2: ссылка на User 360 detail page */}
+                                <a
+                                  href={`/admin/users/${u.id}`}
+                                  className="p-1.5 rounded hover:bg-blue-500/20 hover:text-blue-400 text-muted-foreground transition-colors"
+                                  title="Открыть User 360"
+                                >
+                                  <Activity size={14} />
+                                </a>
                                 <button
                                   onClick={() => toggleUserAdmin(u.id, !u.is_admin)}
                                   className={`p-1.5 rounded transition-colors ${
-                                    u.is_admin 
-                                      ? 'bg-yellow-500/20 text-yellow-400' 
+                                    u.is_admin
+                                      ? 'bg-yellow-500/20 text-yellow-400'
                                       : 'hover:bg-secondary text-muted-foreground'
                                   }`}
                                   title={u.is_admin ? 'Снять админа' : 'Сделать админом'}
@@ -1069,8 +1101,8 @@ function AdminDashboard() {
                                 <button
                                   onClick={() => toggleUserActive(u.id)}
                                   className={`p-1.5 rounded transition-colors ${
-                                    u.is_active 
-                                      ? 'hover:bg-red-500/20 hover:text-red-400 text-muted-foreground' 
+                                    u.is_active
+                                      ? 'hover:bg-red-500/20 hover:text-red-400 text-muted-foreground'
                                       : 'bg-red-500/20 text-red-400'
                                   }`}
                                   title={u.is_active ? 'Заблокировать' : 'Разблокировать'}
@@ -1109,6 +1141,11 @@ function AdminDashboard() {
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Phase 10 (2026-05-17): P&L Health Check Tab */}
+            {activeTab === 'pnl-health' && (
+              <PnLHealthTab />
             )}
 
             {/* Blog Tab */}
@@ -1301,6 +1338,7 @@ function AdminDashboard() {
                                     alt={article.title}
                                     width={64}
                                     height={40}
+                                    // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
                                     unoptimized
                                     className="w-16 h-10 object-cover rounded"
                                   />

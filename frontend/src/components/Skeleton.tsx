@@ -20,9 +20,6 @@ export function Skeleton({ className = "", style }: SkeletonProps) {
 export function StatsCardSkeleton() {
   return (
     <div className="cyber-card p-4 space-y-3 relative overflow-hidden">
-      {/* Glow effect */}
-      <div className="absolute -top-10 -right-10 w-20 h-20 bg-accent/5 rounded-full blur-2xl" />
-      
       <div className="flex items-center justify-between">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-8 rounded-lg" />
@@ -146,9 +143,6 @@ export function DashboardSkeleton() {
 export function ChartSkeleton({ height = "h-64" }: { height?: string }) {
   return (
     <div className={`cyber-card p-6 ${height} relative overflow-hidden`}>
-      {/* Subtle glow */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 rounded-full blur-3xl" />
-      
       <div className="flex justify-between items-center mb-6">
         <div className="space-y-1">
           <Skeleton className="h-5 w-32" />

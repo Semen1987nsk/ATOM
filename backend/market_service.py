@@ -1,15 +1,21 @@
-import requests
+import re
 import threading
 import time as _time
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta, time
 from logger import get_logger
+from services import moex_async
 import pytz
 
 log = get_logger("market")
 
 # Московская временная зона
 MSK_TZ = pytz.timezone('Europe/Moscow')
+
+# SEC-13: allowlist тикера перед подстановкой в MOEX URL.
+# Допустимы буквы/цифры/.-_, длина ≤20 — покрывает акции (SBER), фьючерсы
+# (SiH6, BRZ5), облигации (RU000A...), валюты (USD000UTSTOM). Отсекает path-injection.
+_TICKER_RE = re.compile(r"^[A-Za-z0-9._-]{1,20}$")
 
 
 # ═══════════════════════════════════════════════════
@@ -49,37 +55,83 @@ class _TTLCache:
 _price_cache = _TTLCache(default_ttl=30.0)
 # Глобальный кэш спецификаций фьючерсов — TTL 300 секунд (меняются редко)
 _specs_cache = _TTLCache(default_ttl=300.0)
-
-# ═══════════════════════════════════════════════════
-#  HTTP GET with retry + exponential backoff
-# ═══════════════════════════════════════════════════
-
-_MOEX_MAX_RETRIES = 2
-_MOEX_BACKOFF = (1.0, 3.0)
+# Кэш payload'а лендинг-тикера целиком — TTL 60 секунд (free-данные ISS идут с
+# ~15-мин задержкой, чаще обновлять незачем; защищает ISS от наплыва гостей).
+_ticker_cache = _TTLCache(default_ttl=60.0)
 
 
-def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
-    """GET with retry for MOEX ISS. Returns parsed JSON or None."""
-    for attempt in range(_MOEX_MAX_RETRIES + 1):
-        try:
-            resp = requests.get(url, timeout=timeout)
-            if resp.status_code == 200:
-                return resp.json()
-            if resp.status_code in (429, 500, 502, 503) and attempt < _MOEX_MAX_RETRIES:
-                _time.sleep(_MOEX_BACKOFF[attempt])
-                continue
-            log.warning(f"MOEX API {resp.status_code} for {url}")
-            return None
-        except (requests.Timeout, requests.ConnectionError) as e:
-            if attempt < _MOEX_MAX_RETRIES:
-                _time.sleep(_MOEX_BACKOFF[attempt])
-                continue
-            log.warning(f"MOEX API error after retries for {url}: {e}")
-            return None
-        except Exception as e:
-            log.warning(f"MOEX API unexpected error for {url}: {e}")
-            return None
+def _to_num(v) -> Optional[float]:
+    """ISS-значение → float или None (None/''/нечисло — None)."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_positive(*vals) -> Optional[float]:
+    """Первое положительное число из аргументов (для last с фолбэками: в
+    нерабочее время LAST=null/0, тогда берём LCLOSEPRICE/LASTVALUE и т.п.)."""
+    for v in vals:
+        n = _to_num(v)
+        if n is not None and n > 0:
+            return n
     return None
+
+# ═══════════════════════════════════════════════════
+#  MOEX HTTP — делегируется services/moex_async (PERF-04)
+# ═══════════════════════════════════════════════════
+
+# Прежде здесь жил sync requests.get + _backoff_with_jitter + _MOEX_MAX_RETRIES.
+# После PERF-04 retry/backoff/jitter сосредоточены в services/moex_async.fetch_json
+# (exponential + jitter), а старая sync-обвязка удалена.
+
+
+async def _moex_get(url: str, timeout: float = 5) -> Optional[dict]:
+    """GET MOEX ISS через общий httpx.AsyncClient (PERF-04).
+
+    Прежде здесь была sync requests.get с собственным retry+jitter. Теперь
+    делегируем общему async-singleton services/moex_async.fetch_json, который
+    несёт shared connection pool и async retry — это разблокирует event-loop
+    под /market/* эндпойнтами.
+
+    `timeout` параметр оставлен для обратной совместимости сигнатуры (старые
+    вызовы передавали 5/10), но игнорируется: timeout задаётся глобально на
+    AsyncClient в moex_async._DEFAULT_TIMEOUT.
+    """
+    return await moex_async.fetch_json(url)
+
+
+# ═══════════════════════════════════════════════════
+#  ISS column-oriented JSON parser (центральная точка)
+# ═══════════════════════════════════════════════════
+
+def _normalize_iss_block(data: dict, block: str) -> List[Dict]:
+    """
+    ISS возвращает блоки в column-oriented формате:
+        {"securities": {"columns": ["SECID", "LAST"], "data": [["SBER", 250.1], ...]}}
+
+    Эта функция превращает их в row-oriented [{"SECID": "SBER", "LAST": 250.1}, ...].
+
+    Возвращает [] если блок отсутствует, columns/data битые или data пустой —
+    вызывающий не должен делать дополнительных проверок.
+
+    Используется для marketdata, securities, candles. Один источник истины
+    вместо 4 копий парсера в этом файле.
+    """
+    if not data or not isinstance(data, dict):
+        return []
+    section = data.get(block)
+    if not isinstance(section, dict):
+        return []
+
+    columns = section.get("columns")
+    rows = section.get("data")
+    if not columns or not isinstance(columns, list) or not isinstance(rows, list):
+        return []
+
+    return [dict(zip(columns, row)) for row in rows if isinstance(row, list) and len(row) == len(columns)]
 
 
 # Праздники MOEX 2025-2026 (торги не проводятся)
@@ -115,6 +167,26 @@ MOEX_HOLIDAYS = {
     datetime(2026, 11, 4).date(),
 }
 
+# Курируемый набор тикеров для лендинг-строки (порядок сохраняется в выдаче).
+# IMOEX — индекс (отдельный market/колонки), остальное — ликвидные акции TQBR.
+LANDING_TICKER_SYMBOLS = [
+    "IMOEX", "SBER", "GAZP", "LKOH", "GMKN", "ROSN", "TATN", "NVTK", "VTBR", "YDEX",
+]
+_INDEX_SYMBOLS = {"IMOEX"}
+
+# marketdata-only запросы с урезанными колонками (меньше трафика, см. skill §2).
+_LANDING_SHARES_URL = (
+    "https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json"
+    "?iss.meta=off&iss.only=marketdata"
+    "&marketdata.columns=SECID,LAST,LCLOSEPRICE,CLOSEPRICE,MARKETPRICE,LASTCHANGEPRCNT"
+)
+_LANDING_INDEX_URL = (
+    "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities.json"
+    "?iss.meta=off&iss.only=marketdata"
+    "&marketdata.columns=SECID,CURRENTVALUE,LASTVALUE,LASTCHANGEPRC"
+)
+
+
 class MarketService:
     def __init__(self):
         self.sources = [
@@ -130,19 +202,25 @@ class MarketService:
         """
         Нормализует datetime к часовому поясу биржи (MSK).
 
-        Для domain-логики рынка naive datetime трактуем как локальное время MOEX,
-        а не как UTC. Это соответствует пользовательским вводам, тестам и формату
-        времени свечей MOEX ISS.
+        MAE-01: naive datetime трактуем как UTC — это конвенция хранения
+        в БД (trade_repo/import_service пишут UTC-naive). Прежняя трактовка
+        naive=МСК сдвигала окно фильтра свечей на −3 часа для всех путей,
+        читающих сделку из БД (bulk-пересчёт, import-hook, nightly backfill),
+        и расходилась с calculate_post_exit_analysis, который всегда
+        конвертировал naive как UTC.
         """
         if dt.tzinfo is None:
-            return MSK_TZ.localize(dt)
+            return pytz.utc.localize(dt).astimezone(MSK_TZ)
         return dt.astimezone(MSK_TZ)
 
-    def get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
+    async def get_current_prices(self, tickers: List[str]) -> Dict[str, float]:
         """
         Fetches current prices from MOEX ISS (Stocks, Futures, Currencies).
         Returns a dictionary {ticker: price}.
         Uses a 30-second TTL cache to avoid hammering MOEX on every request.
+
+        PERF-04: метод async; sync TTL-кэш сохраняется как был (thread-safe
+        Lock — он не тормозит event-loop, операции O(1)).
         """
         if not tickers:
             return {}
@@ -165,40 +243,86 @@ class MarketService:
 
         for url in self.sources:
             try:
-                data = _moex_get(url)
-                if not data or 'marketdata' not in data:
-                    continue
-
-                columns = data['marketdata']['columns']
-                rows = data['marketdata']['data']
-                
-                try:
-                    secid_idx = columns.index('SECID')
-                    last_idx = columns.index('LAST')
-                except ValueError:
-                    continue
-
-                for row in rows:
-                    ticker = row[secid_idx]
-                    price = row[last_idx]
-                    
+                data = await _moex_get(url)
+                for entry in _normalize_iss_block(data, "marketdata"):
+                    ticker = entry.get("SECID")
+                    price = entry.get("LAST")
                     if price is not None and ticker in missing:
                         price_f = float(price)
                         prices[ticker] = price_f
                         _price_cache.set(f"price:{ticker}", price_f)
-            
+
             except Exception as e:
                 log.warning(f"Error fetching MOEX data from {url}: {e}")
                 continue
-        
+
         log.debug(f"Retrieved {len(prices)} prices")
         return prices
 
-    def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
+    async def get_landing_ticker(self) -> Dict:
+        """Курируемый набор тикеров MOEX для публичной лендинг-строки.
+
+        Возвращает {"stale": bool, "tickers": [{"symbol","last","change_pct"}]}.
+        Два запроса к ISS (акции TQBR + индекс SNDX), весь payload кешируется
+        на 60с. Если ISS недоступен и собрать нечего — stale=True, tickers=[]
+        (фронт показывает свой статичный fallback). Без auth (гостевой лендинг).
+        """
+        cached = _ticker_cache.get("landing:ticker")
+        if cached is not None:
+            return cached
+
+        shares_data = await _moex_get(_LANDING_SHARES_URL)
+        index_data = await _moex_get(_LANDING_INDEX_URL)
+
+        shares_map: Dict[str, Dict] = {}
+        for row in _normalize_iss_block(shares_data, "marketdata"):
+            secid = row.get("SECID")
+            last = _first_positive(
+                row.get("LAST"), row.get("LCLOSEPRICE"),
+                row.get("MARKETPRICE"), row.get("CLOSEPRICE"),
+            )
+            if secid and last is not None:
+                shares_map[secid] = {
+                    "last": last,
+                    "change_pct": _to_num(row.get("LASTCHANGEPRCNT")) or 0.0,
+                }
+
+        index_map: Dict[str, Dict] = {}
+        for row in _normalize_iss_block(index_data, "marketdata"):
+            secid = row.get("SECID")
+            value = _first_positive(row.get("CURRENTVALUE"), row.get("LASTVALUE"))
+            if secid and value is not None:
+                index_map[secid] = {
+                    "last": value,
+                    "change_pct": _to_num(row.get("LASTCHANGEPRC")) or 0.0,
+                }
+
+        tickers: List[Dict] = []
+        for sym in LANDING_TICKER_SYMBOLS:
+            src = index_map if sym in _INDEX_SYMBOLS else shares_map
+            item = src.get(sym)
+            if item is not None:
+                tickers.append({"symbol": sym, "last": item["last"], "change_pct": item["change_pct"]})
+
+        # S2-09: 1/10 (только IMOEX при пустом TQBR marketdata) — не успех.
+        # Требуем порог полноты, иначе фронт уйдёт в полный статичный fallback
+        # вместо бегущей строки из одного символа, и мы не кешируем огрызок.
+        # Порог=2: одиночный IMOEX (пустой TQBR) не проходит; ≥2 реальных строк — успех.
+        _MIN_FULL = 2
+        stale = len(tickers) < _MIN_FULL
+        if stale:
+            return {"stale": True, "tickers": []}
+        result = {"stale": False, "tickers": tickers}
+        _ticker_cache.set("landing:ticker", result)
+        return result
+
+    async def get_futures_specs(self, tickers: List[str]) -> Dict[str, Dict]:
         """
         Fetches futures specifications (MINSTEP, STEPPRICE) from MOEX.
         Returns a dictionary {ticker: {minstep: float, stepprice: float}}.
         Uses a 5-minute TTL cache (specs change rarely).
+
+        PERF-04: метод async — вызывается из async /market/futures-specs.
         """
         if not tickers:
             return {}
@@ -215,41 +339,28 @@ class MarketService:
 
         if not missing:
             return specs
-        
+
         url = "https://iss.moex.com/iss/engines/futures/markets/forts/boards/RFUD/securities.json"
-        
+
         try:
-            data = _moex_get(url)
-            if not data or 'securities' not in data:
-                return specs
-            
-            columns = data['securities']['columns']
-            rows = data['securities']['data']
-            
-            try:
-                secid_idx = columns.index('SECID')
-                minstep_idx = columns.index('MINSTEP')
-                stepprice_idx = columns.index('STEPPRICE')
-            except ValueError:
-                log.warning("Missing required columns in MOEX futures response")
-                return specs
-            
-            for row in rows:
-                ticker = row[secid_idx]
-                if ticker in missing:
-                    minstep = row[minstep_idx]
-                    stepprice = row[stepprice_idx]
-                    if minstep is not None and stepprice is not None:
-                        spec = {
-                            'minstep': float(minstep),
-                            'stepprice': float(stepprice)
-                        }
-                        specs[ticker] = spec
-                        _specs_cache.set(f"spec:{ticker}", spec)
-        
+            data = await _moex_get(url)
+            for entry in _normalize_iss_block(data, "securities"):
+                ticker = entry.get("SECID")
+                if ticker not in missing:
+                    continue
+                minstep = entry.get("MINSTEP")
+                stepprice = entry.get("STEPPRICE")
+                if minstep is not None and stepprice is not None:
+                    spec = {
+                        'minstep': float(minstep),
+                        'stepprice': float(stepprice),
+                    }
+                    specs[ticker] = spec
+                    _specs_cache.set(f"spec:{ticker}", spec)
+
         except Exception as e:
             log.warning(f"Error fetching MOEX futures specs: {e}")
-        
+
         log.debug(f"Retrieved specs for {len(specs)} futures")
         return specs
     
@@ -336,111 +447,114 @@ class MarketService:
         
         return trading_hours
     
-    def get_candles(
-        self, 
-        ticker: str, 
-        start_date: datetime, 
+    async def get_candles(
+        self,
+        ticker: str,
+        start_date: datetime,
         end_date: datetime,
         interval: int = 60  # 1 = 1min, 10 = 10min, 60 = 1hour, 24 = 1day
     ) -> List[Dict]:
         """
         Получает исторические свечи с MOEX ISS API.
-        
+
+        PERF-04: async — вызывается из async-роутов /trades/* через
+        calculate_mae_mfe / calculate_post_exit_analysis. Под массовыми bulk
+        пересчётами (50-500 сделок) sync requests.get блокировал event-loop
+        под FastAPI worker'ом; теперь все HTTP идут через общий
+        services/moex_async.fetch_json (httpx.AsyncClient + exponential
+        retry/backoff с jitter).
+
         Args:
             ticker: Тикер инструмента (например, SBER, SiH6)
             start_date: Начало периода
             end_date: Конец периода
             interval: Интервал свечей (1, 10, 60, 24)
-        
+
         Returns:
             Список словарей с данными свечей: {open, high, low, close, volume, begin, end}
         """
+        if not _TICKER_RE.match(ticker or ""):
+            log.warning("get_candles: invalid ticker rejected")
+            return []
+
         candles = []
-        
-        # Определяем тип инструмента и соответствующий endpoint
+
+        # Определяем тип инструмента и соответствующий endpoint.
         # Формат: /iss/engines/{engine}/markets/{market}/boards/{board}/securities/{ticker}/candles.json
-        
+        #
+        # Порядок важен: первый endpoint, вернувший непустые свечи — победил
+        # (см. цикл ниже с break). Поэтому акции на TQBR проверяем раньше,
+        # чем ОФЗ — частотный случай должен быть первым.
         endpoints = [
-            # Акции (Main Board)
+            # Акции — Main Board (T+: расчёты)
             f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{ticker}/candles.json",
-            # Фьючерсы
+            # ОФЗ (государственные облигации)
+            f"https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQOB/securities/{ticker}/candles.json",
+            # Корпоративные облигации
+            f"https://iss.moex.com/iss/engines/stock/markets/bonds/boards/TQCB/securities/{ticker}/candles.json",
+            # ETF (биржевые фонды)
+            f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQTF/securities/{ticker}/candles.json",
+            # Фьючерсы FORTS
             f"https://iss.moex.com/iss/engines/futures/markets/forts/boards/RFUD/securities/{ticker}/candles.json",
-            # Валюты
+            # Валюты selt CETS
             f"https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/{ticker}/candles.json",
         ]
-        
+
         # Форматируем даты для API
         from_date = start_date.strftime("%Y-%m-%d")
         to_date = end_date.strftime("%Y-%m-%d")
-        
+
         for url in endpoints:
             try:
-                # MOEX API поддерживает пагинацию, собираем все данные
+                # MOEX API поддерживает пагинацию, собираем все данные.
+                # Ретраи/таймауты/backoff — внутри moex_async.fetch_json.
                 start = 0
                 while True:
                     params = {
                         "from": from_date,
                         "till": to_date,
                         "interval": interval,
-                        "start": start
+                        "start": start,
                     }
-                    
-                    response = requests.get(url, params=params, timeout=10)
-                    if response.status_code != 200:
+
+                    data = await moex_async.fetch_json(url, params=params)
+                    if data is None:
+                        # Сеть/HTTP-ошибка после retry'ев — пробуем следующий endpoint
                         break
-                        
-                    data = response.json()
-                    
-                    if 'candles' not in data or 'data' not in data['candles']:
-                        break
-                    
-                    columns = data['candles']['columns']
-                    rows = data['candles']['data']
-                    
+
+                    rows = _normalize_iss_block(data, "candles")
                     if not rows:
                         break
-                    
-                    # Парсим данные
-                    try:
-                        open_idx = columns.index('open')
-                        high_idx = columns.index('high')
-                        low_idx = columns.index('low')
-                        close_idx = columns.index('close')
-                        volume_idx = columns.index('volume')
-                        begin_idx = columns.index('begin')
-                        end_idx = columns.index('end')
-                    except ValueError:
-                        break
-                    
+
                     for row in rows:
                         candle = {
-                            'open': float(row[open_idx]) if row[open_idx] else None,
-                            'high': float(row[high_idx]) if row[high_idx] else None,
-                            'low': float(row[low_idx]) if row[low_idx] else None,
-                            'close': float(row[close_idx]) if row[close_idx] else None,
-                            'volume': float(row[volume_idx]) if row[volume_idx] else 0,
-                            'begin': row[begin_idx],
-                            'end': row[end_idx]
+                            'open': float(row['open']) if row.get('open') is not None else None,
+                            'high': float(row['high']) if row.get('high') is not None else None,
+                            'low': float(row['low']) if row.get('low') is not None else None,
+                            'close': float(row['close']) if row.get('close') is not None else None,
+                            'volume': float(row['volume']) if row.get('volume') is not None else 0,
+                            'begin': row.get('begin'),
+                            'end': row.get('end'),
                         }
                         candles.append(candle)
-                    
+
                     # Проверяем нужна ли следующая страница
                     if len(rows) < 500:  # MOEX возвращает макс 500 записей
                         break
                     start += 500
-                
+
                 # Если нашли свечи, выходим из цикла
                 if candles:
                     log.debug(f"Retrieved {len(candles)} candles for {ticker} from {url}")
                     break
-                    
+
             except Exception as e:
                 log.warning(f"Error fetching candles for {ticker} from {url}: {e}")
                 continue
-        
+
         return candles
 
-    def calculate_mae_mfe(
+    async def calculate_mae_mfe(
         self,
         ticker: str,
         direction: str,  # "LONG" or "SHORT"
@@ -513,7 +627,7 @@ class MarketService:
             interval = 24  # Дневные для длинных
         
         # Получаем свечи (даты уже в MSK)
-        candles = self.get_candles(ticker, start_date, end_date, interval)
+        candles = await self.get_candles(ticker, start_date, end_date, interval)
         
         if not candles:
             log.warning(f"No candles found for {ticker} from {start_date} to {end_date}")
@@ -549,7 +663,7 @@ class MarketService:
         if not relevant_candles and interval > 1:
             # Если нет свечей в точном диапазоне, пробуем с 1-минутными для точности
             log.debug(f"No candles in exact range with interval={interval}, trying 1-minute candles")
-            candles_1m = self.get_candles(ticker, start_date, end_date, interval=1)
+            candles_1m = await self.get_candles(ticker, start_date, end_date, interval=1)
             
             for candle in candles_1m:
                 candle_begin = candle.get('begin', '')
@@ -643,7 +757,7 @@ class MarketService:
             log.debug(f"Failed to parse operation datetime: {op}, error: {e}")
             return None
 
-    def calculate_post_exit_analysis(
+    async def calculate_post_exit_analysis(
         self,
         ticker: str,
         direction: str,
@@ -736,7 +850,7 @@ class MarketService:
                 interval = 24  # Дневные
             
             # Используем MSK время для запроса и фильтрации свечей
-            candles = self.get_candles(ticker, exit_msk, period_end_msk, interval)
+            candles = await self.get_candles(ticker, exit_msk, period_end_msk, interval)
             
             if not candles:
                 result["periods"][f"{hours}h"] = {

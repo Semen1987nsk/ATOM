@@ -17,6 +17,10 @@ build/
 .env.local
 .env.production
 
+# Backups of env/secret files (e.g. .env.local.bak) — НИКОГДА не коммитим
+*.bak
+*.env.local.bak
+
 # Database
 *.db
 *.sqlite3
@@ -27,6 +31,9 @@ logs/
 
 # Uploads (user data)
 backend/uploads/
+
+# Local smoke/dev outputs (live API reports etc.)
+backend/.local/
 
 # IDE
 .idea/
@@ -58,5 +65,10 @@ htmlcov/
 # Playwright MCP debug artifacts (local only)
 .playwright-mcp/
 
-# Claude per-project state (local only)
-.claude/
+# Claude per-project state (local only) — but skills are tracked
+.claude/*
+!.claude/skills/
+.claude/skills/**/.local/
+
+# Generated OpenAPI dump — write-only артефакт scripts/dump_openapi.py
+backend/openapi.json

@@ -1,14 +1,143 @@
+import asyncio
 import pandas as pd
 import io
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Optional
 from decimal import Decimal
+from typing import List, Dict, Optional
 import models
 import re
 from moex_service import get_moex_service
 from logger import get_logger
+from config import settings
 
 log = get_logger("import")
+
+
+# ── MATH-03 (Sprint 4, Task 5.1): import-hook для MAE/MFE backfill ──
+#
+# Inline-расчёт MAE/MFE живёт в routers/trades.py (add_trade/close_trade/
+# update_trade), но импортированные через /trades/import трейды раньше
+# получали NULL mae/mfe — пользователь должен был руками дёргать
+# /trades/calculate-mae-mfe POST. Этот hook вызывается из import_trades
+# после успешного db.commit() и считает MAE/MFE для свежевставленных
+# трейдов в фоне (fire-and-forget), не блокируя HTTP-ответ.
+
+# Strong-ref на background-task'и (Sprint 3 Task 1.1 / PERF-03 pattern):
+# без него GC может забрать asyncio.Task до завершения coroutine, и
+# loop логирует "Task was destroyed but it is pending". См. middleware.py.
+_BG_TASKS: set[asyncio.Task] = set()
+
+
+async def _backfill_mae_mfe_for_imported_async(
+    trade_ids: list[int],
+    market_service=None,
+    session_factory=None,
+) -> None:
+    """Background-coroutine: для каждого id в `trade_ids` считает MAE/MFE
+    и commit'ит. Любое исключение глотается per-trade — батч не валит
+    единичный сбой MOEX.
+
+    Args:
+        trade_ids: PK-список свежеимпортированных Trade.
+        market_service: DI для тестов; если None — берётся глобальный
+            market_data_service из market_service.py.
+        session_factory: DI для тестов; если None — database.SessionLocal.
+    """
+    if not trade_ids:
+        return
+    if session_factory is None:
+        from database import SessionLocal
+        session_factory = SessionLocal
+    if market_service is None:
+        # routers/trades.py создаёт собственный singleton `market_data_service`
+        # на module-level — у backend нет глобального синглтона в market_service.py.
+        # Инстансируем тут (без I/O в __init__ — см. MarketService).
+        from market_service import MarketService
+        market_service = MarketService()
+
+    db = session_factory()
+    try:
+        trades = (
+            db.query(models.Trade)
+            .filter(models.Trade.id.in_(trade_ids))
+            .all()
+        )
+        for t in trades:
+            if t.exit_at is None:
+                continue  # open позиции — MAE/MFE неактуальны до закрытия
+            if t.mae_price is not None and t.mfe_price is not None:
+                continue  # уже посчитано (не пере-затираем)
+            try:
+                direction = (
+                    t.direction.value if hasattr(t.direction, "value") else str(t.direction)
+                )
+                mae, mfe = await market_service.calculate_mae_mfe(
+                    ticker=t.symbol,
+                    direction=direction,
+                    entry_price=float(t.entry_price),
+                    entry_time=t.entry_at,
+                    exit_time=t.exit_at,
+                    operations=t.operations if t.operations else None,
+                    exit_price=float(t.exit_price) if t.exit_price is not None else None,
+                )
+                if mae is not None and mfe is not None:
+                    t.mae_price = Decimal(str(mae))
+                    t.mfe_price = Decimal(str(mfe))
+            except Exception as exc:
+                log.warning("import-hook MAE/MFE failed for trade %s: %s", t.id, exc)
+        db.commit()
+    except Exception:
+        log.exception("import-hook MAE/MFE batch failed")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def schedule_mae_mfe_backfill(trade_ids: list[int]) -> Optional[asyncio.Task]:
+    """Schedule background-task с strong-ref. Вызывать из async-контекста
+    (роутер) после commit'а импортированных трейдов.
+
+    В sync-контексте (тесты без работающего loop'а или sync скрипты) —
+    no-op: RuntimeError 'no running event loop' гасится.
+    Возвращает Task для тестов которые хотят его `await`-ить, либо None.
+    """
+    if not trade_ids:
+        return None
+    # ВАЖНО: get_running_loop() ПЕРЕД созданием coroutine — иначе в sync-контексте
+    # coroutine создастся и не будет awaited (RuntimeWarning + leak).
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+    task = asyncio.create_task(_backfill_mae_mfe_for_imported_async(list(trade_ids)))
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+    return task
+
+# SEC-07: magic-byte signatures for spreadsheet uploads.
+_XLSX_MAGIC = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")  # ZIP container (xlsx)
+_XLS_MAGIC = (b"\xd0\xcf\x11\xe0",)  # OLE2 compound document (legacy xls)
+
+
+def _validate_spreadsheet_magic(contents: bytes, filename: str) -> None:
+    """SEC-07: reject files whose bytes don't match the extension's real format.
+
+    Guards against zip-bombs / disguised payloads fed under .xlsx/.xls names.
+    CSV is plain text — skipped.
+    """
+    name = filename.lower()
+    expected: tuple[bytes, ...]
+    if name.endswith(".xlsx"):
+        expected = _XLSX_MAGIC
+    elif name.endswith(".xls"):
+        expected = _XLS_MAGIC
+    else:
+        return
+    if not any(contents.startswith(sig) for sig in expected):
+        raise ValueError("Файл повреждён или не является Excel/CSV")
 
 # МосБиржа торгуется в МСК (UTC+3). При импорте отчётов с naive-датами
 # мы интерпретируем их как МСК и приводим к UTC, чтобы все даты в БД
@@ -509,7 +638,11 @@ def parse_tinkoff_excel(contents: bytes) -> List[Dict]:
     
     # Read Excel, finding the header row
     df = pd.read_excel(io.BytesIO(contents), header=None)
-    
+
+    # SEC-07: row-cap (DoS / zip-bomb after decompression).
+    if len(df) > settings.MAX_IMPORT_ROWS:
+        raise ValueError(f"Слишком много строк (макс {settings.MAX_IMPORT_ROWS})")
+
     start_row = -1
     for i, row in df.iterrows():
         row_str = row.astype(str).str.cat(sep=' ')
@@ -879,14 +1012,21 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
     """
     Парсит файл (CSV/Excel) и возвращает список словарей для создания сделок.
     """
+    # SEC-07: validate magic bytes for spreadsheet uploads before any parsing.
+    _validate_spreadsheet_magic(contents, filename)
+
     if filename.endswith(('.xls', '.xlsx')):
         # Try Tinkoff Excel parser first if it looks like a report
         try:
             return parse_tinkoff_excel(contents)
+        except ValueError as ve:
+            # Row-cap is a hard limit — do not silently fall back to generic.
+            if "Слишком много строк" in str(ve):
+                raise
+            log.debug("Tinkoff Excel parser failed, falling back to generic parser")
         except Exception:
             # Fallback to generic excel parser (implemented below via pandas)
             log.debug("Tinkoff Excel parser failed, falling back to generic parser")
-            pass
 
     try:
         if filename.endswith('.csv'):
@@ -895,8 +1035,14 @@ def parse_trade_file(contents: bytes, filename: str) -> List[Dict]:
             df = pd.read_excel(io.BytesIO(contents))
         else:
             raise ValueError("Unsupported file format")
+    except ValueError:
+        raise
     except Exception as e:
         raise ValueError(f"Failed to read file: {str(e)}")
+
+    # SEC-07: row-cap (DoS / zip-bomb after decompression).
+    if len(df) > settings.MAX_IMPORT_ROWS:
+        raise ValueError(f"Слишком много строк (макс {settings.MAX_IMPORT_ROWS})")
 
     trades = []
     

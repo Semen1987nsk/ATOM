@@ -1,0 +1,49 @@
+{
+  "description": "Облигации с ACI/НКД — проверка что aci_value корректно учитывается",
+  "account_id": "test-acc-2",
+  "period_start": "2026-01-01T00:00:00+00:00",
+  "period_end": "2026-02-28T23:59:59+00:00",
+  "broker_report": [
+    {
+      "trade_id": "B1",
+      "direction": "buy",
+      "ticker": "SU26238RMFS4",
+      "name": "ОФЗ 26238",
+      "trade_datetime": "2026-01-10T10:00:00+00:00",
+      "quantity": 10,
+      "price": "950.00",
+      "order_amount": "9500.00",
+      "aci_value": "12.50",
+      "total_order_amount": "9512.50",
+      "broker_commission": "28.50",
+      "exchange_commission": "1.00",
+      "exchange_clearing_commission": "0.50",
+      "currency": "rub"
+    },
+    {
+      "trade_id": "B2",
+      "direction": "sell",
+      "ticker": "SU26238RMFS4",
+      "name": "ОФЗ 26238",
+      "trade_datetime": "2026-02-15T14:30:00+00:00",
+      "quantity": 10,
+      "price": "960.00",
+      "order_amount": "9600.00",
+      "aci_value": "25.00",
+      "total_order_amount": "9625.00",
+      "broker_commission": "28.80",
+      "exchange_commission": "1.00",
+      "exchange_clearing_commission": "0.50",
+      "currency": "rub"
+    }
+  ],
+  "foreign_dividends": [],
+  "expected_metrics": {
+    "trade_count": 2,
+    "broker_commission_total": "57.30",
+    "exchange_commission_total": "2.00",
+    "clearing_commission_total": "1.00",
+    "realized_pnl_approximate": "52.20",
+    "_realized_pnl_note": "9625 sell - 9512.50 buy = 112.50. Минус 57.30 broker - 2 exch - 1 clear = 52.20."
+  }
+}

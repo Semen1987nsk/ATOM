@@ -1,7 +1,9 @@
 """
 Trades Router — CRUD для сделок, импорт, unrealized PnL
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Query, Form
+from sqlalchemy import func, case, or_, and_, literal, union_all
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
@@ -13,6 +15,7 @@ import database
 import models
 import schemas
 import auth_service
+from domain.enums import TradeDataSource
 import import_service
 import market_service
 import ai_service
@@ -25,6 +28,22 @@ from rate_limiter import limiter, IMPORT_LIMIT, AI_LIMIT, API_LIMIT
 from subscription_service import enforce_trade_limit, require_pro
 
 log = get_logger("trades")
+
+
+_DEDUP_SQLITE_COLUMNS = (
+    "trades.account_id, trades.symbol, trades.entry_at, trades.exit_at, "
+    "trades.direction, trades.data_source"
+)
+
+
+def _is_duplicate_trade_error(exc) -> bool:
+    """True только для dedup-констрейнта — прочие IntegrityError не маскируем под 409.
+
+    Postgres включает имя констрейнта в текст ошибки, SQLite — нет (только
+    список колонок), поэтому проверяем оба варианта.
+    """
+    text = str(getattr(exc, "orig", exc))
+    return "uq_trades_dedup_v2" in text or _DEDUP_SQLITE_COLUMNS in text
 
 router = APIRouter(prefix="/trades", tags=["trades"])
 
@@ -113,7 +132,7 @@ async def create_trade(
                 
                 # Рассчитываем MAE/MFE
                 try:
-                    mae, mfe = market_data_service.calculate_mae_mfe(
+                    mae, mfe = await market_data_service.calculate_mae_mfe(
                         ticker=open_trade.symbol,
                         direction=open_trade.direction.value,
                         entry_price=float(open_trade.entry_price),
@@ -172,7 +191,7 @@ async def create_trade(
                 )
                 
                 try:
-                    mae, mfe = market_data_service.calculate_mae_mfe(
+                    mae, mfe = await market_data_service.calculate_mae_mfe(
                         ticker=closed_trade.symbol,
                         direction=closed_trade.direction.value,
                         entry_price=float(closed_trade.entry_price),
@@ -205,8 +224,15 @@ async def create_trade(
             
             db.add(remainder_trade)
             last_modified_trade = remainder_trade
-            
-        db.commit()
+
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            if _is_duplicate_trade_error(exc):
+                raise HTTPException(status_code=409, detail="Такая сделка уже существует")
+            log.exception("create_trade: unexpected IntegrityError")
+            raise HTTPException(status_code=500, detail="Ошибка сохранения сделки")
         if last_modified_trade:
             db.refresh(last_modified_trade)
             return last_modified_trade
@@ -218,7 +244,14 @@ async def create_trade(
         db_trade.account_id = account_id
         db_trade.entry_commission = db_trade.commission
         db.add(db_trade)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            if _is_duplicate_trade_error(exc):
+                raise HTTPException(status_code=409, detail="Такая сделка уже существует")
+            log.exception("create_trade: unexpected IntegrityError")
+            raise HTTPException(status_code=500, detail="Ошибка сохранения сделки")
         db.refresh(db_trade)
         return db_trade
 
@@ -375,6 +408,9 @@ async def import_trades(
     skipped_count = 0
     duplicate_count = 0
     balance_saved = False
+    # MATH-03: ORM-объекты вновь созданных трейдов — после commit'а их id
+    # уйдут в фоновый MAE/MFE backfill (см. import_service.schedule_mae_mfe_backfill).
+    new_trades_in_batch: list[models.Trade] = []
 
     # Кеш колонок Trade — чтобы не пересчитывать на каждой итерации.
     valid_columns = {c.name for c in models.Trade.__table__.columns}
@@ -422,6 +458,7 @@ async def import_trades(
             clean_dict = {k: v for k, v in trade_dict.items() if k in valid_columns}
             db_trade = models.Trade(**clean_dict)
             db.add(db_trade)
+            new_trades_in_batch.append(db_trade)
             # Записываем в индекс, чтобы дубликаты в ОДНОМ батче ловились тоже.
             existing_index[dedup_key] = -1
             imported_count += 1
@@ -430,7 +467,7 @@ async def import_trades(
         log.error(f"Import batch failed, rolled back {imported_count} pending inserts: {exc}")
         raise HTTPException(
             status_code=500,
-            detail=f"Импорт прерван из-за ошибки: {exc}. Изменения откачены — повторите попытку.",
+            detail="Импорт прерван из-за ошибки. Изменения откачены — повторите попытку.",
         )
     
     # Сохраняем снимки баланса если переданы
@@ -464,6 +501,7 @@ async def import_trades(
                     float(initial_balance),
                     date=date_start,
                     note=f"Initial balance imported from {file.filename}",
+                    source="manual",
                     commit=False,
                 )
         except Exception as e:
@@ -498,8 +536,17 @@ async def import_trades(
         log.error(f"Import commit failed, rolled back: {exc}")
         raise HTTPException(
             status_code=500,
-            detail=f"Не удалось сохранить импорт: {exc}. Изменения откачены — повторите попытку.",
+            detail="Не удалось сохранить импорт, повторите попытку.",
         )
+
+    # MATH-03 (Sprint 4, Task 5.1): после успешного commit'а — fire-and-forget
+    # MAE/MFE backfill для новых трейдов. Не блокирует HTTP-ответ; ошибки
+    # внутри глотаются per-trade. Open трейды (exit_at IS NULL) hook сам
+    # отфильтрует — им MAE/MFE не нужен.
+    new_trade_ids = [t.id for t in new_trades_in_batch if t.id is not None]
+    if new_trade_ids:
+        import_service.schedule_mae_mfe_backfill(new_trade_ids)
+
     return {
         "message": f"Импортировано: {imported_count}, пропущено дубликатов: {skipped_count}" + (", баланс сохранён" if balance_saved else ""),
         "imported": imported_count,
@@ -517,16 +564,420 @@ async def import_trades(
 
 @router.get("/", response_model=list[schemas.Trade])
 async def read_trades(
-    skip: int = 0, 
-    limit: int = 500, 
+    response: Response,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=settings.MAX_TRADES_LIMIT),
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
     account_id = auth_service.get_account_id(db, current_user)
+    # API-02: тело остаётся plain array (его читают многие хуки фронта),
+    # поэтому полное число строк отдаём заголовком — фронт показывает
+    # предупреждение об усечении при total > len(body).
+    total = db.query(func.count(models.Trade.id)).filter(
+        models.Trade.account_id == account_id
+    ).scalar() or 0
+    response.headers["X-Total-Count"] = str(total)
     trades = db.query(models.Trade).filter(
         models.Trade.account_id == account_id
     ).order_by(models.Trade.entry_at.desc()).offset(skip).limit(limit).all()
     return trades
+
+
+# ─────────────── TR1: Trade Journal aggregation ───────────────
+
+
+@router.get("/positions", response_model=list[schemas.PositionTrade])
+def read_position_trades(
+    status: str = Query("all", pattern="^(all|open|closed)$"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=settings.MAX_TRADES_LIMIT),
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """TR1: Trade journal aggregated по `position_id` (round-trip lifecycle).
+
+    Возвращает one-row-per-position view: scaled-in добавления и partial
+    closes одного position lifecycle схлопываются в одну строку с
+    weighted-average метриками и embedded list of executions.
+
+    Filter `status`:
+    - `all` — все позиции (default)
+    - `open` — только активные (есть Trade с exit_at=None)
+    - `closed` — только полностью закрытые (все Trade имеют exit_at)
+
+    S2-10: пагинация групп выполняется в SQL (страница ключей
+    (instrument_uid, position_id) через offset/limit), затем Trade
+    загружаются только для страницы. Legacy/manual round-trips без
+    position_id/instrument_uid (напр. POST /trades/) НЕ группируются —
+    каждый такой Trade сам себе позиция (ключ по id) и участвует в той же
+    странице ключей, поэтому из выдачи не выпадает.
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+
+    # S2-10: пагинация ГРУПП в SQL — не тянем все 5-10k Trade в память.
+    # Фаза 1: агрегируем ключи с last-activity и has_open, фильтруем по
+    # status, режем страницу в БД. Фаза 2: грузим Trade только для страницы.
+    #
+    # Два класса ключей в одной странице (UNION ALL, единый порядок):
+    #   - grouped: (instrument_uid, position_id) — round-trip lifecycle
+    #     из tinkoff_v2/live (position_id + instrument_uid заполнены).
+    #   - legacy:  каждая manual/legacy-сделка без position_id ИЛИ без
+    #     instrument_uid — сама себе позиция (ключ leg_id = Trade.id).
+    #     POST /trades/ (ручной журнал) не проставляет ни position_id, ни
+    #     instrument_uid → без legacy-ветки такие сделки выпали бы из выдачи.
+    last_activity_col = func.coalesce(
+        models.Trade.exit_at, models.Trade.entry_at
+    )
+    is_open_col = case((models.Trade.exit_at.is_(None), 1), else_=0)
+
+    grouped_key = db.query(
+        models.Trade.instrument_uid.label("instrument_uid"),
+        models.Trade.position_id.label("position_id"),
+        literal(None).label("leg_id"),
+        func.max(last_activity_col).label("last_activity"),
+        func.max(is_open_col).label("has_open"),
+    ).filter(
+        models.Trade.account_id == account_id,
+        models.Trade.position_id.isnot(None),
+        models.Trade.instrument_uid.isnot(None),
+    ).group_by(models.Trade.instrument_uid, models.Trade.position_id)
+
+    legacy_key = db.query(
+        models.Trade.instrument_uid.label("instrument_uid"),
+        models.Trade.position_id.label("position_id"),
+        models.Trade.id.label("leg_id"),
+        last_activity_col.label("last_activity"),
+        is_open_col.label("has_open"),
+    ).filter(
+        models.Trade.account_id == account_id,
+        or_(
+            models.Trade.position_id.is_(None),
+            models.Trade.instrument_uid.is_(None),
+        ),
+    )
+
+    if status == "open":
+        grouped_key = grouped_key.having(func.max(is_open_col) == 1)
+        legacy_key = legacy_key.filter(is_open_col == 1)
+    elif status == "closed":
+        grouped_key = grouped_key.having(func.max(is_open_col) == 0)
+        legacy_key = legacy_key.filter(is_open_col == 0)
+
+    keys_union = union_all(grouped_key, legacy_key).subquery()
+    # Детерминированный порядок: last_activity desc + tie-breakers
+    # (position_id, leg_id) — иначе при равном last_activity (bulk import,
+    # closes в одну секунду) порядок строк между offset-вызовами не
+    # гарантирован → соседние страницы могут пересекаться/пропускать группу.
+    key_rows = (
+        db.query(keys_union)
+        .order_by(
+            keys_union.c.last_activity.desc(),
+            keys_union.c.position_id.desc(),
+            keys_union.c.leg_id.desc(),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    # Ключ группировки: legacy-строки различаем по leg_id, grouped — по
+    # (instrument_uid, position_id). page_keys задаёт порядок отображения
+    # (== порядок выбора страницы) для стабильности между страницами.
+    page_keys = [
+        (r.instrument_uid, r.position_id, r.leg_id) for r in key_rows
+    ]
+    if page_keys:
+        conds = []
+        for uid, pid, leg_id in page_keys:
+            if leg_id is not None:
+                conds.append(models.Trade.id == leg_id)
+            else:
+                conds.append(
+                    (models.Trade.instrument_uid == uid)
+                    & (models.Trade.position_id == pid)
+                )
+        all_trades = (
+            db.query(models.Trade)
+            .filter(models.Trade.account_id == account_id)
+            .filter(or_(*conds))
+            .order_by(models.Trade.entry_at.asc())
+            .all()
+        )
+    else:
+        all_trades = []
+
+    # Группировка. Legacy-сделки (leg_id != None) — каждая своя группа по id;
+    # остальные — по (instrument_uid, position_id).
+    from collections import defaultdict
+    groups: dict[tuple, list[models.Trade]] = defaultdict(list)
+    legacy_ids = {leg_id for _, _, leg_id in page_keys if leg_id is not None}
+    for t in all_trades:
+        if t.id in legacy_ids:
+            groups[(t.instrument_uid, t.position_id, t.id)].append(t)
+        else:
+            groups[(t.instrument_uid, t.position_id, None)].append(t)
+
+    paginated_groups = [
+        (key, groups[key]) for key in page_keys if key in groups
+    ]
+
+    # PERF-06: префетч PositionORM одним IN-SELECT вместо N+1.
+    # Раньше для каждой открытой группы делался отдельный query().first() —
+    # при 30 открытых позициях это 30 round-trip'ов вместо одного IN-запроса.
+    # PERF-10: префетчим только для paginated_groups, не для всех filtered.
+    open_uids: list[str] = []
+    seen_uids: set[str] = set()
+    for _, group_trades in paginated_groups:
+        if not any(t.exit_at is None for t in group_trades):
+            continue
+        uid = group_trades[0].instrument_uid
+        if uid and uid not in seen_uids:
+            seen_uids.add(uid)
+            open_uids.append(uid)
+
+    positions_by_uid: dict[str, models.PositionORM] = {}
+    if open_uids:
+        pos_rows = (
+            db.query(models.PositionORM)
+            .filter(
+                models.PositionORM.account_id == account_id,
+                models.PositionORM.instrument_uid.in_(open_uids),
+            )
+            .all()
+        )
+        positions_by_uid = {r.instrument_uid: r for r in pos_rows}
+
+    positions: list[schemas.PositionTrade] = []
+    for key, group in paginated_groups:
+        first = group[0]  # earliest entry (sorted asc)
+        # Detect status: any row with exit_at=None → position still open
+        any_open = any(t.exit_at is None for t in group)
+        position_status = "open" if any_open else "closed"
+
+        # status-фильтр уже применён выше в SQL (having has_open) —
+        # повторная проверка не нужна. Оставляем переменные для downstream
+        # логики (any_open / position_status).
+
+        # Aggregations
+        total_qty = sum(float(t.quantity or 0) for t in group)
+
+        # Weighted entry price: Σ(price × qty) / Σ qty
+        sum_qty = sum(float(t.quantity or 0) for t in group)
+        sum_entry_value = sum(
+            float(t.entry_price or 0) * float(t.quantity or 0) for t in group
+        )
+        weighted_entry = sum_entry_value / sum_qty if sum_qty > 0 else 0.0
+
+        # Weighted exit price (только closed rows)
+        closed_rows = [t for t in group if t.exit_at is not None and t.exit_price is not None]
+        weighted_exit: Optional[float] = None
+        if closed_rows:
+            sum_exit_qty = sum(float(t.quantity or 0) for t in closed_rows)
+            sum_exit_value = sum(
+                float(t.exit_price or 0) * float(t.quantity or 0) for t in closed_rows
+            )
+            if sum_exit_qty > 0:
+                weighted_exit = sum_exit_value / sum_exit_qty
+
+        # Realized P&L = Σ net_pnl закрытых rows
+        realized_pnl: Optional[float] = None
+        closed_with_pnl = [t for t in closed_rows if t.net_pnl is not None]
+        if closed_with_pnl:
+            realized_pnl = sum(float(t.net_pnl) for t in closed_with_pnl)
+
+        # Unrealized P&L: для open позиций берём из PositionORM (live mark-to-market).
+        # Один PositionORM на (account, instrument_uid), не на (account, position_id) —
+        # MTM считается на текущей живой позиции независимо от round-trip group.
+        unrealized_pnl: Optional[float] = None
+        if any_open and first.instrument_uid:
+            pos_row = positions_by_uid.get(first.instrument_uid)
+            if pos_row and pos_row.unrealized_pnl is not None:
+                unrealized_pnl = float(pos_row.unrealized_pnl)
+
+        # Lifecycle timing
+        first_entry_at = min(t.entry_at for t in group)
+        last_exit_at: Optional[datetime] = None
+        if not any_open:
+            last_exit_at = max(t.exit_at for t in group if t.exit_at)
+
+        holding_minutes: Optional[int] = None
+        if last_exit_at is not None:
+            delta_sec = (last_exit_at - first_entry_at).total_seconds()
+            holding_minutes = int(delta_sec / 60) if delta_sec >= 0 else None
+
+        # Executions list (sorted chronologically) — TR1.1: с MAE/MFE/screenshot,
+        # TR1.3: + per-execution attributed fees
+        executions = [
+            schemas.TradeExecution(
+                id=t.id,
+                entry_at=t.entry_at,
+                exit_at=t.exit_at,
+                entry_price=float(t.entry_price or 0),
+                exit_price=float(t.exit_price) if t.exit_price is not None else None,
+                quantity=float(t.quantity or 0),
+                direction=t.direction.value if hasattr(t.direction, "value") else str(t.direction),
+                pnl=float(t.pnl) if t.pnl is not None else None,
+                net_pnl=float(t.net_pnl) if t.net_pnl is not None else None,
+                commission=float(t.commission) if t.commission is not None else None,
+                entry_value=float(t.entry_value) if t.entry_value is not None else None,
+                exit_value=float(t.exit_value) if t.exit_value is not None else None,
+                mae_price=float(t.mae_price) if t.mae_price is not None else None,
+                mfe_price=float(t.mfe_price) if t.mfe_price is not None else None,
+                screenshot_url=t.screenshot_url,
+                setup_name=t.setup_name,
+                risk_amount=float(t.risk_amount) if t.risk_amount is not None else None,
+                varmargin_attributed=float(t.varmargin_attributed) if t.varmargin_attributed is not None else None,
+                margin_fee_attributed=float(t.margin_fee_attributed) if t.margin_fee_attributed is not None else None,
+                service_fee_attributed=float(t.service_fee_attributed) if t.service_fee_attributed is not None else None,
+                other_fees_attributed=float(t.other_fees_attributed) if t.other_fees_attributed is not None else None,
+                # Phase 9: point_value snapshot для futures (computed body_from_prices)
+                point_value=float(t.point_value) if t.point_value is not None else None,
+                point_value_source=t.point_value_source,
+                instrument_type_v2=t.instrument_type_v2,
+            )
+            for t in sorted(group, key=lambda x: x.entry_at)
+        ]
+
+        # Setup / tags / notes — от первого execution (per AskUserQuestion 2026-05-16:
+        # один setup на всю сделку, наследуется от entry).
+        setup_id = first.setup_id
+        setup_name = first.setup_name
+        tags = list(first.tags or []) if first.tags else []
+        notes = first.notes
+
+        position_id_val = first.position_id if first.position_id is not None else first.id
+
+        # TR1.1 aggregations.
+
+        total_entry_value = sum(float(t.entry_value or 0) for t in group) or None
+        total_exit_value = sum(float(t.exit_value or 0) for t in group) or None
+
+        # % result. Используем ту же логику что Trade.pnl_pct (schemas.py:400-430):
+        # primary — entry_value, fallback — weighted_entry_price × |total_qty|.
+        # Для open берём unrealized_pnl, для closed — realized_pnl.
+        pnl_for_pct = realized_pnl if not any_open else unrealized_pnl
+        pnl_pct: Optional[float] = None
+        if pnl_for_pct is not None:
+            if total_entry_value and total_entry_value > 0:
+                pnl_pct = round((pnl_for_pct / total_entry_value) * 100, 4)
+            elif weighted_entry and total_qty > 0:
+                # Fallback: для legacy/manual trades без entry_value
+                fallback_base = weighted_entry * abs(total_qty)
+                if fallback_base > 0:
+                    pnl_pct = round((pnl_for_pct / fallback_base) * 100, 4)
+
+        # R-multiple = realized_pnl / Σ risk_amount (только closed rows
+        # с явно заданным risk_amount). Dash в UI если нет.
+        closed_with_risk = [
+            t for t in group
+            if t.exit_at is not None and t.risk_amount and float(t.risk_amount) > 0
+        ]
+        r_multiple: Optional[float] = None
+        total_risk_amount: Optional[float] = None
+        if closed_with_risk and realized_pnl is not None:
+            total_risk_amount = sum(float(t.risk_amount) for t in closed_with_risk)
+            if total_risk_amount > 0:
+                r_multiple = round(realized_pnl / total_risk_amount, 2)
+
+        # MAE/MFE: MIN/MAX across executions (worst adverse / best favorable).
+        # MAE — наименее благоприятная цена; MFE — наиболее благоприятная.
+        # Для LONG: MAE=min, MFE=max; для SHORT: MAE=max, MFE=min.
+        # Trade ORM хранит уже-направленные значения, поэтому min/max по полю
+        # верны независимо от direction.
+        mae_vals = [float(t.mae_price) for t in group if t.mae_price is not None]
+        mfe_vals = [float(t.mfe_price) for t in group if t.mfe_price is not None]
+        mae_price = min(mae_vals) if mae_vals else None
+        mfe_price = max(mfe_vals) if mfe_vals else None
+
+        # Indicators.
+        has_screenshot = any(t.screenshot_url for t in group)
+        has_notes = bool(notes and str(notes).strip())
+
+        # TR1.3: aggregated attributed fees + body P&L breakdown.
+        total_varmargin = sum(float(t.varmargin_attributed or 0) for t in group) or None
+        total_margin_fee = sum(float(t.margin_fee_attributed or 0) for t in group) or None
+        total_service_fee = sum(float(t.service_fee_attributed or 0) for t in group) or None
+        total_other_fees = sum(float(t.other_fees_attributed or 0) for t in group) or None
+        # Body P&L = Σ trade.pnl (gross body — без commissions/fees). Используется
+        # в UI breakdown card «Из чего сложился P&L».
+        body_pnl_sum = sum(float(t.pnl or 0) for t in group if t.exit_at is not None) or None
+
+        # Journaling fields — от первого execution (inheritance pattern).
+        confidence = first.confidence
+        mood = first.mood
+        discipline = first.discipline
+        timeframe = first.timeframe
+        news_event = first.news_event
+        stop_loss = float(first.stop_loss) if first.stop_loss is not None else None
+        take_profit = float(first.take_profit) if first.take_profit is not None else None
+        entry_reason = first.entry_reason
+        exit_reason = first.exit_reason
+        screenshot_url = first.screenshot_url
+
+        positions.append(
+            schemas.PositionTrade(
+                position_id=position_id_val,
+                account_id=account_id,
+                instrument_uid=first.instrument_uid,
+                symbol=first.symbol,
+                asset_name=first.asset_name,
+                asset_type=first.asset_type,
+                direction=first.direction.value if hasattr(first.direction, "value") else str(first.direction),
+                total_quantity=total_qty,
+                weighted_entry_price=weighted_entry,
+                weighted_exit_price=weighted_exit,
+                realized_pnl=realized_pnl,
+                unrealized_pnl=unrealized_pnl,
+                total_commission=sum(float(t.commission or 0) for t in group),
+                total_entry_value=total_entry_value,
+                total_exit_value=total_exit_value,
+                first_entry_at=first_entry_at,
+                last_exit_at=last_exit_at,
+                holding_time_minutes=holding_minutes,
+                status=position_status,
+                execution_count=len(group),
+                is_scale_in=len(group) >= 2,
+                setup_id=setup_id,
+                setup_name=setup_name,
+                tags=tags,
+                notes=notes,
+                # TR1.1 power-user metrics
+                pnl_pct=pnl_pct,
+                r_multiple=r_multiple,
+                total_risk_amount=total_risk_amount,
+                mae_price=mae_price,
+                mfe_price=mfe_price,
+                # TR1.1 indicators
+                has_screenshot=has_screenshot,
+                has_notes=has_notes,
+                # TR1.1 journaling fields
+                confidence=confidence,
+                mood=mood,
+                discipline=discipline,
+                timeframe=timeframe,
+                news_event=news_event,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                entry_reason=entry_reason,
+                exit_reason=exit_reason,
+                screenshot_url=screenshot_url,
+                # TR1.3: aggregated attributed fees + body breakdown
+                total_varmargin=total_varmargin,
+                total_margin_fee=total_margin_fee,
+                total_service_fee=total_service_fee,
+                total_other_fees=total_other_fees,
+                body_pnl=body_pnl_sum,
+                executions=executions,
+            )
+        )
+
+    # S2-10: порядок отображения == порядок ВЫБОРА страницы. `positions`
+    # уже построен в порядке page_keys (last_activity desc + tie-breakers из
+    # SQL), поэтому НЕ пересортировываем по first_entry_at — иначе ключ
+    # выбора страницы (max exit/entry) и ключ показа (min entry) расходятся
+    # для scale-in позиций, и группа "прыгает" через границу страницы.
+    return positions
 
 
 import os
@@ -535,6 +986,62 @@ from pathlib import Path
 
 UPLOAD_DIR = Path("uploads/screenshots")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Кап на батч MAE/MFE: каждый расчёт = до 6 ISS-запросов на тикер; без капа
+# force_all у активного трейдера = тысячи ISS-запросов в одном HTTP-запросе.
+MAE_MFE_BATCH_CAP = 200
+
+
+@router.get("/{trade_id}/screenshot")
+async def get_screenshot(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """PR 26: authenticated endpoint для отдачи скриншота сделки.
+
+    Раньше скриншоты были доступны через static `/uploads/screenshots/...`
+    с UUID-именами — security through obscurity. Любой, кто угадал URL,
+    мог посмотреть скриншот другого юзера. Теперь проверяем ownership.
+
+    Возвращаем файл как `Content-Disposition: inline` (image preview в
+    браузере) + строгий Content-Type из magic bytes (не from filename).
+    """
+    from fastapi.responses import FileResponse
+
+    account_id = auth_service.get_account_id(db, current_user)
+    trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id,
+    ).first()
+    if not trade or not trade.screenshot_url:
+        raise HTTPException(status_code=404, detail="Скриншот не найден")
+
+    # screenshot_url хранится как `/uploads/screenshots/<filename>` — выдёргиваем
+    # filename, чтобы не разрешить path traversal через user-controlled значение.
+    import os as _os
+    filename = _os.path.basename(trade.screenshot_url)
+    filepath = UPLOAD_DIR / filename
+    # Дополнительная защита: проверяем что resolved path действительно внутри
+    # UPLOAD_DIR (защита от relative path tricks даже если basename странный).
+    if not filepath.resolve().is_relative_to(UPLOAD_DIR.resolve()):
+        raise HTTPException(status_code=404, detail="Скриншот не найден")
+    if not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Скриншот не найден")
+
+    ext = filepath.suffix.lstrip(".").lower()
+    media_type = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp",
+    }.get(ext, "application/octet-stream")
+    return FileResponse(
+        path=str(filepath),
+        media_type=media_type,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.post("/{trade_id}/screenshot")
@@ -622,9 +1129,14 @@ async def delete_screenshot(
         raise HTTPException(status_code=404, detail="Сделка не найдена")
 
     if trade.screenshot_url:
-        # Удаляем файл
-        filepath = Path(trade.screenshot_url.lstrip("/"))
-        if filepath.exists():
+        # SEC: тот же containment, что в get_screenshot — берём только basename
+        # и проверяем, что resolved path внутри UPLOAD_DIR, иначе не трогаем ФС.
+        filename = os.path.basename(trade.screenshot_url)
+        filepath = UPLOAD_DIR / filename
+        if (
+            filepath.resolve().is_relative_to(UPLOAD_DIR.resolve())
+            and filepath.is_file()
+        ):
             filepath.unlink()
         trade.screenshot_url = None
         db.commit()
@@ -632,10 +1144,34 @@ async def delete_screenshot(
     return {"message": "Скриншот удалён"}
 
 
+@router.get("/{trade_id}", response_model=schemas.Trade)
+async def read_trade(
+    trade_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
+    """Возвращает полный Trade row для editing surface (/positions → modal).
+
+    /trades/positions executions содержат только subset полей (per-execution
+    metrics), а для редактирования manual fields (notes, tags, confidence,
+    mood, discipline, timeframe, stop_loss/take_profit, risk_amount, etc.)
+    нужна полная Trade-запись. Иначе EditTradeModal заполнит form defaults
+    и стерёт legitimate metadata при PATCH.
+    """
+    account_id = auth_service.get_account_id(db, current_user)
+    db_trade = db.query(models.Trade).filter(
+        models.Trade.id == trade_id,
+        models.Trade.account_id == account_id,
+    ).first()
+    if not db_trade:
+        raise HTTPException(status_code=404, detail="Trade not found")
+    return db_trade
+
+
 @router.patch("/{trade_id}", response_model=schemas.Trade)
 async def update_trade(
-    trade_id: int, 
-    trade_update: schemas.TradeUpdate, 
+    trade_id: int,
+    trade_update: schemas.TradeUpdate,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_service.get_current_user)
 ):
@@ -646,11 +1182,11 @@ async def update_trade(
     ).first()
     if not db_trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-    
+
     update_data = trade_update.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_trade, key, value)
-    
+
     db.commit()
     db.refresh(db_trade)
     return db_trade
@@ -669,6 +1205,16 @@ async def delete_trade(
     ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
+    # DATA-11: sync пересоберёт tinkoff_v2-сделку из operations при следующем
+    # запуске — DELETE создаёт иллюзию удаления («воскресающая» сделка).
+    if trade.data_source == TradeDataSource.TINKOFF_V2.value:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Синхронизированную сделку нельзя удалить — "
+                "она восстановится при следующей синхронизации."
+            ),
+        )
     db.delete(trade)
     db.commit()
     return {"message": "Trade deleted"}
@@ -707,7 +1253,7 @@ async def close_trade(
     
     if db_trade.mae_price is None or db_trade.mfe_price is None:
         try:
-            mae, mfe = market_data_service.calculate_mae_mfe(
+            mae, mfe = await market_data_service.calculate_mae_mfe(
                 ticker=db_trade.symbol,
                 direction=db_trade.direction.value,
                 entry_price=float(db_trade.entry_price),
@@ -820,54 +1366,6 @@ async def reanalyze_trade(
     return db_trade.ai_analysis
 
 
-@router.get("/unrealized-pnl")
-async def get_unrealized_pnl(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user)
-):
-    account_id = auth_service.get_account_id(db, current_user)
-    open_trades = db.query(models.Trade).filter(
-        models.Trade.account_id == account_id,
-        models.Trade.exit_at == None
-    ).all()
-    if not open_trades:
-        return []
-    
-    tickers = list(set(t.symbol for t in open_trades))
-    current_prices = await asyncio.to_thread(market_data_service.get_current_prices, tickers)
-    futures_specs = await asyncio.to_thread(market_data_service.get_futures_specs, tickers)
-    
-    results = []
-    for trade in open_trades:
-        current_price = current_prices.get(trade.symbol)
-        if current_price:
-            entry_price = float(trade.entry_price)
-            quantity = float(trade.quantity)
-            
-            spec = futures_specs.get(trade.symbol)
-            if spec and spec.get('stepprice') and spec.get('minstep'):
-                stepprice = spec['stepprice']
-                minstep = spec['minstep']
-                price_diff = current_price - entry_price
-                if trade.direction == models.TradeDirection.SHORT:
-                    price_diff = -price_diff
-                pnl = price_diff * (stepprice / minstep) * quantity
-            else:
-                if trade.direction == models.TradeDirection.LONG:
-                    pnl = (current_price - entry_price) * quantity
-                else:
-                    pnl = (entry_price - current_price) * quantity
-            
-            results.append({
-                "trade_id": trade.id,
-                "symbol": trade.symbol,
-                "current_price": current_price,
-                "unrealized_pnl": pnl
-            })
-            
-    return results
-
-
 @router.get("/mae-mfe-stats")
 async def get_mae_mfe_stats(
     db: Session = Depends(database.get_db),
@@ -932,8 +1430,10 @@ async def calculate_mae_mfe_bulk(
             (models.Trade.mae_price == None) | (models.Trade.mfe_price == None)
         )
     
-    trades = query.all()
-    
+    # Ограничиваем батч: остальное юзер добьёт повторным вызовом (курсор — по
+    # сделкам без MAE/MFE, force_all обрабатывает по 200 за раз).
+    trades = query.order_by(models.Trade.id).limit(MAE_MFE_BATCH_CAP).all()
+
     if not trades:
         return {
             "message": "Нет сделок для расчёта MAE/MFE",
@@ -959,7 +1459,7 @@ async def calculate_mae_mfe_bulk(
             if operations:
                 entry_count = len([op for op in operations if op.get('type') == 'entry'])
             
-            mae, mfe = market_data_service.calculate_mae_mfe(
+            mae, mfe = await market_data_service.calculate_mae_mfe(
                 ticker=trade.symbol,
                 direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
                 entry_price=float(trade.entry_price),  # Уже средневзвешенная при усреднении
@@ -991,7 +1491,8 @@ async def calculate_mae_mfe_bulk(
         "processed": len(trades),
         "updated": updated,
         "failed": failed,
-        "errors": errors[:10] if errors else []  # Первые 10 ошибок
+        "errors": errors[:10] if errors else [],  # Первые 10 ошибок
+        "has_more": len(trades) == MAE_MFE_BATCH_CAP,
     }
 
 
@@ -1069,7 +1570,7 @@ async def calculate_post_exit_bulk(
             if not trade.exit_at or not trade.exit_price:
                 continue
             
-            analysis = market_data_service.calculate_post_exit_analysis(
+            analysis = await market_data_service.calculate_post_exit_analysis(
                 ticker=trade.symbol,
                 direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
                 exit_price=float(trade.exit_price),
@@ -1289,7 +1790,7 @@ async def get_trade_post_exit(
         return trade.post_exit_analysis
     
     # Иначе рассчитываем
-    analysis = market_data_service.calculate_post_exit_analysis(
+    analysis = await market_data_service.calculate_post_exit_analysis(
         ticker=trade.symbol,
         direction=trade.direction.value if hasattr(trade.direction, 'value') else trade.direction,
         exit_price=float(trade.exit_price),

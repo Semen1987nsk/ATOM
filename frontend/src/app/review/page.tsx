@@ -13,9 +13,10 @@ import { Layers, ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Save, Star
 import { AppShell } from "@/components/AppShell";
 import { AnalysisPageHeader } from "@/components/analysis/AnalysisPageHeader";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import { api } from "@/lib/apiClient";
+import { api, ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import { DataError } from "@/components/ui/DataError";
 
 interface TradeMini {
   id: number;
@@ -45,6 +46,11 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState<ApiError | Error | null>(null);
+  // FE-02: surface ошибки загрузки. До этого silent `.catch(setData(null))`
+  // показывал empty-review без объяснения.
+  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [refetchKey, setRefetchKey] = useState(0);
 
   // Local form state — синхронизируется с data при загрузке
   const [reflection, setReflection] = useState("");
@@ -55,8 +61,11 @@ export default function ReviewPage() {
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     setLoading(true);
+    setError(null);
+    let cancelled = false;
     api.get<ReviewData>(`/review/?date=${date}`)
       .then((d) => {
+        if (cancelled) return;
         setData(d);
         setReflection(d.reflection);
         setIntention(d.intention);
@@ -65,12 +74,20 @@ export default function ReviewPage() {
         for (const t of d.trades) tr[String(t.id)] = t.reflection || "";
         setTradeReflections(tr);
       })
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [user, date]);
+      .catch((e) => {
+        if (cancelled) return;
+        setData(null);
+        setError(e as ApiError | Error);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, date, refetchKey]);
+
+  const retry = () => setRefetchKey((k) => k + 1);
 
   async function save() {
     setSaving(true);
+    setSaveError(null);
     try {
       const updated = await api.post<ReviewData>("/review/", {
         body: {
@@ -84,6 +101,9 @@ export default function ReviewPage() {
       setData(updated);
       setSavedAt(Date.now());
       setTimeout(() => setSavedAt(null), 3000);
+    } catch (e) {
+      // Не очищаем локальный стейт формы — текст рефлексии должен остаться (S3-23).
+      setSaveError(e as ApiError | Error);
     } finally {
       setSaving(false);
     }
@@ -145,7 +165,9 @@ export default function ReviewPage() {
               </button>
             </div>
 
-            {loading ? (
+            {error ? (
+              <DataError error={error} onRetry={retry} />
+            ) : loading ? (
               <DashboardSkeleton />
             ) : (
               <div className="space-y-6">
@@ -197,6 +219,11 @@ export default function ReviewPage() {
                 <div className="sticky bottom-4 flex justify-end gap-3 items-center">
                   {savedAt && (
                     <span className="text-[12px] text-[var(--success)] animate-fadeIn">Сохранено ✓</span>
+                  )}
+                  {saveError && (
+                    <span className="text-rose-400 text-sm ml-3">
+                      {saveError instanceof ApiError ? saveError.toUserMessage() : 'Не удалось сохранить'}
+                    </span>
                   )}
                   <button
                     onClick={save}

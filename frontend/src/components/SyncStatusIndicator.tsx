@@ -1,11 +1,37 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  RefreshCw, CheckCircle, AlertCircle, Clock, 
-  Zap, ChevronDown, ChevronUp, Link2
+import {
+  RefreshCw, CheckCircle, AlertCircle, Clock,
+  Zap, ChevronDown, ChevronUp, Link2, ShieldCheck, ShieldAlert
 } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
+import { useSyncStatusQuery } from '@/lib/useSyncStatusQuery';
+import { useToast } from '@/contexts/ToastContext';
+
+// PR 20: Health-audit response shape.
+interface HealthIssue {
+  check_id: string;
+  severity: 'warning' | 'error';
+  count: number;
+  description: string;
+  sample_ids?: number[];
+}
+
+interface HealthCheck {
+  id: number;
+  checked_at: string;
+  status: 'ok' | 'warning' | 'error';
+  total_trades_checked: number;
+  trades_with_issues: number;
+  main_issue: string | null;
+  issues: HealthIssue[];
+}
+
+interface HealthResponse {
+  latest: HealthCheck | null;
+  history: HealthCheck[];
+}
 
 interface ConnectionStatus {
   id: number;
@@ -19,6 +45,11 @@ interface ConnectionStatus {
   next_sync_at: string | null;
   total_synced_trades: number;
   is_syncing: boolean;
+  // PR 17: детали последней синхронизации (заполняются pipeline'ом).
+  last_sync_operations_count?: number | null;
+  last_sync_trades_count?: number | null;
+  last_sync_positions_count?: number | null;
+  last_sync_duration_ms?: number | null;
 }
 
 interface SyncStatus {
@@ -37,33 +68,47 @@ interface SyncStatusIndicatorProps {
   onOpenBrokerModal?: () => void;
 }
 
-export default function SyncStatusIndicator({ 
-  onTradesUpdated, 
-  onOpenBrokerModal 
+export default function SyncStatusIndicator({
+  onTradesUpdated,
+  onOpenBrokerModal
 }: SyncStatusIndicatorProps) {
-  const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  // FE-10: shared TanStack-хук дедупит /broker/sync-status с BrokerStatusBadge.
+  // refetch() даёт ручной форс-рефреш после triggerSync.
+  const {
+    data: status,
+    isPending: statusLoading,
+    refetch: refetchStatus,
+  } = useSyncStatusQuery<SyncStatus>({ refetchInterval: 30000 });
+
+  const [health, setHealth] = useState<HealthCheck | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [syncing, setSyncing] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<string>('');
+  const toast = useToast();
 
-  const fetchStatus = useCallback(async () => {
+  // PR 20: подтягиваем последний health-audit для индикатора.
+  // (Отдельный poll — другая responsibility, не дедуплится с sync-status.)
+  const fetchHealth = useCallback(async () => {
     try {
-      const data = await api.get<SyncStatus>('/broker/sync-status');
-      setStatus(data);
-    } catch (error) {
-      console.error('Failed to fetch sync status:', error);
+      const data = await api.get<HealthResponse>('/broker/health');
+      setHealth(data.latest);
+    } catch {
+      // Health не критичен для основного UI — молча.
+      setHealth(null);
     } finally {
-      setLoading(false);
+      setHealthLoading(false);
     }
   }, []);
 
-  // Обновляем статус каждые 30 секунд
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+  }, [fetchHealth]);
+
+  // Composite loading: до первой загрузки обоих источников.
+  const loading = statusLoading || healthLoading;
 
   // Обновляем countdown каждую секунду
   useEffect(() => {
@@ -103,16 +148,15 @@ export default function SyncStatusIndicator({
   const triggerSync = async (connectionId: number) => {
     setSyncing(connectionId);
     try {
-      await api.post(`/broker/trigger-sync/${connectionId}`);
-      // Ждём немного и обновляем статус
-      setTimeout(() => {
-        fetchStatus();
-        onTradesUpdated?.();
-      }, 2000);
+      // Блокирующий endpoint (10-90с) — держим spinner до фактического ответа,
+      // затем сразу рефетчим статус (ERR-303: фикс-таймеры вводили в заблуждение).
+      await api.post(`/broker/trigger-sync/${connectionId}`, { timeoutMs: 120000 });
+      refetchStatus();
+      onTradesUpdated?.();
     } catch (error) {
-      console.error('Failed to trigger sync:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось запустить синхронизацию');
     } finally {
-      setTimeout(() => setSyncing(null), 3000);
+      setSyncing(null);
     }
   };
 
@@ -141,9 +185,21 @@ export default function SyncStatusIndicator({
     });
   };
 
-  // Не показываем если нет подключений
+  // Нет подключений → показываем компактную кнопку «Подключить брокера»,
+  // чтобы у юзера всегда был быстрый вход в API-онбординг из шапки.
   if (!loading && (!status || !status.has_connections)) {
-    return null;
+    if (!onOpenBrokerModal) return null;
+    return (
+      <button
+        onClick={onOpenBrokerModal}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent)]/15 transition-colors text-[12px] font-medium"
+        title="Подключить брокера через API"
+      >
+        <Link2 size={13} />
+        <span className="hidden xl:inline">Подключить брокера</span>
+        <span className="xl:hidden">Брокер</span>
+      </button>
+    );
   }
 
   if (loading) {
@@ -288,12 +344,103 @@ export default function SyncStatusIndicator({
               </span>
             </div>
 
+            {/* Детали последнего sync (PR 17). Показываем только если есть
+                хотя бы один из счётчиков — иначе блок пустой и сбивает с толку. */}
+            {(connection.last_sync_operations_count != null ||
+              connection.last_sync_trades_count != null ||
+              connection.last_sync_positions_count != null ||
+              connection.last_sync_duration_ms != null) && (
+              <div className="pt-3 mt-3 border-t border-slate-700/50">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">
+                  Последняя синхронизация
+                </div>
+                <div className="space-y-1.5">
+                  {connection.last_sync_operations_count != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">Операций</span>
+                      <span className="text-xs text-slate-300 font-mono">
+                        {connection.last_sync_operations_count.toLocaleString('ru-RU')}
+                      </span>
+                    </div>
+                  )}
+                  {connection.last_sync_trades_count != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">FIFO-сделок</span>
+                      <span className="text-xs text-slate-300 font-mono">
+                        {connection.last_sync_trades_count.toLocaleString('ru-RU')}
+                      </span>
+                    </div>
+                  )}
+                  {connection.last_sync_positions_count != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">Открытых позиций</span>
+                      <span className="text-xs text-slate-300 font-mono">
+                        {connection.last_sync_positions_count}
+                      </span>
+                    </div>
+                  )}
+                  {connection.last_sync_duration_ms != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">Длительность</span>
+                      <span className="text-xs text-slate-300 font-mono">
+                        {connection.last_sync_duration_ms < 1000
+                          ? `${connection.last_sync_duration_ms} мс`
+                          : `${(connection.last_sync_duration_ms / 1000).toFixed(1)} с`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Ошибка если есть */}
             {isError && connection.last_sync_error && (
               <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/20">
                 <p className="text-xs text-red-400 line-clamp-2">
                   {connection.last_sync_error}
                 </p>
+              </div>
+            )}
+
+            {/* PR 20: Health-audit карточка. Простое сообщение для юзера —
+                без технических деталей (issues_json — это для админа). */}
+            {health && (
+              <div className={`pt-3 mt-3 border-t border-slate-700/50`}>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">
+                  Проверки импорта
+                </div>
+                {health.status === 'ok' && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <ShieldCheck size={14} className="text-green-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-green-300">
+                      Все {health.total_trades_checked.toLocaleString('ru-RU')} сделок прошли проверку
+                    </div>
+                  </div>
+                )}
+                {health.status === 'warning' && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <ShieldAlert size={14} className="text-yellow-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-yellow-200">
+                      <div>Найдено {health.issues.length} предупреждение(й)</div>
+                      <div className="text-[10px] text-yellow-200/70 mt-1">
+                        Данные импортируются, но проверьте детали с поддержкой.
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {health.status === 'error' && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <ShieldAlert size={14} className="text-red-400 mt-0.5 shrink-0" />
+                    <div className="text-xs text-red-300">
+                      <div>
+                        Обнаружены проблемы с {health.trades_with_issues || health.issues.length} сделками
+                      </div>
+                      <div className="text-[10px] text-red-300/70 mt-1">
+                        Свяжитесь с поддержкой — мы поможем восстановить данные.
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

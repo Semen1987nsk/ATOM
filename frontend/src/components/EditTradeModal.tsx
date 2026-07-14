@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { api, ApiError } from '@/lib/apiClient';
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/contexts/ToastContext';
 
 interface EditTradeModalProps {
   isOpen: boolean;
@@ -11,7 +12,7 @@ interface EditTradeModalProps {
   trade: EditableTrade | null;
 }
 
-interface EditableTrade {
+export interface EditableTrade {
   id: number;
   symbol?: string;
   asset_name?: string | null;
@@ -108,9 +109,13 @@ export const EditTradeModal: React.FC<EditTradeModalProps> = ({ isOpen, onClose,
 
 const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, onSuccess, trade }) => {
   const [formData, setFormData] = useState<EditTradeFormState>(() => buildInitialFormData(trade));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const toast = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       await api.patch(`/trades/${trade.id}`, {
         body: {
@@ -124,30 +129,23 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
           take_profit: formData.take_profit ? parseFloat(formData.take_profit) : null,
           risk_amount: formData.risk_amount ? parseFloat(formData.risk_amount) : null,
           entry_at: new Date(formData.entry_at).toISOString(),
-          tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== '')
+          tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
+          confidence: formData.confidence ? parseInt(formData.confidence, 10) : null,
         }
       });
+      toast.success('Сделка обновлена');
       onSuccess();
       onClose();
     } catch (error) {
-      console.error('Failed to update trade:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось сохранить сделку');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative max-h-[90vh] overflow-y-auto animate-scaleIn">
-        {/* Background glow */}
-        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-accent-secondary/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
-          <X size={20} />
-        </button>
-        
-        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">РЕДАКТИРОВАНИЕ #{trade.id}</h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal open onClose={onClose} title={`Редактирование #${trade.id}`} size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Тикер</label>
@@ -203,7 +201,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Цена входа</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.entry_price}
                 onChange={e => setFormData({...formData, entry_price: e.target.value})}
@@ -213,7 +211,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Количество</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
@@ -225,7 +223,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Плечо</label>
               <input 
-                type="number" step="any"
+                type="number" step="any" min="1"
                 className="input-cyber"
                 value={formData.leverage}
                 onChange={e => setFormData({...formData, leverage: e.target.value})}
@@ -301,6 +299,7 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Дата входа</label>
             <input 
               type="datetime-local"
+              max={new Date().toISOString().slice(0, 16)}
               className="input-cyber"
               value={formData.entry_at}
               onChange={e => setFormData({...formData, entry_at: e.target.value})}
@@ -308,12 +307,12 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
           </div>
 
           <div>
-            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Уверенность (1-10)</label>
+            <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Уверенность (1-5)</label>
             <div className="flex items-center gap-2">
-              <input 
+              <input
                 type="range"
                 min="1"
-                max="10"
+                max="5"
                 className="w-full accent-accent"
                 value={formData.confidence || '5'}
                 onChange={e => setFormData({...formData, confidence: e.target.value})}
@@ -352,14 +351,23 @@ const EditTradeModalContent: React.FC<EditTradeModalContentProps> = ({ onClose, 
             />
           </div>
 
-          <button 
-            type="submit"
-            className="btn-primary w-full py-3 text-center justify-center"
-          >
-            Обновить сделку
-          </button>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-secondary flex-1 py-3 text-center justify-center"
+            >
+              Отмена
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="btn-primary flex-1 py-3 text-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? 'Сохраняем…' : 'Обновить сделку'}
+            </button>
+          </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

@@ -25,9 +25,12 @@ interface AdvancedMetrics {
 interface AdvancedStatsGridProps {
   stats: AdvancedMetrics | null;
   hasData: boolean;
+  // PR 25: при true — не рендерим внешний `mt-8 mb-8` и заголовок (когда
+  // компонент уже обёрнут в `CollapsibleSection`, заголовок там).
+  embedded?: boolean;
 }
 
-export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
+export function AdvancedStatsGrid({ stats, hasData, embedded = false }: AdvancedStatsGridProps) {
   const { t } = useLanguage();
   const { formatCurrency } = useSettings();
   const noData = t.emptyState?.noData || '—';
@@ -52,11 +55,13 @@ export function AdvancedStatsGrid({ stats, hasData }: AdvancedStatsGridProps) {
   };
 
   return (
-    <div className="mt-8 mb-8">
-      <h2 className="text-sm font-mono uppercase mb-4 flex items-center gap-2">
-        <Brain size={16} className="text-accent" />
-        {t.advancedStats.title}
-      </h2>
+    <div className={embedded ? '' : 'mt-8 mb-8'}>
+      {!embedded && (
+        <h2 className="text-sm font-mono uppercase mb-4 flex items-center gap-2">
+          <Brain size={16} className="text-accent" />
+          {t.advancedStats.title}
+        </h2>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard 
           title={t.advancedStats.ror20.title}

@@ -1,9 +1,12 @@
 """
 Market Router — рыночные данные, котировки
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Depends
 from logger import get_logger
 import market_service
+import auth_service
+import models
+from rate_limiter import limiter, MARKET_LIMIT
 
 log = get_logger("market")
 
@@ -15,7 +18,12 @@ MAX_TICKERS = 50  # Limit to prevent abuse
 
 
 @router.get("/prices")
-async def get_prices(tickers: str):
+@limiter.limit(MARKET_LIMIT)
+async def get_prices(
+    request: Request,
+    tickers: str,
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
     """
     Получить текущие цены для списка тикеров.
     Тикеры передаются через запятую: /market/prices?tickers=SBER,GAZP,LKOH
@@ -26,7 +34,7 @@ async def get_prices(tickers: str):
     if len(ticker_list) > MAX_TICKERS:
         raise HTTPException(status_code=400, detail=f"Максимум {MAX_TICKERS} тикеров за запрос")
     try:
-        prices = market_data_service.get_current_prices(ticker_list)
+        prices = await market_data_service.get_current_prices(ticker_list)
         return {"prices": prices}
     except Exception as e:
         log.error(f"Error fetching prices for {ticker_list}: {e}")
@@ -34,7 +42,12 @@ async def get_prices(tickers: str):
 
 
 @router.get("/futures-specs")
-async def get_futures_specs(tickers: str):
+@limiter.limit(MARKET_LIMIT)
+async def get_futures_specs(
+    request: Request,
+    tickers: str,
+    current_user: models.User = Depends(auth_service.get_current_user),
+):
     """
     Получить спецификации фьючерсов (MINSTEP, STEPPRICE).
     Тикеры передаются через запятую.
@@ -45,7 +58,7 @@ async def get_futures_specs(tickers: str):
     if len(ticker_list) > MAX_TICKERS:
         raise HTTPException(status_code=400, detail=f"Максимум {MAX_TICKERS} тикеров за запрос")
     try:
-        specs = market_data_service.get_futures_specs(ticker_list)
+        specs = await market_data_service.get_futures_specs(ticker_list)
         return {"specs": specs}
     except Exception as e:
         log.error(f"Error fetching futures specs for {ticker_list}: {e}")

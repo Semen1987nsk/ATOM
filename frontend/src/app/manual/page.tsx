@@ -1,5 +1,3 @@
-'use client';
-
 import Link from 'next/link';
 import { Zap, Activity, Target, TrendingUp, BookOpen, AlertTriangle, GitGraph, Shield, Skull, Dice5, Clock, Calendar, BarChart3, Flame, Scale, TrendingDown, Sparkles, Crown, Brain, Rocket, Repeat, Tag, DollarSign, Gauge, CheckCircle } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
@@ -15,9 +13,6 @@ export default function Manual() {
 
       {/* Hero Section */}
       <header className="mb-16 relative">
-        <div className="absolute -top-10 -left-10 w-40 h-40 bg-accent/10 rounded-full blur-3xl" />
-        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
-        
         <div className="relative">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-accent/20 rounded-lg">
@@ -163,7 +158,6 @@ export default function Manual() {
       <div className="space-y-16">
         {/* Total PnL */}
         <section id="total-pnl" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-green-500/20 rounded-xl">
@@ -198,7 +192,6 @@ export default function Manual() {
 
         {/* Win Rate */}
         <section id="win-rate" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-blue-500/20 rounded-xl">
@@ -256,10 +249,6 @@ export default function Manual() {
 
         {/* Optimal f */}
         <section id="optimal-f" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background Effects */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-accent/20 to-transparent rounded-full blur-3xl" />
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -413,7 +402,7 @@ export default function Manual() {
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <div className="text-xs font-mono uppercase tracking-widest opacity-50">Eqio рассчитывает</div>
+                    <div className="text-xs font-mono uppercase tracking-widest opacity-50">Полистата рассчитывает</div>
                     <div className="bg-accent/20 p-4 rounded-lg text-center border border-accent/30">
                       <div className="text-4xl font-black text-accent">18.7%</div>
                       <div className="text-sm opacity-70">Optimal f</div>
@@ -525,7 +514,7 @@ export default function Manual() {
                 <li>💡 Начните с <strong className="text-white">Quarter Kelly</strong> и повышайте по мере накопления статистики</li>
                 <li>📈 Пересчитывайте Optimal f каждые 50-100 сделок</li>
                 <li>🎯 Используйте разные f* для разных стратегий/инструментов</li>
-                <li>⚡ Eqio автоматически рассчитывает f* и показывает рекомендуемые фракции</li>
+                <li>⚡ Полистата автоматически рассчитывает f* и показывает рекомендуемые фракции</li>
               </ul>
             </div>
 
@@ -552,9 +541,6 @@ export default function Manual() {
 
         {/* SQN */}
         <section id="sqn" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -669,7 +655,7 @@ export default function Manual() {
                 </div>
               </div>
               <p className="text-xs opacity-50 text-center mt-4 italic">
-                * Eqio использует модифицированную формулу с ограничением √N до 100 для корректности
+                * Полистата использует модифицированную формулу с ограничением √N до 100 для корректности
               </p>
             </div>
 
@@ -791,7 +777,7 @@ export default function Manual() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Eqio рассчитывает</div>
+                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Полистата рассчитывает</div>
                   <div className="space-y-2">
                     <div className="flex justify-between p-2 bg-black/30 rounded">
                       <span className="opacity-70">Средняя R:</span>
@@ -857,7 +843,7 @@ export default function Manual() {
                 <li>💡 SQN &lt; 1.6 не значит, что система плохая — возможно, просто нужно торговать меньшим объёмом</li>
                 <li>📊 Сравнивайте SQN разных стратегий для выбора лучшей</li>
                 <li>⚠️ SQN зависит от количества сделок — минимум 30 для надёжной оценки</li>
-                <li>🎯 Eqio показывает SQN в реальном времени — следите за трендом!</li>
+                <li>🎯 Полистата показывает SQN в реальном времени — следите за трендом!</li>
               </ul>
             </div>
           </div>
@@ -865,10 +851,6 @@ export default function Manual() {
 
         {/* Z-Score */}
         <section id="z-score" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -left-20 w-60 h-60 bg-cyan-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-40 h-40 bg-green-500/10 rounded-full blur-2xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -986,7 +968,7 @@ export default function Manual() {
                 </div>
               </div>
               <p className="text-xs opacity-50 text-center italic">
-                * Не волнуйтесь! Eqio считает это автоматически. Вам нужно только понимать интерпретацию.
+                * Не волнуйтесь! Полистата считает это автоматически. Вам нужно только понимать интерпретацию.
               </p>
             </div>
 
@@ -1161,7 +1143,7 @@ export default function Manual() {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Eqio рассчитывает</div>
+                  <div className="text-xs font-mono uppercase tracking-widest opacity-50">Полистата рассчитывает</div>
                   <div className="space-y-2">
                     <div className="flex justify-between p-2 bg-black/30 rounded">
                       <span className="opacity-70">Всего сделок (N):</span>
@@ -1186,7 +1168,7 @@ export default function Manual() {
               </div>
               
               <div className="bg-black/30 p-4 rounded">
-                <div className="font-bold text-cyan-400 mb-2">💡 Рекомендация Eqio:</div>
+                <div className="font-bold text-cyan-400 mb-2">💡 Рекомендация Полистата:</div>
                 <p className="text-sm opacity-80">
                   Ваша система демонстрирует статистически значимый паттерн серий. Используйте 
                   <strong className="text-white"> антимартингейл</strong>: увеличивайте риск в серии побед, снижайте при убытках.
@@ -1227,7 +1209,7 @@ export default function Manual() {
                 <li>💡 Если Z-Score близок к 0 — это НЕ плохо. Это значит, что вам не нужно усложнять риск-менеджмент</li>
                 <li>📊 Разные инструменты могут иметь разный Z-Score — анализируйте отдельно</li>
                 <li>🎯 Комбинируйте Z-Score с Optimal f для максимальной эффективности</li>
-                <li>⚡ Eqio автоматически отслеживает Z-Score и предупреждает об изменениях паттерна</li>
+                <li>⚡ Полистата автоматически отслеживает Z-Score и предупреждает об изменениях паттерна</li>
               </ul>
             </div>
           </div>
@@ -1235,9 +1217,6 @@ export default function Manual() {
 
         {/* Profit Factor */}
         <section id="profit-factor" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-60 h-60 bg-green-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -1402,7 +1381,7 @@ export default function Manual() {
                 <li>💡 <strong className="text-white">PF &gt; 2.0</strong> — золотой стандарт для swing-трейдинга</li>
                 <li>📊 Для скальпинга достаточно <strong className="text-white">PF 1.3-1.5</strong> из-за большого количества сделок</li>
                 <li>⚠️ Если PF падает — проверьте, не увеличились ли ваши убытки (средний лосс)</li>
-                <li>🎯 Eqio показывает PF в реальном времени — следите за трендом!</li>
+                <li>🎯 Полистата показывает PF в реальном времени — следите за трендом!</li>
               </ul>
             </div>
           </div>
@@ -1410,9 +1389,6 @@ export default function Manual() {
 
         {/* Recovery Factor & Drawdown */}
         <section id="drawdown" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-red-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -1570,7 +1546,7 @@ export default function Manual() {
                 <li>💡 Установите <strong className="text-white">максимально допустимую просадку</strong> (например, 20%) и снижайте риск при приближении</li>
                 <li>📊 Если текущая просадка &gt; 50% от максимальной — уменьшите размер позиции</li>
                 <li>⚠️ После просадки 30% переходите на минимальный риск до восстановления</li>
-                <li>🎯 Eqio показывает текущую просадку в реальном времени</li>
+                <li>🎯 Полистата показывает текущую просадку в реальном времени</li>
               </ul>
             </div>
           </div>
@@ -1578,7 +1554,6 @@ export default function Manual() {
 
         {/* Recovery Factor */}
         <section id="recovery-factor" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-cyan-500/20 rounded-xl">
@@ -1622,7 +1597,6 @@ export default function Manual() {
 
         {/* ROI */}
         <section id="roi" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-emerald-500/20 rounded-xl">
@@ -1657,7 +1631,6 @@ export default function Manual() {
 
         {/* GHPR */}
         <section id="ghpr" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-violet-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-violet-500/20 rounded-xl">
@@ -1698,7 +1671,6 @@ export default function Manual() {
 
         {/* Sortino Ratio */}
         <section id="sortino" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-indigo-500/20 rounded-xl">
@@ -1750,7 +1722,6 @@ export default function Manual() {
 
         {/* Tail Ratio */}
         <section id="tail-ratio" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-orange-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-orange-500/20 rounded-xl">
@@ -1785,10 +1756,6 @@ export default function Manual() {
 
         {/* Calmar Ratio */}
         <section id="calmar-ratio" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-teal-500/20 to-transparent rounded-full blur-3xl" />
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-teal-500/10 rounded-full blur-2xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2061,7 +2028,7 @@ export default function Manual() {
               <ul className="text-sm space-y-1 opacity-80">
                 <li>📊 Calmar &gt; 2.0 позволяет привлекать институциональные деньги</li>
                 <li>🎯 Топ-фонды оптимизируют под Calmar, а не под абсолютную доходность</li>
-                <li>⚡ Eqio автоматически рассчитывает CAGR с учётом периода торговли</li>
+                <li>⚡ Полистата автоматически рассчитывает CAGR с учётом периода торговли</li>
               </ul>
             </div>
           </div>
@@ -2069,9 +2036,6 @@ export default function Manual() {
 
         {/* MAE/MFE */}
         <section id="mae-mfe" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-yellow-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2277,7 +2241,7 @@ export default function Manual() {
                 <li>💡 Анализируйте MAE/MFE отдельно для лонгов и шортов — они могут отличаться</li>
                 <li>📊 Минимум 30 сделок для надёжного анализа</li>
                 <li>⚠️ MAE &gt; стоп-лосса = сделка была обречена. Фильтруйте такие сетапы!</li>
-                <li>🎯 Eqio строит графики MAE/MFE автоматически</li>
+                <li>🎯 Полистата строит графики MAE/MFE автоматически</li>
               </ul>
             </div>
           </div>
@@ -2285,9 +2249,6 @@ export default function Manual() {
 
         {/* Post-Exit Analysis */}
         <section id="post-exit" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2396,7 +2357,7 @@ export default function Manual() {
             <div className="mb-8">
               <h3 className="text-white font-bold text-lg mb-4">📊 Периоды анализа</h3>
               <p className="text-sm opacity-70 mb-4">
-                Eqio анализирует движение цены в трёх временных горизонтах после закрытия:
+                Полистата анализирует движение цены в трёх временных горизонтах после закрытия:
               </p>
               <div className="grid md:grid-cols-3 gap-4">
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
@@ -2460,10 +2421,6 @@ export default function Manual() {
 
         {/* Monte Carlo Simulation */}
         <section id="monte-carlo" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-60 h-60 bg-violet-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2670,7 +2627,7 @@ export default function Manual() {
                 <li>💡 Минимум <strong className="text-white">50 сделок</strong> для надёжной симуляции</li>
                 <li>📊 Используйте 95-й перцентиль просадки для расчёта максимального риска</li>
                 <li>⚠️ Если в 10%+ симуляций вы теряете &gt;50% — уменьшите размер позиции!</li>
-                <li>🎯 Eqio запускает 10,000 симуляций за секунды</li>
+                <li>🎯 Полистата запускает 10,000 симуляций за секунды</li>
               </ul>
             </div>
           </div>
@@ -2678,10 +2635,6 @@ export default function Manual() {
 
         {/* Risk of Ruin */}
         <section id="risk-of-ruin" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 -right-20 w-80 h-80 bg-rose-500/15 rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-red-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -2709,7 +2662,7 @@ export default function Manual() {
                   <div className="font-bold text-red-400 mb-1">Главный вопрос трейдинга</div>
                   <p className="text-sm opacity-80">
                     «Какова вероятность, что я потеряю ВСЁ?» Большинство трейдеров избегают этого вопроса. 
-                    <span className="text-white font-medium"> Eqio даёт честный ответ в процентах.</span>
+                    <span className="text-white font-medium"> Полистата даёт честный ответ в процентах.</span>
                   </p>
                 </div>
               </div>
@@ -2756,7 +2709,7 @@ export default function Manual() {
                 </div>
               </div>
               <p className="text-xs opacity-50 text-center italic">
-                * Eqio рассчитывает это через Monte Carlo для большей точности
+                * Полистата рассчитывает это через Monte Carlo для большей точности
               </p>
             </div>
 
@@ -2933,7 +2886,7 @@ export default function Manual() {
                 <li>💡 Держите Risk of Ruin <strong className="text-white">&lt;5%</strong> — это золотой стандарт</li>
                 <li>📊 Если RoR &gt;10% — уменьшайте размер позиции, пока не станет безопасно</li>
                 <li>⚠️ Высокий Win Rate НЕ защищает от руина при большом риске</li>
-                <li>🎯 Eqio рассчитывает RoR автоматически через Monte Carlo</li>
+                <li>🎯 Полистата рассчитывает RoR автоматически через Monte Carlo</li>
               </ul>
             </div>
           </div>
@@ -2941,10 +2894,6 @@ export default function Manual() {
 
         {/* Time Patterns */}
         <section id="time-patterns" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 left-0 w-80 h-80 bg-sky-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-60 h-60 bg-teal-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3201,7 +3150,7 @@ export default function Manual() {
             <div className="bg-gradient-to-r from-sky-500/10 via-teal-500/10 to-sky-500/10 rounded-xl p-6 mb-8 border border-sky-500/20">
               <h3 className="text-white font-bold text-lg mb-4">🔥 Тепловая карта (пример)</h3>
               <p className="text-sm opacity-70 mb-4">
-                Eqio строит тепловую карту: день недели × час = P&L. Красные ячейки — убытки, зелёные — прибыль.
+                Полистата строит тепловую карту: день недели × час = P&L. Красные ячейки — убытки, зелёные — прибыль.
               </p>
               
               <div className="overflow-x-auto">
@@ -3294,7 +3243,7 @@ export default function Manual() {
                 <li>💡 Торгуйте только в своё <strong className="text-white">«золотое окно»</strong> — часы с лучшей статистикой</li>
                 <li>📊 Минимум 30 сделок на каждый временной слот для надёжного анализа</li>
                 <li>⚠️ Если вечер убыточен — поставьте таймер и уходите с рынка!</li>
-                <li>🎯 Eqio строит тепловые карты автоматически</li>
+                <li>🎯 Полистата строит тепловые карты автоматически</li>
               </ul>
             </div>
           </div>
@@ -3302,10 +3251,6 @@ export default function Manual() {
 
         {/* R-Expectancy */}
         <section id="r-expectancy" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute top-0 left-0 w-80 h-80 bg-emerald-500/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-60 h-60 bg-green-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3467,7 +3412,7 @@ export default function Manual() {
                 <li>💡 E[R] важнее Win Rate — можно выигрывать 30% сделок и быть прибыльным</li>
                 <li>📊 Следите за средним R-multiple каждой сделки — он должен расти</li>
                 <li>⚠️ E[R] &lt; 0.2R — комиссии и проскальзывание съедят прибыль</li>
-                <li>🎯 Eqio рассчитывает R-Expectancy автоматически</li>
+                <li>🎯 Полистата рассчитывает R-Expectancy автоматически</li>
               </ul>
             </div>
           </div>
@@ -3475,10 +3420,6 @@ export default function Manual() {
 
         {/* Win/Loss Streaks */}
         <section id="streaks" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-80 h-80 bg-amber-500/15 rounded-full blur-3xl" />
-          <div className="absolute -bottom-20 left-0 w-60 h-60 bg-orange-500/10 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3579,7 +3520,7 @@ export default function Manual() {
 
             {/* Your Stats */}
             <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 rounded-xl p-6 mb-8 border border-amber-500/20">
-              <h3 className="text-white font-bold text-lg mb-4">📈 Что Eqio показывает</h3>
+              <h3 className="text-white font-bold text-lg mb-4">📈 Что Полистата показывает</h3>
               
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="bg-black/30 p-4 rounded-lg">
@@ -3713,7 +3654,7 @@ export default function Manual() {
                 <li>💡 После 3 убытков подряд — <strong className="text-white">уменьшите размер позиции</strong> вдвое</li>
                 <li>📊 Ведите дневник эмоций во время серий — найдёте паттерны</li>
                 <li>⚠️ Никогда не увеличивайте риск после серии убытков!</li>
-                <li>🎯 Eqio считает серии автоматически и предупреждает о рекордах</li>
+                <li>🎯 Полистата считает серии автоматически и предупреждает о рекордах</li>
               </ul>
             </div>
           </div>
@@ -3721,7 +3662,6 @@ export default function Manual() {
 
         {/* Avg Win/Loss */}
         <section id="avg-win-loss" className="cyber-card p-8 relative overflow-hidden">
-          <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-pink-500/10 rounded-full blur-2xl" />
           <div className="relative">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 bg-pink-500/20 rounded-xl">
@@ -3776,9 +3716,6 @@ export default function Manual() {
 
         {/* Tags System - add id */}
         <section id="tags" className="cyber-card p-8 relative overflow-hidden">
-          {/* Background */}
-          <div className="absolute -top-20 right-0 w-60 h-60 bg-pink-500/15 rounded-full blur-3xl" />
-          
           <div className="relative">
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
@@ -3936,7 +3873,7 @@ export default function Manual() {
               
               <div className="bg-black/30 p-4 rounded-lg mb-4">
                 <div className="text-sm opacity-80 mb-4">
-                  Трейдер думал, что плохо торгует шорты. Eqio показал реальную картину:
+                  Трейдер думал, что плохо торгует шорты. Полистата показал реальную картину:
                 </div>
                 
                 <div className="space-y-2">
