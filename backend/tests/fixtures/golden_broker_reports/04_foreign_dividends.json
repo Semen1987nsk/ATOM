@@ -1,0 +1,45 @@
+{
+  "description": "Иностранные дивиденды с NDFL — проверка дивидендной метрики и tax withholding",
+  "account_id": "test-acc-4",
+  "period_start": "2026-01-01T00:00:00+00:00",
+  "period_end": "2026-03-31T23:59:59+00:00",
+  "broker_report": [
+    {
+      "trade_id": "T1",
+      "direction": "buy",
+      "ticker": "AAPL",
+      "trade_datetime": "2026-01-10T10:00:00+00:00",
+      "quantity": 10,
+      "price": "180.00",
+      "order_amount": "1800.00",
+      "total_order_amount": "1800.00",
+      "broker_commission": "5.40",
+      "exchange_commission": "0.18",
+      "currency": "usd"
+    }
+  ],
+  "foreign_dividends": [
+    {
+      "security_name": "AAPL",
+      "isin": "US0378331005",
+      "dividend_gross": "10.00",
+      "tax": "1.50",
+      "dividend_amount": "8.50",
+      "payment_date": "2026-02-15T00:00:00+00:00"
+    },
+    {
+      "security_name": "MSFT",
+      "isin": "US5949181045",
+      "dividend_gross": "5.00",
+      "tax": "0.75",
+      "dividend_amount": "4.25",
+      "payment_date": "2026-03-10T00:00:00+00:00"
+    }
+  ],
+  "expected_metrics": {
+    "trade_count": 1,
+    "dividends_gross": "15.00",
+    "ndfl_withheld": "2.25",
+    "broker_commission_total": "5.40"
+  }
+}

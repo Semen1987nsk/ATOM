@@ -178,9 +178,12 @@ class TestTimePatterns:
             {"day": "Пн", "total_pnl": 40.0, "trades": 2, "win_rate": 50.0},
             {"day": "Вт", "total_pnl": 70.0, "trades": 1, "win_rate": 100.0},
         ]
+        # S3-12: часы бакетируются по МСК (UTC+3). entry_at трактуется как
+        # naive-UTC → 10:00→13:00, 11:00→14:00 МСК (без пересечения полуночи,
+        # поэтому day/month_stats выше не меняются).
         assert result["hour_stats"] == [
-            {"hour": "10:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
-            {"hour": "11:00", "total_pnl": -55.0, "trades": 1, "win_rate": 0.0},
+            {"hour": "13:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
+            {"hour": "14:00", "total_pnl": -55.0, "trades": 1, "win_rate": 0.0},
         ]
         assert result["month_stats"] == [
             {"month": "Янв", "total_pnl": 40.0, "trades": 2, "win_rate": 50.0},

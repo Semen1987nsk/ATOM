@@ -78,8 +78,9 @@ services:
     networks:
       - atom-net
 
-  # ──────────────── Nginx (TLS termination + frontend static) ────────────────
-  # В проде здесь Caddy/Traefik с auto-TLS. Для local — простой reverse-proxy.
+  # ──────────────── Nginx (TLS termination + reverse proxy) ────────────────
+  # SEC-01: TLS termination (Let's Encrypt через certbot).
+  # INFRA-04/05/06/11: gzip + rate-limit + frontend proxy + forwarded-ips.
   nginx:
     image: nginx:1.27-alpine
     container_name: atom-nginx
@@ -88,10 +89,28 @@ services:
       - backend
     ports:
       - "80:80"
-      # - "443:443"  # включить когда настроишь TLS
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      # - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    networks:
+      - atom-net
+
+  # ──────────────── Certbot (Let's Encrypt) ────────────────
+  # Использование: docker compose run --rm certbot certonly --webroot ...
+  # См. scripts/init_certbot.sh для первичной выдачи.
+  # Renewal — через cron на хосте: docker compose run --rm certbot renew && docker compose exec nginx nginx -s reload
+  certbot:
+    image: certbot/certbot:latest
+    container_name: atom-certbot
+    volumes:
+      - ./nginx/certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # entrypoint sleep — чтобы контейнер не падал при docker compose up;
+    # фактический вызов certbot — через `docker compose run --rm certbot ...`
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; done'"
     networks:
       - atom-net
 
@@ -101,6 +120,7 @@ volumes:
   redis_data:
   uploads_data:
   logs_data:
+  certbot_www:
 
 networks:
   atom-net:

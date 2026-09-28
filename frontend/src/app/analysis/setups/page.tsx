@@ -8,13 +8,14 @@
  */
 import { useEffect, useState } from "react";
 import { Layers, TrendingUp, TrendingDown } from "lucide-react";
-import { ResponsiveContainer, AreaChart, Area, YAxis } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, YAxis } from "@/lib/lazy-recharts";
 import { AppShell } from "@/components/AppShell";
 import { AnalysisPageHeader } from "@/components/analysis/AnalysisPageHeader";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import { api } from "@/lib/apiClient";
+import { api, ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import { DataError } from "@/components/ui/DataError";
 
 interface SetupStats {
   setup: string;
@@ -41,15 +42,22 @@ export default function SetupsPage() {
   const { formatCurrency } = useSettings();
   const [data, setData] = useState<SetupsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [refetchKey, setRefetchKey] = useState(0);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     setLoading(true);
+    setError(null);
+    let cancelled = false;
     api.get<SetupsResponse>("/stats/setups")
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [user]);
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) { setData(null); setError(e as ApiError | Error); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, refetchKey]);
+
+  const retry = () => setRefetchKey((k) => k + 1);
 
   if (authLoading) return <DashboardSkeleton />;
 
@@ -65,6 +73,8 @@ export default function SetupsPage() {
 
         {!user ? (
           <Empty text="Войдите, чтобы увидеть разбор сетапов." />
+        ) : error ? (
+          <DataError error={error} onRetry={retry} />
         ) : loading ? (
           <DashboardSkeleton />
         ) : !data || data.setups.length === 0 ? (

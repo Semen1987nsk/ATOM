@@ -23,7 +23,7 @@ export default function MAEMFEPage() {
       <div className="p-6 md:p-8 max-w-7xl mx-auto">
         <AnalysisPageHeader
           title="MAE / MFE анализ"
-          subtitle="Максимальный негативный и благоприятный экскурс цены — для оптимизации стопов и тейк-профитов."
+          subtitle="MAE — насколько цена ходила против позиции, MFE — насколько в вашу пользу. Показывает, где стопы слишком широкие, а тейки — слишком ранние. Клик по строке — детали группы и переход к Trade Replay каждой сделки."
           Icon={Target}
           accentColor="indigo"
         />

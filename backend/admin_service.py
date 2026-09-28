@@ -11,6 +11,11 @@ import models
 from utils import utc_now_naive
 
 
+# API-09: whitelist для sort_by — иначе произвольный getattr(models.User, ...)
+# открывает сортировку по любому атрибуту (напр. hashed_password).
+_ALLOWED_SORT_COLUMNS = {"created_at", "last_login", "email", "name", "registration_source"}
+
+
 def get_current_admin(db: Session, user: models.User) -> models.User:
     """Проверка что пользователь является администратором"""
     if not user.is_admin:
@@ -49,7 +54,8 @@ def get_users_list(
     total = query.count()
     
     # Сортировка
-    sort_column = getattr(models.User, sort_by, models.User.created_at)
+    col_name = sort_by if sort_by in _ALLOWED_SORT_COLUMNS else "created_at"
+    sort_column = getattr(models.User, col_name)
     if sort_order == "desc":
         query = query.order_by(sort_column.desc())
     else:

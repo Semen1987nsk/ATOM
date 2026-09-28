@@ -1,0 +1,39 @@
+{
+  "description": "USD акции на счёте — currency labeling должен быть usd, не rub",
+  "account_id": "test-acc-5",
+  "period_start": "2026-01-01T00:00:00+00:00",
+  "period_end": "2026-02-28T23:59:59+00:00",
+  "broker_report": [
+    {
+      "trade_id": "USD1",
+      "direction": "buy",
+      "ticker": "TSLA",
+      "trade_datetime": "2026-01-20T10:00:00+00:00",
+      "quantity": 5,
+      "price": "200.00",
+      "order_amount": "1000.00",
+      "total_order_amount": "1000.00",
+      "broker_commission": "3.00",
+      "currency": "usd"
+    },
+    {
+      "trade_id": "USD2",
+      "direction": "sell",
+      "ticker": "TSLA",
+      "trade_datetime": "2026-02-15T16:00:00+00:00",
+      "quantity": 5,
+      "price": "210.00",
+      "order_amount": "1050.00",
+      "total_order_amount": "1050.00",
+      "broker_commission": "3.15",
+      "currency": "usd"
+    }
+  ],
+  "foreign_dividends": [],
+  "expected_metrics": {
+    "trade_count": 2,
+    "broker_commission_total": "6.15",
+    "realized_pnl_approximate": "43.85",
+    "_note": "В USD. Cross-currency conversion отдельная задача (T6 audit)"
+  }
+}

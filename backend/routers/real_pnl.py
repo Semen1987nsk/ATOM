@@ -1,223 +1,185 @@
 """
-Real PnL Router — Получение РЕАЛЬНОГО PnL напрямую из API брокера
+Реальный PnL по счёту (PR 12 — переписан после PR 0).
 
-Этот роутер возвращает точные данные о PnL, рассчитанные на основе:
-- Текущего баланса от API
-- Net Deposit (ввод - вывод)
-- Вариационной маржи для фьючерсов
-- Всех комиссий (Broker Fee, Margin Fee, Service Fee)
+Использует:
+* live `TinkoffOperationsClient.get_portfolio_raw()` для текущего баланса,
+* локальные `BrokerConnection` + `Trade` для realized PnL и истории.
 
-ФОРМУЛЫ:
-- Real PnL = Текущий баланс - Net Deposit
-- Закрытый PnL = Акции PnL + Varmargin + Комиссии + Другое
-- Нереализованный PnL = Real PnL - Закрытый PnL
+Не использует битый `tinkoff_service_v2` (удалён в PR 0).
 """
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+
+from __future__ import annotations
+
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
-import database
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
 import models
-import auth_service
-import pnl_service
+from adapters.persistence.token_repo import TokenRepository
+from adapters.security.token_encryption import (
+    TokenEncryptionError,
+    TokenEncryptionService,
+)
+from adapters.tinkoff.client_factory import client_factory
+from adapters.tinkoff.operations_client import TinkoffOperationsClient
+from auth_service import get_current_user, get_user_account
+from config import settings
+from database import get_db
+from domain.exceptions import BrokerError, TokenInvalid
 from logger import get_logger
+from models import BrokerConnection, OperationORM
+from services import pnl_health_service
+from utils.datetime_utils import utc_now_naive
 
 log = get_logger("real_pnl")
+router = APIRouter(prefix="/real-pnl", tags=["real_pnl"])
 
-router = APIRouter(tags=["real_pnl"])
 
-
-# get_account_id is now centralized in auth_service
+def _money_to_decimal(m) -> Decimal:
+    if m is None:
+        return Decimal(0)
+    units = getattr(m, "units", 0) or 0
+    nano = getattr(m, "nano", 0) or 0
+    return Decimal(int(units)) + Decimal(int(nano)) / Decimal(1_000_000_000)
 
 
 @router.get("/")
 async def get_real_pnl(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     """
-    Получить РЕАЛЬНЫЙ PnL напрямую из API брокера.
-    
-    Возвращает:
-    - real_pnl: Фактический PnL = Баланс - Net Deposit
-    - stocks_pnl: PnL по акциям (закрытые сделки)
-    - futures_pnl: PnL по фьючерсам (вариационная маржа)
-    - broker_fee, margin_fee, service_fee: РљРѕРјРёСЃСЃРёРё
-    - unrealized_pnl: Нереализованный PnL (открытые позиции)
-    - roi: Return on Investment (%)
+    Полная сводка реального PnL: текущий баланс + разложение по компонентам
+    из локальной БД операций.
     """
-    account_id = auth_service.get_account_id(db, current_user)
-    
-    # Получаем подключение к брокеру
-    connection = db.query(models.BrokerConnection).filter(
-        models.BrokerConnection.account_id == account_id,
-        models.BrokerConnection.is_active == True
-    ).first()
-    
-    if not connection:
-        raise HTTPException(status_code=404, detail="No active broker connection")
-    
-    # Импортируем сервис
-    from tinkoff_service_v2 import TinkoffServiceV2
-    
+    if not settings.BROKER_SYNC_V2_ENABLED:
+        raise HTTPException(status_code=503, detail="Broker sync v2 disabled")
+
+    account = get_user_account(db, current_user)
+    conn = (
+        db.query(BrokerConnection)
+        .filter(BrokerConnection.account_id == account.id, BrokerConnection.is_active.is_(True))
+        .first()
+    )
+    if conn is None:
+        raise HTTPException(status_code=404, detail="Нет активных подключений")
+
+    # 1. Live портфель.
     try:
-        service = TinkoffServiceV2(connection.api_token)
-        
-        # Получаем текущий баланс
-        portfolio = service._make_request(
-            "POST",
-            "/tinkoff.public.invest.api.contract.v1.OperationsService/GetPortfolio",
-            {"accountId": connection.broker_account_id, "currency": "RUB"}
-        )
-        current_balance = float(service._money_to_decimal(portfolio.get("totalAmountPortfolio", {})))
-        cash = float(service._money_to_decimal(portfolio.get("totalAmountCurrencies", {})))
-        positions_value = float(
-            service._money_to_decimal(portfolio.get("totalAmountShares", {})) +
-            service._money_to_decimal(portfolio.get("totalAmountFutures", {})) +
-            service._money_to_decimal(portfolio.get("totalAmountBonds", {})) +
-            service._money_to_decimal(portfolio.get("totalAmountEtf", {}))
-        )
-        
-        # Получаем все операции
-        from_date = datetime(2020, 1, 1)  # Начало истории
-        to_date = datetime.now()
-        
-        operations = service.get_operations(connection.broker_account_id, from_date, to_date)
-        
-        # Рассчитываем все компоненты
-        net_deposit = Decimal(0)
-        stocks_pnl = Decimal(0)
-        varmargin = Decimal(0)
-        broker_fee = Decimal(0)
-        margin_fee = Decimal(0)
-        service_fee = Decimal(0)
-        other = Decimal(0)
-        
-        for op in operations:
-            op_type = op.get("operationType", "")
-            payment = service._money_to_decimal(op.get("payment", {}))
-            figi = op.get("figi", "")
-            
-            if op_type == "OPERATION_TYPE_INPUT":
-                net_deposit += payment
-            elif op_type == "OPERATION_TYPE_OUTPUT":
-                net_deposit += payment  # Отрицательный
-            elif op_type in ["OPERATION_TYPE_BUY", "OPERATION_TYPE_SELL"]:
-                # Проверяем тип инструмента
-                if figi:
-                    info = service.get_instrument_info(figi)
-                    if info and info.get("instrument_type") != "INSTRUMENT_TYPE_FUTURES":
-                        stocks_pnl += payment
-            elif op_type == "OPERATION_TYPE_ACCRUING_VARMARGIN":
-                varmargin += payment
-            elif op_type == "OPERATION_TYPE_WRITING_OFF_VARMARGIN":
-                varmargin += payment
-            elif op_type == "OPERATION_TYPE_BROKER_FEE":
-                broker_fee += payment  # Отрицательный
-            elif op_type == "OPERATION_TYPE_MARGIN_FEE":
-                margin_fee += payment  # Отрицательный
-            elif op_type == "OPERATION_TYPE_SERVICE_FEE":
-                service_fee += payment  # Отрицательный
-            elif op_type in ["OPERATION_TYPE_TAX", "OPERATION_TYPE_INP_MULTI", "OPERATION_TYPE_OPTION_EXPIRATION"]:
-                other += payment
-        
-        # Расчёты
-        net_deposit_float = float(net_deposit)
-        real_pnl = current_balance - net_deposit_float
-        
-        closed_pnl = float(stocks_pnl + varmargin + broker_fee + margin_fee + service_fee + other)
-        unrealized_pnl = real_pnl - closed_pnl
-        
-        roi = (real_pnl / net_deposit_float * 100) if net_deposit_float > 0 else 0
-        
-        return {
-            "current_balance": round(current_balance, 2),
-            "cash": round(cash, 2),
-            "positions_value": round(positions_value, 2),
-            "net_deposit": round(net_deposit_float, 2),
-            
-            "real_pnl": round(real_pnl, 2),
-            "roi": round(roi, 2),
-            
-            "breakdown": {
-                "stocks_pnl": round(float(stocks_pnl), 2),
-                "futures_pnl": round(float(varmargin), 2),
-                "broker_fee": round(float(broker_fee), 2),
-                "margin_fee": round(float(margin_fee), 2),
-                "service_fee": round(float(service_fee), 2),
-                "other": round(float(other), 2),
-                "closed_pnl": round(closed_pnl, 2),
-                "unrealized_pnl": round(unrealized_pnl, 2)
-            },
-            
-            "totals": {
-                "varmargin_accruing": round(float(sum(
-                    service._money_to_decimal(op.get("payment", {}))
-                    for op in operations
-                    if op.get("operationType") == "OPERATION_TYPE_ACCRUING_VARMARGIN"
-                )), 2),
-                "varmargin_writing_off": round(float(sum(
-                    service._money_to_decimal(op.get("payment", {}))
-                    for op in operations
-                    if op.get("operationType") == "OPERATION_TYPE_WRITING_OFF_VARMARGIN"
-                )), 2),
-                "total_operations": len(operations)
-            },
-            
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        log.error(f"Error fetching real PnL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/recalculate")
-async def recalculate_trades_pnl(
-    db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(auth_service.get_current_user)
-):
-    """
-    Recalculate PnL for ALL closed trades using unified pnl_service.
-    Uses moex_service for correct point_value (no hardcoded specs).
-    No broker connection required.
-    """
-    account_id = auth_service.get_account_id(db, current_user)
+        encryption = TokenEncryptionService()
+    except TokenEncryptionError as exc:
+        raise HTTPException(status_code=500, detail=f"Encryption not configured: {exc}")
+    repo = TokenRepository(encryption=encryption)
+    try:
+        token = repo.get_decrypted(db, account_id=account.id, broker_account_id=conn.broker_account_id)
+    except TokenEncryptionError as exc:
+        raise HTTPException(status_code=500, detail=f"Decrypt failed: {exc}")
+    if not token:
+        raise HTTPException(status_code=410, detail="Подключение повреждено")
 
     try:
-        closed_trades = db.query(models.Trade).filter(
-            models.Trade.account_id == account_id,
-            models.Trade.exit_at != None
-        ).all()
+        async with client_factory.async_client(token) as services:
+            ops = TinkoffOperationsClient(services)
+            portfolio = await ops.get_portfolio_raw(conn.broker_account_id)
+    except TokenInvalid:
+        raise HTTPException(status_code=424, detail="Токен брокера невалиден")
+    except BrokerError as exc:
+        raise HTTPException(status_code=502, detail=f"Tinkoff API: {exc.message}")
 
-        updated_count = 0
-        total_correction = Decimal(0)
+    current_balance = float(_money_to_decimal(getattr(portfolio, "total_amount_portfolio", None)))
+    cash = float(_money_to_decimal(getattr(portfolio, "total_amount_currencies", None)))
 
-        for trade in closed_trades:
-            if not trade.exit_price or not trade.entry_price:
-                continue
+    # 2. Аггрегаты из БД операций — по категориям из единого классификатора.
+    # До 2026-05-17 здесь был hardcoded type_to_key с 8 типами, упускавший
+    # input_swift, output_swift, input_acquiring, output_acquiring, out_multi
+    # — пользователи с такими пополнениями получали real_pnl = current_balance
+    # (P&L завышен на сумму неучтённых пополнений). См. plan B1.
+    from domain.pnl.cash_flow_classification import (
+        CASH_FLOW_MAP,
+        CashFlowCategory,
+    )
 
-            new_pnl, new_net_pnl = pnl_service.recalculate_trade_pnl(trade)
+    breakdown_by_category: dict[CashFlowCategory, Decimal] = {
+        cat: Decimal(0) for cat in CashFlowCategory
+    }
 
-            old_pnl = Decimal(str(trade.pnl or 0))
-            if abs(Decimal(str(new_pnl)) - old_pnl) > Decimal("0.01"):
-                total_correction += Decimal(str(new_pnl)) - old_pnl
-                trade.pnl = new_pnl
-                trade.net_pnl = new_net_pnl
-                updated_count += 1
+    rows = (
+        db.query(
+            OperationORM.operation_type,
+            OperationORM.payment_units,
+            OperationORM.payment_nano,
+        )
+        .filter(
+            OperationORM.account_id == account.id,
+            OperationORM.state == "executed",
+        )
+        .all()
+    )
+    unknown_types: dict[str, int] = {}
+    for op_type, units, nano in rows:
+        if units is None and nano is None:
+            continue
+        category = CASH_FLOW_MAP.get(op_type)
+        if category is None:
+            unknown_types[op_type] = unknown_types.get(op_type, 0) + 1
+            category = CashFlowCategory.UNKNOWN
+        amount = Decimal(int(units or 0)) + Decimal(int(nano or 0)) / Decimal(1_000_000_000)
+        breakdown_by_category[category] += amount
 
-        db.commit()
+    if unknown_types:
+        log.warning(
+            "real_pnl.unknown_operation_types",
+            extra={"account_id": account.id, "types": unknown_types},
+        )
 
-        return {
-            "updated_trades": updated_count,
-            "total_trades": len(closed_trades),
-            "total_correction": round(float(total_correction), 2),
-            "message": f"Recalculated {updated_count} of {len(closed_trades)} closed trades"
-        }
+    # 3. Real PnL = current_balance - net_deposit. net_deposit = все каналы
+    # NET_DEPOSIT (input, output, swift, acquiring, multi). НЕ включает
+    # internal_transfer (trans_iis_bs/trans_bs_bs — зеркальные записи) и
+    # security_transfer (input_securities/output_securities — без cash).
+    net_deposit = float(breakdown_by_category[CashFlowCategory.NET_DEPOSIT])
+    # ADR-0010: effective_deposits = net_deposits + initial_balance (восстановленный
+    # стартовый якорь для broker-счёта с неполной историей). На счёте без якоря
+    # (initial_balance==0) это тождественно прежнему net_deposit.
+    eff_deposit = net_deposit + float(account.initial_balance or 0)
+    real_pnl = current_balance - eff_deposit
+    roi = (real_pnl / eff_deposit * 100) if eff_deposit > 0 else 0
 
-    except Exception as e:
-        log.error(f"Error recalculating PnL: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    health = pnl_health_service.compute_health(db, account.id)
+    clearing_adjustment = health.components.get("clearing_adjustment", 0)
+
+    # Pretty breakdown для UI: legacy ключи + категорий-агрегаты.
+    breakdown_legacy: dict[str, float] = {
+        "stocks_pnl": 0.0,  # требует FIFO matcher result — рекомендуем читать через /stats
+        "futures_varmargin": float(breakdown_by_category[CashFlowCategory.VARMARGIN]),
+        "broker_fee": float(breakdown_by_category[CashFlowCategory.BROKER_COMMISSION]),
+        "margin_fee": 0.0,  # уже в attributable_fee, см. ниже
+        "service_fee": 0.0,
+        "tax": float(breakdown_by_category[CashFlowCategory.TAX]
+                     + breakdown_by_category[CashFlowCategory.INCOME_TAX]),
+        "input_total": net_deposit if net_deposit >= 0 else 0.0,
+        "output_total": 0.0,
+        "coupons": 0.0,  # часть income
+        "dividends": 0.0,  # часть income
+        "attributable_fee_total": float(breakdown_by_category[CashFlowCategory.ATTRIBUTABLE_FEE]),
+        "income_total": float(breakdown_by_category[CashFlowCategory.INCOME]),
+        "internal_transfer_total": float(breakdown_by_category[CashFlowCategory.INTERNAL_TRANSFER]),
+        "unknown_total": float(breakdown_by_category[CashFlowCategory.UNKNOWN]),
+    }
+
+    return {
+        "current_balance": round(current_balance, 2),
+        "cash": round(cash, 2),
+        "net_deposit": round(net_deposit, 2),
+        "real_pnl": round(real_pnl, 2),
+        "roi": round(roi, 2),
+        "breakdown": breakdown_legacy,
+        "breakdown_by_category": {
+            cat.value: float(amt) for cat, amt in breakdown_by_category.items() if abs(amt) > Decimal("0.01")
+        },
+        "clearing_adjustment": round(float(clearing_adjustment), 2),
+        "health_status": health.status,
+        "health_layers": health.components.get("layers", {}),
+        "updated_at": utc_now_naive().isoformat(),
+    }

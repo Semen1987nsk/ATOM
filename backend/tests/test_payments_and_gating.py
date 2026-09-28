@@ -5,7 +5,7 @@ Tests for /payments router + subscription paywall gating.
 - /payments/me для FREE-юзера → plan='free'
 - /payments/checkout-link генерит stub-URL
 - /payments/webhook со status=succeeded активирует PRO-подписку
-- enforce_trade_limit: FREE юзер с N=FREE_PLAN_TRADE_LIMIT не может создать новую сделку
+- enforce_trade_limit: no-op, Free безлимитен по сделкам (ADR-0009)
 - require_pro: 402 на FREE, 200 на PRO
 """
 from __future__ import annotations
@@ -35,9 +35,8 @@ from database import get_db  # noqa: E402
 import auth_service  # noqa: E402
 from utils.datetime_utils import utc_now_naive  # noqa: E402
 from subscription_service import (  # noqa: E402
-    get_active_plan, enforce_trade_limit, FREE_PLAN_TRADE_LIMIT
+    get_active_plan, enforce_trade_limit
 )
-from fastapi import HTTPException  # noqa: E402
 
 
 @pytest.fixture(scope="function")
@@ -165,18 +164,19 @@ class TestCheckoutFlow:
 # ──────────────────────────────────────────────────────────────────
 
 
-class TestTradeLimitGate:
-    def test_below_limit_passes(self, test_app):
+class TestFreeUnlimitedTrades:
+    """ADR-0009: Free безлимитен по сделкам (лимит 50 снят). enforce_trade_limit — no-op."""
+
+    def test_zero_trades_passes(self, test_app):
         db = test_app["db"]
         user, _ = _make_user(db)
-        # 0 сделок → пропускает
         enforce_trade_limit(db, user)  # не должно бросить
 
-    def test_at_limit_raises(self, test_app):
+    def test_free_user_unlimited(self, test_app):
         db = test_app["db"]
         user, acc = _make_user(db)
-        # Создаём ровно лимит сделок
-        for i in range(FREE_PLAN_TRADE_LIMIT):
+        # Заметно больше старого лимита 50 — Free больше НЕ режется (ADR-0009).
+        for i in range(60):
             db.add(Trade(
                 account_id=acc.id, symbol=f"S{i}",
                 direction=TradeDirection.LONG,
@@ -185,12 +185,7 @@ class TestTradeLimitGate:
                 currency="RUB",
             ))
         db.commit()
-        with pytest.raises(HTTPException) as exc:
-            enforce_trade_limit(db, user)
-        assert exc.value.status_code == 402
-        detail = exc.value.detail
-        assert detail["error"] == "trade_limit_reached"
-        assert detail["limit"] == FREE_PLAN_TRADE_LIMIT
+        enforce_trade_limit(db, user)  # Free безлимит → не бросает
 
     def test_pro_user_unlimited(self, test_app):
         db = test_app["db"]

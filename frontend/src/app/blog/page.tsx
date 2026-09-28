@@ -65,10 +65,11 @@ function ArticleCard({ article }: { article: Article }) {
         <div className="aspect-video bg-secondary relative overflow-hidden">
           {article.cover_image ? (
             <Image
-              src={article.cover_image} 
+              src={article.cover_image}
               alt={article.title}
               fill
               sizes="(max-width: 768px) 100vw, 33vw"
+              // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
               unoptimized
               className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -147,10 +148,11 @@ function FeaturedArticle({ article }: { article: Article }) {
           <div className="aspect-video md:aspect-auto bg-secondary relative overflow-hidden">
             {article.cover_image ? (
               <Image
-                src={article.cover_image} 
+                src={article.cover_image}
                 alt={article.title}
                 fill
                 sizes="(max-width: 768px) 100vw, 50vw"
+                // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
                 unoptimized
                 className="object-cover group-hover:scale-105 transition-transform duration-300"
               />

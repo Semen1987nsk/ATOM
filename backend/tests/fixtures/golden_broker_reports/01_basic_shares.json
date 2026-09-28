@@ -1,0 +1,61 @@
+{
+  "description": "Базовый сценарий: 3 трейда по SBER, P&L простой",
+  "account_id": "test-acc-1",
+  "period_start": "2026-01-01T00:00:00+00:00",
+  "period_end": "2026-01-31T23:59:59+00:00",
+  "broker_report": [
+    {
+      "trade_id": "T1",
+      "direction": "buy",
+      "ticker": "SBER",
+      "trade_datetime": "2026-01-05T10:30:00+00:00",
+      "quantity": 100,
+      "price": "250.50",
+      "order_amount": "25050.00",
+      "total_order_amount": "25050.00",
+      "broker_commission": "75.15",
+      "exchange_commission": "2.50",
+      "exchange_clearing_commission": "1.00",
+      "currency": "rub"
+    },
+    {
+      "trade_id": "T2",
+      "direction": "sell",
+      "ticker": "SBER",
+      "trade_datetime": "2026-01-20T15:00:00+00:00",
+      "quantity": 100,
+      "price": "260.00",
+      "order_amount": "26000.00",
+      "total_order_amount": "26000.00",
+      "broker_commission": "78.00",
+      "exchange_commission": "2.60",
+      "exchange_clearing_commission": "1.04",
+      "currency": "rub"
+    },
+    {
+      "trade_id": "T3",
+      "direction": "buy",
+      "ticker": "GAZP",
+      "trade_datetime": "2026-01-25T11:00:00+00:00",
+      "quantity": 50,
+      "price": "130.00",
+      "order_amount": "6500.00",
+      "total_order_amount": "6500.00",
+      "broker_commission": "19.50",
+      "exchange_commission": "0.65",
+      "exchange_clearing_commission": "0.26",
+      "currency": "rub"
+    }
+  ],
+  "foreign_dividends": [],
+  "expected_metrics": {
+    "trade_count": 3,
+    "broker_commission_total": "172.65",
+    "exchange_commission_total": "5.75",
+    "clearing_commission_total": "2.30",
+    "dividends_gross": "0",
+    "ndfl_withheld": "0",
+    "realized_pnl_approximate": "789.71",
+    "_realized_pnl_note": "AU13 FIFO (closed-only, like-for-like с нашей стороной): SBER (260.00-250.50)x100 = 950.00, минус entry comm 78.65 минус exit comm 81.64 = 789.71. Открытая позиция GAZP (buy без sell) НЕ даёт realized P&L. (Прежнее -5730.70 — старая cash-flow формула sell-allBuys-comm, включавшая открытую покупку; устарело после AU13.)"
+  }
+}

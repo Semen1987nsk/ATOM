@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Eqio - Start Script
+# Empirik - Start Script
 # Запускает backend и frontend в фоновом режиме
 
-echo "🚀 Eqio - Запуск сервисов..."
+echo "🚀 Empirik - Запуск сервисов..."
 echo "================================"
 
 # Останавливаем старые процессы
@@ -51,7 +51,7 @@ fi
 
 echo ""
 echo "================================"
-echo "🎉 Eqio готов к работе!"
+echo "🎉 Empirik готов к работе!"
 echo ""
 echo "📍 Frontend: http://localhost:3000"
 echo "📍 Backend:  http://localhost:8000"

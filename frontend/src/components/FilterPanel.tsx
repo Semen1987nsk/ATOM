@@ -157,7 +157,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         </button>
 
         {openDropdown === 'period' && (
-          <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[150px]">
+          <div className="absolute top-full left-0 mt-1 bg-[var(--surface-1)] border border-border z-50 min-w-[150px]">
             {periods.map((period) => (
               <button
                 key={period.value}
@@ -187,7 +187,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         </button>
 
         {openDropdown === 'tag' && (
-          <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[180px] max-h-[300px] overflow-y-auto">
+          <div className="absolute top-full left-0 mt-1 bg-[var(--surface-1)] border border-border z-50 min-w-[180px] max-h-[300px] overflow-y-auto">
             <button
               onClick={() => handleTagSelect(undefined)}
               className={`w-full text-left px-4 py-2 text-xs font-mono hover:bg-accent/10 transition-colors ${
@@ -228,7 +228,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         </button>
 
         {openDropdown === 'limit' && (
-          <div className="absolute top-full left-0 mt-1 bg-[#0d0d0d] border border-border z-50 min-w-[120px]">
+          <div className="absolute top-full left-0 mt-1 bg-[var(--surface-1)] border border-border z-50 min-w-[120px]">
             {LIMIT_OPTIONS.map((opt) => (
               <button
                 key={opt.label}
@@ -259,10 +259,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       {/* Custom Date Modal */}
       {showCustomDate && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="cyber-card w-full max-w-sm bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
-            {/* Background glow */}
-            <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-            
+          <div className="cyber-card w-full max-w-sm bg-[var(--surface-1)] p-6 relative animate-scaleIn overflow-hidden">
             <button 
               onClick={() => setShowCustomDate(false)} 
               className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10"

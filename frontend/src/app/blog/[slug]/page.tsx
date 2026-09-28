@@ -118,6 +118,7 @@ function RelatedArticleCard({ article }: { article: Article }) {
               alt={article.title}
               fill
               sizes="(max-width: 768px) 100vw, 33vw"
+              // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
               unoptimized
               className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -305,11 +306,11 @@ export default function ArticlePage() {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent rounded-full flex items-center justify-center">
                 <span className="text-lg font-bold text-white">
-                  {(article.author_name || 'A')[0].toUpperCase()}
+                  {(article.author_name || 'Э')[0].toUpperCase()}
                 </span>
               </div>
               <div>
-                <p className="font-medium">{article.author_name || 'Редакция ATOM'}</p>
+                <p className="font-medium">{article.author_name || 'Редакция Полистаты'}</p>
                 <p className="text-sm text-muted-foreground">Автор статьи</p>
               </div>
             </div>
@@ -334,6 +335,7 @@ export default function ArticlePage() {
                 alt={article.title}
                 fill
                 sizes="(max-width: 1024px) 100vw, 896px"
+                // FE-09: admin-input URL (arbitrary CDN), domain not predictable.
                 unoptimized
                 className="object-cover"
               />

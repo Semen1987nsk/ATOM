@@ -7,6 +7,7 @@
  */
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Edit2, Trash2, ChevronRight, Play } from "lucide-react";
+import { parseApiDate } from "@/lib/dateUtils";
 
 interface TradeLite {
   id: number;
@@ -201,7 +202,7 @@ function Row({ label, value, muted }: { label: string; value: string; muted?: bo
 
 function formatShortDateTime(iso: string): string {
   try {
-    const d = new Date(iso);
+    const d = parseApiDate(iso);
     return d.toLocaleString("ru-RU", {
       day: "2-digit",
       month: "2-digit",

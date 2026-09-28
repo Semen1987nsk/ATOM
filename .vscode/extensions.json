@@ -1,0 +1,37 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.mypy-type-checker",
+    "charliermarsh.ruff",
+    "FastAPILabs.fastapi-vscode",
+
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "yoavbls.pretty-ts-errors",
+    "usernamehw.errorlens",
+    "bradlc.vscode-tailwindcss",
+    "heybourn.headwind",
+
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "ms-azuretools.vscode-docker",
+    "ms-vscode-remote.remote-containers",
+    "rangav.vscode-thunder-client",
+
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    "editorconfig.editorconfig",
+    "gruntfuggly.todo-tree",
+
+    "yzhang.markdown-all-in-one",
+    "bpruitt-goddard.mermaid-markdown-syntax-highlighting",
+    "hediet.vscode-drawio"
+  ],
+  "unwantedRecommendations": [
+    "ms-python.black-formatter",
+    "ms-python.flake8",
+    "ms-python.pylint",
+    "humao.rest-client"
+  ]
+}

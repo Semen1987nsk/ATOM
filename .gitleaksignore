@@ -1,0 +1,18 @@
+# Исторические находки generic-api-key, разобранные 2026-09-28 при заведении gitleaks:
+# тестовые значения MASTER_KEY_B64 (base64 от «0123456789abcdef…» и «some-base64-key»),
+# тестовые пароли, имена ключей localStorage и идентификатор секрета Yandex Lockbox
+# (не сам секрет: чтение требует IAM). Отпечаток привязан к коммиту, поэтому новую
+# утечку в тех же файлах он не глушит. Пересчёт: gitleaks git --config .gitleaks.toml .
+17949b1ac8c98543ef8580784bed580be4618f7d:docs/RUNBOOK.md:generic-api-key:607
+54a2118358301f360247a48a7c5bd33634cae24b:backend/tests/integration/test_admin_impersonate.py:generic-api-key:137
+58d131ca132e7a7c12a1f7d4a505479986d1afb5:.claude/skills/152-fz-compliance-checklist/templates/consent_banner.tsx:generic-api-key:20
+934fc68c6110c4b3e2f1ac53ace8ca6d1ea11990:frontend/src/components/PositionJournalView.tsx:generic-api-key:188
+a74a51083109ab32476beb313daf98759f011576:frontend/src/components/PositionJournalView.tsx:generic-api-key:188
+b405261aa2810cdbb3898a50e4c36f57c0ff441d:docs/superpowers/plans/2026-07-02-sprint-4-release-hygiene.md:generic-api-key:204
+b405261aa2810cdbb3898a50e4c36f57c0ff441d:docs/superpowers/plans/2026-07-02-sprint-4-release-hygiene.md:generic-api-key:233
+bac4651d9bd41c983d1895679263ec81e499beed:backend/tests/test_cors_regex.py:generic-api-key:23
+d386586bcb981ab5ddaa906153657d99cbca7e97:.github/workflows/ci.yml:generic-api-key:84
+e3d2b9fb99a2bfb071f617389d0bbd596465a44b:.github/workflows/ci.yml:generic-api-key:73
+e3d2b9fb99a2bfb071f617389d0bbd596465a44b:backend/tests/unit/test_config_master_key.py:generic-api-key:25
+e3d2b9fb99a2bfb071f617389d0bbd596465a44b:docs/superpowers/plans/2026-05-23-sprint-0-stop-the-bleeding.md:generic-api-key:313
+ea5dc7f18746ea3740e53ec6a3fb88cb81410e1b:.claude/skills/152-fz-compliance-checklist/templates/consent_banner.tsx:generic-api-key:20

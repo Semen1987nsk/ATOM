@@ -1,234 +1,395 @@
 @import "tailwindcss";
 
 /* ============================================================================
- *  ATOM / Eqio — Design System v2
- *  Стиль: чистый dark-product (вдохновлён kontur.ru, Linear, Vercel).
- *  Brand: Indigo #6366F1.
- *  Принципы: мягкие тени вместо неон-glow, pill-кнопки, 16px радиусы,
- *  высокая типографическая иерархия, минимум визуального шума.
+ *  ATOM / Полистата — Design System v3 (Editorial Financial)
+ *  Стиль: FT.com / Stripe Press / Bloomberg Markets.
+ *  Brand: Ochre #d4a13a.
+ *  Принципы: hairline rules вместо боксов, serif headlines (Fraunces),
+ *  warm-paper palette, desaturated P&L, ноль gradients,
+ *  почти flat geometry (radius ≤8px).
  *  Имена классов сохранены 1:1 со старой версии — drop-in замена.
+ *  Источник истины: .business/product/design-system.md v3
+ *  Обоснование: .business/tech/decisions/0006-editorial-financial-rebrand.md
  * ========================================================================== */
 
-/* ─────────────────── DARK THEME (default) ─────────────────── */
+/* ─────────────────── DARK THEME (default — traders work in dark) ─────── */
 :root {
-  /* Surfaces */
-  --background: #0a0a0b;
-  --surface-1: #141416;
-  --surface-2: #1c1c20;
-  --surface-3: #26262c;
-  --surface-hover: #222226;
+  color-scheme: dark;
 
-  /* Text */
-  --foreground: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --text-muted: #71717a;
-  --text-disabled: #52525b;
+  /* Paper / ink — warm editorial */
+  --paper-base:     #14110d;   /* warm near-black */
+  --paper-sunken:   #100e0a;
+  --paper-raised:   #1a1714;   /* level-1 cards */
+  --paper-overlay:  #25221d;   /* level-2 — modals, hover */
+  --background:     var(--paper-base);
+  --surface-1:      var(--paper-raised);
+  --surface-2:      var(--paper-overlay);
+  --surface-3:      #2f2b26;
+  --surface-hover:  #2a2722;
 
-  /* Borders */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  --ink:            #f5f1e8;   /* warm off-white */
+  --ink-2:          #b8b1a0;
+  --ink-3:          #847d6e;
+  --ink-4:          #5a5347;
+  --foreground:     var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-tertiary:  var(--ink-3);
+  --text-muted:     var(--ink-3);
+  --text-disabled:  var(--ink-4);
 
-  /* Brand: Indigo */
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-active: #4f46e5;
-  --accent-soft: rgba(99, 102, 241, 0.12);
-  --accent-soft-hover: rgba(99, 102, 241, 0.18);
-  --accent-secondary: #8b5cf6;
+  /* Hairlines — editorial signature */
+  --rule:           rgba(245, 241, 232, 0.10);
+  --rule-strong:    rgba(245, 241, 232, 0.22);
+  --border:         var(--rule);
+  --border-strong:  var(--rule-strong);
 
-  /* Semantic */
-  --success: #10b981;
-  --success-soft: rgba(16, 185, 129, 0.12);
-  --danger: #f43f5e;
-  --danger-soft: rgba(244, 63, 94, 0.12);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.12);
-  --info: #3b82f6;
+  /* Acid accent — ochre (FT/Bloomberg territory) */
+  --accent:            #d4a13a;
+  --accent-hover:      #e2b455;
+  --accent-active:     #b5871f;
+  --accent-soft:       rgba(212, 161, 58, 0.14);
+  --accent-soft-hover: rgba(212, 161, 58, 0.20);
+  --accent-secondary:  var(--accent);   /* legacy alias — был violet */
 
-  /* Card alias (back-compat) */
-  --card-bg: var(--surface-1);
+  /* P&L semantics — desaturated editorial-print, НЕ neon */
+  --success:        #2c8c5c;   /* forest green */
+  --success-soft:   rgba(44, 140, 92, 0.14);
+  --profit:         var(--success);
+  --danger:         #b94731;   /* brick red */
+  --danger-soft:    rgba(185, 71, 49, 0.14);
+  --loss:           var(--danger);
+  --warning:        #c98e1f;
+  --warning-soft:   rgba(201, 142, 31, 0.14);
+  --info:           var(--ink-2);
 
-  /* Inputs */
-  --input-bg: var(--surface-1);
-  --input-placeholder: var(--text-tertiary);
+  --card-bg:        var(--paper-raised);
+  --input-bg:       var(--paper-raised);
+  --input-placeholder: var(--ink-3);
 
-  /* Skeleton */
-  --skeleton-base: rgba(255, 255, 255, 0.04);
-  --skeleton-highlight: rgba(255, 255, 255, 0.08);
+  --skeleton-base:      rgba(245, 241, 232, 0.04);
+  --skeleton-highlight: rgba(245, 241, 232, 0.08);
+  --tooltip-bg:         rgba(26, 23, 20, 0.96);
 
-  /* Tooltip */
-  --tooltip-bg: rgba(20, 20, 22, 0.96);
+  --scrollbar-thumb:       rgba(212, 161, 58, 0.30);
+  --scrollbar-thumb-hover: rgba(212, 161, 58, 0.50);
+  --hover-overlay:         rgba(245, 241, 232, 0.03);
 
-  /* Scrollbar */
-  --scrollbar-thumb: rgba(99, 102, 241, 0.35);
-  --scrollbar-thumb-hover: rgba(99, 102, 241, 0.55);
-  --hover-overlay: rgba(255, 255, 255, 0.03);
+  /* Geometry — почти flat */
+  --radius-xs:   2px;
+  --radius-sm:   3px;
+  --radius-md:   4px;
+  --radius-lg:   6px;
+  --radius-xl:   8px;
+  --radius-pill: 9999px;   /* ТОЛЬКО для filter chips */
 
-  /* Geometry */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-pill: 9999px;
-
-  /* Shadows — soft, без glow */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.6);
+  /* Shadows — отключены по умолчанию. Hairline border вместо. */
+  --shadow-sm:  none;
+  --shadow-md:  none;
+  --shadow-lg:  none;
+  --shadow-xl:  0 12px 40px rgba(0, 0, 0, 0.50);  /* модалки only */
 
   /* Transitions */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --transition-fast: 0.15s var(--ease-out);
-  --transition-base: 0.25s var(--ease-out);
+  --ease-out:        cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-fast: 0.12s var(--ease-out);
+  --transition-base: 0.20s var(--ease-out);
 }
 
-/* ─────────────────── LIGHT THEME ─────────────────── */
+/* ─────────────────── LIGHT THEME (FT pink-paper) ─────────────────── */
 :root[data-theme="light"] {
-  --background: #fafafa;
-  --surface-1: #ffffff;
-  --surface-2: #f4f4f5;
-  --surface-3: #e4e4e7;
-  --surface-hover: #f4f4f5;
+  color-scheme: light;
 
-  --foreground: #0a0a0b;
-  --text-secondary: #52525b;
-  --text-tertiary: #71717a;
-  --text-muted: #71717a;
-  --text-disabled: #a1a1aa;
+  --paper-base:     #faf7f0;   /* cream warm paper */
+  --paper-sunken:   #f4f0e6;
+  --paper-raised:   #ffffff;
+  --paper-overlay:  #ffffff;
+  --background:     var(--paper-base);
+  --surface-1:      var(--paper-raised);
+  --surface-2:      var(--paper-sunken);
+  --surface-3:      #ebe6d8;
+  --surface-hover:  var(--paper-sunken);
 
-  --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.14);
+  --ink:            #1f1d1a;
+  --ink-2:          #5d5a55;
+  --ink-3:          #918d86;
+  --ink-4:          #b8b4ad;
+  --foreground:     var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-tertiary:  var(--ink-3);
+  --text-disabled:  var(--ink-4);
 
-  --accent: #4f46e5;        /* в light чуть темнее для контраста */
-  --accent-hover: #4338ca;
-  --accent-active: #3730a3;
-  --accent-soft: rgba(79, 70, 229, 0.10);
-  --accent-soft-hover: rgba(79, 70, 229, 0.16);
-  --accent-secondary: #7c3aed;
+  --rule:           rgba(31, 29, 26, 0.12);
+  --rule-strong:    rgba(31, 29, 26, 0.24);
+  --border:         var(--rule);
+  --border-strong:  var(--rule-strong);
 
-  --success: #059669;
-  --success-soft: rgba(5, 150, 105, 0.10);
-  --danger: #e11d48;
-  --danger-soft: rgba(225, 29, 72, 0.10);
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.10);
-  --info: #2563eb;
+  --accent:            #b5871f;
+  --accent-hover:      #9a7019;
+  --accent-active:     #80580f;
+  --accent-soft:       rgba(181, 135, 31, 0.10);
+  --accent-soft-hover: rgba(181, 135, 31, 0.16);
+  --accent-secondary:  var(--accent);
 
-  --card-bg: var(--surface-1);
-  --input-bg: var(--surface-1);
-  --input-placeholder: var(--text-tertiary);
+  --success:        #1e7a4e;
+  --success-soft:   rgba(30, 122, 78, 0.10);
+  --profit:         var(--success);
+  --danger:         #a53c25;
+  --danger-soft:    rgba(165, 60, 37, 0.10);
+  --loss:           var(--danger);
+  --warning:        #a87212;
+  --warning-soft:   rgba(168, 114, 18, 0.10);
 
-  --skeleton-base: rgba(0, 0, 0, 0.05);
-  --skeleton-highlight: rgba(0, 0, 0, 0.10);
+  --card-bg:        var(--surface-1);
+  --input-bg:       var(--surface-1);
 
-  --tooltip-bg: rgba(255, 255, 255, 0.98);
+  --skeleton-base:      rgba(31, 29, 26, 0.05);
+  --skeleton-highlight: rgba(31, 29, 26, 0.10);
+  --tooltip-bg:         rgba(255, 255, 255, 0.98);
 
-  --scrollbar-thumb: rgba(79, 70, 229, 0.30);
-  --scrollbar-thumb-hover: rgba(79, 70, 229, 0.50);
-  --hover-overlay: rgba(0, 0, 0, 0.04);
+  --scrollbar-thumb:       rgba(181, 135, 31, 0.30);
+  --scrollbar-thumb-hover: rgba(181, 135, 31, 0.50);
+  --hover-overlay:         rgba(31, 29, 26, 0.04);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.10);
-  --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.16);
+  --shadow-xl: 0 12px 40px rgba(31, 29, 26, 0.16);
 }
 
 /* ─────────────────── TAILWIND v4 THEME BRIDGE ─────────────────── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-accent: var(--accent);
-  --color-accent-secondary: var(--accent-secondary);
-  --color-card: var(--card-bg);
-  --color-border: var(--border);
-  --color-muted: var(--text-muted);
-  --color-success: var(--success);
-  --color-danger: var(--danger);
-  --color-warning: var(--warning);
+  --color-accent:     var(--accent);
+  --color-card:       var(--card-bg);
+  --color-border:     var(--border);
+  --color-muted:      var(--text-muted);
+  --color-success:    var(--success);
+  --color-profit:     var(--profit);
+  --color-danger:     var(--danger);
+  --color-loss:       var(--loss);
+  --color-warning:    var(--warning);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+}
+
+/* ─────────────────── FOCUS-VISIBLE (WCAG 2.4.7) ─────────────────── */
+/* FE-04: гасим browser default outline, восстанавливаем только для keyboard-focus.
+ * Используем --accent (ochre) — на любом фоне design system'а гарантирует ≥3:1.
+ * border-radius: inherit, чтобы кольцо повторяло форму pill/rect/iconned кнопок. */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* Иконочные кнопки — внутренний accent ring, чтобы offset не выпирал за overflow. */
+.btn-icon:focus-visible {
+  outline-offset: 0;
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 /* ─────────────────── BODY ─────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
+  background: var(--paper-base);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Базовые headings — НЕ задаём font-size глобально, чтобы не конфликтовать
- * с Tailwind text-* классами в существующей разметке. Только tight tracking
- * и bold по умолчанию. Размеры — на усмотрение разметки.
- * Если нужны "design system" размеры — используй классы .heading-display / .heading-h1. */
-h1, h2, h3, h4 { font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
-h1 { letter-spacing: -0.02em; }
+/* Brand wordmark — Unbounded (geometric display, поддерживает кириллицу).
+ * Только для логотипа «Полистата» и акцентных брендовых заголовков. */
+.font-brand {
+  font-family: var(--font-brand), "Segoe UI", system-ui, sans-serif;
+}
 
-/* Опциональные scale-классы — применяй когда хочешь Kontur-вайб */
-.heading-display { font-size: 64px; font-weight: 700; line-height: 1.0; letter-spacing: -0.025em; }
-.heading-h1 { font-size: 48px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
-.heading-h2 { font-size: 32px; font-weight: 700; line-height: 1.2; letter-spacing: -0.015em; }
-.heading-h3 { font-size: 24px; font-weight: 600; line-height: 1.3; }
+/* Базовые headings — НЕ задаём font-size глобально (Tailwind text-* классы
+ * остаются working). Только tight tracking и serif-fallback для page-level h1/h2.
+ * Полные editorial-scale — через .editorial-* классы ниже. */
+h1, h2, h3, h4 { font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+h1 { letter-spacing: -0.015em; }
+
+/* ─────────────────── EDITORIAL TYPE SCALE ─────────────────── */
+.editorial-display {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  font-size: clamp(56px, 8vw, 112px);
+  font-weight: 300;
+  font-style: italic;
+  line-height: 0.96;
+  letter-spacing: -0.025em;
+}
+.editorial-h1 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(40px, 5vw, 72px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+}
+.editorial-h2 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+}
+.editorial-h3 {
+  font-size: clamp(20px, 1.8vw, 26px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+}
+.editorial-lede {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(20px, 2vw, 26px);
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.editorial-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ─────────────────── LEGACY HEADLINE CLASSES (back-compat) ─────────────
+ * Существующая разметка page.tsx использует .headline-*, .eyebrow, .number-fact.
+ * Они теперь рендерятся как editorial-эквиваленты. После Phase 3 rewrite
+ * эти классы можно будет удалить (в page.tsx останутся только .editorial-*). */
+.headline-2xl {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(48px, 9vw, 96px);
+  font-weight: 300;
+  font-style: italic;
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+}
+.headline-xl {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(40px, 7vw, 72px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+.headline-lg {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.number-fact {
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: clamp(56px, 8vw, 88px);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+/* Optional heading-* scale classes (still useful for UI density) */
+.heading-display {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 72px;
+  font-weight: 400;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+}
+.heading-h1 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+.heading-h2 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.heading-h3 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Mono digits — для ВСЕХ чисел в проекте */
+.num, td.num, .stat-value {
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum";
+}
+
+/* Hairline rules */
+.rule         { border-top: 1px solid var(--rule); }
+.rule-strong  { border-top: 1px solid var(--rule-strong); }
+.rule-bottom  { border-bottom: 1px solid var(--rule); }
 
 /* ─────────────────── ANIMATIONS ─────────────────── */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
+  to   { opacity: 1; transform: scale(1); }
 }
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-.animate-fadeIn  { animation: fadeIn 0.25s var(--ease-out) forwards; }
+.animate-fadeIn  { animation: fadeIn  0.25s var(--ease-out) forwards; }
 .animate-scaleIn { animation: scaleIn 0.25s var(--ease-out) forwards; }
 .animate-slideIn { animation: slideIn 0.25s var(--ease-out) forwards; }
 
-/* Удалили pulse-glow / float — они принадлежат cyberpunk-эстетике.
- * Если нужно «оживление» — точечный hover-scale, не вечный pulse. */
-.pulse-glow, .float, .glow-accent, .glow-success, .glow-danger {
-  /* No-op aliases (back-compat: класс остался, эффекта нет — это намеренно) */
-}
+/* Glow/pulse/float — удалены полностью. No-op stubs тоже удалены — если
+ * grep по проекту найдёт `pulse-glow`, `.float`, `.glow-*` — заменить
+ * на пустой className. Это часть Phase 4 cleanup. */
 
-/* ─────────────────── BUTTONS ─────────────────── */
-/* Pill-форма, без glow, мягкий hover — Kontur-стиль */
-
+/* ─────────────────── BUTTONS (rectangle 4px radius) ─────────────────── */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   background: var(--accent);
-  color: #ffffff;
+  color: var(--paper-base);    /* warm dark on ochre — WCAG AA */
   font-weight: 600;
   font-size: 14px;
   letter-spacing: 0;
   text-transform: none;
   padding: 10px 20px;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);   /* было pill, стало 4px */
   cursor: pointer;
   transition: background var(--transition-fast), transform var(--transition-fast);
   white-space: nowrap;
 }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-primary:active { transform: translateY(1px); background: var(--accent-active); }
+.btn-primary:hover   { background: var(--accent-hover); }
+.btn-primary:active  { transform: translateY(1px); background: var(--accent-active); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
@@ -236,22 +397,17 @@ h1 { letter-spacing: -0.02em; }
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: var(--surface-2);
+  background: transparent;
   color: var(--foreground);
   font-weight: 600;
   font-size: 14px;
-  text-transform: none;
-  letter-spacing: 0;
   padding: 10px 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
-.btn-secondary:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-}
+.btn-secondary:hover  { background: var(--surface-hover); border-color: var(--foreground); }
 .btn-secondary:active { transform: translateY(1px); }
 
 .btn-danger {
@@ -260,14 +416,12 @@ h1 { letter-spacing: -0.02em; }
   justify-content: center;
   gap: 0.5rem;
   background: var(--danger);
-  color: #ffffff;
+  color: var(--ink);
   font-weight: 600;
   font-size: 14px;
-  text-transform: none;
-  letter-spacing: 0;
   padding: 10px 20px;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: filter var(--transition-fast);
 }
@@ -283,13 +437,12 @@ h1 { letter-spacing: -0.02em; }
   font-size: 14px;
   padding: 8px 14px;
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 .btn-ghost:hover { background: var(--surface-hover); color: var(--foreground); }
 
-/* Кнопка-иконка (square, для модалок) */
 .btn-icon {
   display: inline-flex;
   align-items: center;
@@ -305,90 +458,174 @@ h1 { letter-spacing: -0.02em; }
 }
 .btn-icon:hover { background: var(--surface-hover); color: var(--foreground); border-color: var(--border-strong); }
 
-/* ─────────────────── INPUTS ─────────────────── */
-.input-cyber {
-  width: 100%;
-  background: var(--input-bg);
-  border: 1px solid var(--border);
+/* ─────────────────── LEGACY PILL BUTTONS (back-compat, теперь rectangle) ─────
+ * page.tsx использует .btn-pill-outline и .btn-pill-inverted. В v3 они
+ * больше не pill — но имена сохранены, чтобы старый код работал.
+ * После Phase 3 — renamed to .btn-outline / удалён. */
+.btn-pill-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: var(--radius-md);  /* было 9999px */
+  border: 1px solid currentColor;
+  background: transparent;
   color: var(--foreground);
-  padding: 10px 14px;
   font-size: 14px;
-  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  text-decoration: none;
+}
+.btn-pill-outline:hover {
+  background: var(--foreground);
+  color: var(--paper-base);
+}
+
+.btn-pill-inverted {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
   border-radius: var(--radius-md);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  background: var(--ink);
+  color: var(--paper-base);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+  text-decoration: none;
 }
-.input-cyber:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.btn-pill-inverted:hover {
+  background: var(--ink-2);
+  transform: translateY(-1px);
 }
-.input-cyber:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+
+/* ─────────────────── INPUTS ─────────────────── */
+/* В @layer components, чтобы unlayered утилиты Tailwind (pl-10/pr-10 под
+   left/right-иконку в Input.tsx) переопределяли padding-шорткат, а не наоборот. */
+@layer components {
+  .input-cyber {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    padding: 10px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    border-radius: var(--radius-sm);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .input-cyber:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .input-cyber:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .input-cyber::placeholder { color: var(--input-placeholder); }
 }
-.input-cyber::placeholder { color: var(--input-placeholder); }
 
 @layer utilities {
   /* ─────────────────── CARD ─────────────────── */
   .cyber-card {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-lg);   /* 6px */
     transition: border-color var(--transition-fast), background var(--transition-fast);
     animation: fadeIn 0.3s var(--ease-out);
   }
   .cyber-card:hover {
     border-color: var(--border-strong);
     background: var(--surface-2);
-    /* НЕТ neon-glow и translate — Kontur-стиль более сдержанный */
   }
-
-  /* Card variants */
   .card-elevated {
-    background: var(--surface-2);
+    background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
   }
 
-  /* ─────────────────── TILE (bento) ─────────────────── */
-  /* Цветная заливка-плитка как у Контура. Используется через variant-классы. */
+  /* ─────────────────── TILE (editorial only — no gradients) ───────────
+   * Все цветные варианты (indigo/violet/emerald/rose/amber/sky) сведены
+   * к нейтральной плитке. После Phase 3 — call-sites удаляются,
+   * остаётся только .tile + .tile-neutral / .tile-inverse. */
   .tile {
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-md);
     padding: 24px;
-    transition: transform var(--transition-base), box-shadow var(--transition-base);
-    cursor: pointer;
-    color: #ffffff;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+    color: var(--ink);
   }
-  .tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-
-  .tile-indigo  { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); }
-  .tile-violet  { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); }
-  .tile-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
-  .tile-rose    { background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%); }
-  .tile-amber   { background: linear-gradient(135deg, #f59e0b 0%, #b45309 100%); }
-  .tile-sky     { background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%); }
-  .tile-neutral { background: var(--surface-2); border: 1px solid var(--border); color: var(--foreground); }
-
-  /* ─────────────────── TEXT EFFECTS ─────────────────── */
-  /* Раньше .text-neon давал свечение — теперь просто акцентный цвет */
-  .text-neon {
-    color: var(--accent);
-    text-shadow: none;
+  .tile-neutral,
+  .tile-indigo,
+  .tile-violet,
+  .tile-emerald,
+  .tile-rose,
+  .tile-amber,
+  .tile-sky {
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+  }
+  .tile-neutral:hover,
+  .tile-indigo:hover,
+  .tile-violet:hover,
+  .tile-emerald:hover,
+  .tile-rose:hover,
+  .tile-amber:hover,
+  .tile-sky:hover {
+    border-color: var(--rule-strong);
+  }
+  .tile-inverse {
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    color: var(--paper-base);
   }
 
-  .text-gradient {
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  /* Outline / text-only варианты для editorial-landing */
+  .tile-outline {
+    background: transparent;
+    border: 1px solid var(--foreground);
+    color: var(--foreground);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    transition: background var(--transition-fast), transform var(--transition-fast);
+  }
+  .tile-outline:hover {
+    background: rgba(245, 241, 232, 0.04);
+  }
+  .section-light .tile-outline {
+    border-color: #1f1d1a;
+    color: #1f1d1a;
+  }
+  .section-light .tile-outline:hover {
+    background: rgba(31, 29, 26, 0.04);
+  }
+  .tile-text {
+    background: transparent;
+    border-top: 1px solid var(--rule);
+    padding: 24px 0 0 0;
+    color: var(--foreground);
+  }
+  .section-light .tile-text {
+    border-top-color: rgba(31, 29, 26, 0.18);
+    color: #1f1d1a;
   }
 
+  /* ─────────────────── TEXT UTILITIES ─────────────────── */
+  /* .text-gradient и .text-neon удалены в v3 — gradient-headings = AI-tell */
   .text-secondary { color: var(--text-secondary); }
   .text-tertiary  { color: var(--text-tertiary); }
   .text-success   { color: var(--success); }
+  .text-profit    { color: var(--profit); }
   .text-danger    { color: var(--danger); }
+  .text-loss      { color: var(--loss); }
   .text-warning   { color: var(--warning); }
+  .text-accent    { color: var(--accent); }
 
   /* ─────────────────── SKELETON ─────────────────── */
   .skeleton-shimmer {
@@ -400,23 +637,96 @@ h1 { letter-spacing: -0.02em; }
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite ease-in-out;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
   }
 
-  /* ─────────────────── BENTO GRID ─────────────────── */
+  /* ─────────────────── BENTO GRID (back-compat) ─────────────────── */
   .bento-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 16px;
   }
 
+  /* ─────────────────── EDITORIAL GRIDS ─────────────────── */
+  .editorial-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 24px;
+  }
+  .editorial-numbers-band {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0;
+    border-top: 1px solid var(--rule-strong);
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .editorial-numbers-band > * {
+    padding: 32px 24px;
+    border-left: 1px solid var(--rule);
+  }
+  .editorial-numbers-band > *:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .editorial-pullquote {
+    font-family: var(--font-serif), Georgia, serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(28px, 4vw, 56px);
+    line-height: 1.2;
+    text-align: center;
+    max-width: 920px;
+    margin: 64px auto;
+    padding: 64px 0;
+    border-top: 1px solid var(--rule-strong);
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .editorial-pullquote cite {
+    display: block;
+    margin-top: 24px;
+    font-family: var(--font-geist-sans);
+    font-style: normal;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .editorial-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+  .editorial-table th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 12px 16px 12px 0;
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .editorial-table td {
+    padding: 14px 16px 14px 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  .editorial-table tr:hover td {
+    background: var(--hover-overlay);
+  }
+  .editorial-table td.num {
+    text-align: right;
+    padding-right: 16px;
+  }
+
   /* ─────────────────── TOOLTIP ─────────────────── */
   .chart-tooltip {
     background: var(--tooltip-bg) !important;
     border: 1px solid var(--border-strong) !important;
-    border-radius: var(--radius-md) !important;
-    box-shadow: var(--shadow-lg) !important;
-    backdrop-filter: blur(12px);
+    border-radius: var(--radius-sm) !important;
+    box-shadow: var(--shadow-xl) !important;
+    backdrop-filter: blur(8px);
     padding: 10px 12px !important;
   }
   .chart-tooltip .label {
@@ -433,57 +743,155 @@ h1 { letter-spacing: -0.02em; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
   .scrollbar-thin::-webkit-scrollbar-corner { background: transparent; }
 
+  /* Phase 13 (2026-05-17): прокачанный visible scrollbar для широких таблиц.
+     Толще .scrollbar-thin, более контрастный thumb — легче схватить мышью. */
+  .scrollbar-visible {
+    scrollbar-width: auto;
+    scrollbar-color: var(--scrollbar-thumb-hover) rgba(255,255,255,0.04);
+  }
+  .scrollbar-visible::-webkit-scrollbar { height: 14px; width: 14px; }
+  .scrollbar-visible::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.04);
+    border-radius: 7px;
+  }
+  .scrollbar-visible::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb-hover);
+    border-radius: 7px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-visible::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 161, 58, 0.75);
+    background-clip: content-box;
+    border: 2px solid transparent;
+  }
+  .scrollbar-visible::-webkit-scrollbar-corner { background: transparent; }
+
+  /* Phase 14b (2026-05-18, BUGFIX): sticky thead УБРАН.
+     Root cause: wrapper таблицы имеет overflow-x: auto, что в Chrome
+     автоматически конвертирует overflow-y в hidden (даже если задано clip
+     или visible — это поведение CSS Overflow spec при `auto` на одной оси).
+     Это делает wrapper Y scroll-контейнером, и sticky thead привязывается
+     к нему, активируясь сразу (natural Y=0 < threshold 70px) → шапка
+     визуально оказывается ниже первых строк tbody.
+     Решение «правильное» — split-table (отдельные thead-table и tbody-table
+     с JS-синхронизацией) — отложено. Сейчас thead просто остаётся в потоке
+     (не sticky), TopScrollbar (Phase 14) + sticky cols дают основную UX-навигацию. */
+  .journal-table-sticky thead th {
+    /* position: static — натуральная позиция в потоке таблицы.
+       Фон из темы: хардкод rgba(13,13,13) оставался чёрным в light. */
+    background: var(--surface-1);
+    backdrop-filter: blur(4px);
+  }
+  /* Col 1 (expand chevron — alwaysVisible) */
+  .journal-table-sticky tbody tr > td:nth-child(1):not([colspan]),
+  .journal-table-sticky thead th:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    /* Opaque-фон обязан закрывать прокручиваемые колонки — из темы. */
+    background: var(--surface-1);
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+  }
+  .journal-table-sticky thead th:nth-child(1) { z-index: 7; }
+  /* Col 2 (обычно date — defaultVisible. Если скрыт → col 2 будет ticker, тоже useful) */
+  .journal-table-sticky tbody tr > td:nth-child(2):not([colspan]),
+  .journal-table-sticky thead th:nth-child(2) {
+    position: sticky;
+    left: 32px;
+    z-index: 4;
+    background: var(--surface-1);
+    min-width: 130px;
+    max-width: 130px;
+  }
+  .journal-table-sticky thead th:nth-child(2) { z-index: 7; }
+  /* Subtle vertical separator справа от sticky-блока чтобы glance видеть граница */
+  .journal-table-sticky tbody tr > td:nth-child(2):not([colspan]),
+  .journal-table-sticky thead th:nth-child(2) {
+    border-right: 1px solid rgba(148, 163, 184, 0.15);
+  }
+  /* Expanded row (colspan=всё) — НЕ sticky, чтобы не накладывалось */
+  .journal-table-sticky tbody tr > td[colspan] {
+    position: static;
+  }
+
+  /* Phase 14 (2026-05-17): edge-fade gradient на правом краю scroll-контейнера —
+     намекает «там ещё колонки». Исчезает когда scroll в конце (через JS-state
+     можно подкрутить, но base CSS уже даёт subtle hint). */
+  .journal-scroll-container {
+    position: relative;
+    /* КРИТИЧНО: overflow-x: auto автоматически делает overflow-y: auto (CSS spec),
+       что превращает контейнер в y-scroll container — и sticky thead начинает
+       привязываться к wrapper'у, а не к странице. С `clip` контейнер обрезает
+       вертикально без создания scroll-context'а → sticky thead binds к page. */
+    overflow-y: clip;
+  }
+  .journal-scroll-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 14px; /* над bottom scrollbar */
+    width: 16px;
+    background: linear-gradient(to right, transparent, rgba(13, 13, 13, 0.45));
+    pointer-events: none;
+    z-index: 3;
+    /* Когда контейнер прокручен в самый конец — браузер ставит это data-атрибут
+       (см. JS-listener в PositionJournalView). До добавления JS — gradient
+       просто всегда тонкий хинт, не закрывая данные. */
+  }
+  .journal-scroll-container[data-scroll-end="true"]::after {
+    opacity: 0;
+  }
+
   /* ─────────────────── BADGES ─────────────────── */
-  /* Pill-форма, мягкие тинты, нормальный регистр (не UPPERCASE) */
   .badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
+    letter-spacing: 0.04em;
     line-height: 1.2;
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-xs);   /* 2px — editorial badges */
     transition: background var(--transition-fast);
   }
-
   .badge-accent {
     background: var(--accent-soft);
-    color: var(--accent-hover);
+    color: var(--accent);
     border: 1px solid transparent;
   }
   .badge-accent:hover { background: var(--accent-soft-hover); }
-
   .badge-success {
     background: var(--success-soft);
     color: var(--success);
     border: 1px solid transparent;
   }
-
   .badge-danger {
     background: var(--danger-soft);
     color: var(--danger);
     border: 1px solid transparent;
   }
-
   .badge-warning {
     background: var(--warning-soft);
     color: var(--warning);
     border: 1px solid transparent;
   }
-
   .badge-neutral {
-    background: var(--surface-2);
+    background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border);
   }
 
-  /* ─────────────────── TABLE ─────────────────── */
+  /* ─────────────────── TABLE HELPERS ─────────────────── */
   .table-row-hover { transition: background var(--transition-fast); }
   .table-row-hover:hover { background: var(--hover-overlay); }
 
@@ -498,10 +906,10 @@ h1 { letter-spacing: -0.02em; }
     animation: fadeIn 0.3s var(--ease-out);
   }
   .empty-state-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: var(--radius-lg);
-    background: var(--surface-2);
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    background: transparent;
     border: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -510,18 +918,14 @@ h1 { letter-spacing: -0.02em; }
     color: var(--text-secondary);
   }
 
-  /* ─────────────────── BACKGROUND ACCENTS ─────────────────── */
-  /* Старые neon-mesh градиенты убраны. Если нужен subtle accent на странице,
-   * используй .bg-mesh-soft — почти незаметный indigo glow. */
-  .bg-mesh-soft {
-    background:
-      radial-gradient(at 20% 0%, var(--accent-soft) 0px, transparent 50%),
-      radial-gradient(at 80% 100%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+  /* ─────────────────── BACKGROUND ACCENTS (deprecated, no-op) ─────────
+   * Старые neon-mesh/gradient backgrounds — теперь nothing.
+   * Имена сохранены для back-compat, рендерят transparent. */
+  .bg-mesh-soft,
+  .bg-gradient-radial,
+  .bg-gradient-mesh {
+    background: transparent;
   }
-
-  /* Back-compat для старых имён — теперь они дают только мягкий subtle effect */
-  .bg-gradient-radial { background: radial-gradient(ellipse at center, var(--accent-soft) 0%, transparent 70%); }
-  .bg-gradient-mesh { background: var(--surface-1); }
 
   /* ─────────────────── STAGGER ANIMATION HELPERS ─────────────────── */
   .stagger-1 { animation-delay: 0.05s; }
@@ -536,22 +940,20 @@ h1 { letter-spacing: -0.02em; }
   /* ─────────────────── DIVIDERS ─────────────────── */
   .divider {
     height: 1px;
-    background: var(--border);
+    background: var(--rule);
     margin: 16px 0;
   }
-
   .divider-vertical {
     width: 1px;
     height: 100%;
-    background: var(--border);
+    background: var(--rule);
     margin: 0 12px;
   }
 }
 
-/* ─────────────────── LIGHT THEME OVERRIDES ─────────────────── */
-/* Сильно урезано: дизайн-токены теперь рассчитаны на оба theme автоматически.
- * Оставлены только overrides для tailwind utility-классов, которые
- * хардкодены в существующих компонентах (legacy). */
+/* ─────────────────── LIGHT THEME LEGACY OVERRIDES ─────────────────── *
+ * Tailwind-классы, захардкоженные в существующих компонентах. После
+ * полной миграции этих компонентов на CSS-переменные секцию можно удалить. */
 :root[data-theme="light"] .opacity-50  { opacity: 0.7 !important; }
 :root[data-theme="light"] .opacity-70  { opacity: 0.85 !important; }
 :root[data-theme="light"] .text-gray-400,
@@ -562,8 +964,384 @@ h1 { letter-spacing: -0.02em; }
 :root[data-theme="light"] .text-white\/60 { color: var(--text-secondary) !important; }
 :root[data-theme="light"] .bg-black\/30,
 :root[data-theme="light"] .bg-black\/50,
-:root[data-theme="light"] .bg-black\/80 { background: rgba(0, 0, 0, 0.3) !important; }
+:root[data-theme="light"] .bg-black\/60,
+:root[data-theme="light"] .bg-black\/70,
+:root[data-theme="light"] .bg-black\/80 { background: rgba(31, 29, 26, 0.3) !important; }
 :root[data-theme="light"] .bg-white\/5,
+:root[data-theme="light"] .bg-white\/10,
 :root[data-theme="light"] .bg-white\/\[0\.02\] { background: var(--surface-2) !important; }
 :root[data-theme="light"] .text-green-400 { color: var(--success) !important; }
 :root[data-theme="light"] .text-red-400 { color: var(--danger) !important; }
+
+/* slate-семейство — исторические dark-компоненты (history, dashboard panels,
+ * модалки). Текст. */
+:root[data-theme="light"] .text-slate-100,
+:root[data-theme="light"] .text-slate-200 { color: var(--foreground) !important; }
+:root[data-theme="light"] .text-slate-300,
+:root[data-theme="light"] .text-slate-400,
+:root[data-theme="light"] .text-slate-500 { color: var(--text-secondary) !important; }
+:root[data-theme="light"] .text-slate-600 { color: var(--text-tertiary) !important; }
+
+/* slate-фоны: 900/950 → surface-1, 800 → surface-2, 700/600 → surface-3 */
+:root[data-theme="light"] .bg-slate-950,
+:root[data-theme="light"] .bg-slate-950\/50,
+:root[data-theme="light"] .bg-slate-900,
+:root[data-theme="light"] .bg-slate-900\/30,
+:root[data-theme="light"] .bg-slate-900\/40,
+:root[data-theme="light"] .bg-slate-900\/50,
+:root[data-theme="light"] .bg-slate-900\/60,
+:root[data-theme="light"] .bg-slate-900\/80,
+:root[data-theme="light"] .bg-slate-900\/95,
+:root[data-theme="light"] .bg-slate-900\/98 { background: var(--surface-1) !important; }
+:root[data-theme="light"] .bg-slate-800,
+:root[data-theme="light"] .bg-slate-800\/20,
+:root[data-theme="light"] .bg-slate-800\/30,
+:root[data-theme="light"] .bg-slate-800\/40,
+:root[data-theme="light"] .bg-slate-800\/50,
+:root[data-theme="light"] .bg-slate-500\/10,
+:root[data-theme="light"] .bg-slate-500\/15,
+:root[data-theme="light"] .bg-slate-500\/20,
+:root[data-theme="light"] .bg-slate-500\/30 { background: var(--surface-2) !important; }
+:root[data-theme="light"] .bg-slate-700,
+:root[data-theme="light"] .bg-slate-700\/20,
+:root[data-theme="light"] .bg-slate-700\/30,
+:root[data-theme="light"] .bg-slate-700\/40,
+:root[data-theme="light"] .bg-slate-700\/50,
+:root[data-theme="light"] .bg-slate-600,
+:root[data-theme="light"] .bg-slate-600\/30 { background: var(--surface-3) !important; }
+
+/* slate-бордеры */
+:root[data-theme="light"] .border-slate-500\/30,
+:root[data-theme="light"] .border-slate-600,
+:root[data-theme="light"] .border-slate-600\/50,
+:root[data-theme="light"] .border-slate-700,
+:root[data-theme="light"] .border-slate-700\/30,
+:root[data-theme="light"] .border-slate-700\/40,
+:root[data-theme="light"] .border-slate-700\/50,
+:root[data-theme="light"] .border-slate-800,
+:root[data-theme="light"] .border-slate-800\/50,
+:root[data-theme="light"] .border-slate-800\/60 { border-color: var(--border) !important; }
+
+/* hover-варианты: «подсветка к белому» в dark = «к чернилам» в light */
+:root[data-theme="light"] .hover\:text-white:hover,
+:root[data-theme="light"] .hover\:text-slate-200:hover,
+:root[data-theme="light"] .hover\:text-slate-300:hover { color: var(--foreground) !important; }
+:root[data-theme="light"] .hover\:bg-slate-800:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/20:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/30:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/40:hover,
+:root[data-theme="light"] .hover\:bg-slate-800\/50:hover,
+:root[data-theme="light"] .hover\:bg-slate-700:hover,
+:root[data-theme="light"] .hover\:bg-slate-700\/20:hover,
+:root[data-theme="light"] .hover\:bg-slate-700\/30:hover,
+:root[data-theme="light"] .hover\:bg-slate-700\/50:hover,
+:root[data-theme="light"] .hover\:bg-slate-600:hover,
+:root[data-theme="light"] .hover\:bg-slate-500\/30:hover,
+:root[data-theme="light"] .hover\:bg-white\/5:hover,
+:root[data-theme="light"] .hover\:bg-white\/10:hover,
+:root[data-theme="light"] .hover\:bg-white\/15:hover { background: var(--surface-hover) !important; }
+:root[data-theme="light"] .hover\:border-slate-600:hover { border-color: var(--border-strong) !important; }
+
+
+/* ════════════════════════════════════════════════════
+ * Landing section backgrounds (back-compat, теперь warm-paper)
+ * ──────────────────────────────────────────────────── */
+.section-dark    { background: var(--paper-base);    color: var(--ink); }
+.section-surface { background: var(--paper-raised);  color: var(--ink); }
+.section-light   { background: #faf7f0;              color: #1f1d1a; }
+.section-light .text-secondary { color: #5d5a55; }
+.section-light .text-tertiary  { color: #918d86; }
+/* .section-accent был indigo flood — теперь нейтральная paper-base секция
+ * с акцентом через единичный ochre-элемент внутри (не флуд цвета). */
+.section-accent  { background: var(--paper-base);    color: var(--ink); }
+.section-accent .text-secondary { color: var(--text-secondary); }
+
+/* Декоративные SVG-curve позиционеры — оставлены как no-op для page.tsx
+ * back-compat. KonturCurve удаляется в Phase 3, после этого секцию можно
+ * убрать. */
+.kontur-curve { display: none; }
+
+
+/* ─────────────────── FONT BRIDGE (landing merge 2026-06-11) ───────────────
+   Лендинг привёз набор шрифтов: Inter(--font-sans) / JetBrains Mono(--font-mono)
+   / Manrope(--font-display) / Cormorant(--font-serif-cyr). Geist и Fraunces
+   выгружены (font diet: Fraunces без кириллицы, Geist дублировал Inter).
+   Алиасы сохраняют все существующие var()-стеки рабочими. */
+:root {
+  --font-serif:      var(--font-serif-cyr);
+  --font-geist-sans: var(--font-sans);
+  --font-geist-mono: var(--font-mono);
+}
+
+/* ═════════ Полистата Editorial Cream — landing palette ═════════
+   Изолированно через data-theme. Auth-zone остаётся на текущих токенах.
+   См. design spec: docs/superpowers/specs/2026-05-18-landing-handcrafted-redesign-design.md §7 */
+[data-theme="empirik-cream"] {
+  /* Fraunces dropped for perf — Cormorant (--font-serif-cyr) is now the sole
+     editorial serif; alias keeps existing var(--font-serif) stacks resolving. */
+  --font-serif:      var(--font-serif-cyr);
+  --paper:           #FAF8F2;
+  --paper-tint:      #f4ecdc;
+  --ink:             #14110B;
+  --ink-2:           rgba(20, 17, 11, 0.62);
+  --ink-3:           rgba(20, 17, 11, 0.40);
+  --rule:            rgba(20, 17, 11, 0.08);
+  --rule-strong:     rgba(20, 17, 11, 0.20);
+  --accent:          #B58A2F;
+  --accent-hover:    #9B7424;
+  --accent-soft:     rgba(181, 138, 47, 0.10);
+  --profit:          #1F6A47;
+  --loss:            #A03A2A;
+
+  /* ─── Bloomberg uplift tokens (2026-05-19) ─── */
+  --orange:           #E84E1C;
+  --orange-hover:     #d44516;
+  --orange-strip:     #E84E1C;
+  --orange-soft:      rgba(232, 78, 28, 0.10);
+  --orange-quote:     rgba(232, 78, 28, 0.40);
+
+  --ink-dark:         #0a0a0a;
+  --ink-dark-2:       #1a1a1a;
+  --paper-on-dark:    #fafafa;
+  --paper-on-dark-2:  rgba(250, 250, 250, 0.70);
+  --paper-on-dark-3:  rgba(250, 250, 250, 0.45);
+  --rule-on-dark:     rgba(250, 250, 250, 0.10);
+  --rule-on-dark-strong: rgba(250, 250, 250, 0.22);
+
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+[data-theme="empirik-cream"] .editorial-eyebrow {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+[data-theme="empirik-cream"] .editorial-display {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-weight: 350;
+  font-size: clamp(44px, 6vw, 88px);
+  line-height: 0.94;
+  letter-spacing: -0.025em;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+}
+
+[data-theme="empirik-cream"] .editorial-h2 {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.018em;
+  font-variation-settings: "opsz" 96, "SOFT" 20;
+}
+
+[data-theme="empirik-cream"] .editorial-lede {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-style: italic;
+  font-weight: 300;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+[data-theme="empirik-cream"] .editorial-pullquote {
+  font-family: var(--font-serif), var(--font-serif-cyr), Georgia, serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: clamp(28px, 3.5vw, 48px);
+  line-height: 1.12;
+  font-variation-settings: "opsz" 144, "SOFT" 40, "WONK" 1;
+}
+
+[data-theme="empirik-cream"] .num {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="empirik-cream"] .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 12px 22px;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: transform 120ms ease, background 120ms ease;
+}
+[data-theme="empirik-cream"] .btn-primary:hover {
+  background: #000;
+  transform: translateY(-1px);
+}
+
+[data-theme="empirik-cream"] .editorial-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+[data-theme="empirik-cream"] .editorial-table th {
+  text-align: left;
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 400;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+[data-theme="empirik-cream"] .editorial-table td {
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+/* ═════════ Bloomberg uplift — utility classes (2026-05-19) ═════════ */
+
+[data-theme="empirik-cream"] .uplift-section-light {
+  background-color: var(--paper);
+  color: var(--ink);
+}
+[data-theme="empirik-cream"] .uplift-section-tint {
+  background-color: var(--paper-tint);
+  color: var(--ink);
+}
+[data-theme="empirik-cream"] .uplift-section-dark {
+  background-color: var(--ink-dark);
+  color: var(--paper-on-dark);
+}
+[data-theme="empirik-cream"] .uplift-section-dark .uplift-eyebrow,
+[data-theme="empirik-cream"] .uplift-section-dark .editorial-eyebrow {
+  color: var(--paper-on-dark-3);
+}
+[data-theme="empirik-cream"] .uplift-section-dark a {
+  color: var(--paper-on-dark);
+}
+
+/* Display sans (Manrope) heading family */
+[data-theme="empirik-cream"] .uplift-h1 {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(48px, 7vw, 88px);
+  line-height: 0.92;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+[data-theme="empirik-cream"] .uplift-h2 {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(36px, 4.5vw, 56px);
+  line-height: 0.96;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+[data-theme="empirik-cream"] .uplift-numbers {
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(56px, 7vw, 96px);
+  line-height: 0.88;
+  letter-spacing: -0.02em;
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ticker strip */
+[data-theme="empirik-cream"] .uplift-ticker-strip {
+  background-color: var(--orange-strip);
+  color: #0a0a0a;
+  border-top: 1px solid #0a0a0a;
+  border-bottom: 1px solid #0a0a0a;
+}
+[data-theme="empirik-cream"] .uplift-ticker-track {
+  display: inline-flex;
+  gap: 36px;
+  white-space: nowrap;
+  animation: uplift-ticker-scroll 35s linear infinite;
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+@keyframes uplift-ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Hero equity curve draw */
+@keyframes uplift-curve-draw {
+  from { stroke-dashoffset: var(--curve-length, 800); }
+  to   { stroke-dashoffset: 0; }
+}
+[data-theme="empirik-cream"] .uplift-curve-animate {
+  animation: uplift-curve-draw 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Champions raise on scroll */
+[data-theme="empirik-cream"] .uplift-raise {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-theme="empirik-cream"] .uplift-raise[data-inview="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Primary CTA button — orange bg + ink-dark text + Manrope bold uppercase */
+[data-theme="empirik-cream"] .uplift-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--orange);
+  color: var(--ink-dark);
+  font-family: var(--font-display), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+[data-theme="empirik-cream"] .uplift-cta-primary:hover {
+  background-color: var(--orange-hover);
+}
+
+/* Focus ring for orange CTAs */
+[data-theme="empirik-cream"] .uplift-focus:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+/* Hero text mount entrance — fade-in + 8px translate-up */
+@keyframes uplift-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-theme="empirik-cream"] .uplift-fade-in {
+  opacity: 0;
+  animation: uplift-fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Metrics terminal — деталь проявляется при смене активной метрики */
+@keyframes metric-detail-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-theme="empirik-cream"] .metric-detail-anim {
+  animation: metric-detail-in 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* prefers-reduced-motion — disable all uplift motion */
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="empirik-cream"] .uplift-ticker-track { animation: none; transform: none; }
+  [data-theme="empirik-cream"] .uplift-curve-animate { animation: none; stroke-dashoffset: 0 !important; }
+  [data-theme="empirik-cream"] .uplift-raise { opacity: 1 !important; transform: none !important; transition: none !important; }
+  [data-theme="empirik-cream"] .uplift-fade-in { animation: none; opacity: 1 !important; transform: none !important; }
+  [data-theme="empirik-cream"] .metric-detail-anim { animation: none; }
+}

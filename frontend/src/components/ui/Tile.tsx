@@ -1,7 +1,16 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { clsx } from "clsx";
 
-type TileColor = "indigo" | "violet" | "emerald" | "rose" | "amber" | "sky" | "neutral";
+/**
+ * Editorial Financial канон v3 (ADR-0006): цветные градиент-варианты плиток
+ * (indigo/violet/emerald/rose/amber/sky) удалены. CSS теперь рендерит их
+ * как нейтральные `paper-raised + hairline border`. Тип сохранён ради
+ * back-compat существующих call-sites — в следующем заходе сузим до
+ * `"neutral" | "inverse"` через compiler-driven discovery.
+ *
+ * @see .business/product/design-system.md v3 — раздел «Tile варианты»
+ */
+type TileColor = "neutral" | "inverse" | "indigo" | "violet" | "emerald" | "rose" | "amber" | "sky";
 type TileSize = "sm" | "md" | "lg";
 
 export interface TileProps extends HTMLAttributes<HTMLDivElement> {

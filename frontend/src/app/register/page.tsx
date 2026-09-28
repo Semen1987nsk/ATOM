@@ -20,8 +20,10 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [pdConsent, setPdConsent] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -46,11 +48,17 @@ export default function RegisterPage() {
       setError(`Пароль должен быть минимум ${PASSWORD_MIN} символов`);
       return;
     }
+    if (!pdConsent) {
+      setError('Необходимо согласие на обработку персональных данных (152-ФЗ)');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await register(email, password, name || undefined);
-      router.push('/');
+      // B1 verification-first: register НЕ логинит. На успешный (нейтральный)
+      // ответ показываем «проверьте почту» и НЕ редиректим на дашборд.
+      await register(email, password, name || undefined, pdConsent);
+      setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка регистрации');
     } finally {
@@ -67,8 +75,7 @@ export default function RegisterPage() {
             href="/"
             className="inline-flex items-center gap-1 text-4xl font-bold tracking-tight"
           >
-            <span className="text-[var(--accent)]">Eq</span>
-            <span>io</span>
+            <span className="text-[var(--accent)]">Полистата</span>
           </Link>
           <p className="text-sm text-[var(--text-secondary)] mt-2">
             Создайте аккаунт за 30 секунд
@@ -77,6 +84,28 @@ export default function RegisterPage() {
 
         {/* Card */}
         <div className="cyber-card p-8">
+          {submitted ? (
+            <div className="text-center py-4" role="status">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[var(--success-soft,var(--accent-soft))] text-[var(--success,var(--accent))] mb-5">
+                <Mail size={28} />
+              </div>
+              <h1 className="text-2xl font-bold leading-tight mb-2">Проверьте почту</h1>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Если email свободен — мы создали аккаунт и отправили письмо со
+                ссылкой для подтверждения. Перейдите по ней, чтобы завершить
+                регистрацию и войти.
+              </p>
+              <div className="mt-6 pt-5 border-t border-[var(--border)]">
+                <Link
+                  href="/login"
+                  className="text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium transition-colors"
+                >
+                  Перейти ко входу
+                </Link>
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="mb-6">
             <h1 className="text-2xl font-bold leading-tight">Регистрация</h1>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
@@ -179,12 +208,38 @@ export default function RegisterPage() {
               }
             />
 
+            {/* 152-ФЗ ст. 9: явное согласие на обработку ПД при регистрации.
+                Текст ссылается на политику с указанием версии — критично для аудита РКН. */}
+            <label className="flex items-start gap-2.5 text-[13px] cursor-pointer mt-1 text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                name="pd_consent"
+                checked={pdConsent}
+                onChange={(e) => setPdConsent(e.target.checked)}
+                required
+                aria-required="true"
+                className="mt-0.5 w-4 h-4 accent-[var(--accent)] cursor-pointer flex-shrink-0"
+              />
+              <span>
+                Я даю{' '}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--accent)] hover:text-[var(--accent-hover)] underline"
+                >
+                  согласие на обработку персональных данных
+                </Link>{' '}
+                в соответствии с политикой Полистаты (версия v1)
+              </span>
+            </label>
+
             <Button
               type="submit"
               size="lg"
               fullWidth
               loading={isLoading}
-              disabled={!passwordOk || !passwordsMatch}
+              disabled={!passwordOk || !passwordsMatch || !pdConsent}
               leftIcon={!isLoading ? <UserPlus size={16} /> : undefined}
               className="mt-2"
             >
@@ -215,6 +270,8 @@ export default function RegisterPage() {
               </Link>
             </p>
           </div>
+          </>
+          )}
         </div>
 
         <div className="mt-6 text-center">

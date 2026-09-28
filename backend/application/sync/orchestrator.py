@@ -1,0 +1,415 @@
+"""
+TinkoffSyncOrchestrator — координирует sync для нескольких аккаунтов.
+
+Задачи:
+
+* Найти `BrokerConnection`-записи, которым пора синхронизироваться
+  (`last_sync_at + sync_interval_minutes <= now`, `circuit_open_until` либо
+  null, либо в прошлом).
+* Расшифровать токен через `TokenRepository`.
+* Запустить `SyncPipeline.run()` с ограничением concurrency.
+* Записать `last_audit_at` после успешной/неуспешной попытки.
+
+В PR 5 используется `Semaphore(max_concurrent)` — простой honest bulkhead
+на уровне процесса. PR 15 добавит circuit-breaker и tenacity-retry.
+
+Зависимости (для тестируемости) принимаются явно через конструктор.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Callable, Optional
+
+from sqlalchemy.orm import Session
+
+from adapters.persistence.instrument_repo import InstrumentRepository
+from adapters.persistence.operation_repo import OperationRepository
+from adapters.persistence.token_repo import TokenRepository
+from adapters.security.token_encryption import (
+    TokenEncryptionError,
+    TokenEncryptionService,
+)
+from application.sync.ip_cooldown_gate import IpCooldownGate, build_ip_cooldown_gate
+from application.sync.pipeline import SyncPipeline, SyncReport
+from config import settings
+from database import SessionLocal
+from domain.exceptions import (
+    BrokerError,
+    CircuitBreakerOpen,
+    RateLimitExceeded,
+    TokenInvalid,
+)
+from logger import get_logger
+from models import BrokerConnection, BrokerType
+from utils.datetime_utils import utc_now_naive
+
+log = get_logger("sync.orchestrator")
+
+
+class SyncAlreadyRunning(Exception):
+    """Ручной sync запрошен, пока для этого connection уже идёт sync."""
+
+
+# ── data classes ──────────────────────────────────────────────────────
+
+
+@dataclass
+class OrchestratorRunReport:
+    """Итог одного прогона `run_due_accounts()`."""
+
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    accounts_considered: int = 0
+    accounts_synced: int = 0
+    accounts_skipped: int = 0
+    accounts_failed: int = 0
+    per_account: list[SyncReport] = field(default_factory=list)
+
+
+# ── orchestrator ──────────────────────────────────────────────────────
+
+
+class TinkoffSyncOrchestrator:
+    def __init__(
+        self,
+        *,
+        token_repo: Optional[TokenRepository] = None,
+        operation_repo: Optional[OperationRepository] = None,
+        instrument_repo: Optional[InstrumentRepository] = None,
+        session_factory: Callable[[], Session] = SessionLocal,
+        max_concurrent: int = 20,
+        cooldown_gate: Optional[IpCooldownGate] = None,
+    ) -> None:
+        self._token_repo = token_repo or TokenRepository(
+            encryption=TokenEncryptionService()
+        )
+        self._operation_repo = operation_repo or OperationRepository()
+        self._instrument_repo = instrument_repo or InstrumentRepository()
+        self._session_factory = session_factory
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        # bulkhead per-connection: одну sync-задачу на одно подключение
+        # не запускаем дважды параллельно.
+        self._in_flight: set[int] = set()
+        # SYNC-05: глобальный IP-cooldown gate.
+        self._cooldown_gate = cooldown_gate or build_ip_cooldown_gate()
+        self._min_distinct = settings.TINKOFF_IP_COOLDOWN_MIN_DISTINCT_CONNECTIONS
+        # per-run набор коннекшнов, словивших RateLimitExceeded.
+        self._rate_limited_connections: set[int] = set()
+
+    # ── публичные методы ──────────────────────────────────────────────
+
+    async def run_due_accounts(self) -> OrchestratorRunReport:
+        """
+        Вызывается планировщиком (раз в 60 сек). Находит все подключения,
+        которым пора синкаться, и запускает `sync_one_account` параллельно
+        с лимитом по семафору.
+        """
+        report = OrchestratorRunReport(started_at=utc_now_naive())
+
+        # SYNC-05: глобальный IP-cooldown — пропускаем весь прогон (storm-stopper).
+        if await self._cooldown_gate.is_open():
+            log.warning("orchestrator.run_due_accounts: skipped — IP cooldown gate open")
+            report.finished_at = utc_now_naive()
+            return report
+
+        # per-run набор коннекшнов, словивших RateLimitExceeded (кросс-коннекшн
+        # корреляция для IP-уровневого сигнала).
+        self._rate_limited_connections = set()
+
+        connection_ids = await asyncio.to_thread(self._select_due_connection_ids)
+        report.accounts_considered = len(connection_ids)
+
+        if not connection_ids:
+            report.finished_at = utc_now_naive()
+            await self._cooldown_gate.clear()
+            return report
+
+        # Запускаем параллельно с ограничением через семафор.
+        tasks = [self._guard_one(cid, report) for cid in connection_ids]
+        await asyncio.gather(*tasks, return_exceptions=False)
+
+        # SYNC-05: ≥ threshold различных коннекшнов словили rate-limit → IP-уровень.
+        if len(self._rate_limited_connections) >= self._min_distinct:
+            secs = await self._cooldown_gate.open()
+            log.warning(
+                "orchestrator: IP cooldown gate opened (%d connections rate-limited), backoff=%ss",
+                len(self._rate_limited_connections),
+                secs,
+            )
+        else:
+            await self._cooldown_gate.clear()
+
+        report.finished_at = utc_now_naive()
+        log.info(
+            "orchestrator.run_due_accounts: synced=%d skipped=%d failed=%d",
+            report.accounts_synced,
+            report.accounts_skipped,
+            report.accounts_failed,
+        )
+        return report
+
+    async def sync_one_account(self, connection_id: int) -> SyncReport:
+        """
+        Public API для ручного trigger'а (UI / админка). Принимает
+        connection_id, сам разрешает context (расшифровка токена и т.п.).
+
+        SYNC-04: тот же bulkhead, что и плановый _guard_one — in-flight dedup
+        + семафор. Двойной клик / 50 одновременных Sync больше не запускают
+        параллельные pipeline с одного IP (IP-cooldown T-Bank).
+        """
+        if connection_id in self._in_flight:
+            raise SyncAlreadyRunning(connection_id)
+        self._in_flight.add(connection_id)
+        try:
+            async with self._semaphore:
+                connection_data = await asyncio.to_thread(
+                    self._load_connection, connection_id
+                )
+                if connection_data is None:
+                    raise ValueError(
+                        f"BrokerConnection {connection_id} not found or inactive"
+                    )
+                return await self._sync(connection_data)
+        finally:
+            self._in_flight.discard(connection_id)
+
+    # ── внутренняя кухня ──────────────────────────────────────────────
+
+    async def _guard_one(self, connection_id: int, report: OrchestratorRunReport) -> None:
+        """Per-connection wrapper: учёт concurrency + статуса."""
+        if connection_id in self._in_flight:
+            report.accounts_skipped += 1
+            return
+        self._in_flight.add(connection_id)
+        try:
+            async with self._semaphore:
+                connection_data = await asyncio.to_thread(
+                    self._load_connection, connection_id
+                )
+                if connection_data is None:
+                    report.accounts_skipped += 1
+                    return
+                try:
+                    sync_report = await self._sync(connection_data)
+                    report.per_account.append(sync_report)
+                    report.accounts_synced += 1
+                except CircuitBreakerOpen:
+                    report.accounts_skipped += 1
+                except RateLimitExceeded:
+                    # SYNC-05: сигнал для кросс-коннекшн корреляции. НЕ пишем
+                    # per-connection circuit во время потенциального IP-cooldown.
+                    report.accounts_failed += 1
+                    self._rate_limited_connections.add(connection_id)
+                    log.warning("sync rate-limited for connection_id=%s", connection_id)
+                except BrokerError as exc:
+                    report.accounts_failed += 1
+                    log.warning(
+                        "sync failed for connection_id=%s: %s — %s",
+                        connection_id,
+                        type(exc).__name__,
+                        exc.message,
+                    )
+                except Exception:
+                    report.accounts_failed += 1
+                    log.exception("sync failed unexpectedly for connection_id=%s", connection_id)
+        finally:
+            self._in_flight.discard(connection_id)
+
+    async def _sync(self, ctx: "_ConnectionCtx") -> SyncReport:
+        # Защита от race condition: токен мог быть отозван между
+        # _select_due и _sync.
+        if ctx.api_token_ciphertext == "":
+            raise TokenInvalid("token was deactivated", code="DEACTIVATED")
+
+        try:
+            token_plaintext = self._token_repo.decrypt(ctx.api_token_ciphertext)
+        except TokenEncryptionError as exc:
+            log.error(
+                "decryption failed for connection_id=%s: %s",
+                ctx.connection_id,
+                exc,
+            )
+            await asyncio.to_thread(self._mark_failure, ctx.connection_id, "decryption_failed")
+            raise
+
+        pipeline = SyncPipeline(
+            account_id=ctx.account_id,
+            broker_account_id=ctx.broker_account_id,
+            token_plaintext=token_plaintext,
+            operation_repo=self._operation_repo,
+            instrument_repo=self._instrument_repo,
+            session_factory=self._session_factory,
+        )
+
+        # AU-stream Phase 1+: координация с stream consumer.
+        # Stream consumer держит per-account_id asyncio.Lock на время
+        # persist каждой operation. Cursor-based sync acquire'ит тот
+        # же lock на время всего pipeline.run() — это сериализует
+        # write'ы и устраняет race conditions на одном account_id
+        # (особенно при reconnect catch-up). Если stream_manager
+        # ещё не инициализирован (тесты, или stream feature off
+        # глобально) — lock no-op.
+        from application.sync.stream_manager import stream_manager
+
+        account_lock = stream_manager.get_account_lock(ctx.account_id)
+        async with account_lock:
+            try:
+                return await pipeline.run(full_sync=(ctx.sync_cursor is None or ctx.sync_cursor == ""))
+            except TokenInvalid:
+                # Жирный сигнал: токен отзыван. Деактивируем подключение.
+                await asyncio.to_thread(self._deactivate, ctx.connection_id, "token_invalid")
+                raise
+            except RateLimitExceeded:
+                # PR 15: открыть circuit breaker. Пока — счётчик ошибок.
+                raise
+
+    # ── работа с БД (синхронная) ──────────────────────────────────────
+
+    def _select_due_connection_ids(self) -> list[int]:
+        """SELECT connection_id где пора синкать.
+
+        SYNC-10: один SELECT с нужными колонками (id, circuit_open_until,
+        last_sync_at, sync_interval_minutes), фильтрация due-условий —
+        в Python. Раньше делал 1 + N запросов (отдельный fetch на каждый id).
+        """
+        from datetime import timedelta
+
+        now = utc_now_naive()
+        session = self._session_factory()
+        try:
+            # PR 26 Scenario #91: фильтруем sync только для активных юзеров.
+            # Деактивированные/удалённые юзеры не тратят Tinkoff API quota.
+            from models import Account, User
+
+            rows = (
+                session.query(
+                    BrokerConnection.id,
+                    BrokerConnection.circuit_open_until,
+                    BrokerConnection.last_sync_at,
+                    BrokerConnection.sync_interval_minutes,
+                )
+                .join(Account, Account.id == BrokerConnection.account_id)
+                .join(User, User.id == Account.user_id)
+                .filter(
+                    BrokerConnection.is_active.is_(True),
+                    BrokerConnection.auto_sync_enabled.is_(True),
+                    BrokerConnection.broker == BrokerType.TINKOFF,
+                    User.is_active == 1,
+                    User.deletion_requested_at.is_(None),  # 152-ФЗ pending — не синкаем
+                )
+                .all()
+            )
+        finally:
+            session.close()
+
+        ids: list[int] = []
+        for cid, circuit_open_until, last_sync_at, interval_minutes in rows:
+            if circuit_open_until is not None and circuit_open_until > now:
+                continue
+            if last_sync_at is None:
+                ids.append(cid)
+                continue
+            next_due = last_sync_at + timedelta(minutes=interval_minutes or 60)
+            if next_due <= now:
+                ids.append(cid)
+        return ids
+
+    def _load_connection(self, connection_id: int) -> Optional["_ConnectionCtx"]:
+        """Снять snapshot нужных полей: после этого session закроется."""
+        session = self._session_factory()
+        try:
+            conn = (
+                session.query(BrokerConnection)
+                .filter_by(id=connection_id, is_active=True)
+                .first()
+            )
+            if conn is None:
+                return None
+            return _ConnectionCtx(
+                connection_id=conn.id,
+                account_id=conn.account_id,
+                broker_account_id=conn.broker_account_id,
+                api_token_ciphertext=conn.api_token,
+                sync_cursor=conn.sync_cursor,
+                sync_interval_minutes=conn.sync_interval_minutes,
+            )
+        finally:
+            session.close()
+
+    def _mark_failure(self, connection_id: int, reason: str) -> None:
+        session = self._session_factory()
+        try:
+            conn = session.query(BrokerConnection).filter_by(id=connection_id).first()
+            if conn is None:
+                return
+            conn.last_sync_status = "error"
+            conn.last_sync_error = reason[:512]
+            conn.last_sync_at = utc_now_naive()
+            conn.consecutive_failures = (conn.consecutive_failures or 0) + 1
+            session.commit()
+        except Exception:
+            log.exception("failed to mark failure for connection_id=%s", connection_id)
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+    def _deactivate(self, connection_id: int, reason: str) -> None:
+        session = self._session_factory()
+        try:
+            conn = session.query(BrokerConnection).filter_by(id=connection_id).first()
+            if conn is None:
+                return
+            conn.is_active = False
+            conn.last_sync_status = "error"
+            conn.last_sync_error = f"deactivated: {reason}"
+            conn.api_token = ""
+            session.commit()
+            log.warning(
+                "deactivated connection_id=%s reason=%s", connection_id, reason
+            )
+        except Exception:
+            log.exception("failed to deactivate connection_id=%s", connection_id)
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
+
+@dataclass(frozen=True)
+class _ConnectionCtx:
+    """Snapshot нужных полей BrokerConnection (вне сессии)."""
+
+    connection_id: int
+    account_id: int
+    broker_account_id: str
+    api_token_ciphertext: str
+    sync_cursor: Optional[str]
+    sync_interval_minutes: int
+
+
+# ── factory для scheduler-кода ────────────────────────────────────────
+
+
+def build_default_orchestrator() -> Optional[TinkoffSyncOrchestrator]:
+    """
+    Создать orchestrator с дефолтными зависимостями. Возвращает None
+    если новый sync выключен флагом или мастер-ключ не задан в env.
+    """
+    if not settings.BROKER_SYNC_V2_ENABLED:
+        return None
+    try:
+        encryption = TokenEncryptionService()
+    except TokenEncryptionError as exc:
+        log.warning("orchestrator disabled: %s", exc)
+        return None
+    return TinkoffSyncOrchestrator(
+        token_repo=TokenRepository(encryption=encryption),
+    )

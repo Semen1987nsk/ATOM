@@ -26,7 +26,7 @@
 | `REFRESH_TOKEN_COOKIE_NAME` | no | `atom_refresh_token` | |
 | `CSRF_COOKIE_NAME` | no | `atom_csrf_token` | |
 | `CSRF_HEADER_NAME` | no | `X-CSRF-Token` | |
-| `AUTH_COOKIE_DOMAIN` | no | (none) | `.eqio.ru` для cross-subdomain |
+| `AUTH_COOKIE_DOMAIN` | no | (none) | `.empirik.io` для cross-subdomain |
 | `AUTH_COOKIE_PATH` | no | `/` | |
 | `AUTH_COOKIE_SAMESITE` | no | `lax` | `none` если фронт на другом домене |
 | `AUTH_COOKIE_SECURE` | no | true в проде | Требует HTTPS |
@@ -84,7 +84,7 @@
 |---|---|---|---|
 | `OAUTH_HTTP_TIMEOUT_SECONDS` | no | `15` | |
 | `OPEN_POSITION_SYNC_LOOKBACK_DAYS` | no | `30` | |
-| `OAUTH_REDIRECT_BASE_URL` | yes (если OAuth) | (none) | например `https://api.eqio.ru` |
+| `OAUTH_REDIRECT_BASE_URL` | yes (если OAuth) | (none) | например `https://api.empirik.io` |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | no | (none) | Без них Google OAuth недоступен |
 | `YANDEX_CLIENT_ID` / `_SECRET` | no | (none) | |
 | `SBER_CLIENT_ID` / `_SECRET` | no | (none) | |
@@ -116,12 +116,12 @@ BCRYPT_ROUNDS=14
 DATABASE_URL=postgresql://atom:atom@postgres:5432/atom
 AUTO_INIT_DB=false
 REDIS_URL=redis://redis:6379/0
-CORS_ORIGINS=https://app.eqio.ru
+CORS_ORIGINS=https://app.empirik.io
 AUTH_COOKIE_SECURE=true
 AUTH_COOKIE_SAMESITE=lax
 LOG_FORMAT_MODE=json
 SENTRY_DSN=https://...@sentry.io/...
-OAUTH_REDIRECT_BASE_URL=https://api.eqio.ru
+OAUTH_REDIRECT_BASE_URL=https://api.empirik.io
 ```
 
 ## Минимальный dev `.env`

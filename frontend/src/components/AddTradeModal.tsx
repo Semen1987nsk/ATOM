@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import NextImage from 'next/image';
-import { X, Brain, Target, Smile, CheckCircle, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
-import { api } from '@/lib/apiClient';
+import { Brain, Target, Smile, CheckCircle, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { api, ApiError } from '@/lib/apiClient';
+import { Modal } from '@/components/ui/Modal';
+import { useToast } from '@/contexts/ToastContext';
 
 interface AddTradeModalProps {
   isOpen: boolean;
@@ -45,6 +47,8 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
     color: string;
   }
   const [setups, setSetups] = useState<Setup[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const toast = useToast();
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -59,10 +63,10 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const createdTrade = await api.post<{ id: number }>('/trades/', {
         body: {
@@ -84,19 +88,32 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
         }
       });
 
-      // Загружаем скриншот если есть
+      // Скриншот — вторичен: сделка уже создана. Его сбой НЕ должен блокировать
+      // onSuccess/onClose, иначе повторный сабмит даёт дубликат/409 (S3-16).
+      let screenshotFailed = false;
       if (screenshotFile && createdTrade.id) {
-        const formDataUpload = new FormData();
-        formDataUpload.append('file', screenshotFile);
-        await api.upload(`/trades/${createdTrade.id}/screenshot`, formDataUpload);
+        try {
+          const formDataUpload = new FormData();
+          formDataUpload.append('file', screenshotFile);
+          await api.upload(`/trades/${createdTrade.id}/screenshot`, formDataUpload);
+        } catch {
+          screenshotFailed = true;
+        }
       }
-      
+
+      if (screenshotFailed) {
+        toast.error('Сделка сохранена, но скриншот не загрузился');
+      } else {
+        toast.success('Сделка добавлена');
+      }
       onSuccess();
       onClose();
       // Сбрасываем скриншот
       clearScreenshot();
     } catch (error) {
-      console.error('Failed to add trade:', error);
+      toast.error(error instanceof ApiError ? error.toUserMessage() : 'Не удалось сохранить сделку');
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -134,19 +151,8 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="cyber-card w-full max-w-md bg-[#0d0d0d] p-6 relative animate-scaleIn overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute -top-32 -right-32 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-accent-secondary/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100 hover:text-accent transition-colors z-10">
-          <X size={20} />
-        </button>
-        
-        <h2 className="text-xl font-bold mb-6 text-neon italic relative z-10">НОВАЯ ПОЗИЦИЯ</h2>
-        
-        <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
+    <Modal open={isOpen} onClose={onClose} title="Новая позиция" size="md">
+      <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Тикер</label>
@@ -202,7 +208,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Цена входа</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.entry_price}
                 onChange={e => setFormData({...formData, entry_price: e.target.value})}
@@ -212,7 +218,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Количество</label>
               <input 
                 required
-                type="number" step="any"
+                type="number" step="any" min="0.00000001"
                 className="input-cyber"
                 value={formData.quantity}
                 onChange={e => setFormData({...formData, quantity: e.target.value})}
@@ -224,7 +230,7 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             <div>
               <label className="block text-[10px] font-mono uppercase opacity-50 mb-1">Плечо</label>
               <input 
-                type="number" step="any"
+                type="number" step="any" min="1"
                 className="input-cyber"
                 value={formData.leverage}
                 onChange={e => setFormData({...formData, leverage: e.target.value})}
@@ -398,10 +404,11 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             {screenshotPreview ? (
               <div className="relative group">
                 <NextImage
-                  src={screenshotPreview} 
-                  alt="Preview" 
+                  src={screenshotPreview}
+                  alt="Preview"
                   width={512}
                   height={128}
+                  // FE-09: data: URL from FileReader (in-memory blob), no optimization possible.
                   unoptimized
                   className="w-full h-32 object-cover rounded-lg border border-border"
                 />
@@ -450,14 +457,14 @@ export const AddTradeModal: React.FC<AddTradeModalProps> = ({ isOpen, onClose, o
             />
           </div>
 
-          <button 
+          <button
             type="submit"
-            className="btn-primary w-full py-3 text-center justify-center"
+            disabled={isSubmitting}
+            className="btn-primary w-full py-3 text-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Открыть позицию
+            {isSubmitting ? 'Сохраняем…' : 'Открыть позицию'}
           </button>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 };

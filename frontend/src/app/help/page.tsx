@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
-import { 
+import {
   HelpCircle, Mail, MessageCircle, ChevronDown, ChevronUp,
   ArrowLeft, Search, BookOpen, Zap, CreditCard,
   BarChart3, Shield, Settings, ExternalLink, Send
 } from 'lucide-react';
+import { SUPPORT_EMAIL, SUPPORT_TELEGRAM } from '@/lib/contact';
 
 interface FAQItem {
   question: string;
@@ -19,7 +20,7 @@ const faqData: FAQItem[] = [
   // Начало работы
   {
     category: 'start',
-    question: 'Как начать пользоваться ATOM?',
+    question: 'Как начать пользоваться Полистатой?',
     answer: 'Зарегистрируйтесь, загрузите отчёт брокера (Excel/PDF) или добавьте сделки вручную. Система автоматически рассчитает все метрики и покажет аналитику на дашборде.'
   },
   {
@@ -59,7 +60,7 @@ const faqData: FAQItem[] = [
   {
     category: 'billing',
     question: 'Чем отличается Pro от Free?',
-    answer: 'Free: до 50 сделок/месяц, 1 счёт, базовая статистика. Pro (399₽/мес): безлимит сделок, до 5 счетов, AI-анализ, продвинутая аналитика, экспорт отчётов.'
+    answer: 'Free (бесплатно навсегда): безлимит сделок, ручной ввод + импорт CSV/Excel из Тинькофф/Финам/БКС, 6 базовых метрик, 1 счёт, экспорт CSV. Pro (399₽/мес): API-автосинхронизация с брокером, AI-анализ, MAE/MFE из свечей MOEX, продвинутые метрики, Trade Replay, до 5 счетов.'
   },
   {
     category: 'billing',
@@ -69,7 +70,7 @@ const faqData: FAQItem[] = [
   {
     category: 'billing',
     question: 'Можно ли вернуть деньги?',
-    answer: 'Да, в течение 14 дней с момента оплаты. Напишите на support@eqio.app с указанием email аккаунта.'
+    answer: `Да, в течение 14 дней с момента оплаты. Напишите на ${SUPPORT_EMAIL} с указанием email аккаунта.`
   },
   {
     category: 'billing',
@@ -86,7 +87,7 @@ const faqData: FAQItem[] = [
   {
     category: 'security',
     question: 'Как удалить свой аккаунт?',
-    answer: 'Напишите на support@eqio.app с просьбой об удалении. Мы удалим все ваши данные в течение 24 часов.'
+    answer: `Напишите на ${SUPPORT_EMAIL} с просьбой об удалении. Мы удалим все ваши данные в течение 24 часов.`
   },
   
   // Технические
@@ -127,11 +128,6 @@ export default function HelpPage() {
   return (
     <AppShell pageTitle="Помощь">
     <main className="p-6 md:p-8 max-w-5xl mx-auto">
-      {/* Background blur orbs убраны — теперь чистый surface из AppShell */}
-      <div className="hidden" />
-      <div className="absolute top-40 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-1/4 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
-
       <div className="relative max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
@@ -169,7 +165,7 @@ export default function HelpPage() {
         {/* Quick Contact Cards */}
         <div className="grid md:grid-cols-3 gap-4 mb-10">
           <a
-            href="mailto:support@eqio.app"
+            href={`mailto:${SUPPORT_EMAIL}`}
             className="cyber-card p-5 hover:border-cyan-500/50 transition-all group"
           >
             <div className="flex items-center gap-4">
@@ -178,14 +174,14 @@ export default function HelpPage() {
               </div>
               <div>
                 <h3 className="font-bold">Email</h3>
-                <p className="text-sm text-muted-foreground">support@eqio.app</p>
+                <p className="text-sm text-muted-foreground">{SUPPORT_EMAIL}</p>
                 <p className="text-xs text-cyan-400 mt-1">Ответим за 24 часа</p>
               </div>
             </div>
           </a>
 
           <a
-            href="https://t.me/atom_support_bot"
+            href={SUPPORT_TELEGRAM}
             target="_blank"
             rel="noopener noreferrer"
             className="cyber-card p-5 hover:border-blue-500/50 transition-all group"
@@ -196,7 +192,7 @@ export default function HelpPage() {
               </div>
               <div>
                 <h3 className="font-bold">Telegram</h3>
-                <p className="text-sm text-muted-foreground">@atom_support_bot</p>
+                <p className="text-sm text-muted-foreground">@empirik_support_bot</p>
                 <p className="text-xs text-blue-400 mt-1">Быстрые ответы</p>
               </div>
             </div>
@@ -282,14 +278,14 @@ export default function HelpPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="mailto:support@eqio.app"
+              href={`mailto:${SUPPORT_EMAIL}`}
               className="btn-primary inline-flex items-center justify-center gap-2"
             >
               <Mail size={18} />
               Написать на email
             </a>
             <a
-              href="https://t.me/atom_support_bot"
+              href={SUPPORT_TELEGRAM}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-secondary inline-flex items-center justify-center gap-2"

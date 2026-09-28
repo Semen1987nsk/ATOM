@@ -10,10 +10,12 @@ Subscription / paywall service.
 Дешёвая реализация: одна Subscription-row на user, plan=FREE по умолчанию.
 Если subscription нет вообще, считаем FREE.
 
-ЛИМИТЫ:
-- FREE: 50 сделок суммарно, без AI, без advanced-аналитики
-- PRO:  безлимит сделок, AI on, advanced on
-- CORPORATE: то же что PRO + multi-account > 3 (на будущее)
+ЛИМИТЫ (ADR-0009, MVP flat freemium):
+- FREE: безлимит сделок + импорт + 6 базовых метрик; без AI/автосинка/MAE-MFE/advanced
+- PRO:  всё разморожено (AI, MAE/MFE, advanced-метрики, автосинк, до 5 счетов)
+- CORPORATE: то же что PRO + multi-account (на будущее)
+Лимит «50 сделок» снят (ADR-0005/0009) — Free безлимитен по числу сделок,
+импорт всегда бесплатен; платный гейт — автосинк/AI/advanced (см. require_pro).
 """
 from __future__ import annotations
 
@@ -25,9 +27,6 @@ from sqlalchemy.orm import Session
 import database
 import models
 import auth_service
-
-
-FREE_PLAN_TRADE_LIMIT = 50
 
 
 def get_active_subscription(db: Session, user: models.User) -> Optional[models.Subscription]:
@@ -99,28 +98,11 @@ def require_pro(
 
 
 def enforce_trade_limit(db: Session, user: models.User) -> None:
-    """
-    Проверяет, что юзер не упёрся в FREE-лимит. Вызывать ДО вставки новой сделки
-    (POST /trades/ и каждой строки в /trades/import).
+    """No-op: Free безлимитен по числу сделок (ADR-0009; лимит «50» снят).
 
-    На FREE: ≥ FREE_PLAN_TRADE_LIMIT → 402 с понятной ошибкой.
-    На PRO+: пропускает.
+    Оставлено как seam в точках создания/импорта сделок (trades.py). При
+    подключении reverse-trial (ADR-0005) сюда может вернуться per-feature
+    гейтинг, но лимит по КОЛИЧЕСТВУ сделок не вернётся — импорт всегда бесплатен
+    (это aha-момент активации, а не depth-gate).
     """
-    plan = get_active_plan(db, user)
-    if is_paid_plan(plan):
-        return
-    count = get_user_trade_count(db, user)
-    if count >= FREE_PLAN_TRADE_LIMIT:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
-                "error": "trade_limit_reached",
-                "current_plan": plan.value,
-                "trade_count": count,
-                "limit": FREE_PLAN_TRADE_LIMIT,
-                "message": (
-                    f"Достигнут лимит бесплатного тарифа: {FREE_PLAN_TRADE_LIMIT} сделок. "
-                    "Оформите PRO для безлимита."
-                ),
-            },
-        )
+    return None

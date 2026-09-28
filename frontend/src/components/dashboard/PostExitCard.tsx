@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Clock, AlertTriangle, CheckCircle, Eye, X, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/apiClient';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface PeriodStats {
   label: string;
@@ -67,6 +68,7 @@ interface PostExitCardProps {
 }
 
 export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) {
+  const { formatCurrency } = useSettings();
   const [calculating, setCalculating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -184,8 +186,6 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
 
   return (
     <div className="cyber-card p-6 border-l-purple-500/30 relative overflow-hidden group">
-      <div className="absolute -top-20 -left-20 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
       <h2 className="text-sm font-mono uppercase mb-4 flex items-center gap-2 relative z-10">
         <Clock size={16} className="text-purple-400" />
         <Link 
@@ -291,7 +291,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                     <div key={idx} className="flex items-center justify-between text-sm py-2 border-b border-white/10">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400">{exit.exit_date}</span>
-                        <span className="font-semibold text-white">{exit.symbol}</span>
+                        <span className="font-semibold text-[var(--foreground)]">{exit.symbol}</span>
                         <span className={`font-medium ${exit.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                           {exit.direction}
                         </span>
@@ -343,12 +343,12 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
         {calculating && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-300">{progressText}</span>
-              <span className="text-purple-400 font-medium">{Math.round(progress)}%</span>
+              <span className="text-[var(--text-secondary)]">{progressText}</span>
+              <span className="text-[var(--accent)] font-medium num">{Math.round(progress)}%</span>
             </div>
-            <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-full transition-all duration-300 ease-out"
+            <div className="w-full bg-[var(--surface-2)] rounded-[var(--radius-xs)] h-1.5 overflow-hidden">
+              <div
+                className="bg-[var(--accent)] h-full rounded-[var(--radius-xs)] transition-all duration-300 ease-out"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -459,7 +459,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-white/10 rounded-lg">
                       <div className="text-xs text-slate-400 uppercase mb-1">Инструмент</div>
-                      <div className="text-2xl font-bold text-white">{selectedTrade.symbol}</div>
+                      <div className="text-2xl font-bold text-[var(--foreground)]">{selectedTrade.symbol}</div>
                       <div className={`text-base font-semibold ${selectedTrade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                         {selectedTrade.direction}
                       </div>
@@ -467,7 +467,7 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                     <div className="p-4 bg-white/10 rounded-lg">
                       <div className="text-xs text-slate-400 uppercase mb-1">P&L</div>
                       <div className={`text-2xl font-bold ${(selectedTrade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {selectedTrade.pnl?.toLocaleString('ru-RU')} ₽
+                        {formatCurrency(selectedTrade.pnl || 0)}
                       </div>
                       {(selectedTrade.pnl || 0) < 0 ? (
                         <div className="text-red-400 text-base font-semibold">
@@ -520,9 +520,9 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                           {availablePeriods.map(([key, period]) => (
                             <div key={key} className="grid grid-cols-5 gap-3 text-sm py-3 border-b border-white/10">
                               <div className="text-purple-400 font-semibold">{period.label || key}</div>
-                              <div className="text-white">{formatPrice(period.max_price || 0)}</div>
-                              <div className="text-white">{formatPrice(period.min_price || 0)}</div>
-                              <div className="text-white">{formatPrice(period.final_price || 0)}</div>
+                              <div className="text-[var(--foreground)]">{formatPrice(period.max_price || 0)}</div>
+                              <div className="text-[var(--foreground)]">{formatPrice(period.min_price || 0)}</div>
+                              <div className="text-[var(--foreground)]">{formatPrice(period.final_price || 0)}</div>
                               <div className={
                                 `font-semibold ${period.exit_quality === 'early' ? 'text-yellow-400' :
                                 period.exit_quality === 'good' ? 'text-green-400' : 'text-slate-300'}`
@@ -540,10 +540,10 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                   
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="p-3 bg-white/10 rounded-lg">
-                      <span className="text-slate-400">Вход:</span> <span className="text-white font-medium">{formatPrice(selectedTrade.entry_price)}</span> <span className="text-slate-400">@</span> <span className="text-white">{selectedTrade.entry_at?.split('T')[0]}</span>
+                      <span className="text-slate-400">Вход:</span> <span className="text-[var(--foreground)] font-medium">{formatPrice(selectedTrade.entry_price)}</span> <span className="text-slate-400">@</span> <span className="text-[var(--foreground)]">{selectedTrade.entry_at?.split('T')[0]}</span>
                     </div>
                     <div className="p-3 bg-white/10 rounded-lg">
-                      <span className="text-slate-400">Выход:</span> <span className="text-white font-medium">{formatPrice(selectedTrade.exit_price)}</span> <span className="text-slate-400">@</span> <span className="text-white">{selectedTrade.exit_at?.split('T')[0]}</span>
+                      <span className="text-slate-400">Выход:</span> <span className="text-[var(--foreground)] font-medium">{formatPrice(selectedTrade.exit_price)}</span> <span className="text-slate-400">@</span> <span className="text-[var(--foreground)]">{selectedTrade.exit_at?.split('T')[0]}</span>
                     </div>
                   </div>
                 </div>
@@ -566,12 +566,12 @@ export function PostExitCard({ tradesCount, onRecalculate }: PostExitCardProps) 
                       onClick={() => setSelectedTrade(trade)}
                     >
                       <div className="text-slate-300">{trade.exit_at?.split('T')[0]}</div>
-                      <div className="font-semibold text-white">{trade.symbol}</div>
+                      <div className="font-semibold text-[var(--foreground)]">{trade.symbol}</div>
                       <div className={`font-medium ${trade.direction === 'LONG' ? 'text-green-400' : 'text-red-400'}`}>
                         {trade.direction}
                       </div>
                       <div className={`font-medium ${(trade.pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {trade.pnl?.toLocaleString('ru-RU')} ₽
+                        {formatCurrency(trade.pnl || 0)}
                       </div>
                       <div className={`font-semibold ${
                         (trade.pnl || 0) < 0 

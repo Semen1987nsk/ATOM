@@ -11,9 +11,10 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { AnalysisPageHeader } from "@/components/analysis/AnalysisPageHeader";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import { api } from "@/lib/apiClient";
+import { api, ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import { DataError } from "@/components/ui/DataError";
 
 interface DayPnL {
   date: string;
@@ -38,15 +39,23 @@ export default function CalendarPage() {
   const { formatCurrency } = useSettings();
   const [data, setData] = useState<CalendarResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+  // FE-02: refetchKey-bump = re-trigger useEffect для retry-кнопки.
+  const [refetchKey, setRefetchKey] = useState(0);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
     setLoading(true);
+    setError(null);
+    let cancelled = false;
     api.get<CalendarResponse>("/stats/calendar")
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [user]);
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) { setData(null); setError(e as ApiError | Error); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, refetchKey]);
+
+  const retry = () => setRefetchKey((k) => k + 1);
 
   // Группируем дни по «год-месяц» для рендера месячных сеток
   const monthsData = useMemo(() => {
@@ -57,7 +66,7 @@ export default function CalendarPage() {
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(day);
     }
-    return Object.entries(grouped)
+    const result = Object.entries(grouped)
       .sort(([a], [b]) => b.localeCompare(a)) // по убыванию (свежие сверху)
       .map(([yearMonth, days]) => {
         const [y, m] = yearMonth.split("-").map(Number);
@@ -65,6 +74,23 @@ export default function CalendarPage() {
         const trades = days.reduce((s, d) => s + d.trades_count, 0);
         return { yearMonth, year: y, month: m - 1, days, pnl, trades };
       });
+
+    // BUG-006: гарантируем текущий месяц в navigator (даже без закрытых сделок).
+    // Иначе при открытой позиции в текущем месяце календарь «застревает» на
+    // последнем месяце с закрытыми сделками (март), а «Следующий месяц» disabled.
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    if (!result.some((m) => m.yearMonth === currentYM)) {
+      result.unshift({
+        yearMonth: currentYM,
+        year: now.getFullYear(),
+        month: now.getMonth(),
+        days: [],
+        pnl: 0,
+        trades: 0,
+      });
+    }
+    return result;
   }, [data]);
 
   const maxAbsPnl = useMemo(() => {
@@ -73,6 +99,18 @@ export default function CalendarPage() {
   }, [data]);
 
   const [monthIdx, setMonthIdx] = useState(0);
+
+  // BUG-006: landing на текущем месяце если он есть в данных. Иначе остаёмся
+  // на дефолтном 0 (самый свежий доступный месяц). Раньше всегда открывался
+  // monthsData[0] — пользователь видел март вместо мая, потому что свежие
+  // сделки могли быть open (без pnl, не попадают в /stats/calendar).
+  useEffect(() => {
+    if (monthsData.length === 0) return;
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const idx = monthsData.findIndex((m) => m.yearMonth === currentYM);
+    if (idx >= 0) setMonthIdx(idx);
+  }, [monthsData]);
 
   if (authLoading) return <DashboardSkeleton />;
 
@@ -88,6 +126,8 @@ export default function CalendarPage() {
 
         {!user ? (
           <Empty text="Войдите, чтобы увидеть календарь сделок." />
+        ) : error ? (
+          <DataError error={error} onRetry={retry} />
         ) : loading ? (
           <DashboardSkeleton />
         ) : !data || data.total_trades === 0 ? (

@@ -209,6 +209,6 @@ def build_benchmark_response(
             "(Barber & Odean 2000, Linnainmaa 2003, Coval & Shumway 2005). "
             "Реальная когорта появится при росте базы пользователей."
             if use_synthetic
-            else f"Сравнение по {cohort_size} реальным анонимизированным юзерам Eqio."
+            else f"Сравнение по {cohort_size} реальным анонимизированным юзерам Полистаты."
         ),
     }

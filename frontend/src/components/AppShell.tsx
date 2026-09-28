@@ -34,7 +34,6 @@ import {
   BarChart3,
   ListChecks,
   CalendarDays,
-  Briefcase,
   PieChart,
   Target,
   Clock,
@@ -53,8 +52,24 @@ import {
   ChevronDown,
   LogOut,
   Sparkles,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+
+// Логомарка «гистограмма-П»: три восходящих столбца (поли+стата), верхний —
+// фирменный оранжевый с дата-точкой. currentColor наследует цвет текста (ink),
+// поэтому знак виден на любой теме; оранжевый #E2521C фиксирован для консистентности
+// бренда (гармонирует с ochre-акцентом приложения, в отличие от старого cyan).
+function PolistataMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} aria-hidden="true" focusable="false">
+      <rect x="6" y="28" width="9" height="14" rx="2.5" fill="currentColor" />
+      <rect x="19.5" y="20" width="9" height="22" rx="2.5" fill="currentColor" />
+      <rect x="33" y="10" width="9" height="32" rx="2.5" fill="#E2521C" />
+      <circle cx="37.5" cy="10" r="3.4" fill="currentColor" />
+    </svg>
+  );
+}
 
 // ──────────────────────────────────────────────
 //  Navigation config
@@ -80,9 +95,9 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Торговля",
     items: [
       { label: "Дашборд", href: "/", icon: <BarChart3 size={18} /> },
-      { label: "Сделки", href: "/history", icon: <ListChecks size={18} /> },
+      { label: "Дневник сделок", href: "/history", icon: <ListChecks size={18} /> },
+      { label: "Открытые позиции", href: "/positions", icon: <Wallet size={18} /> },
       { label: "Календарь P&L", href: "/analysis/calendar", icon: <CalendarDays size={18} /> },
-      { label: "Калькулятор позиции", href: "/calculator", icon: <Briefcase size={18} /> },
     ],
   },
   {
@@ -106,12 +121,12 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const FOOTER_ITEMS: NavItem[] = [
-  { label: "Брокеры", href: "/", icon: <Plug size={18} />, todo: true },
+  { label: "Брокеры", href: "/profile?tab=brokers", icon: <Plug size={18} /> },
   { label: "Настройки", href: "/profile", icon: <Settings size={18} /> },
   { label: "Помощь", href: "/help", icon: <HelpCircle size={18} /> },
 ];
 
-const SIDEBAR_STATE_KEY = "eqio:sidebar-collapsed";
+const SIDEBAR_STATE_KEY = "empirik:sidebar-collapsed";
 
 // ──────────────────────────────────────────────
 //  Component
@@ -152,11 +167,11 @@ export function AppShell({ children, pageTitle, headerRight, onAddTrade, onImpor
   useEffect(() => {
     const onAdd = () => onAddTrade?.();
     const onImp = () => onImport?.();
-    window.addEventListener("eqio:add-trade", onAdd);
-    window.addEventListener("eqio:import-trades", onImp);
+    window.addEventListener("empirik:add-trade", onAdd);
+    window.addEventListener("empirik:import-trades", onImp);
     return () => {
-      window.removeEventListener("eqio:add-trade", onAdd);
-      window.removeEventListener("eqio:import-trades", onImp);
+      window.removeEventListener("empirik:add-trade", onAdd);
+      window.removeEventListener("empirik:import-trades", onImp);
     };
   }, [onAddTrade, onImport]);
 
@@ -264,15 +279,16 @@ function Sidebar({
       <div className="flex items-center justify-between h-14 px-4 border-b border-[var(--border)]">
         <Link
           href="/"
-          className="text-xl font-bold tracking-tight no-underline"
+          className="flex items-center gap-2 no-underline"
           onClick={onCloseMobile}
         >
+          <PolistataMark className="h-6 w-auto shrink-0" />
           {collapsed ? (
-            <span className="text-[var(--accent)]">E</span>
+            <span className="sr-only">Полистата</span>
           ) : (
-            <>
-              <span className="text-[var(--accent)]">Eq</span>io
-            </>
+            <span className="font-brand text-[19px]" style={{ fontWeight: 800, letterSpacing: "-0.01em" }}>
+              Полистата
+            </span>
           )}
         </Link>
         <button
@@ -640,7 +656,7 @@ function Header({
       <div className="flex-1 min-w-0 flex justify-center md:justify-start md:max-w-md md:ml-4">
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent("eqio:open-palette"))}
+          onClick={() => window.dispatchEvent(new CustomEvent("empirik:open-palette"))}
           className={clsx(
             "w-full max-w-[420px] flex items-center gap-2.5 px-3 py-1.5",
             "rounded-[var(--radius-md)] bg-[var(--surface-1)] border border-[var(--border)]",

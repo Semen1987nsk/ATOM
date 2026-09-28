@@ -9,9 +9,17 @@
  * Хук берёт текущие фильтры (period/tag/...) + глобальные настройки
  * (tradesStartDate, tradesStartTradeId, maeCalculationMethod) и собирает URL
  * один-в-один как на старом дашборде — так что бекендный кэш переиспользуется.
+ *
+ * FE-07 (Sprint 5, Batch 4): хук делегирует фетч TanStack Query — кеш и dedup
+ * автоматические, retry при сетевом сбое. `useStatsQuery` готовый из queries.ts
+ * не подошёл, потому что поддерживает только period/start_date/end_date,
+ * а здесь нужны ещё tag/limit/mae_method/start_trade_id, поэтому собран
+ * прямой useQuery с queryKeys.stats.summary (полный набор params в ключе).
  */
-import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/apiClient";
+import { useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api, ApiError } from "@/lib/apiClient";
+import { queryKeys } from "@/lib/queries";
 import type { Filters } from "@/components/FilterPanel";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,49 +41,56 @@ export function useAnalysisStats(filters: Filters) {
   const { user } = useAuth();
   const { settings } = useSettings();
 
-  const [stats, setStats] = useState<AnalysisStats | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchStats = useCallback(async () => {
-    if (!user) {
-      setStats(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (settings.tradesStartTradeId) {
-        params.append("start_trade_id", settings.tradesStartTradeId.toString());
-      } else if (settings.tradesStartDate) {
-        params.append("period", "custom");
-        params.append("start_date", settings.tradesStartDate);
-      } else if (filters.period !== "all") {
-        params.append("period", filters.period);
-        if (filters.period === "custom" && filters.startDate) {
-          params.append("start_date", filters.startDate);
-          if (filters.endDate) params.append("end_date", filters.endDate);
-        }
+  // params собираются один-в-один как раньше — backend-кеш по querystring
+  // должен переиспользоваться вместе с дашбордом.
+  const queryParams = useMemo(() => {
+    const params: Record<string, string> = {};
+    if (settings.tradesStartTradeId) {
+      params.start_trade_id = settings.tradesStartTradeId.toString();
+    } else if (settings.tradesStartDate) {
+      params.period = "custom";
+      params.start_date = settings.tradesStartDate;
+    } else if (filters.period !== "all") {
+      params.period = filters.period;
+      if (filters.period === "custom" && filters.startDate) {
+        params.start_date = filters.startDate;
+        if (filters.endDate) params.end_date = filters.endDate;
       }
-      if (filters.tag) params.append("tag", filters.tag);
-      if (filters.limit) params.append("limit", filters.limit.toString());
-      if (settings.maeCalculationMethod) {
-        params.append("mae_method", settings.maeCalculationMethod);
-      }
-      const url = "/stats/" + (params.toString() ? "?" + params.toString() : "");
-      const data = await api.get<AnalysisStats>(url);
-      setStats(data);
-    } catch (err) {
-      console.error("useAnalysisStats failed", err);
-      setStats(null);
-    } finally {
-      setLoading(false);
     }
-  }, [user, filters, settings.maeCalculationMethod, settings.tradesStartDate, settings.tradesStartTradeId]);
+    if (filters.tag) params.tag = filters.tag;
+    if (filters.limit) params.limit = filters.limit.toString();
+    if (settings.maeCalculationMethod) {
+      params.mae_method = settings.maeCalculationMethod;
+    }
+    return params;
+  }, [
+    filters.period,
+    filters.startDate,
+    filters.endDate,
+    filters.tag,
+    filters.limit,
+    settings.tradesStartDate,
+    settings.tradesStartTradeId,
+    settings.maeCalculationMethod,
+  ]);
 
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+  const query = useQuery<AnalysisStats>({
+    queryKey: queryKeys.stats.summary(queryParams),
+    queryFn: () => api.get<AnalysisStats>("/stats/", { params: queryParams }),
+    enabled: !!user,
+    // staleTime для дорогого расчёта — как в useStatsQuery
+    staleTime: 60 * 1000,
+  });
 
-  return { stats, loading, refetch: fetchStats };
+  const refetch = useCallback(() => {
+    void query.refetch();
+  }, [query]);
+
+  return {
+    stats: user ? query.data ?? null : null,
+    // Когда user=null, query disabled — UI должен показать «нет данных», а не спиннер.
+    loading: user ? query.isLoading : false,
+    error: (query.error as ApiError | Error | null) ?? null,
+    refetch,
+  };
 }

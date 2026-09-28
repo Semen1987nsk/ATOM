@@ -1,0 +1,50 @@
+# .dockerignore для frontend — что НЕ копировать в build-context.
+# Меньше context = быстрее upload в docker daemon + чище образ.
+
+# Зависимости и build-артефакты — пересобираются внутри Dockerfile.
+node_modules
+.next
+out
+
+# Git — секреты в истории, лишние мегабайты.
+.git
+.gitignore
+.gitattributes
+
+# Local env (продакшен значения подаются через env_file в compose).
+# .env.example сохраняем чтобы документировать схему.
+.env
+.env.*
+!.env.example
+
+# Test-артефакты — не нужны для прод-образа.
+e2e
+playwright-report
+playwright.config.ts
+test-results
+coverage
+vitest.config.ts
+vitest.setup.ts
+
+# Логи и временные файлы.
+*.log
+.local-frontend*.log
+frontend.err.log
+frontend.out.log
+.DS_Store
+Thumbs.db
+
+# Документация и IDE-конфиги.
+README.md
+.vscode
+.idea
+
+# TypeScript build-cache — пересоздаётся внутри builder-стадии.
+tsconfig.tsbuildinfo
+
+# Sentry source-map debug-файлы (загружаются и удаляются billing-плагином).
+.sentryclirc
+
+# Docker-related — рекурсия запрещена.
+Dockerfile
+.dockerignore

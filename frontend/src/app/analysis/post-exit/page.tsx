@@ -12,8 +12,9 @@ import { AppShell } from "@/components/AppShell";
 import { AnalysisPageHeader } from "@/components/analysis/AnalysisPageHeader";
 import { PostExitCard } from "@/components/dashboard/PostExitCard";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import { api } from "@/lib/apiClient";
+import { api, ApiError } from "@/lib/apiClient";
 import { useAuth } from "@/contexts/AuthContext";
+import { DataError } from "@/components/ui/DataError";
 
 interface MinimalTrade {
   id: number;
@@ -23,12 +24,15 @@ interface MinimalTrade {
 export default function PostExitPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [tradesCount, setTradesCount] = useState<number | null>(null);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [refetchKey, setRefetchKey] = useState(0);
 
   useEffect(() => {
     if (!user) {
       setTradesCount(0);
       return;
     }
+    setError(null);
     let cancelled = false;
     api
       .get<MinimalTrade[]>("/trades/")
@@ -37,11 +41,17 @@ export default function PostExitPage() {
         const closed = Array.isArray(data) ? data.filter((t) => t.exit_at).length : 0;
         setTradesCount(closed);
       })
-      .catch(() => !cancelled && setTradesCount(0));
+      .catch((e) => {
+        if (cancelled) return;
+        setTradesCount(0);
+        setError(e as ApiError | Error);
+      });
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, refetchKey]);
+
+  const retry = () => { setTradesCount(null); setRefetchKey((k) => k + 1); };
 
   if (authLoading) return <DashboardSkeleton />;
 
@@ -57,6 +67,8 @@ export default function PostExitPage() {
 
         {!user ? (
           <EmptyState text="Войдите, чтобы проанализировать выходы из своих сделок." />
+        ) : error ? (
+          <DataError error={error} onRetry={retry} />
         ) : tradesCount === null ? (
           <DashboardSkeleton />
         ) : tradesCount === 0 ? (

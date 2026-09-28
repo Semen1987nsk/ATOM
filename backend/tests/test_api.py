@@ -57,7 +57,7 @@ def test_app():
 def test_user(test_app):
     """Create a test user with account"""
     db = test_app["db"]
-    hashed_password = auth_service.get_password_hash("testpass123")
+    hashed_password = auth_service.get_password_hash("testpassword123")
     user = User(
         email="test@example.com",
         name="Test User",
@@ -129,14 +129,11 @@ class TestRoot:
         assert body["status"] == "ready"
         assert body["checks"]["database"]["ok"] is True
     
-    def test_db_check(self, test_app):
-        """Should confirm database connection"""
+    def test_db_check_removed(self, test_app):
+        """API-14: /db-check удалён; используйте /ready."""
         client = test_app["client"]
         response = client.get("/db-check")
-        assert response.status_code == 200
-        data = response.json()
-        assert "connected" in data["status"].lower()
-        assert data["connected"] is True
+        assert response.status_code == 404
 
 
 # ==================== AUTH TESTS ====================
@@ -151,51 +148,84 @@ class TestAuth:
         return {auth_service.CSRF_HEADER_NAME: csrf_token}
     
     def test_register_success(self, test_app):
-        """Should register new user successfully (password ≥ 12 chars per OWASP 2024)."""
+        """B1 verification-first: register создаёт юзера, но НЕ логинит.
+
+        Ответ — нейтральный 202 без Set-Cookie (защита от enumeration);
+        сессия выдаётся только после подтверждения email."""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "newuser@example.com",
             "password": "Strong-Password-123",
-            "name": "New User"
+            "name": "New User",
+            "pd_consent": True,  # 152-ФЗ ст. 9: обязательное согласие
         })
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        # Токены не выдаются вообще — ни в теле, ни в cookies.
+        assert "access_token" not in data and "refresh_token" not in data
+        assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME) is None
 
     def test_register_duplicate_email(self, test_app, test_user):
-        """Should reject duplicate email"""
+        """S4-11: duplicate email must be indistinguishable from a fresh one
+        (no enumeration oracle) — neutral 202 without the old 400 message."""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "test@example.com",
             "password": "Strong-Password-123",
-            "name": "Duplicate"
+            "name": "Duplicate",
+            "pd_consent": True,
         })
-        assert response.status_code == 400
-        assert "зарегистрирован" in response.json()["detail"].lower()
-    
+        assert response.status_code in (200, 202)
+        assert "зарегистрирован" not in response.text.lower()
+
     def test_register_weak_password(self, test_app):
         """Should reject weak password"""
         client = test_app["client"]
         response = client.post("/auth/register", json={
             "email": "weak@example.com",
             "password": "123",
-            "name": "Weak"
+            "name": "Weak",
+            "pd_consent": True,
         })
         assert response.status_code == 422
         assert response.json()["request_id"]
         assert response.headers.get("X-Request-ID") == response.json()["request_id"]
+
+    def test_register_without_pd_consent_rejected(self, test_app):
+        """152-ФЗ: registration must fail without explicit pd_consent."""
+        client = test_app["client"]
+        # Полное отсутствие поля → 422 (Pydantic)
+        response = client.post("/auth/register", json={
+            "email": "noconsent@example.com",
+            "password": "Strong-Password-123",
+            "name": "NoConsent",
+        })
+        assert response.status_code == 422
+
+    def test_register_with_false_pd_consent_rejected(self, test_app):
+        """152-ФЗ: explicit pd_consent=false must be rejected at endpoint level."""
+        client = test_app["client"]
+        response = client.post("/auth/register", json={
+            "email": "falseconsent@example.com",
+            "password": "Strong-Password-123",
+            "name": "False",
+            "pd_consent": False,
+        })
+        assert response.status_code == 400
+        assert "согласие" in response.json()["detail"].lower()
     
     def test_login_success(self, test_app, test_user):
         """Should login successfully with correct credentials"""
         client = test_app["client"]
         response = client.post("/auth/login", json={
             "email": "test@example.com",
-            "password": "testpass123"
+            "password": "testpassword123"
         })
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
+        # SEC-08: токены теперь только в httpOnly cookies, не в теле ответа.
+        assert "access_token" not in data and "refresh_token" not in data
+        assert data["authenticated"] is True
         assert response.cookies.get(auth_service.ACCESS_TOKEN_COOKIE_NAME)
         assert response.cookies.get(auth_service.REFRESH_TOKEN_COOKIE_NAME)
         assert response.cookies.get(auth_service.CSRF_COOKIE_NAME)
@@ -258,7 +288,7 @@ class TestAuth:
         client = test_app["client"]
         login_response = client.post("/auth/login", json={
             "email": "test@example.com",
-            "password": "testpass123"
+            "password": "testpassword123"
         })
         assert login_response.status_code == 200
 
@@ -271,7 +301,7 @@ class TestAuth:
         client = test_app["client"]
         login_response = client.post("/auth/login", json={
             "email": "test@example.com",
-            "password": "testpass123"
+            "password": "testpassword123"
         })
         assert login_response.status_code == 200
 
@@ -290,8 +320,8 @@ class TestAuth:
             "/auth/change-password",
             headers=auth_headers,
             json={
-                "old_password": "testpass123",
-                "new_password": "newpass456"
+                "old_password": "testpassword123",
+                "new_password": "newpassword456"
             }
         )
         assert response.status_code == 200
@@ -304,8 +334,8 @@ class TestAuth:
             "/auth/change-password",
             headers=auth_headers,
             json={
-                "old_password": "testpass123",
-                "new_password": "testpass123"
+                "old_password": "testpassword123",
+                "new_password": "testpassword123"
             }
         )
         assert response.status_code == 400
@@ -374,6 +404,25 @@ class TestTrades:
         assert data["symbol"] == "SBER"
         assert data["direction"] == "long"
     
+    def test_create_trade_without_account_id(self, test_app, test_user, auth_headers):
+        """Should create trade without account_id: server resolves active account"""
+        client = test_app["client"]
+
+        response = client.post("/trades/",
+            headers=auth_headers,
+            json={
+                "symbol": "GAZP",
+                "direction": "long",
+                "entry_price": 130.0,
+                "quantity": 5,
+                "entry_at": "2025-01-02T10:00:00"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["symbol"] == "GAZP"
+        assert data["account_id"] is not None
+
     def test_get_trades(self, test_app, test_user, auth_headers):
         """Should return trades list"""
         client = test_app["client"]
@@ -409,6 +458,57 @@ class TestTrades:
         client = test_app["client"]
         response = client.delete("/trades/99999", headers=auth_headers)
         assert response.status_code == 404
+
+    def test_delete_sync_trade_returns_409(self, test_app, test_user, auth_headers):
+        """DATA-11: sync-сделку (tinkoff_v2) удалять нельзя — следующая
+        синхронизация пересоберёт её из operations («воскресает»)."""
+        client = test_app["client"]
+        db = test_app["db"]
+        account = db.query(Account).filter(Account.user_id == test_user.id).first()
+
+        from datetime import datetime
+        trade = Trade(
+            account_id=account.id,
+            symbol="SBER",
+            direction=TradeDirection.LONG,
+            entry_price=250.0,
+            quantity=10,
+            entry_at=datetime(2025, 1, 1, 10, 0),
+            data_source="tinkoff_v2",
+        )
+        db.add(trade)
+        db.commit()
+        db.refresh(trade)
+
+        response = client.delete(f"/trades/{trade.id}", headers=auth_headers)
+        assert response.status_code == 409
+        assert "восстановится" in response.json()["detail"]
+        # Сделка осталась в БД.
+        db.expire_all()
+        assert db.query(Trade).filter(Trade.id == trade.id).first() is not None
+
+    def test_delete_manual_trade_still_works(self, test_app, test_user, auth_headers):
+        """Manual-сделки удаляются как раньше."""
+        client = test_app["client"]
+        db = test_app["db"]
+        account = db.query(Account).filter(Account.user_id == test_user.id).first()
+
+        from datetime import datetime
+        trade = Trade(
+            account_id=account.id,
+            symbol="GAZP",
+            direction=TradeDirection.LONG,
+            entry_price=130.0,
+            quantity=5,
+            entry_at=datetime(2025, 1, 2, 10, 0),
+            data_source="manual",
+        )
+        db.add(trade)
+        db.commit()
+        db.refresh(trade)
+
+        response = client.delete(f"/trades/{trade.id}", headers=auth_headers)
+        assert response.status_code == 200
 
 
 # ==================== STATS TESTS ====================
@@ -699,9 +799,10 @@ class TestStats:
             {"day": "Пн", "total_pnl": 90.0, "trades": 2, "win_rate": 50.0},
             {"day": "Вт", "total_pnl": 70.0, "trades": 1, "win_rate": 100.0},
         ]
+        # S3-12: hour_stats бакетируется по МСК (UTC+3) — 10:00→13:00, 11:00→14:00.
         assert data["time_patterns"]["hour_stats"] == [
-            {"hour": "10:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
-            {"hour": "11:00", "total_pnl": -5.0, "trades": 1, "win_rate": 0.0},
+            {"hour": "13:00", "total_pnl": 165.0, "trades": 2, "win_rate": 100.0},
+            {"hour": "14:00", "total_pnl": -5.0, "trades": 1, "win_rate": 0.0},
         ]
         assert data["time_patterns"]["month_stats"] == [
             {"month": "Янв", "total_pnl": 90.0, "trades": 2, "win_rate": 50.0},
@@ -1104,16 +1205,120 @@ class TestAdmin:
         response = client.get("/admin/stats", headers=admin_headers)
         assert response.status_code == 200
 
+    def test_pd_deletions_status_requires_admin(self, test_app, test_user, auth_headers):
+        """152-ФЗ: обычный юзер не должен видеть статус очереди удалений"""
+        client = test_app["client"]
+        response = client.get("/admin/pd-deletions/status", headers=auth_headers)
+        assert response.status_code == 403
+
+    def test_pd_deletions_status_empty(self, test_app):
+        """С пустой БД (без удалений) — все счётчики = 0"""
+        from datetime import datetime
+        client = test_app["client"]
+        db = test_app["db"]
+
+        admin = User(
+            email="admin-pd@example.com",
+            name="Admin PD",
+            hashed_password=auth_service.get_password_hash("adminpass"),
+            is_active=1,
+            is_admin=1,
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+
+        token = auth_service.create_access_token(
+            data={"sub": str(admin.id), "email": admin.email}
+        )
+        admin_headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.get("/admin/pd-deletions/status", headers=admin_headers)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["pending_count"] == 0
+        assert body["overdue_count"] == 0
+        assert body["finalized_count"] == 0
+        assert body["grace_period_days"] == 30
+        assert body["next_finalization_at"] is None
+
+    def test_pd_deletions_status_counts(self, test_app):
+        """Юзер с pending + юзер с overdue + анонимизированный — корректные счётчики"""
+        from datetime import datetime, timedelta
+        client = test_app["client"]
+        db = test_app["db"]
+
+        now = datetime.utcnow()
+
+        # admin
+        admin = User(
+            email="admin-counts@example.com",
+            hashed_password=auth_service.get_password_hash("x" * 12),
+            is_active=1,
+            is_admin=1,
+        )
+        # pending: 5 дней назад → ещё в grace
+        pending_user = User(
+            email="pending@example.com",
+            hashed_password="h",
+            is_active=0,
+            deletion_requested_at=now - timedelta(days=5),
+        )
+        # overdue: 32 дня назад → должен был быть финализирован
+        overdue_user = User(
+            email="overdue@example.com",
+            hashed_password="h",
+            is_active=0,
+            deletion_requested_at=now - timedelta(days=32),
+        )
+        # уже анонимизирован
+        anonymized = User(
+            email="deleted-99@anon.empirik",
+            hashed_password=None,
+            is_active=0,
+            deletion_requested_at=now - timedelta(days=60),
+        )
+        db.add_all([admin, pending_user, overdue_user, anonymized])
+        db.commit()
+        db.refresh(admin)
+
+        token = auth_service.create_access_token(
+            data={"sub": str(admin.id), "email": admin.email}
+        )
+        admin_headers = {"Authorization": f"Bearer {token}"}
+
+        response = client.get("/admin/pd-deletions/status", headers=admin_headers)
+        assert response.status_code == 200
+        body = response.json()
+        # pending: pending_user + overdue_user (оба не анонимизированы)
+        assert body["pending_count"] == 2
+        # overdue: только overdue_user
+        assert body["overdue_count"] == 1
+        # finalized: anonymized
+        assert body["finalized_count"] == 1
+        assert body["grace_period_days"] == 30
+        # next_finalization_at = min(deletion_requested_at) + 30d = ~25 дней от now
+        assert body["next_finalization_at"] is not None
+
 
 # ==================== MARKET TESTS ====================
 
 class TestMarket:
     """Tests for market data endpoints"""
     
-    def test_get_prices(self, test_app):
-        """Should return prices (may be empty if MOEX unavailable)"""
+    def test_get_prices(self, test_app, auth_headers, monkeypatch):
+        """API-01: requires auth; service mocked to avoid live MOEX."""
+        import market_service
+        # PERF-04: get_current_prices теперь async — мок тоже async.
+        async def fake_prices(self, t):
+            return {"SBER": 100.0, "GAZP": 150.0}
+        monkeypatch.setattr(
+            market_service.MarketService,
+            "get_current_prices",
+            fake_prices,
+        )
         client = test_app["client"]
-        response = client.get("/market/prices?tickers=SBER,GAZP")
+        response = client.get("/market/prices?tickers=SBER,GAZP", headers=auth_headers)
         assert response.status_code == 200
         assert "prices" in response.json()
 

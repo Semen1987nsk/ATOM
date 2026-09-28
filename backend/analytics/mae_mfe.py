@@ -136,11 +136,28 @@ def analyze_mae_mfe(trades, mae_method: str = 'weighted_average'):
                 # Потерянная прибыль (MFE - actual) в валюте сделки.
                 # Для фьючерсов нужен point_value: разница цен × qty × pv.
                 # Для акций pv = 1 — формула совпадает с прежней.
+                #
+                # MATH-08: предпочитаем сохранённый Trade.point_value (snapshot
+                # на момент закрытия, source = empirical_payment когда cached
+                # дрейфует > 5%, см. Phase 9 в models.py:406-412) поверх
+                # `_get_point_value(symbol)` — последний возвращает cached
+                # значение из Tinkoff metadata, которое для индексных
+                # фьючерсов (DAX/Brent/foreign) даёт ×1000-bias.
                 if qty > 0:
-                    try:
-                        pv = float(_get_point_value(t.symbol))
-                    except Exception:
-                        pv = 1.0
+                    pv = None
+                    stored_pv = getattr(t, "point_value", None)
+                    if stored_pv is not None:
+                        try:
+                            pv = float(stored_pv)
+                            if pv <= 0:
+                                pv = None
+                        except (TypeError, ValueError):
+                            pv = None
+                    if pv is None:
+                        try:
+                            pv = float(_get_point_value(t.symbol))
+                        except Exception:
+                            pv = 1.0
                     price_diff_max = entry_price * (mfe_pct / 100.0)
                     price_diff_actual = entry_price * (actual_pct / 100.0)
                     max_possible_pnl = price_diff_max * qty * pv

@@ -26,6 +26,48 @@ def reset_rate_limiter_between_tests():
     finally:
         reset_rate_limiter_storage()
 
+
+@pytest.fixture(autouse=True)
+def restore_config_settings_singleton():
+    """Восстанавливает идентичность `config.settings` после тестов, которые
+    делают `importlib.reload(config)` (test_config_*, test_worker_role и т.п.).
+
+    Reload пересоздаёт `config.settings`, но `main` и прочие модули держат
+    ссылку на ИСХОДНЫЙ объект (`from config import settings` при импорте).
+    Если не восстановить — последующие тесты, читающие `config.settings`
+    (напр. TestDocsGating monkeypatch'ит DEBUG), патчат новый объект, а
+    `main._docs_guard` читает старый → cross-file flake.
+    """
+    import config
+
+    orig = config.settings
+    try:
+        yield
+    finally:
+        if config.settings is not orig:
+            config.settings = orig
+
+
+@pytest.fixture(autouse=True)
+def reset_stream_manager_locks():
+    """Чистит module-global `stream_manager` между тестами.
+
+    `stream_manager._account_locks` хранит `asyncio.Lock`-объекты, привязанные
+    к event-loop'у того теста, где были созданы. Тесты с собственным
+    `asyncio.run()` (новый loop) переиспользуют stale-локи → RuntimeError
+    'Lock is bound to a different event loop'. Очистка перед/после теста
+    гарантирует, что локи создаются заново в текущем loop'е.
+    """
+    from application.sync.stream_manager import stream_manager
+
+    stream_manager._account_locks.clear()
+    stream_manager._tasks.clear()
+    try:
+        yield
+    finally:
+        stream_manager._account_locks.clear()
+        stream_manager._tasks.clear()
+
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test."""

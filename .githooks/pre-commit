@@ -1,0 +1,43 @@
+#!/bin/sh
+# Pre-commit Empirik: секреты не уходят в историю, спека и файл прогресса — без
+# нарушения правил харнесса. Копия хука базы знаний ЛАБОСФЕРЫ; причины каждого
+# шага — в её `.githooks/pre-commit` и журнале решений.
+#
+# Включается после клона:  git config core.hooksPath .githooks
+# core.hooksPath отключает хуки фреймворка pre-commit в .git/hooks, поэтому его
+# проверки (detect-secrets, запрет токена T-Bank) вызываются отсюда, если
+# фреймворк установлен.
+
+set -e
+
+echo "[pre-commit] gitleaks (staged)"
+gitleaks git --pre-commit --redact --staged --verbose
+
+if command -v pre-commit >/dev/null 2>&1; then
+    echo "[pre-commit] .pre-commit-config.yaml"
+    pre-commit run --hook-stage pre-commit
+fi
+
+# core.quotepath=false обязателен: без него git экранирует кириллицу в путях,
+# и `.business/спеки/…` не совпадёт ни с одним шаблоном. Радиус (что спека,
+# что файл прогресса) применяют сами линтеры.
+staged_paths() {
+    git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR --find-renames -z
+}
+
+echo "[pre-commit] линтер спек"
+staged_paths | xargs -0r python "$HOME/.claude/hooks/spec_lint.py" --staged
+
+echo "[pre-commit] запрет дословных цитат в файлах прогресса"
+staged_paths | xargs -0r python "$HOME/.claude/hooks/quote_lint.py" --added
+
+echo "[pre-commit] запрет чисел о корпусе без якоря"
+staged_paths | xargs -0r python "$HOME/.claude/hooks/number_lint.py" --added
+
+echo "[pre-commit] запрет летучих утверждений в документах работы"
+staged_paths | xargs -0r python "$HOME/.claude/hooks/anchor_lint.py" --added
+
+echo "[pre-commit] активный трек назвал ведущего и дерево"
+staged_paths | xargs -0r python "$HOME/.claude/hooks/registry_lint.py" --staged
+
+echo "[pre-commit] OK"

@@ -15,11 +15,12 @@ import { TagStatsCard } from "@/components/dashboard/TagStatsCard";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import { useAnalysisStats } from "@/lib/useAnalysisStats";
 import { useAuth } from "@/contexts/AuthContext";
+import { DataError } from "@/components/ui/DataError";
 
 export default function TagsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [filters, setFilters] = useState<Filters>({ period: "all" });
-  const { stats, loading } = useAnalysisStats(filters);
+  const { stats, loading, error, refetch } = useAnalysisStats(filters);
 
   if (authLoading) return <DashboardSkeleton />;
 
@@ -39,6 +40,8 @@ export default function TagsPage() {
 
         {!user ? (
           <EmptyState text="Войдите, чтобы увидеть свою разбивку по тегам." />
+        ) : error ? (
+          <DataError error={error} onRetry={refetch} />
         ) : loading ? (
           <DashboardSkeleton />
         ) : !stats || stats.total_trades === 0 ? (

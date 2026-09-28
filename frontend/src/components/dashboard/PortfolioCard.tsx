@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/apiClient';
+import { parseApiDate } from '@/lib/dateUtils';
 
 interface Portfolio {
   success: boolean;
@@ -156,6 +157,7 @@ export default function PortfolioCard() {
   };
 
   const formatMoney = (value: number) => {
+    if (value == null || !Number.isFinite(value)) return '—';
     return new Intl.NumberFormat('ru-RU', {
       style: 'currency',
       currency: 'RUB',
@@ -219,7 +221,7 @@ export default function PortfolioCard() {
             <div>
               <h3 className="text-lg font-semibold">Портфель</h3>
               <p className="text-xs text-slate-500">
-                Обновлено: {new Date(portfolio.updated_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                Обновлено: {parseApiDate(portfolio.updated_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>
@@ -234,7 +236,7 @@ export default function PortfolioCard() {
 
         {/* Main Balance */}
         <div className="mb-4">
-          <div className="text-3xl font-bold text-white mb-1">
+          <div className="text-3xl font-bold text-[var(--foreground)] mb-1">
             {formatMoney(portfolio.total_balance)}
           </div>
           <div className={`flex items-center gap-2 ${pnlColor}`}>
@@ -357,8 +359,7 @@ export default function PortfolioCard() {
                     <input
                       type="date"
                       id="net-deposit-date-picker"
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs text-white flex-1 outline-none focus:border-accent"
-                      style={{ colorScheme: 'dark' }}
+                      className="bg-[var(--input-bg)] border border-[var(--border)] rounded px-2 py-1 text-xs text-[var(--foreground)] flex-1 outline-none focus:border-accent"
                     />
                     <button
                       onClick={() => {
