@@ -25,16 +25,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Сначала только requirements — слой кешируется между билдами кода
-COPY requirements.txt .
+# Индекс T-Bank подписан Russian Trusted Sub CA (Минцифры), её нет в образе —
+# без неё pip падает на TLS. Только в builder: runtime-образ не меняется.
+# Sub CA — выпуск 2024 года (действует до 2029-07-19); на gu-st.ru лежит
+# прежний выпуск, который сертификат индекса не заверяет.
+COPY certs/russian_trusted_root_ca.crt certs/russian_trusted_sub_ca.crt /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt
+
+# Сначала только lock — слой кешируется между билдами кода.
+# Lock, а не requirements.txt: CI тестирует ровно эти версии, а свободный
+# резолв затягивал SQLAlchemy 2.1, где postgresql:// требует psycopg 3.
+COPY requirements.lock .
 
 # Ставим в /opt/venv, скопируем целиком в runtime-образ
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt \
-      --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple && \
-    pip install --no-cache-dir gunicorn sentry-sdk[fastapi] python-json-logger
+    pip install --no-cache-dir -r requirements.lock \
+      --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple
 
 # ───────────────── Stage 2: runtime ─────────────────
 FROM python:3.11-slim AS runtime
