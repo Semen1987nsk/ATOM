@@ -46,7 +46,6 @@
 
 Операции, которым процедура положена, но на этой машине ещё не исполнялись. Материал для шагов — `docs/RUNBOOK.md`, `docs/DEVELOPER_GUIDE.md`, `docs/POSTGRES_MIGRATION.md`, `.business/operations/deployment.md`, `start.sh`, `.github/workflows/cd.yml`; шаги оттуда не переносятся непроверенными.
 
-- Сборка образа backend (`docker compose build backend`) — падает на TLS индекса T-Bank, ждёт решения по `backend/Dockerfile` (2026-09-28).
 - Миграция и откат БД (Alembic).
 - Деплой (`cd.yml`, GHCR и ssh).
 - Бэкап Postgres.
