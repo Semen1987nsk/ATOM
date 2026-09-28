@@ -1,14 +1,15 @@
 """S4-19: ix_trades_account_entry_exit — недостающая миграция под индекс из models.py.
 
-Revision ID: 0030_trades_account_entry_exit_index
+Revision ID: 0030_trades_acct_entry_exit_idx
 Revises: 0029_broker_conn_cascade
 Create Date: 2026-07-02 00:00:00.000000
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "0030_trades_account_entry_exit_index"
+revision: str = "0030_trades_acct_entry_exit_idx"
 down_revision: Union[str, Sequence[str], None] = "0029_broker_conn_cascade"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -29,11 +30,10 @@ def upgrade() -> None:
             )
     else:
         from _guards import has_index
+
         bind = op.get_bind()
         if not has_index(bind, "trades", _INDEX):
-            op.create_index(
-                _INDEX, "trades", ["account_id", "entry_at", "exit_at"], unique=False
-            )
+            op.create_index(_INDEX, "trades", ["account_id", "entry_at", "exit_at"], unique=False)
 
 
 def downgrade() -> None:
@@ -42,6 +42,7 @@ def downgrade() -> None:
             op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX}")
     else:
         from _guards import has_index
+
         bind = op.get_bind()
         if has_index(bind, "trades", _INDEX):
             op.drop_index(_INDEX, table_name="trades")

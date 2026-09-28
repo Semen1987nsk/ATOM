@@ -81,6 +81,17 @@ UPDATE alembic_version SET version_num='0023_position_auth_fields'
 ```
 Затем `alembic upgrade head`.
 
+### Ре-стамп после переименования 0030
+
+Старый id `0030_trades_account_entry_exit_index` (36 символов) на Postgres не
+стампился никогда — миграция падала и откатывалась целиком; застамплены могут
+быть только dev-БД на SQLite:
+```sql
+UPDATE alembic_version SET version_num='0030_trades_acct_entry_exit_idx'
+ WHERE version_num='0030_trades_account_entry_exit_index';
+```
+Затем `alembic upgrade head`.
+
 ---
 
 <a id="rollback"></a>
