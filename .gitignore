@@ -65,10 +65,15 @@ htmlcov/
 # Playwright MCP debug artifacts (local only)
 .playwright-mcp/
 
-# Claude per-project state (local only) — but skills are tracked
+# Claude per-project state (local only) — skills, rules and shared settings are tracked
 .claude/*
 !.claude/skills/
+!.claude/rules/
+!.claude/settings.json
 .claude/skills/**/.local/
+
+# Макеты и pid сессий brainstorming
+.superpowers/
 
 # Generated OpenAPI dump — write-only артефакт scripts/dump_openapi.py
 backend/openapi.json

@@ -9,7 +9,7 @@
     "8000": {
       "label": "Backend API",
       "onAutoForward": "notify",
-      "visibility": "public"
+      "visibility": "private"
     }
   }
 }

@@ -1,7 +1,7 @@
 # ADR-0006: Editorial Financial rebrand (supersedes implicit «Linear-style»)
 
 **Статус:** Принято (2026-05-17). Реализация в текущей сессии (Phase 0–5, см. план `C:\Users\Administrator\.claude\plans\noble-herding-book.md`).
-**Supersedes:** неявное решение в [`design-system.md` v2](../../product/design-system.md) о «Linear/Vercel/Stripe-стиле, отказ от Bloomberg-meets-cyberpunk» (зафиксировано в [`history/2026-05-07-audit-and-stack-up.md`](../../history/2026-05-07-audit-and-stack-up.md) как достижение аудит-сессии). Раздел «Цвета», «Типографика», «Радиусы», «Лендинг-классы» переписываются полностью.
+**Supersedes:** неявное решение в [`design-system.md` v2](../../product/design-system.md) о «Linear/Vercel/Stripe-стиле, отказ от Bloomberg-meets-cyberpunk» (зафиксировано в [`история/2026-05-07-audit-and-stack-up.md`](../../история/2026-05-07-audit-and-stack-up.md) как достижение аудит-сессии). Раздел «Цвета», «Типографика», «Радиусы», «Лендинг-классы» переписываются полностью.
 **Связанное:** [`product/CLAUDE.md`](../../product/CLAUDE.md) (правило «никаких новых цветов и шрифтов» — обновляется), [`feature-canon/01-dashboard.md`](../../product/feature-canon/01-dashboard.md) (раздел «Семантика цвета» — патчится), [`marketing/messaging.md`](../../marketing/messaging.md) (tone-of-voice «спокойный профи» — сохраняется и усиливается).
 
 ## Контекст
@@ -110,7 +110,7 @@ Primary CTA — rectangle button с `--radius-md` (4px), не pill. Цвет —
 3. **Fraunces на русском.** Variable serif с cyrillic-subset существует, но русский italic читается необычно. Mitigation — открыть demo с русским hero и спросить пользователя «читается?». Fallback — Source Serif 4 (более utilitarian, но полностью кириллический).
 4. **Light theme drastically different** (FT pink-paper). Юзеры с light-preference увидят кардинально изменённый UI. Mitigation — `personas.md` явно говорит «трейдеры работают в темноте», dark остаётся primary.
 5. **`ux-laws.md` напряжение.** Закон «плотность важнее воздуха» для дашборда — Editorial для лендинга использует больше whitespace. Решение: законы применяются по контексту — landing допускает editorial-air, dashboard сохраняет density. `ux-laws.md` не меняется.
-6. **Связь с историей.** `history/2026-05-07-audit-and-stack-up.md` ссылается на «отказ от Bloomberg-cyberpunk → Linear» как достижение. Этот ADR явно supersede это решение, audit-сессия остаётся как historical record.
+6. **Связь с историей.** `история/2026-05-07-audit-and-stack-up.md` ссылается на «отказ от Bloomberg-cyberpunk → Linear» как достижение. Этот ADR явно supersede это решение, audit-сессия остаётся как historical record.
 7. **Breaking change для скриншотов.** `feature-canon/01-dashboard.md` ссылается на `empirik-final-dashboard.png` — после рефакторинга скриншоты устаревают. Митигация: Phase 5 — пересохранить скриншоты, обновить ссылки.
 8. **Light theme рефакторинг откладывается.** Все 16 hardcoded overrides в `globals.css:551–569` (`text-gray-400`, `bg-white/5` etc.) — legacy для старого Tailwind-кода. После Phase 4 будут визуально странные на новом cream-paper фоне. Не блокер для Phase 0–5, но требует отдельного захода (см. план §«What follows after this plan»).
 

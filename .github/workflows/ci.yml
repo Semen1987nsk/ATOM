@@ -227,3 +227,137 @@ jobs:
           tags: atom-backend:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ─────────────────── ХАРНЕСС: СПЕКИ, ПРОГРЕСС, ДЕФЕКТЫ ───────────────────
+  # Серверное зеркало локальных .githooks. Скрипты не копируются, а берутся из
+  # приватного репозитория конфига: копия разошлась бы с оригиналом молча.
+  # Образец — CI базы знаний ЛАБОСФЕРЫ.
+  spec-guard:
+    name: Harness (spec_lint, quote/number/anchor lint, gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # secrets недоступен в if джоба и шага — флаг прокинут через env джоба.
+      HAS_CONFIG_KEY: ${{ secrets.CONFIG_HOOKS_DEPLOY_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # spec_lint датирует спеки через git log --follow, push-check ходит по before..after
+          fetch-depth: 0
+
+      - name: Секрета нет — спек-проверки пропущены
+        if: env.HAS_CONFIG_KEY != 'true'
+        run: echo "::warning::CONFIG_HOOKS_DEPLOY_KEY не задан — spec_lint, gate_report и push-check пропущены; реестр дефектов проверяется"
+
+      - name: Хуки из репозитория конфига
+        if: env.HAS_CONFIG_KEY == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Semen1987nsk/claude-code-config
+          ssh-key: ${{ secrets.CONFIG_HOOKS_DEPLOY_KEY }}
+          path: _claude-hooks
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - if: env.HAS_CONFIG_KEY == 'true'
+        run: pip install jsonschema
+
+      - name: spec_lint — линт спек
+        if: env.HAS_CONFIG_KEY == 'true'
+        # --staged = «отфильтруй кандидатов до спек»; радиус печатает gate_guard.is_spec
+        run: git ls-files -z "*.md" | xargs -0r python _claude-hooks/hooks/spec_lint.py --staged
+
+      - name: quote/number/anchor lint — добавленные строки
+        if: env.HAS_CONFIG_KEY == 'true'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          RANGE=""
+          if [ -n "$BASE" ]; then RANGE="$BASE..$AFTER"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then RANGE="$BEFORE..$AFTER"
+          fi
+          if [ -z "$RANGE" ]; then echo "диапазона нет (свежая ветка) — правила E/F/G пропущены"; exit 0; fi
+          git ls-files -z "*.md" | xargs -0r python _claude-hooks/hooks/quote_lint.py --added "$RANGE"
+          git ls-files -z | xargs -0r python _claude-hooks/hooks/number_lint.py --added "$RANGE"
+          git ls-files -z "*.md" | xargs -0r python _claude-hooks/hooks/anchor_lint.py --intra --added "$RANGE"
+
+      - name: gate_report — валидация вердиктов гейта
+        if: env.HAS_CONFIG_KEY == 'true'
+        run: git ls-files -z "*.gate.json" | xargs -0r python _claude-hooks/hooks/gate_report.py --check
+
+      - name: push-check — REJECT без решения владельца не отгружается
+        if: github.event_name == 'push' && env.HAS_CONFIG_KEY == 'true'
+        env:
+          GATE_GUARD_STATE_DIR: ${{ runner.temp }}/gate_state
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          printf 'refs/heads/%s %s refs/heads/%s %s\n' "$BRANCH" "$AFTER" "$BRANCH" "$BEFORE" \
+            | python _claude-hooks/hooks/gate_guard.py --push-check
+
+      - name: Реестр дефектов — строка без артефакта = незакрытый долг
+        run: |
+          python - <<'PY'
+          import re
+          import sys
+
+          PATH = ".business/история/дефекты-у-пользователя.md"
+          try:
+              with open(PATH, encoding="utf-8") as fh:
+                  text = fh.read()
+          except FileNotFoundError:
+              print(f"реестр дефектов: файла нет ({PATH}) — проверять нечего")
+              sys.exit(0)
+
+          m = re.search(r"^##\s+Реестр\s*$(.*?)(?=^##\s|\Z)", text, re.MULTILINE | re.DOTALL)
+          if not m:
+              print("реестр дефектов: секция «## Реестр» не найдена — проверять нечего")
+              sys.exit(0)
+
+          EMPTY = {"", "-", "—"}
+          bad = []
+          rows = 0
+          for line in m.group(1).splitlines():
+              line = line.strip()
+              if not line.startswith("|"):
+                  continue
+              cells = [c.strip() for c in line.strip("|").split("|")]
+              if all(re.fullmatch(r":?-{3,}:?", c) for c in cells):
+                  continue
+              rows += 1
+              if rows == 1:
+                  continue
+              if len(cells) < 2 or cells[-1] in EMPTY:
+                  bad.append(" | ".join(cells[:3]))
+
+          if bad:
+              for name in bad:
+                  print(f"реестр дефектов: строка без артефакта в последней колонке: {name}")
+              sys.exit(1)
+          print(f"реестр дефектов: строк данных {max(rows - 1, 0)}, без артефакта 0")
+          PY
+
+  # ─────────────────── СЕКРЕТЫ ───────────────────
+  gitleaks:
+    name: Secrets (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Путь задан явно: action без него конфиг из корня не применяет.
+          GITLEAKS_CONFIG: .gitleaks.toml
