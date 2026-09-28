@@ -337,6 +337,13 @@ class Trade(Base):
         # Composite index под частый паттерн: stats / analytics страницы
         # фильтруют по account и сортируют/режут по диапазону дат.
         Index('ix_trades_account_entry_exit', 'account_id', 'entry_at', 'exit_at'),
+        # Миграция 0028 создаёт его только на Postgres; без описания здесь
+        # `alembic check` видит дрейф и предлагает индекс удалить.
+        Index(
+            'ix_trades_tags_gin', 'tags',
+            postgresql_using='gin',
+            postgresql_ops={'tags': 'jsonb_path_ops'},
+        ).ddl_if(dialect='postgresql'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
